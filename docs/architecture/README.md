@@ -193,8 +193,10 @@ upload ─▶ pack_versions.state=uploaded ─▶ ValidatePackWorkflow(version_i
             - lint hooks/commands, validate MCP configs, static malware/IoC rules on scripts
             - prompt-injection and tool-poisoning heuristics on skills, hooks, MCP tool descriptions
             - run the pack's declared checks/tests
-  step 4  optional LLM evaluation (only after 1–3 pass, token-capped): Claude Code in the sandbox,
-          via AI Gateway, answers "does each skill do what it claims; anything dangerous?"
+  step 4  LLM prose review via AI Gateway (only after 1–3 pass, token-capped): Haiku screens every
+          version (~$0.003 each); Sonnet reviews only the ~10% Haiku flags (~$0.07 each); Batch API
+          where latency allows. Claude Code inside the sandbox is reserved for packs whose checks
+          or tasks need a live agent run.
   step 5  risk score → auto-approve / human review queue (step.waitForEvent "review")
   step 6  payment / plan check, only after validation passed; the credit is bound to the validated
           archive's sha256 (step.waitForEvent "payment" from the Stripe webhook if needed)
@@ -204,9 +206,9 @@ upload ─▶ pack_versions.state=uploaded ─▶ ValidatePackWorkflow(version_i
           FTS row, Vectorize embedding; purge cache; notify publisher; post GitHub Check Run
 ```
 
-Why this shape: Workflows give durable steps with retries, unlimited wall-clock per step and `waitForEvent` for the human and payment gates, with observability for free. Containers/Sandbox give a real VM with its own kernel per job, internet disabled by default, and a Worker-side egress handler that allowlists destinations and injects the AI Gateway credential so no secret ever enters the sandbox. A 2-minute basic run costs a fraction of a cent; a 10-minute Claude Code evaluation costs 1–2 cents of compute plus model tokens, which dominate. Dynamic Workers (open beta) can run sub-second pre-checks at upload time later.
+Why this shape: Workflows give durable steps with retries, unlimited wall-clock per step and `waitForEvent` for the human and payment gates, with observability for free. Containers/Sandbox give a real VM with its own kernel per job, internet disabled by default, and a Worker-side egress handler that allowlists destinations and injects the AI Gateway credential so no secret ever enters the sandbox. A 2-minute basic run costs a fraction of a cent. The LLM review is the real cost driver: at the [hosting cost estimate](../hosting-cost-estimate.md)'s 40k versions a month (1M repos), Haiku on everything plus Sonnet on flagged packs is about $400/month, against about $2,900 for Sonnet on everything and about $7,000 for a one-off Sonnet rescan of a 100k-pack corpus. Static scanners alone are not enough: ClawHub found 341 malicious skills out of 2,857 that used plain-language instructions no virus signature catches (see [registry trust research](../registry-trust-research.md)). Human moderation of flagged packs is not priced and will dominate. Dynamic Workers (open beta) can run sub-second pre-checks at upload time later.
 
-Ongoing: a Cron Trigger re-validates popular packs and everything when detection rules change; findings on a live version move it to `quarantined` and notify installers via MCP status. Expect false positives (RubyGems reports about 95% of automated flags are false), so the review queue and an appeal path are part of v1.
+Ongoing: a Cron Trigger re-validates popular packs and everything when detection rules change; findings on a live version move it to `quarantined`/`revoked` in the signed index (§7.1) and in MCP status. Whether the cn engine then disables the pack on members' repos (VS Code / Chrome style, which we can do because we own the client) or only reports it (the fleet's existing `reportOnly` default for held versions) is an open decision (§15). Expect false positives (RubyGems reports about 95% of automated flags are false), so the review queue and an appeal path are part of v1.
 
 **Cooldown for agents:** MCP search defaults to versions published more than 24 hours ago (configurable by the caller), so agents don't auto-adopt a minutes-old malicious release.
 
@@ -218,7 +220,19 @@ Ongoing: a Cron Trigger re-validates popular packs and everything when detection
 | `packs-public` | validated public versions, attestations, rendered READMEs | custom domain `cdn.packserver.dev`, Cache Everything, `immutable` cache headers; free egress |
 | `packs-private` | validated private versions | never public; the `mcp`/`web` Worker checks `effective_access` then streams the object or mints a 5-minute presigned GET |
 
-Keys are immutable and versioned, so R2's one-write-per-second-per-key limit never matters, and "latest" pointers live in D1, never in R2. Every download response carries the SHA-256 and the attestation URL, and the client verifies both.
+Keys are immutable and versioned, so R2's one-write-per-second-per-key limit never matters, and "latest" pointers live in D1, never in R2. A published version never changes: the same name and version always resolve to the same SHA-256. Every download response carries the SHA-256 and the attestation URL, and the client verifies both.
+
+### 7.1 Signed index for update checks
+
+The cn engine is the main consumer, not agents. Packs are committed to the member repo (`commitToRepo`, today's model), so a repo only talks to PackServer when it checks for updates (about 6 checks per repo per month at the default weekly setting). Each check fetches one small index and then only the packs whose version changed:
+
+- `cdn.packserver.dev/index/v1/<scope>.json` per scope plus a top-level `index/v1/root.json` listing each scope index's hash: `{pack, latest, sha256, published_at, status[active|deprecated|yanked|quarantined|revoked]}`. Signed with the registry Ed25519 key, regenerated by the validator on every promote or status change, served with a short cache TTL; version objects stay immutable and long-cached.
+- Private packs get a per-caller index from the `web` Worker after an access check, never on the CDN.
+- At 1M repos this is about 19M requests and 0.6 TB a month, roughly $10–20 on top of the $5 plan because R2 egress is free (cost estimate in [hosting-cost-estimate.md](../hosting-cost-estimate.md)). `fetchOnEveryRun` (Engine #187, still open) would multiply fetches about 24× and requests about 50×; the bill stays small on Cloudflare but every session start would depend on PackServer being up, so the design keeps `commitToRepo` as the default.
+
+### 7.2 GitHub mirror for networks that can't reach us
+
+Claude Code web VMs on the default Trusted network could not reach our hosts during the licensing work (2026-09-30), so `cdn.packserver.dev` may be unreachable from web sessions. The validator therefore also pushes each public promote (archive, `.sha256`, attestation, scope index) to a GitHub mirror repository (e.g. `Claudinite/packs-mirror`, one commit per publish, by the GitHub App). cn tries PackServer first and falls back to the mirror; signatures and hashes are identical, so the mirror needs no extra trust. This also moves web-session traffic off our bill. Private packs have no mirror; web sessions would need the network allowlist to include our host.
 
 ## 8. MCP endpoint for agents
 
@@ -281,6 +295,7 @@ The permission model is JFrog-style rows of (resource, principal, action) in `gr
 | No Anthropic models on Workers AI | LLM evaluation must leave Cloudflare | AI Gateway with our key, spend caps, run only after cheap checks pass |
 | MCP SDK churn (McpAgent deprecated within ~18 months; DCR being deprecated in spec); `agents@0.23.0` pins `@modelcontextprotocol/server@2.0.0`, which has open high-severity advisories | Upgrade work; must not ship with known vulns | Pin versions, track the advisories, upgrade before public launch |
 | Lock-in concentrated in Workflows, Durable Objects, Vectorize | Hard to move later | Business logic in plain functions; R2 is S3-compatible; SQL is portable; sandbox images are OCI |
+| Claude Code web VMs may not reach custom hosts | Web sessions can't fetch packs or check updates | GitHub mirror of public packs and indexes (§7.1–7.2); ask for the host to be allowlisted |
 | D1 primary location / jurisdiction chosen at creation | Data residency choice is effectively permanent | Decide (likely default or `eu`) before creating the production database |
 
 ## 13. Security summary
@@ -310,7 +325,15 @@ The permission model is JFrog-style rows of (resource, principal, action) in `gr
 
 1. **Who decides access to private packs?** The design supports allowlists, teams, gated requests and GitHub/domain sync; which should launch first? (Proposed: allowlist + invite links + read tokens.)
 2. **Is the $1 fee per new pack (proposed) or per version?** And should Verified Publishers be exempt (proposed)?
-3. **How deep should validation go at launch:** static + sandboxed checks only, or the LLM evaluation too? The LLM step costs tokens per upload that a $1 fee barely covers.
+3. **How deep should the review go at launch?** Proposed: static checks, sandboxed load and self-test, Haiku screen on every version and Sonnet only on flagged packs (~$400/month at 1M repos), plus human review of what's flagged.
 4. **Non-GitHub sources at launch** (GitLab OIDC, plain upload) or GitHub trusted publishing + web upload only?
 5. **Scope naming:** `@scope/pack` with proofs shown as badges (proposed), or MCP-Registry-style names that embed the proof (`io.github.google/…`, `com.google/…`)?
 6. **Data residency:** default location or EU jurisdiction for D1 and R2?
+
+Still open from the [registry trust research](../registry-trust-research.md), and this design leaves room for any answer:
+
+7. **Remote revocation or report only?** When a pack is revoked, should cn disable it on members' repos, or only report it (`reportOnly`, the fleet's precedent)? The signed index carries the status either way.
+8. **Must a pack pass our CI before listing (Homebrew-style), and must each check ship firing/silent fixtures?** The sandbox step can run both; the choice is whether failure blocks listing.
+9. **Should packs declare capabilities** (runs code in Actions, env steps at session start, hooks, network), with an update that adds one held for review? Closed for our own canon in the first security review; public submissions may justify reopening it.
+10. **Tiers** like Claude Code's: canon (curated by us), community (pinned, scanned, tested), third-party (unchecked, with a warning)?
+11. **Ranking signals** only cn has: how many repos keep a pack, how often its checks fire, how often members drop it. These would replace most of the star/rating weight in §10 if cn reports them.
