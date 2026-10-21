@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "packserver-mcp-spike",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    // Public base URL where validated packs are served from R2 (custom domain or r2.dev).
+    "PACKS_PUBLIC_BASE_URL": "https://packs.example.dev"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "packserver",
+      // Placeholder; replace with `wrangler d1 create packserver` output before deploying.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "PACKS",
+      "bucket_name": "packserver-packs"
+    }
+  ],
+  "observability": { "enabled": true }
+}
