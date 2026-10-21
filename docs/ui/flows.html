@@ -1,0 +1,1109 @@
+<title>PackServer Flows</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>/* Layout: sticky contents rail on the left, reading column on the right; stacks on phones */
+:root { --bg:#f6f7f5; --surface:#ffffff; --surface-2:#eef0ec; --text:#1b1f1d; --muted:#5b625e; --border:#d6dad4; --accent:#0f6b5c; --code-bg:#eef0ec;
+  --sans:"IBM Plex Sans", system-ui, sans-serif; --mono:"IBM Plex Mono", ui-monospace, Menlo, monospace; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#141716; --surface:#1c201e; --surface-2:#242927; --text:#e8ebe8; --muted:#a3aaa5; --border:#353b38; --accent:#4fc3a8; --code-bg:#242927; color-scheme: dark } }
+:root[data-theme="dark"] { --bg:#141716; --surface:#1c201e; --surface-2:#242927; --text:#e8ebe8; --muted:#a3aaa5; --border:#353b38; --accent:#4fc3a8; --code-bg:#242927; color-scheme: dark }
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 15px; line-height: 1.6 }
+.page { max-width: 1180px; margin: 0 auto; padding-block: 28px 80px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
+.top { margin-bottom: 24px }
+.tag { font-family: var(--mono); font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--accent) }
+.lede { color: var(--muted); margin: 6px 0 0; max-width: 65ch }
+.layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 40px; align-items: start }
+@media (max-width: 820px) { .layout { grid-template-columns: minmax(0, 1fr) } .toc { position: static !important; max-height: none !important } }
+.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); max-height: calc(100vh - 32px); overflow-y: auto; font-size: .85rem }
+.toc h4 { font-size: .72rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 16px 0 6px }
+.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px }
+.toc a { color: var(--text); text-decoration: none; display: block; padding: 3px 8px; border-radius: 4px }
+.toc a:hover { background: var(--surface-2) }
+.doc { min-width: 0 }
+.doc h1 { font-size: 1.8rem; line-height: 1.2; margin: 0 0 12px; text-wrap: balance }
+.doc h2 { font-size: 1.3rem; margin: 48px 0 10px; padding-top: 12px; border-top: 1px solid var(--border); scroll-margin-top: 16px; text-wrap: balance }
+.doc h3 { font-size: 1.05rem; margin: 24px 0 8px }
+.doc p, .doc li { max-width: 72ch }
+.doc a { color: var(--accent) }
+.doc code { font-family: var(--mono); font-size: .86em; background: var(--code-bg); padding: .05em .35em; border-radius: 3px; overflow-wrap: anywhere }
+.doc pre:not(.mermaid) { background: var(--code-bg); padding: 12px 14px; border-radius: 6px; overflow-x: auto; font-size: .82rem }
+.doc pre code { background: none; padding: 0 }
+.doc hr { border: 0; border-top: 1px solid var(--border); margin: 24px 0 }
+.doc hr.big { margin: 64px 0 }
+.diagram { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin: 16px 0; overflow-x: auto }
+.diagram pre.mermaid { margin: 0; background: none; text-align: center }
+.table-wrap { overflow-x: auto; margin: 12px 0 }
+table { border-collapse: collapse; font-size: .88rem; width: 100% }
+th, td { text-align: left; vertical-align: top; padding: 7px 10px; border-bottom: 1px solid var(--border) }
+th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+</style>
+<div class="page">
+<header class="top"><span class="tag">PackServer · UI scheme</span>
+<p class="lede">Action flows and sitemap for the pack registry. Source: <code>docs/ui/flows.md</code> and <code>docs/ui/sitemap.md</code> in PR #4.</p></header>
+<div class="layout">
+<nav class="toc" aria-label="Contents"><h4>Action flows</h4><ol><li><a href="#f-1-sign-up-mfa-enrollment">1. Sign-up + MFA enrollment</a></li><li><a href="#f-2-sign-in-with-step-up">2. Sign-in with step-up</a></li><li><a href="#f-3-star-rate-review">3. Star, rate, review</a></li><li><a href="#f-4-file-bug-report-incl-private-security-report">4. File bug report (incl. private security report)</a></li><li><a href="#f-5-publish-via-upload">5. Publish via upload</a></li><li><a href="#f-6-publish-via-github-path-with-trusted-publishing">6. Publish via GitHub path with trusted publishing</a></li><li><a href="#f-7-validation-failure-and-resubmit">7. Validation failure and resubmit</a></li><li><a href="#f-8-payment-via-stripe-checkout">8. Payment via Stripe Checkout</a></li><li><a href="#f-9-verify-organization">9. Verify organization</a></li><li><a href="#f-10-private-pack-access-options">10. Private pack access (options)</a></li><li><a href="#f-11-agent-discovering-amp-fetching-a-pack-via-mcp">11. Agent discovering &amp; fetching a pack via MCP</a></li><li><a href="#f-12-yank-deprecate-a-version">12. Yank / deprecate a version</a></li><li><a href="#f-13-report-abuse-moderation">13. Report abuse / moderation</a></li></ol><h4>Sitemap</h4><ol><li><a href="#s-personas">Personas</a></li><li><a href="#s-sitemap-tree">Sitemap tree</a></li><li><a href="#s-page-by-page">Page-by-page</a></li><li><a href="#s-navigation-header-states">Navigation / header states</a></li><li><a href="#s-permission-matrix">Permission matrix</a></li><li><a href="#s-private-pack-access-options-not-decided">Private pack access: options (not decided)</a></li><li><a href="#s-open-decisions">Open decisions</a></li></ol></nav>
+<main class="doc"><article id="flows"><h1>PackServer Action Flows</h1>
+<p>Each flow: goal, steps, diagram, failure/edge states. Page IDs refer to <code>sitemap.md</code>. &quot;Step-up&quot; = fresh MFA assertion within the last 5 minutes (GitHub &quot;sudo mode&quot; pattern).</p>
+<p>Shared conventions:</p>
+<ul>
+<li>Sessions: HttpOnly cookie, 30 days, bound to device fingerprint; step-up stamps <code>reauth_at</code> in the session.</li>
+<li>All mutating actions are POST with CSRF token and idempotency key.</li>
+<li>Async work (validation, payments webhooks, GitHub checks) runs in Cloudflare Workers consuming a Queue; UI polls or uses SSE/WebSocket via a Durable Object per run.</li>
+</ul>
+<hr>
+<h2 id="f-1-sign-up-mfa-enrollment">1. Sign-up + MFA enrollment</h2>
+<p><strong>Goal</strong>: new user gets an account; if they intend to publish, MFA is enrolled before anything else.</p>
+<ol>
+<li><code>signin</code>: user picks GitHub, Google, passkey, or email magic link.</li>
+<li>OAuth/OIDC callback (or magic link click) → server verifies, creates <code>user</code> + <code>identity</code> rows, issues session.</li>
+<li>First-login step: choose handle (checked for uniqueness and reserved names) and display name.</li>
+<li>Prompt: &quot;Enable MFA now?&quot; with &quot;Required to publish&quot; note. Member may skip; Publisher enrollment cannot.</li>
+<li><code>mfa</code>: Add passkey (WebAuthn <code>navigator.credentials.create</code>, resident key, user verification required). Fallback: TOTP (QR + manual secret, confirm one code).</li>
+<li>Show recovery codes once (10 codes, download/print, &quot;I saved them&quot; checkbox).</li>
+<li>Return to <code>account</code> or to the original destination.</li>
+</ol>
+<div class="diagram"><pre class="mermaid">sequenceDiagram
+  participant U as User
+  participant S as signin page
+  participant W as Worker (auth)
+  participant P as IdP (GitHub/Google)
+  participant M as mfa page
+  U-&gt;&gt;S: choose provider
+  S-&gt;&gt;P: redirect with state and PKCE
+  P--&gt;&gt;W: callback code
+  W-&gt;&gt;P: exchange code, fetch profile
+  W-&gt;&gt;W: create user + identity, issue session
+  W--&gt;&gt;U: redirect to choose handle
+  U-&gt;&gt;W: handle + display name
+  W--&gt;&gt;M: prompt enroll MFA
+  U-&gt;&gt;M: create passkey (WebAuthn)
+  M-&gt;&gt;W: attestation
+  W-&gt;&gt;W: store credential, mark mfa_enrolled
+  W--&gt;&gt;U: show recovery codes once</pre></div><p>Failure / edge states:</p>
+<ul>
+<li>Email already linked to another identity → &quot;Sign in with X instead, then link in Account &gt; Security&quot; (no silent account merging; prevents takeover via unverified email).</li>
+<li>WebAuthn unsupported → TOTP path offered automatically.</li>
+<li>Handle taken / reserved (<code>admin</code>, <code>claude</code>, <code>anthropic</code>, publisher names of verified orgs) → inline error.</li>
+<li>Magic link expired (15 min) or reused → &quot;Request a new link&quot;.</li>
+<li>User closes recovery-codes screen without confirming → banner on <code>account</code> until confirmed.</li>
+</ul>
+<hr>
+<h2 id="f-2-sign-in-with-step-up">2. Sign-in with step-up</h2>
+<p><strong>Goal</strong>: returning user signs in; sensitive actions require a fresh MFA assertion.</p>
+<ol>
+<li><code>signin</code>: same providers; passkey can sign in directly (discoverable credential, &quot;Sign in with a passkey&quot;).</li>
+<li>If MFA enrolled: after IdP callback, prompt for passkey or TOTP (or recovery code).</li>
+<li>Session issued with <code>auth_level = mfa</code> or <code>password-only</code>.</li>
+<li>Later, user triggers a sensitive action (publish, yank, transfer, change visibility, create token, remove MFA factor, change email).</li>
+<li>If <code>reauth_at</code> older than 5 min → modal &quot;Confirm it&#39;s you&quot; → passkey/TOTP → <code>reauth_at</code> refreshed → action proceeds.</li>
+</ol>
+<div class="diagram"><pre class="mermaid">flowchart TD
+  A["Sensitive action requested"] --&gt; B{"MFA enrolled?"}
+  B -- no, publisher action --&gt; C["Redirect to mfa: enrollment required"]
+  B -- no, member action --&gt; D["Proceed (member-level)"]
+  B -- yes --&gt; E{"reauth_at &lt; 5 min?"}
+  E -- yes --&gt; F["Proceed"]
+  E -- no --&gt; G["Step-up modal: passkey / TOTP / recovery code"]
+  G -- success --&gt; H["Refresh reauth_at"] --&gt; F
+  G -- fail x5 --&gt; I["Lock step-up 15 min, email alert"]</pre></div><p>Failure / edge states:</p>
+<ul>
+<li>Lost all factors → recovery code; if none, support flow with identity re-verification (publisher packs frozen meanwhile).</li>
+<li>Recovery code used → warn, offer regeneration.</li>
+<li>Session from new device/geo → email notice (npm/GitHub pattern).</li>
+<li>Step-up on an API token request from an agent is not possible → tokens are minted only in the browser.</li>
+</ul>
+<hr>
+<h2 id="f-3-star-rate-review">3. Star, rate, review</h2>
+<p><strong>Goal</strong>: members express approval (star) and quality judgment (1-5 rating + optional review). Decision flagged in <code>sitemap.md</code> #1.</p>
+<ol>
+<li><code>pack</code>: click Star → toggles immediately (optimistic), count updates. Anonymous click → <code>signin</code> with return URL.</li>
+<li>Click &quot;Rate&quot; or &quot;Write a review&quot; → <code>review</code>.</li>
+<li>Choose version (default latest), 1-5 stars, optional title/body, &quot;used with&quot; (Claude / Ant).</li>
+<li>Submit → stored; pack rating recomputed (Bayesian average with prior to avoid 1-review 5-star packs ranking first).</li>
+<li>Review appears in <code>pack</code> &gt; Reviews with &quot;verified fetch&quot; badge if the account fetched the pack (optional, decision #8).</li>
+<li>Publisher may reply once per review and flag for moderation.</li>
+</ol>
+<div class="diagram"><pre class="mermaid">sequenceDiagram
+  participant M as Member
+  participant P as pack page
+  participant R as review page
+  participant W as Worker
+  participant D as D1
+  M-&gt;&gt;P: click Star
+  P-&gt;&gt;W: POST /stars toggle
+  W-&gt;&gt;D: upsert star
+  W--&gt;&gt;P: 200 count
+  M-&gt;&gt;P: click Write a review
+  P-&gt;&gt;R: open with pack+version
+  M-&gt;&gt;R: rating 1-5, text
+  R-&gt;&gt;W: POST /reviews
+  W-&gt;&gt;W: rate limit, spam heuristics
+  W-&gt;&gt;D: upsert review (one per user per pack)
+  W-&gt;&gt;D: recompute rating aggregate
+  W--&gt;&gt;R: 201
+  R--&gt;&gt;M: redirect to pack Reviews tab</pre></div><p>Failure / edge states:</p>
+<ul>
+<li>One review per user per pack; new submission edits the old one (version bump recorded).</li>
+<li>Cannot review own packs or packs of orgs you belong to.</li>
+<li>Rate limit: 10 reviews/day per account; accounts younger than 24h cannot review (anti-brigading).</li>
+<li>Review removed by moderation → author notified with reason.</li>
+<li>Pack yanked entirely → reviews stay but pack shows &quot;unavailable&quot;.</li>
+</ul>
+<hr>
+<h2 id="f-4-file-bug-report-incl-private-security-report">4. File bug report (incl. private security report)</h2>
+<p><strong>Goal</strong>: member reports a defect; security issues go to publisher privately.</p>
+<ol>
+<li><code>pack</code> &gt; Issues → &quot;Report a bug&quot; → <code>report</code>.</li>
+<li>Fields: version, type (bug / docs / security), severity, repro steps, environment, attachments (≤5 MB, images/text only).</li>
+<li>If type = security → toggle &quot;Private security report&quot; auto-on: report is visible only to pack owners/maintainers and PackServer security; not listed in Issues tab.</li>
+<li>Submit → issue created; publisher notified (email + dashboard alert). Private security reports also create a 90-day disclosure timer (publisher-visible).</li>
+<li>Publisher responds / sets status (open, acknowledged, fixed in vX, won&#39;t fix, duplicate). Reporter notified.</li>
+<li>Public issues appear in <code>pack</code> &gt; Issues; private ones in <code>account</code> &gt; My reports (reporter) and <code>dashboard</code> alerts (publisher).</li>
+</ol>
+<div class="diagram"><pre class="mermaid">flowchart TD
+  A["report page"] --&gt; B{"type = security?"}
+  B -- yes --&gt; C["Private: visible to owners + PackServer security"]
+  B -- no --&gt; D["Public issue in pack Issues tab"]
+  C --&gt; E["Notify publisher security contact"]
+  D --&gt; F["Notify publisher"]
+  E --&gt; G["Status updates, 90-day disclosure timer"]
+  F --&gt; H["Status updates, reporter notified"]
+  G --&gt; I{"Fixed or timer expired?"}
+  I -- fixed --&gt; J["Reporter may request public advisory entry on Versions tab"]
+  I -- expired --&gt; K["PackServer may publish advisory, mark affected versions"]</pre></div><p>Failure / edge states:</p>
+<ul>
+<li>Pack has no security contact → routed to PackServer security only; publisher dashboard alert &quot;Add a security contact&quot;.</li>
+<li>Reporter attaches a secret in repro → secret scan on attachments; blocked with explanation.</li>
+<li>Duplicate detection: suggest existing issues by title similarity before submit.</li>
+<li>Abuse (spam reports) → publisher can flag; moderation may block reporter.</li>
+</ul>
+<hr>
+<h2 id="f-5-publish-via-upload">5. Publish via upload</h2>
+<p><strong>Goal</strong>: publisher uploads an archive, it is validated, listed, paid for, and published to R2.</p>
+<ol>
+<li><code>publish</code> step 1 Source → &quot;Upload archive&quot; (<code>.tar.gz</code>/<code>.zip</code>, ≤ 50 MB). Browser uploads directly to R2 via a presigned URL (staging bucket, 24h TTL).</li>
+<li>Step 2 Validate → Worker enqueues validation job; UI streams progress; links to <code>validation</code>.</li>
+<li>On pass/warn → step 3 Listing details, pre-filled from manifest (name, summary, category, repo URL if declared). Publisher confirms &quot;No public repo&quot; if none.</li>
+<li>Step 4 Visibility &amp; price → Public ($1) or Private (TBD price, pick access model).</li>
+<li>Step 5 Pay → Stripe Checkout (or one-click with saved method). See flow 8.</li>
+<li>Step 6 Publish → step-up auth → Worker copies archive from staging to the public (or private) R2 bucket under <code>packs/{publisher}/{pack}/{version}/</code>, writes <code>version</code> row, invalidates cache, emits &quot;published&quot; event.</li>
+</ol>
+<div class="diagram"><pre class="mermaid">sequenceDiagram
+  participant Pu as Publisher
+  participant Wz as publish wizard
+  participant W as Worker (api)
+  participant R2s as R2 staging
+  participant Q as Queue
+  participant V as Worker (validator)
+  participant St as Stripe
+  participant R2 as R2 packs
+  Pu-&gt;&gt;Wz: choose Upload archive
+  Wz-&gt;&gt;W: request presigned upload
+  W--&gt;&gt;Wz: URL
+  Wz-&gt;&gt;R2s: PUT archive
+  Wz-&gt;&gt;W: POST /validations
+  W-&gt;&gt;Q: enqueue run
+  Q-&gt;&gt;V: run checks
+  V-&gt;&gt;W: report (pass/warn/fail)
+  W--&gt;&gt;Wz: SSE progress + verdict
+  Pu-&gt;&gt;Wz: listing, visibility
+  Wz-&gt;&gt;St: Checkout session
+  St--&gt;&gt;W: webhook payment_intent.succeeded
+  Pu-&gt;&gt;Wz: Publish (step-up)
+  W-&gt;&gt;R2: copy staging to packs bucket
+  W--&gt;&gt;Pu: published, redirect to pack</pre></div><p>Failure / edge states:</p>
+<ul>
+<li>Upload interrupted → resumable multipart; draft persists on <code>dashboard</code> &gt; Drafts.</li>
+<li>Validation fail → flow 7.</li>
+<li>Version already exists → hard error; versions are immutable (npm/crates.io).</li>
+<li>Name collides with a verified org&#39;s domain or a reserved word → blocked; suggest scoped name.</li>
+<li>Payment succeeded but publish step abandoned → credit held on account 30 days; dashboard alert &quot;Finish publishing&quot;.</li>
+<li>Staging archive expired (24h) → re-upload required, validation re-run.</li>
+</ul>
+<hr>
+<h2 id="f-6-publish-via-github-path-with-trusted-publishing">6. Publish via GitHub path with trusted publishing</h2>
+<p><strong>Goal</strong>: tag/release in a GitHub repo auto-publishes <code>packs/gcp/</code> with no long-lived secrets, validation results posted as a GitHub check. Pattern: PyPI/npm trusted publishing (GitHub OIDC) + GitHub Checks API.</p>
+<p>Setup (once, in <code>github</code>):</p>
+<ol>
+<li>Install the PackServer GitHub App on the repo/org (grants <code>contents:read</code>, <code>checks:write</code>, <code>metadata:read</code>).</li>
+<li>Add mapping: repo, path, tag pattern (<code>v*</code> or <code>gcp-v*</code>), target pack, trusted publisher = (owner, repo, workflow file, environment).</li>
+<li>Copy the provided workflow YAML (uses <code>id-token: write</code> and calls PackServer with the OIDC token).</li>
+</ol>
+<p>Per release:
+4. Tag pushed → GitHub Actions workflow runs → requests OIDC token from GitHub → <code>POST /api/publish/oidc</code> with token + ref + path.
+5. Worker verifies JWT against GitHub&#39;s JWKS, matches <code>repository</code>, <code>workflow_ref</code>, <code>environment</code> claims to the mapping → mints a 15-min single-use publish token.
+6. Worker creates a GitHub Check Run &quot;PackServer validation&quot; (queued) on the commit, fetches the tarball of the path at that ref into R2 staging, enqueues validation.
+7. Validator Worker runs; posts check run <code>in_progress</code> → <code>completed</code> with conclusion and summary (annotations for errors).
+8. On pass: if the mapping has &quot;Require owner approval&quot; on (default for verified orgs), the version lands as <strong>Staged</strong> and an owner approves it with a passkey on <code>dashboard</code> before it goes live. Otherwise, if pack already paid (existing public pack, new version) → publish directly. If first publish or private → mark &quot;awaiting payment&quot;, dashboard alert, email; publisher completes flow 8 then publish. (Decision: new versions of an already-paid public pack are free.)
+9. Pack version live; check run summary links to <code>pack</code>.</p>
+<div class="diagram"><pre class="mermaid">sequenceDiagram
+  participant GH as GitHub Actions
+  participant W as Worker (api)
+  participant GA as GitHub API
+  participant R2s as R2 staging
+  participant Q as Queue
+  participant V as Worker (validator)
+  participant R2 as R2 packs
+  GH-&gt;&gt;GH: tag v1.2.0 pushed, workflow runs
+  GH-&gt;&gt;GH: request OIDC token (id-token write)
+  GH-&gt;&gt;W: POST /api/publish/oidc with JWT, ref, path
+  W-&gt;&gt;W: verify JWT via JWKS, match mapping claims
+  W--&gt;&gt;GH: 202 run_id, short-lived publish token
+  W-&gt;&gt;GA: create check run (queued)
+  W-&gt;&gt;GA: fetch tarball at ref
+  W-&gt;&gt;R2s: store staging archive
+  W-&gt;&gt;Q: enqueue validation
+  Q-&gt;&gt;V: run checks
+  V-&gt;&gt;GA: check run in_progress
+  V-&gt;&gt;W: verdict + report
+  alt pass and already paid
+    W-&gt;&gt;R2: publish version
+    W-&gt;&gt;GA: check completed success, link to pack
+  else pass, payment needed
+    W-&gt;&gt;GA: check completed neutral "awaiting payment"
+    W--&gt;&gt;W: dashboard alert + email
+  else fail
+    W-&gt;&gt;GA: check completed failure with annotations
+  end</pre></div><p>Failure / edge states:</p>
+<ul>
+<li>JWT claims mismatch (wrong workflow file, fork PR, environment missing) → 403 with exact claim diff in check summary; nothing staged.</li>
+<li>Mapping disabled or repo App uninstalled → check failure &quot;PackServer not configured&quot;.</li>
+<li>Path has no manifest at that ref → fail with annotation at expected file path.</li>
+<li>Version in manifest ≠ tag → fail (prevent accidental republish); configurable &quot;tag is source of truth&quot;.</li>
+<li>Duplicate deliveries (GitHub retries) → idempotent on (repo, sha, path).</li>
+<li>Trusted publishing is preferred; fallback &quot;publish token&quot; (scoped, 90-day expiry, shown once) exists for non-GitHub CI and is marked &quot;less secure&quot; in <code>github</code>.</li>
+</ul>
+<hr>
+<h2 id="f-7-validation-failure-and-resubmit">7. Validation failure and resubmit</h2>
+<p><strong>Goal</strong>: publisher understands what failed and resubmits quickly.</p>
+<p>Check stages, in order (fail-fast on hard checks):</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Hard fail</th>
+<th>Warn</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Archive &amp; size limits (≤50 MB, ≤5k files, no symlinks out)</td>
+<td>✓</td>
+<td></td>
+</tr>
+<tr>
+<td>Manifest schema (<code>pack.json</code>/<code>pack.yaml</code>)</td>
+<td>✓</td>
+<td></td>
+</tr>
+<tr>
+<td>Manifest consistency (declared features exist on disk, version semver)</td>
+<td>✓</td>
+<td></td>
+</tr>
+<tr>
+<td>Secret scan (gitleaks-style rules)</td>
+<td>✓</td>
+<td></td>
+</tr>
+<tr>
+<td>Security scan (executables, shell hooks with network calls, path traversal)</td>
+<td>✓ for traversal / binaries</td>
+<td>✓ for network hooks</td>
+</tr>
+<tr>
+<td>Prompt-injection heuristics on skill/agent prompts</td>
+<td></td>
+<td>✓ (human-readable excerpt)</td>
+</tr>
+<tr>
+<td>Test run (pack-declared tests in sandboxed Worker/container, 10-min cap)</td>
+<td>✓ if declared tests fail</td>
+<td>✓ if no tests</td>
+</tr>
+<tr>
+<td>License present</td>
+<td></td>
+<td>✓</td>
+</tr>
+</tbody></table>
+</div><ol>
+<li><code>validation</code> shows verdict <code>fail</code>, failing checks first, each with file path, line, rule ID, and fix hint.</li>
+<li>Publisher fixes source.</li>
+<li>Upload path: re-upload in <code>publish</code> step 1 (draft retains listing fields). GitHub path: push a new tag (immutable tags; a tag cannot be reused).</li>
+<li>New run; previous runs listed on <code>validation</code> for comparison.</li>
+<li>Warnings do not block publish but are shown on <code>pack</code> as &quot;Published with warnings&quot; (public: names of warned checks only).</li>
+</ol>
+<div class="diagram"><pre class="mermaid">flowchart TD
+  A["Validation run"] --&gt; B{"Hard checks pass?"}
+  B -- no --&gt; C["Verdict fail: report with file/line/rule"]
+  C --&gt; D{"Source?"}
+  D -- upload --&gt; E["Fix, re-upload in wizard step 1"]
+  D -- github --&gt; F["Fix, push new tag"]
+  E --&gt; A
+  F --&gt; A
+  B -- yes --&gt; G{"Warnings?"}
+  G -- yes --&gt; H["Verdict warn: proceed, badge Published with warnings"]
+  G -- no --&gt; I["Verdict pass"]</pre></div><p>Failure / edge states:</p>
+<ul>
+<li>Validator timeout / infra error → verdict <code>error</code>, free automatic retry x2, then &quot;Re-run&quot; button; never counted against the publisher.</li>
+<li>Flaky declared tests → publisher can mark test as <code>allow_failure</code> in manifest (shown as warning).</li>
+<li>Secret found → secret is redacted in report (show rule + file + line, not value); publisher reminded to rotate it.</li>
+<li>Repeated fails (≥10/day) → soft rate limit on validation runs to protect capacity.</li>
+</ul>
+<hr>
+<h2 id="f-8-payment-via-stripe-checkout">8. Payment via Stripe Checkout</h2>
+<p><strong>Goal</strong>: collect $1 for a public pack (anti-spam), private-pack price TBD, without charging for packs that cannot be published.</p>
+<p><strong>Decision: charge after validation passes, before publish.</strong> Rationale: the fee is anti-spam, not revenue; charging on submit would require refunds for every failed run (Stripe keeps fees on refunds, support burden, bad first impression). Validation is cheap and rate-limited by account age + MFA + CAPTCHA, which already deters bulk spam. Payment is tied to the validated artifact hash, so a different archive cannot reuse it.</p>
+<ol>
+<li><code>publish</code> step 5: show line item (Public pack: $1.00 one-time / Private pack: TBD), pack name, artifact hash.</li>
+<li>Click Pay → Worker creates Stripe Checkout Session with <code>client_reference_id = validation_run_id</code>, metadata <code>{pack, version, hash, user}</code>; redirect.</li>
+<li>Stripe hosted page; card saved for future (optional &quot;save for one-click&quot;).</li>
+<li>Return URL → wizard step 5 shows &quot;Confirming…&quot; until webhook <code>checkout.session.completed</code> arrives (Durable Object notifies).</li>
+<li><code>payment</code> row marked paid; step 6 unlocked.</li>
+<li>Receipt listed in <code>billing</code>; Stripe email receipt.</li>
+</ol>
+<div class="diagram"><pre class="mermaid">sequenceDiagram
+  participant Pu as Publisher
+  participant Wz as publish step 5
+  participant W as Worker (api)
+  participant St as Stripe
+  participant DO as Durable Object (run)
+  Pu-&gt;&gt;Wz: Pay $1
+  Wz-&gt;&gt;W: POST /checkout run_id
+  W-&gt;&gt;St: create Checkout Session (metadata run, hash)
+  St--&gt;&gt;W: session url
+  W--&gt;&gt;Wz: redirect
+  Pu-&gt;&gt;St: pay
+  St--&gt;&gt;Pu: redirect to return url
+  St-&gt;&gt;W: webhook checkout.session.completed (signed)
+  W-&gt;&gt;W: verify signature, mark payment paid
+  W-&gt;&gt;DO: notify paid
+  DO--&gt;&gt;Wz: unlock step 6</pre></div><p>Failure / edge states:</p>
+<ul>
+<li>Webhook delayed &gt; 60s → wizard shows &quot;Still confirming, we&#39;ll email you&quot;; draft stays; alert on <code>dashboard</code>.</li>
+<li>Payment succeeded, publish never completed → credit tied to hash valid 30 days; after that, refunded automatically.</li>
+<li>Chargeback → version yanked, publisher account flagged, further publishes require manual review.</li>
+<li>Private pack pricing TBD → wizard shows &quot;Private packs: pricing coming, join waitlist&quot; until decided.</li>
+<li>Re-publishing a new version of an already-paid public pack: free (decision). Alternative considered: $1 per version — rejected as it taxes good maintenance.</li>
+<li>Verified orgs: still pay $1 (keeps rules uniform); can be revisited.</li>
+<li>Publish credits (backend design): $1 buys one credit; bundles of credits can be bought up front so CI publishes of new packs don&#39;t stall on checkout. One credit is consumed per new pack, never per version.</li>
+</ul>
+<hr>
+<h2 id="f-9-verify-organization">9. Verify organization</h2>
+<p><strong>Goal</strong>: an org proves control of a domain and/or GitHub org, earning a verified badge so &quot;com.google/gcp&quot; is trustworthy.</p>
+<ol>
+<li><code>org</code> &gt; Create org: handle, display name. Creator becomes <code>owner</code> (step-up).</li>
+<li>Verification tab → &quot;Add domain&quot;: enter <code>example.com</code> → shown TXT record <code>_packserver.example.com  TXT  &quot;packserver-verify=&lt;token&gt;&quot;</code>.</li>
+<li>Click &quot;Check now&quot; → Worker resolves via DNS-over-HTTPS (1.1.1.1), accepts if token matches. Re-checks every 30 days; badge removed after 2 failed re-checks with email warning.</li>
+<li>&quot;Verify GitHub org&quot;: install PackServer GitHub App on the org (requires GitHub org owner) → App installation webhook confirms <code>account.login</code> and <code>account.type = Organization</code>; owner must also be an org owner on GitHub (checked via App API).</li>
+<li>Badge shown on <code>publisher</code> and all pack headers; hover lists verified domains / GitHub org.</li>
+<li>Handle policy: a verified domain&#39;s label (e.g. <code>google</code>) can be claimed as handle even if squatted by an unverified user (user is renamed, notified; npm dispute-lite).</li>
+</ol>
+<div class="diagram"><pre class="mermaid">flowchart TD
+  A["Create org (step-up)"] --&gt; B["Verification tab"]
+  B --&gt; C["Add domain: show TXT record"]
+  C --&gt; D["Check now via DoH"]
+  D -- match --&gt; E["Domain verified, re-check every 30d"]
+  D -- no match --&gt; F["Not found yet: propagation hint, retry"]
+  B --&gt; G["Install GitHub App on org"]
+  G --&gt; H["Installation webhook + owner check"]
+  H -- ok --&gt; I["GitHub org verified"]
+  H -- not org owner --&gt; J["Error: must be GitHub org owner"]
+  E --&gt; K["Verified badge"]
+  I --&gt; K</pre></div><p>Failure / edge states:</p>
+<ul>
+<li>Domain already verified by another org → conflict; second org can trigger a re-check which revokes the first if the TXT now points to the second (domain owner wins).</li>
+<li>Public suffix (e.g. <code>github.io</code>) → rejected; subdomain allowed with warning (badge shows full host).</li>
+<li>GitHub App uninstalled → verification revoked after grace period (7 days), alert.</li>
+<li>Org deleted → packs must be transferred first (blocking).</li>
+</ul>
+<hr>
+<h2 id="f-10-private-pack-access-options">10. Private pack access (options)</h2>
+<p><strong>Goal</strong>: restrict who/what can discover and fetch a private pack. Not decided; UI must support switching models per pack.</p>
+<p>Option A – Org members / teams:</p>
+<ol>
+<li><code>access</code>: model = &quot;Org members&quot;; optional team filter.</li>
+<li>Members read via web (session) or via their personal <code>read:private</code> token for agents.</li>
+<li>Removing a member revokes access immediately (tokens of that member stop resolving that pack).</li>
+</ol>
+<p>Option B – Named allow-list:</p>
+<ol>
+<li><code>access</code>: add handles / org handles; invitee sees invitation on <code>account</code>; accept.</li>
+<li>Same read mechanics as A.</li>
+</ol>
+<p>Option D – Gated access requests (Hugging Face style, recommended by the registry research):</p>
+<ol>
+<li>The private pack&#39;s listing is visible (name, summary, publisher) with a &quot;Request access&quot; button; contents and downloads stay gated.</li>
+<li>Requester (signed in) fills the owner&#39;s form: name, org, intended use, accept terms.</li>
+<li>Owner sees pending requests on <code>access</code> and approves or denies; or sets auto-approve.</li>
+<li>For paid packs, a Stripe webhook calls the grant API after payment, so approval is automatic.</li>
+<li>Grants are per user and revocable; the user&#39;s personal token then resolves the pack over MCP.</li>
+</ol>
+<p>Option C – Scoped read tokens for agents:</p>
+<ol>
+<li><code>access</code>: &quot;Create agent token&quot; (step-up): name, scope <code>read:pack/{id}</code> (or <code>read:org/{org}/*</code>), expiry (max 1 year), optional CIDR allow-list.</li>
+<li>Token shown once; copy into agent config as MCP <code>Authorization: Bearer</code>.</li>
+<li>Audit log on <code>access</code>: token name, last used, fetch counts; revoke anytime.</li>
+</ol>
+<div class="diagram"><pre class="mermaid">flowchart LR
+  subgraph A["Option A: org members"]
+    A1["Member of org"] --&gt; A2["Session or personal token"] --&gt; A3["Read pack"]
+  end
+  subgraph B["Option B: allow-list"]
+    B1["Invited handle/org"] --&gt; B2["Accept invite"] --&gt; B3["Read pack"]
+  end
+  subgraph C["Option C: scoped agent token"]
+    C1["Publisher mints token read:pack/id"] --&gt; C2["Agent sends Bearer to MCP"] --&gt; C3["Read pack"]
+  end
+  subgraph D["Option D: gated request"]
+    D1["Request access form"] --&gt; D2["Owner approves, auto-approve, or Stripe webhook"] --&gt; D3["Read pack"]
+  end</pre></div><p>Edge states (all options):</p>
+<ul>
+<li>Under A, B and C, private packs are never indexed in <code>browse</code> or <code>search_packs</code> for unauthorized callers; 404 (not 403) to avoid existence leaks. Under D the owner chooses to list the pack publicly so people can request access; its contents still return 404 until granted.</li>
+<li>Downloads served through a Worker that checks authorization then streams from private R2 (never a public R2 URL); optional 5-min signed URLs for large archives.</li>
+<li>Making a private pack public: step-up, confirmation that all versions become public and permanent.</li>
+<li>Making a public pack private: only future versions; previously public versions remain fetchable by exact version.</li>
+</ul>
+<hr>
+<h2 id="f-11-agent-discovering-amp-fetching-a-pack-via-mcp">11. Agent discovering &amp; fetching a pack via MCP</h2>
+<p><strong>Goal</strong>: an agent (Claude / Ant) asks what packs exist for a kind of work and installs one. Documented on <code>agents</code>.</p>
+<p>Tools: <code>list_categories()</code>, <code>search_packs(query, category?, feature_type?, verified_only?, limit)</code>, <code>get_pack(id, version?)</code> → metadata + contents summary + install instructions, <code>get_pack_manifest(id, version)</code>, <code>download_pack(id, version)</code> → signed URL or inline archive (size-capped).</p>
+<p>Public:</p>
+<ol>
+<li>Agent connects to <code>https://mcp.packserver.dev</code> (Streamable HTTP MCP), no auth.</li>
+<li><code>search_packs(&quot;deploy to GCP Cloud Run&quot;, category=&quot;cloud&quot;)</code> → ranked list of compact summaries: description (max 1024 chars, per the Agent Skills convention), contents counts by type, context cost in tokens, stars, rating, verified flag. Full content stays behind <code>get_pack</code> so a search costs the agent little context.</li>
+<li><code>get_pack(&quot;com.google/gcp&quot;)</code> → summary, warnings, validation verdict, latest version.</li>
+<li><code>download_pack(&quot;com.google/gcp&quot;, &quot;1.2.0&quot;)</code> → R2 signed URL (public bucket behind cache) + sha256; agent installs locally.</li>
+</ol>
+<p>Private (option C token or personal token):
+5. Same with <code>Authorization: Bearer ps_rt_…</code>; <code>search_packs</code> now includes private packs the token can read.
+6. Worker verifies token hash in D1/KV, checks scope and expiry, logs usage.</p>
+<div class="diagram"><pre class="mermaid">sequenceDiagram
+  participant Ag as Agent
+  participant M as MCP Worker
+  participant D as D1 / search index
+  participant R2 as R2
+  Ag-&gt;&gt;M: initialize (no auth)
+  Ag-&gt;&gt;M: search_packs "deploy to GCP"
+  M-&gt;&gt;D: query public index
+  M--&gt;&gt;Ag: results with stars, rating, verified
+  Ag-&gt;&gt;M: get_pack com.google/gcp
+  M--&gt;&gt;Ag: metadata, contents summary, sha256
+  Ag-&gt;&gt;M: download_pack com.google/gcp 1.2.0
+  M-&gt;&gt;R2: sign URL (public bucket)
+  M--&gt;&gt;Ag: url + sha256
+  Ag-&gt;&gt;R2: GET archive
+  Note over Ag,M: Private: same calls with Authorization Bearer token
+  Ag-&gt;&gt;M: search_packs with Bearer
+  M-&gt;&gt;D: verify token hash, scope, expiry
+  M-&gt;&gt;D: query public + authorized private
+  M--&gt;&gt;Ag: results incl. private</pre></div><p>Failure / edge states:</p>
+<ul>
+<li>Invalid/expired token → 401 with <code>WWW-Authenticate</code> hint and docs link; never reveals whether pack exists.</li>
+<li>Rate limits: anonymous 60 req/min per IP; token 600 req/min; <code>download_pack</code> counted toward downloads metric once per (token/IP, version, day).</li>
+<li>Yanked version requested → <code>get_pack</code> returns it with <code>yanked: true</code> and reason; <code>download_pack</code> works only with exact version (never resolves &quot;latest&quot; to a yanked version).</li>
+<li>Agent asks for a category that doesn&#39;t exist → <code>list_categories</code> suggestion in error.</li>
+<li>Responses include <code>advisory</code> field when a public security advisory exists for the version.</li>
+</ul>
+<hr>
+<h2 id="f-12-yank-deprecate-a-version">12. Yank / deprecate a version</h2>
+<p><strong>Goal</strong>: stop a bad version from being resolved without breaking reproducibility (crates.io yank + npm deprecate).</p>
+<ol>
+<li><code>pack</code> &gt; Versions (publisher view) → version row menu → &quot;Deprecate&quot; (warning only) or &quot;Yank&quot; (hidden from resolution).</li>
+<li>Enter reason (shown publicly) and, for yank, optional &quot;security&quot; flag (creates advisory stub).</li>
+<li>Step-up auth → confirm.</li>
+<li>Deprecate: version still resolvable; MCP/CLI show warning. Yank: <code>latest</code> moves to previous non-yanked version; exact-version fetch still works with <code>yanked: true</code>; search excludes it.</li>
+<li>Notify users who starred the pack (opt-in digest) and open issues referencing the version.</li>
+<li>Un-yank possible by owner (step-up), logged.</li>
+</ol>
+<div class="diagram"><pre class="mermaid">flowchart TD
+  A["Versions tab: choose version"] --&gt; B{"Action"}
+  B -- deprecate --&gt; C["Reason, step-up"] --&gt; D["Flag version, warning on fetch"]
+  B -- yank --&gt; E["Reason, security flag, step-up"] --&gt; F["Hide from search and latest, exact fetch still allowed"]
+  F --&gt; G["Advisory stub if security"]
+  D --&gt; H["Notify starrers (digest)"]
+  F --&gt; H</pre></div><p>Failure / edge states:</p>
+<ul>
+<li>Yanking the only version → pack shows &quot;No available versions&quot;, stays listed with reason.</li>
+<li>Delete is not offered for public packs after 72h (npm unpublish rule); within 72h and zero downloads, full delete allowed.</li>
+<li>Private packs: delete allowed any time (step-up), with 7-day soft-delete.</li>
+<li>Yank initiated by moderation → reason prefixed &quot;Removed by PackServer&quot;.</li>
+</ul>
+<hr>
+<h2 id="f-13-report-abuse-moderation">13. Report abuse / moderation</h2>
+<p><strong>Goal</strong>: anyone can flag malicious or infringing packs, reviews or users; moderators act quickly with an audit trail.</p>
+<ol>
+<li>&quot;Report abuse&quot; link in <code>pack</code> header menu, on each review, on <code>publisher</code> profile. Anonymous allowed with Turnstile; members pre-filled.</li>
+<li>Form: category (malware / prompt injection / secrets leak / impersonation / spam / IP infringement / other), details, evidence URL.</li>
+<li>Severity routing: malware / prompt injection / secrets → auto-quarantine if ≥3 independent reports or 1 report from a verified org → pack shows &quot;Under review&quot;, <code>download_pack</code> returns 451-style hold with reason; moderators notified immediately.</li>
+<li>Moderator reviews (admin UI, out of scope): dismiss, hide pack/review, yank versions, suspend publisher, revoke verification.</li>
+<li>Publisher notified with reason and appeal link; reporter notified of outcome (no details).</li>
+<li>Audit log entries immutable; counts surfaced on publisher&#39;s <code>dashboard</code> alerts.</li>
+</ol>
+<div class="diagram"><pre class="mermaid">flowchart TD
+  A["Report abuse form"] --&gt; B{"Category severity"}
+  B --&gt;|"low: spam, other"| C["Queue for moderator"]
+  B --&gt;|"high: malware, injection, secrets"| D{"3 reports or verified reporter?"}
+  D -- yes --&gt; E["Auto-quarantine: Under review, downloads held"]
+  D -- no --&gt; C
+  E --&gt; F["Moderator decision"]
+  C --&gt; F
+  F -- dismiss --&gt; G["Restore, notify reporter"]
+  F -- action --&gt; H["Hide / yank / suspend / revoke badge"]
+  H --&gt; I["Notify publisher with appeal link"]
+  I --&gt; J{"Appeal?"}
+  J -- upheld --&gt; K["Restore"]
+  J -- denied --&gt; L["Final, logged"]</pre></div><p>Failure / edge states:</p>
+<ul>
+<li>Report brigading → quarantine requires independent accounts (age &gt; 7d, distinct IdPs) or a verified org; mass identical reports collapse into one.</li>
+<li>Quarantined pack already installed by agents → MCP <code>get_pack</code> returns <code>status: under_review</code> so agents can warn users.</li>
+<li>Impersonation claims from a verified org (e.g. &quot;google&quot; squatting) → fast lane: handle reassigned per flow 9 step 6.</li>
+<li>Reporter identifies themselves as the copyright owner → DMCA-style counter-notice path (legal, out of scope).</li>
+</ul>
+</article><hr class="big"><article id="sitemap"><h1>PackServer UI Sitemap</h1>
+<p>Information architecture for the PackServer registry website. Page IDs below are the canonical anchors used by the wireframes (<code>docs/ui/wireframes/</code>) and by <code>flows.md</code>.</p>
+<h2 id="s-personas">Personas</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Persona</th>
+<th>Who</th>
+<th>Can do</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Anonymous visitor</strong></td>
+<td>Anyone, incl. crawlers and agents without a token</td>
+<td>Browse, search, filter, read pack pages, read reviews/issues, read MCP docs, call public MCP tools</td>
+</tr>
+<tr>
+<td><strong>Member</strong></td>
+<td>Signed-in individual (GitHub / Google / passkey / magic link)</td>
+<td>Everything above + star, rate (1-5), write reviews, file bug reports and private security reports, manage profile, MFA (optional), sessions, personal read tokens</td>
+</tr>
+<tr>
+<td><strong>Publisher</strong></td>
+<td>Member who has enrolled as publisher (MFA required, payment method on file)</td>
+<td>Everything above + publish/yank/deprecate packs, see validation reports, connect GitHub auto-publish, create orgs, verify domains/GitHub orgs, manage private-pack access, billing</td>
+</tr>
+<tr>
+<td><strong>Org roles</strong> (within a Publisher org)</td>
+<td><code>owner</code> / <code>maintainer</code></td>
+<td>Owner: all org actions incl. members, billing, transfer, delete. Maintainer: publish/yank versions, edit listing, manage access lists; no billing/members/transfer</td>
+</tr>
+<tr>
+<td><strong>Moderator</strong> (internal)</td>
+<td>PackServer staff</td>
+<td>Act on abuse reports: hide/remove packs, suspend accounts, revoke verifications (admin UI is out of scope for v1 wireframes)</td>
+</tr>
+</tbody></table>
+</div><p>Pattern sources: npm (member vs. publisher with 2FA levels), PyPI (trusted publishing, org roles), crates.io (owners vs. team owners), Docker Hub (org member roles), JFrog Artifactory (permission targets per repo/path).</p>
+<h2 id="s-sitemap-tree">Sitemap tree</h2>
+<pre><code>/                                  home
+├── /browse                        browse (search results + filters)
+├── /packs/{publisher}/{pack}      pack
+│   ├── ?tab=overview              pack.overview
+│   ├── ?tab=contents              pack.contents
+│   ├── ?tab=versions              pack.versions
+│   ├── ?tab=reviews               pack.reviews
+│   └── ?tab=issues                pack.issues
+├── /@{publisher}                  publisher (user or org profile)
+├── /agents                        agents (MCP endpoint docs)
+├── /signin                        signin (sign in / sign up)
+│
+├── /account                       account  [member]
+│   ├── /account/mfa               mfa      [member]
+│   ├── /account/stars
+│   ├── /account/reviews
+│   ├── /account/reports
+│   ├── /account/security          (MFA, sessions, API tokens)
+│   └── /account/tokens
+├── /packs/{p}/{pack}/review       review   [member]
+├── /packs/{p}/{pack}/report       report   [member]
+│
+├── /dashboard                     dashboard  [publisher]
+├── /publish                       publish (wizard)  [publisher]
+│   ├── /publish/source            step 1
+│   ├── /publish/validate          step 2
+│   ├── /publish/listing           step 3
+│   ├── /publish/visibility        step 4
+│   ├── /publish/pay               step 5
+│   └── /publish/done              step 6
+├── /validation/{run_id}           validation (report)  [publisher]
+├── /dashboard/github              github (auto-publish config)  [publisher]
+├── /orgs/{org}/settings           org  [publisher, org owner/maintainer]
+├── /packs/{p}/{pack}/access       access (private pack access)  [publisher]
+└── /billing                       billing  [publisher]
+</code></pre>
+<div class="diagram"><pre class="mermaid">flowchart TD
+  home["home"] --&gt; browse["browse"]
+  home --&gt; pack["pack"]
+  home --&gt; agents["agents"]
+  home --&gt; signin["signin"]
+  browse --&gt; pack
+  pack --&gt; publisher["publisher"]
+  pack --&gt; review["review (member)"]
+  pack --&gt; report["report (member)"]
+  pack --&gt; access["access (publisher)"]
+  signin --&gt; mfa["mfa (member)"]
+  signin --&gt; account["account (member)"]
+  account --&gt; mfa
+  account --&gt; dashboard["dashboard (publisher)"]
+  dashboard --&gt; publish["publish wizard (publisher)"]
+  publish --&gt; validation["validation (publisher)"]
+  dashboard --&gt; validation
+  dashboard --&gt; github["github (publisher)"]
+  dashboard --&gt; org["org (publisher)"]
+  dashboard --&gt; billing["billing (publisher)"]
+  publish --&gt; billing
+  dashboard --&gt; access</pre></div><h2 id="s-page-by-page">Page-by-page</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>ID</th>
+<th>URL</th>
+<th>Purpose</th>
+<th>Persona</th>
+<th>Key components</th>
+<th>Key actions</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>home</code></td>
+<td><code>/</code></td>
+<td>Entry point: search, discovery, pitch &quot;for agents&quot;</td>
+<td>Anon+</td>
+<td>Hero search box; category grid (e.g. Cloud, Data, Testing, Security, Docs, DevOps); Trending / Recently updated / Top rated rails; &quot;For agents&quot; panel with MCP endpoint URL + one-line config snippet (VS Code Marketplace-style &quot;Install&quot; affordance); footer</td>
+<td>Search, pick category, open pack, open <code>agents</code>, sign in</td>
+</tr>
+<tr>
+<td><code>browse</code></td>
+<td><code>/browse?q=&amp;category=&amp;feature=&amp;verified=&amp;repo=&amp;sort=</code></td>
+<td>Search results</td>
+<td>Anon+</td>
+<td>Left filter rail: category (multi), contains feature type (skills / checks / tasks / hooks / commands / agents / MCP servers), verified publisher toggle, has public repo toggle; sort: stars / rating / recent / downloads; result cards (name, publisher + badge, one-liner, feature-type chips, stars, rating, downloads, updated); pagination</td>
+<td>Filter, sort, open pack. URL is the state (crates.io / npm pattern)</td>
+</tr>
+<tr>
+<td><code>pack</code></td>
+<td><code>/packs/{publisher}/{pack}</code></td>
+<td>Pack detail</td>
+<td>Anon+ (actions gated)</td>
+<td>Header: name, publisher + verified badge, latest version + visibility chip, star button + count, rating stars + count, downloads; <strong>Install panel</strong> with tabs MCP / CLI / manifest snippet (copy); <strong>Repo link</strong> or prominent <strong>&quot;No public repo&quot;</strong> badge; <strong>Contents summary</strong> by feature type with counts; <strong>Validation status</strong> chip (passed / warnings) linking to public summary; tabs: Overview (README), Contents (tree by feature type, each with name + description), Versions (list, yanked/deprecated markers, changelog), Reviews (rating histogram + reviews), Issues (bug reports, severity, status)</td>
+<td>Star, rate/review (-&gt; <code>review</code>), report (-&gt; <code>report</code>), copy install snippet, switch version, publisher-only: Manage menu (edit listing, access, yank, new version)</td>
+</tr>
+<tr>
+<td><code>publisher</code></td>
+<td><code>/@{handle}</code></td>
+<td>User or org public profile</td>
+<td>Anon+</td>
+<td>Avatar, display name, handle, verified badge with list of verified domains / GitHub org; member since; pack list with status; links</td>
+<td>Open packs, (owner) edit profile</td>
+</tr>
+<tr>
+<td><code>agents</code></td>
+<td><code>/agents</code></td>
+<td>MCP endpoint docs</td>
+<td>Anon+</td>
+<td>Endpoint URL; tool reference: <code>search_packs</code>, <code>get_pack</code>, <code>list_categories</code>, <code>get_pack_manifest</code>, <code>download_pack</code>; auth section (public = none, private = scoped read token in <code>Authorization</code>); example transcripts; config snippet for Claude / Ant; rate limits</td>
+<td>Copy config, create token (-&gt; <code>account</code>)</td>
+</tr>
+<tr>
+<td><code>signin</code></td>
+<td><code>/signin</code></td>
+<td>Sign in or sign up</td>
+<td>Anon</td>
+<td>Buttons: GitHub, Google, Passkey; email magic link; &quot;What you get&quot; blurb; after first login: handle + display name step</td>
+<td>Sign in, sign up, continue to <code>mfa</code> if required</td>
+</tr>
+<tr>
+<td><code>mfa</code></td>
+<td><code>/account/mfa</code></td>
+<td>MFA enrollment &amp; management</td>
+<td>Member</td>
+<td>Passkey (WebAuthn) primary; TOTP fallback with QR + manual key; recovery codes (download/print once); list of enrolled factors with last-used; &quot;MFA required for publishers&quot; banner</td>
+<td>Add passkey, add TOTP, regenerate recovery codes, remove factor (step-up)</td>
+</tr>
+<tr>
+<td><code>review</code></td>
+<td><code>/packs/{p}/{pack}/review</code></td>
+<td>Rate + write review</td>
+<td>Member</td>
+<td>Version selector (defaults latest); 1-5 star input; title; body (markdown); &quot;I used this with&quot; checkboxes (Claude / Ant); edit existing review notice</td>
+<td>Submit, edit, delete own review</td>
+</tr>
+<tr>
+<td><code>report</code></td>
+<td><code>/packs/{p}/{pack}/report</code></td>
+<td>File bug report</td>
+<td>Member</td>
+<td>Version selector; severity (low / medium / high / critical); type (bug / docs / security); repro steps; environment; attachments; <strong>Private security report</strong> toggle (not public, goes to publisher security contact + PackServer); &quot;Report abuse instead&quot; link</td>
+<td>Submit; see on <code>account</code> &gt; My reports</td>
+</tr>
+<tr>
+<td><code>account</code></td>
+<td><code>/account</code></td>
+<td>Member settings</td>
+<td>Member</td>
+<td>Tabs: Profile (avatar, handle, display name, bio, links), Starred packs, My reviews, My reports, Security (MFA status -&gt; <code>mfa</code>, active sessions w/ revoke, API tokens: name, scopes <code>read:private</code>, expiry, last used), Become a publisher CTA</td>
+<td>Edit profile, revoke session, create/revoke token (step-up), delete account</td>
+</tr>
+<tr>
+<td><code>dashboard</code></td>
+<td><code>/dashboard</code></td>
+<td>Publisher home</td>
+<td>Publisher</td>
+<td>Context switcher (personal / each org); alerts strip (failed validations, pending payments, expiring domain verification, security reports); My packs table (name, visibility, latest version, status: published / draft / validating / failed / yanked, stars, downloads, open issues); Drafts; Private packs section; quick links to <code>github</code>, <code>org</code>, <code>billing</code></td>
+<td>New pack (-&gt; <code>publish</code>), open pack manage, resume draft</td>
+</tr>
+<tr>
+<td><code>publish</code></td>
+<td><code>/publish</code></td>
+<td>6-step wizard</td>
+<td>Publisher</td>
+<td>Stepper: 1 Source (GitHub repo + path picker via installed GitHub App, or upload archive drag-drop with size limit) → 2 Validate (live log, links to <code>validation</code>) → 3 Listing details (name, slug, category, tags, summary, README preview, repo link / &quot;no public repo&quot; confirm, icon) → 4 Visibility &amp; price (Public $1 one-time / Private: price TBD, access model picker) → 5 Pay (Stripe Checkout redirect, or &quot;payment method on file&quot; one-click) → 6 Publish (confirm, step-up auth, publish)</td>
+<td>Next/back, save draft, cancel</td>
+</tr>
+<tr>
+<td><code>validation</code></td>
+<td><code>/validation/{run_id}</code></td>
+<td>Validation report</td>
+<td>Publisher (public summary visible on <code>pack</code>)</td>
+<td>Overall verdict (pass / warn / fail); check list with status + expandable detail: schema, manifest, security scan, secret scan, prompt-injection heuristics, test run (logs), size limits, license; duration; &quot;Re-run&quot; / &quot;Resubmit&quot; buttons; link to source commit/archive hash</td>
+<td>Re-run, resubmit, download log</td>
+</tr>
+<tr>
+<td><code>github</code></td>
+<td><code>/dashboard/github</code></td>
+<td>GitHub auto-publish config</td>
+<td>Publisher</td>
+<td>Installed GitHub App repos; per-pack row: repo, path (e.g. <code>packs/gcp/</code>), trigger (tag pattern <code>v*</code> / release), trusted publishing config (owner, repo, workflow file, environment) in PyPI style; recent runs with GitHub check status; &quot;Copy workflow YAML&quot;</td>
+<td>Connect repo, add/edit mapping, disable, view run</td>
+</tr>
+<tr>
+<td><code>org</code></td>
+<td><code>/orgs/{org}/settings</code></td>
+<td>Org management</td>
+<td>Publisher (owner/maintainer)</td>
+<td>Tabs: General (name, handle, avatar); Verification (domain via DNS TXT with record shown + &quot;Check now&quot;; GitHub org via App install on org); Members (list with role, invite by handle/email, pending invites); Security (require MFA for all members: on by default); Danger (transfer packs, delete org)</td>
+<td>Create org, verify, invite, change role, remove</td>
+</tr>
+<tr>
+<td><code>access</code></td>
+<td><code>/packs/{p}/{pack}/access</code></td>
+<td>Private pack access (OPTIONS, not decided)</td>
+<td>Publisher (owner/maintainer)</td>
+<td>Visibility chip; access model panel with the 2-3 options below; audit log of grants/fetches</td>
+<td>Grant/revoke per chosen model, change visibility (step-up)</td>
+</tr>
+<tr>
+<td><code>billing</code></td>
+<td><code>/billing</code></td>
+<td>Payments</td>
+<td>Publisher</td>
+<td>Plan (Free publisher / Private packs plan TBD); payment method via Stripe (customer portal link); receipts table (date, item, pack, amount, invoice PDF); upcoming charges</td>
+<td>Update card, download receipt, cancel plan</td>
+</tr>
+</tbody></table>
+</div><h2 id="s-navigation-header-states">Navigation / header states</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>State</th>
+<th>Left</th>
+<th>Center</th>
+<th>Right</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Anonymous</td>
+<td>Logo</td>
+<td>Search box</td>
+<td><code>Browse</code> · <code>For agents</code> · <strong>Sign in</strong> button</td>
+</tr>
+<tr>
+<td>Member</td>
+<td>Logo</td>
+<td>Search box</td>
+<td><code>Browse</code> · <code>For agents</code> · <code>Become a publisher</code> · avatar menu: Account, Starred, My reviews, My reports, Security, Sign out</td>
+</tr>
+<tr>
+<td>Publisher</td>
+<td>Logo</td>
+<td>Search box</td>
+<td><code>Browse</code> · <code>For agents</code> · <strong>New pack</strong> (primary) · avatar menu: Dashboard, Account, Billing, Orgs (list), Security, Sign out</td>
+</tr>
+<tr>
+<td>Publisher inside dashboard pages</td>
+<td>Logo + context switcher (personal / org)</td>
+<td>Search box</td>
+<td>same as Publisher; secondary sidebar: Packs, Drafts, GitHub, Org settings, Access, Billing</td>
+</tr>
+</tbody></table>
+</div><p>Mobile: hamburger with the same items; search collapses to icon. Alert badge on avatar when <code>dashboard</code> has alerts.</p>
+<h2 id="s-permission-matrix">Permission matrix</h2>
+<p>Legend: ✓ allowed · S = allowed with step-up re-auth · ✗ not allowed · (own) = only own items</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Anon</th>
+<th>Member</th>
+<th>Publisher (personal)</th>
+<th>Org maintainer</th>
+<th>Org owner</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Browse / search / read public pack</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>Call public MCP tools</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>Read private pack</td>
+<td>✗</td>
+<td>granted only</td>
+<td>own</td>
+<td>org&#39;s</td>
+<td>org&#39;s</td>
+</tr>
+<tr>
+<td>Star</td>
+<td>✗</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>Rate / review</td>
+<td>✗</td>
+<td>✓</td>
+<td>✓ (not own packs)</td>
+<td>✓ (not org packs)</td>
+<td>✓ (not org packs)</td>
+</tr>
+<tr>
+<td>Edit / delete review</td>
+<td>✗</td>
+<td>own</td>
+<td>own</td>
+<td>own</td>
+<td>own</td>
+</tr>
+<tr>
+<td>File bug report / private security report</td>
+<td>✗</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>Report abuse</td>
+<td>✓ (captcha)</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>Manage MFA / sessions</td>
+<td>✗</td>
+<td>S</td>
+<td>S</td>
+<td>S</td>
+<td>S</td>
+</tr>
+<tr>
+<td>Create read token (<code>read:private</code>)</td>
+<td>✗</td>
+<td>S</td>
+<td>S</td>
+<td>S</td>
+<td>S</td>
+</tr>
+<tr>
+<td>Enroll as publisher (MFA + payment method)</td>
+<td>✗</td>
+<td>S</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Create pack / publish version</td>
+<td>✗</td>
+<td>✗</td>
+<td>S</td>
+<td>S</td>
+<td>S</td>
+</tr>
+<tr>
+<td>Edit listing details</td>
+<td>✗</td>
+<td>✗</td>
+<td>own</td>
+<td>✓</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>Yank / deprecate version</td>
+<td>✗</td>
+<td>✗</td>
+<td>S</td>
+<td>S</td>
+<td>S</td>
+</tr>
+<tr>
+<td>Change visibility (public ↔ private)</td>
+<td>✗</td>
+<td>✗</td>
+<td>S</td>
+<td>✗</td>
+<td>S</td>
+</tr>
+<tr>
+<td>Manage private-pack access grants</td>
+<td>✗</td>
+<td>✗</td>
+<td>own</td>
+<td>✓</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>Configure GitHub auto-publish</td>
+<td>✗</td>
+<td>✗</td>
+<td>own</td>
+<td>✓</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>Respond to bug reports / close issues</td>
+<td>✗</td>
+<td>✗</td>
+<td>own</td>
+<td>✓</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>Create org</td>
+<td>✗</td>
+<td>✗</td>
+<td>S</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Verify domain / GitHub org</td>
+<td>✗</td>
+<td>✗</td>
+<td>—</td>
+<td>✗</td>
+<td>S</td>
+</tr>
+<tr>
+<td>Invite / remove members, change roles</td>
+<td>✗</td>
+<td>✗</td>
+<td>—</td>
+<td>✗</td>
+<td>S</td>
+</tr>
+<tr>
+<td>Transfer pack ownership</td>
+<td>✗</td>
+<td>✗</td>
+<td>S</td>
+<td>✗</td>
+<td>S</td>
+</tr>
+<tr>
+<td>Billing / payment method / receipts</td>
+<td>✗</td>
+<td>✗</td>
+<td>own</td>
+<td>✗</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>Delete org / delete pack</td>
+<td>✗</td>
+<td>✗</td>
+<td>S (own pack)</td>
+<td>✗</td>
+<td>S</td>
+</tr>
+</tbody></table>
+</div><p>Note: publishing a public pack is a one-way &quot;public forever&quot; promise for already-downloaded versions (npm/crates.io model): a public version can be yanked (hidden from resolution) but files stay retrievable by exact version for reproducibility. Taking a pack private after being public only affects future versions.</p>
+<h2 id="s-private-pack-access-options-not-decided">Private pack access: options (not decided)</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Option</th>
+<th>How it works</th>
+<th>Pros</th>
+<th>Cons</th>
+<th>Sources</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>A. Org members / teams</td>
+<td>Anyone with a role in the owning org (or named team) can read. Agents use a personal read token of a member.</td>
+<td>Simplest mental model; mirrors npm private packages / Docker Hub private repos</td>
+<td>Requires everyone to be in the org; no fine-grained external sharing</td>
+<td>npm orgs, Docker Hub, GitHub Packages</td>
+</tr>
+<tr>
+<td>B. Named users / orgs allow-list</td>
+<td>Pack has an allow-list of handles and orgs; invitees accept.</td>
+<td>Works across orgs (Google shares with a partner)</td>
+<td>Allow-list management burden; invitation spam vector</td>
+<td>crates.io does not do this; Artifactory permission targets; Google Drive-style sharing</td>
+</tr>
+<tr>
+<td>C. Scoped read tokens for agents</td>
+<td>Publisher mints tokens scoped to <code>read:pack/{id}</code> with expiry and optional IP/CIDR; distributed out-of-band; agents send them to MCP.</td>
+<td>Best fit for &quot;agents grow their skill set&quot; in CI/fleets; no PackServer account needed for the consumer</td>
+<td>Secret distribution and rotation on the publisher; audit by token not by person</td>
+<td>PyPI/npm granular tokens, Artifactory access tokens, Cloudflare API tokens</td>
+</tr>
+<tr>
+<td>D. Gated access requests</td>
+<td>Pack page shows &quot;Request access&quot;; requester fills a form (name, org, intended use, accept terms). Owner approves or denies, or turns on auto-approve. A grant/revoke API lets a Stripe webhook approve paid access.</td>
+<td>Works for strangers without pre-knowing them; natural fit for paid private packs; per-user grants are auditable</td>
+<td>Owner has to triage requests; needs anti-spam on the form</td>
+<td>Hugging Face gated repos (see <code>research/registry-research.md</code>)</td>
+</tr>
+</tbody></table>
+</div><p>Recommended combination: A as the default, C as an add-on for agents, D for paid or partner access (it subsumes most of B), B deferred. Model the permissions underneath as resource × principal × action (JFrog permission targets) so any of these is a policy, not a redesign. Pricing for private packs TBD; the research shows per-seat pricing is the norm (npm $7, HF Team $20, PyPI orgs $5 per member per month).</p>
+<h2 id="s-open-decisions">Open decisions</h2>
+<ol>
+<li><strong>Stars vs. rankings</strong>: proposal is stars (bookmark/popularity) + 1-5 rating with written review (VS Code Marketplace / Docker Hub pattern). Alternative: stars only (crates.io / npm) or thumbs-up/down. Decide.</li>
+<li><strong>Private pack access model</strong>: A (org members), B (allow-list), C (scoped tokens), D (gated access requests) or combination. Decide, and decide private pricing.</li>
+<li><strong>Charge timing</strong>: proposal is charge-after-validation-passes (see <code>flows.md</code> &gt; Payment). Alternative: charge-on-submit with refund on fail.</li>
+<li><strong>MFA scope</strong>: proposal is required for publishers, optional for members. Decide whether org owners must re-verify MFA for all members (npm &quot;enforce 2FA&quot; style).</li>
+<li><strong>Namespace model</strong>: scoped, matching the backend design: <code>gh/&lt;github-org&gt;/&lt;pack&gt;</code> (proven by GitHub org ownership) or reverse-domain <code>com.google/&lt;pack&gt;</code> (proven by DNS TXT), MCP-Registry style. The Verified Publisher badge is a separate layer on top. Scoped names remove name-squatting disputes.</li>
+<li><strong>Validation gate strictness</strong>: which checks are hard-fail (schema, secrets, size) vs. warn (prompt-injection heuristics, missing tests). Proposal in <code>validation</code> page.</li>
+<li><strong>Public validation detail</strong>: show full report publicly vs. only verdict + check names. Proposal: verdict + check list public, logs publisher-only.</li>
+<li><strong>Rating eligibility</strong>: anyone signed-in vs. only accounts that fetched the pack (download-gated, Docker Hub-like). Proposal: any member, with &quot;verified fetch&quot; badge on reviews from accounts that pulled the pack.</li>
+<li><strong>Review moderation</strong>: publisher reply only vs. publisher can flag; proposal: reply + flag, never delete.</li>
+<li><strong>Anonymous abuse reports</strong>: allow with captcha vs. require sign-in. Proposal: allow with captcha (Turnstile).</li>
+<li><strong>Category taxonomy</strong>: fixed curated list vs. free tags. Proposal: fixed top-level categories + free tags.</li>
+<li><strong>Org verification method</strong>: namespace verification MCP-Registry style, by GitHub org ownership or a DNS TXT challenge on the domain. Proposal: either grants the verified badge, both shown on the publisher page.</li>
+</ol>
+</article></main>
+</div></div>
