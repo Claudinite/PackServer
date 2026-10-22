@@ -128,7 +128,7 @@ No question is open: every spot the spec once marked "Pending decision" is writt
 
 ## Defaults taken
 
-Section B of `plan/open-questions.md` (D1–D16), the coordinator's answers of 2026-10-22 to the spec's open items (D17–D23), and the defaults chosen while folding the three reviews and the integration-test writer's findings of 2026-10-22 (D24–D55), each written into the spec without a marker:
+Section B of `plan/open-questions.md` (D1–D16), the coordinator's answers of 2026-10-22 to the spec's open items (D17–D23), and the defaults chosen while folding the three reviews and the integration-test writer's findings of 2026-10-22 (D24–D56), each written into the spec without a marker:
 
 | Id | Default | Where in the spec |
 |---|---|---|
@@ -187,6 +187,7 @@ Section B of `plan/open-questions.md` (D1–D16), the coordinator's answers of 2
 | D53 | The declared inventory in `pack.json` must be a subset of the extracted one; extra declared entries fail, extra extracted entries are shown as the truth and warned (item 20) | REQ-VAL-004, 008 |
 | D54 | The vendored path for a scoped id is `.claudinite/shared/packs/<scope>/<name>/` (two directory levels, no flattening), matching the engine's `shared/packs/<id>/` layout in the primer (item 22) | REQ-CN-001 |
 | D55 | `cn` is a Go binary, so `cn lint` and `cn pack canonicalise` re-implement the registry's static rules, score and canonical form in Go; parity is proven by a shared fixture corpus with expected outputs and the written algorithm, not by importing PackServer's packages | REQ-CN-011, REQ-VAL-033, REQ-VAL-044, REQ-SCORE-008 |
+| D56 | The canonical `tar.zst` frame is written by a small hand-rolled writer as one zstd frame of raw blocks only (fixed header, window 2^23, 128 KiB blocks, no dictionary, checksum or content size), so its bytes are a pure function of the canonical tar and a Go re-implementation reproduces them exactly; the size cost is accepted (transport compression is the CDN's job) and the 3 MB cap applies to the stored upload, not the canonical form | REQ-CN-011, REQ-VAL-033 |
 
 Test-writer item 18 (recorded-fetch linkage) is moot: REQ-COMM-008 is retired under Ariel B1 and
 REQ-COMM-006 uses verified adoption. Item 23 (REQ-ACC-012) needed no spec change.

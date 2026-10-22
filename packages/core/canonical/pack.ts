@@ -1,6 +1,6 @@
-import { constants, zstdCompressSync } from "node:zlib";
+import { bomb } from "./errors.ts";
 import { extractArchive } from "./extract.ts";
-import { ZSTD } from "./limits.ts";
+import { LIMITS, ZSTD } from "./limits.ts";
 import { comparePaths } from "./paths.ts";
 import { sha256Hex, treeHash, type Tree } from "./tree.ts";
 
@@ -93,21 +93,32 @@ export function tarOf(tree: Tree): Uint8Array {
   return out;
 }
 
-/** One zstd frame at the pinned level and window, with no content size, checksum or dictionary id. */
+/**
+ * One zstd frame of raw blocks: no dictionary, checksum or content size, a window descriptor for
+ * 2^23, blocks of the maximum raw size with the last one flagged. Nothing in it depends on an
+ * encoder, so any implementation reproduces the bytes from the tar.
+ */
 export function compress(tar: Uint8Array): Uint8Array {
-  return zstdCompressSync(tar, {
-    params: {
-      [constants.ZSTD_c_compressionLevel]: ZSTD.level,
-      [constants.ZSTD_c_windowLog]: ZSTD.windowLog,
-      [constants.ZSTD_c_contentSizeFlag]: 0,
-      [constants.ZSTD_c_checksumFlag]: 0,
-      [constants.ZSTD_c_dictIDFlag]: 0,
-      [constants.ZSTD_c_nbWorkers]: 0,
-    },
-  });
+  const blocks = Math.max(1, Math.ceil(tar.length / ZSTD.blockBytes));
+  const out = new Uint8Array(6 + blocks * 3 + tar.length);
+  out.set([0x28, 0xb5, 0x2f, 0xfd, 0x00, (ZSTD.windowLog - 10) << 3]);
+  let at = 6;
+  for (let i = 0; i < blocks; i++) {
+    const part = tar.subarray(i * ZSTD.blockBytes, (i + 1) * ZSTD.blockBytes);
+    const h = (part.length << 3) | (i === blocks - 1 ? 1 : 0);
+    out.set([h & 255, (h >> 8) & 255, (h >> 16) & 255], at);
+    out.set(part, at + 3);
+    at += 3 + part.length;
+  }
+  return out;
 }
 
-export const canonicalArchive = (tree: Tree): Uint8Array => compress(tarOf(tree));
+export function canonicalArchive(tree: Tree): Uint8Array {
+  const tar = tarOf(tree);
+  // Re-extraction by the same bounded decoder must succeed, so the re-pack obeys the same cap.
+  if (tar.length > LIMITS.totalUnpackedBytes) throw bomb("unpacked-size", "canonical form");
+  return compress(tar);
+}
 
 export interface Canonical {
   archive: Uint8Array;
@@ -128,7 +139,7 @@ export async function canonicaliseArchive(upload: Uint8Array): Promise<Canonical
 
 /** True when the bytes are exactly what the canonical re-pack of their own tree produces. */
 export async function isCanonical(archive: Uint8Array): Promise<boolean> {
-  const again = await canonicaliseArchive(archive);
+  const again = canonicalise(await extractArchive(archive, { canonical: true }));
   return Buffer.from(again.archive).equals(Buffer.from(archive));
 }
 

@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { zstdDecompressSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { buildTree, canonicalArchive, canonicaliseArchive, extractArchive, isCanonical, readFile, sha256Hex, tarOf, treeHash, ZSTD, LIMITS, type Tree } from "../index.ts";
+import { buildTree, canonicalArchive, canonicaliseArchive, compress, extractArchive, isCanonical, readFile, sha256Hex, tarOf, treeHash, ZSTD, LIMITS, type Tree } from "../index.ts";
 import { fixtureArchive, rawTar, sparseNoise, zstd } from "../fixtures.ts";
 import { inspectFrames } from "../zstd-frames.ts";
 import { expectRefused } from "./helpers.ts";
@@ -53,14 +53,29 @@ describe("deterministic re-pack (IT-VAL-033)", () => {
     expect(10 + (w >> 3)).toBeLessThanOrEqual(ZSTD.windowLog);
   });
 
-  it("packs a pack at the unpacked cap inside the window and the time budget, and reads it back", async () => {
+  it("packs a pack near the unpacked cap raw-framed, past the 3 MB upload cap, and reads it back", async () => {
     const big = buildTree([1, 2, 3].map((i) => ({ path: `f${i}.bin`, executable: false, content: sparseNoise(5 * 1024 * 1024, i) })));
-    const started = performance.now();
     const archive = canonicalArchive(big);
-    expect(performance.now() - started).toBeLessThan(10_000);
     expect(inspectFrames(archive)).toBe(1);
-    expect(archive.length).toBeLessThan(LIMITS.archiveBytes);
-    expect(treeHash(await extractArchive(archive))).toBe(treeHash(big));
+    expect(archive.length).toBeGreaterThan(LIMITS.archiveBytes);
+    await expectRefused(archive, "archive.bomb", "archive-size");
+    expect(treeHash(await extractArchive(archive, { canonical: true }))).toBe(treeHash(big));
+    expect(await isCanonical(archive)).toBe(true);
+  });
+
+  it("refuses to re-pack a tree whose canonical tar would not pass the unpacked cap again", () => {
+    const big = buildTree([1, 2, 3, 4].map((i) => ({ path: `f${i}.bin`, executable: false, content: new Uint8Array(5 * 1024 * 1024) })));
+    expect(() => canonicalArchive(big)).toThrow(/archive\.bomb/);
+  });
+
+  it("writes the frame from the tar alone: fixed header, raw blocks of 128 KiB, last flagged", () => {
+    const tar = new Uint8Array(131072 + 10).fill(7);
+    const frame = compress(tar);
+    expect(Array.from(frame.subarray(0, 6))).toEqual([0x28, 0xb5, 0x2f, 0xfd, 0x00, 0x68]);
+    expect(Array.from(frame.subarray(6, 9))).toEqual([0x00, 0x00, 0x10]); // 131072 << 3, not last, raw
+    expect(Array.from(frame.subarray(6 + 3 + 131072, 6 + 3 + 131072 + 3))).toEqual([0x51, 0x00, 0x00]); // 10 << 3 | last
+    expect(frame.length).toBe(6 + 3 + 131072 + 3 + 10);
+    expect(Array.from(zstdDecompressSync(frame))).toEqual(Array.from(tar));
   });
 
   it("plain names: sorted, no ./ prefix, no owners, no times, fixed modes", async () => {
@@ -187,11 +202,10 @@ describe("tamper negatives", () => {
 });
 
 describe("golden values for the parity corpus (cn pack canonicalise, T-205)", () => {
-  it("pins the tree hash and the canonical tar of the gcp fixture, and the zstd bytes for the pinned libzstd", async () => {
+  it("pins the tree hash, the canonical tar and the canonical archive of the gcp fixture", async () => {
     const c = await canonicaliseArchive(fixtureArchive("gcp"));
     expect(c.treeHash).toBe("5ad0e5fb5c4b5a9874f0a52e6f429fac165c22ee5fa48082ea704c006569b318");
     expect(sha256Hex(tarOf(c.tree))).toBe("4e9317389a64c4c8db5b797b7fedadbedd05df3d0400b65129ede686314ce80e");
-    // The compressed bytes depend on the libzstd release; a different release moves this and the README says to re-pin.
-    if (process.versions.zstd?.startsWith("1.5.")) expect(c.sha256).toBe("68182f8cd83ed872fdf91b7fd9a30afb8ced14bab7f80dc2479b58b92d409dbf");
+    expect(c.sha256).toBe("3ee3db2dbd16d4cf6530e1a1b090f50494f192bc6a1e16b8d0aa99680cbbb34b");
   });
 });

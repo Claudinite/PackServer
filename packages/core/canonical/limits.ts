@@ -17,8 +17,14 @@ export const LIMITS = {
   paxBytes: 64 * 1024,
 } as const;
 
-/** Pinned encoder parameters; the algorithm is written out in the README. */
+/**
+ * Stored length of a canonical archive: it is raw-framed, so the unpacked cap plus the frame and
+ * block headers (3 bytes per 128 KiB block) bounds it.
+ */
+export const CANONICAL_ARCHIVE_BYTES = LIMITS.totalUnpackedBytes + 4096;
+
+/** The canonical zstd frame: raw blocks only, so the bytes are a pure function of the tar. */
 export const ZSTD = {
-  level: 12,
   windowLog: 23,
+  blockBytes: 128 * 1024,
 } as const;

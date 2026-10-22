@@ -1,7 +1,7 @@
 import { Readable } from "node:stream";
 import { constants, createZstdDecompress } from "node:zlib";
 import { ArchiveRefusal, bomb, unsafe } from "./errors.ts";
-import { LIMITS } from "./limits.ts";
+import { CANONICAL_ARCHIVE_BYTES, LIMITS } from "./limits.ts";
 import { collisionKey, isArchiveContent, isArchiveName, normalisePath } from "./paths.ts";
 import { TarReader, type TarEntry, type TarSink } from "./tar-reader.ts";
 import { buildTree, type Tree, type TreeFile } from "./tree.ts";
@@ -86,10 +86,11 @@ class Collector implements TarSink {
 /**
  * Decodes a canonical-or-not `tar.zst` in one streaming pass that counts the bytes it actually
  * produces, stopping at the first crossed limit. Throws ArchiveRefusal; nothing is returned or kept
- * for a refused archive.
+ * for a refused archive. `canonical` lifts the stored-length cap to that of a served archive.
  */
-export async function extractArchive(archive: Uint8Array): Promise<Tree> {
-  if (archive.length > LIMITS.archiveBytes) throw bomb("archive-size");
+export async function extractArchive(archive: Uint8Array, opts: { canonical?: boolean } = {}): Promise<Tree> {
+  // The 3 MB cap is on what a publisher uploads; the canonical form is raw-framed and larger.
+  if (archive.length > (opts.canonical ? CANONICAL_ARCHIVE_BYTES : LIMITS.archiveBytes)) throw bomb("archive-size");
   inspectFrames(archive);
 
   const collector = new Collector();

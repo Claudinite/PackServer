@@ -77,6 +77,12 @@ function rebuildStatements(sql, files, index) {
   return { rest, dropped, rebuilt };
 }
 
+/** A `__new_x` table is a rebuild only when this file renames it onto a table that already existed. */
+function isRebuildOfExisting(table, sql) {
+  const rename = sql.split(";").map((s) => REBUILD_RENAME.exec(s)).find((m) => m && m[1].toLowerCase() === table);
+  return Boolean(rename) && table.startsWith("__new_") && created.has(rename[2].toLowerCase());
+}
+
 const files = migrationFiles(dir);
 const seenPrefix = new Map();
 const created = new Map(); // table -> area
@@ -100,7 +106,7 @@ files.forEach((file, index) => {
 
   if (area === FOUNDATION) {
     firstFoundation ??= file;
-    if (file !== firstFoundation && own.size > 0)
+    if (file !== firstFoundation && [...own].some((t) => !isRebuildOfExisting(t, sql)))
       problems.push(`${file}: only the first foundation migration (${firstFoundation}) may create foundation tables`);
   }
 
@@ -115,9 +121,9 @@ files.forEach((file, index) => {
   }
 
   touched.set(file, new Set([...own, ...referenced]));
-  for (const t of matches(ALTERED, sql)) {
+  for (const t of [...matches(ALTERED, sql), ...matches(DROPPED, sql)]) {
     if (area !== FOUNDATION && created.get(t) === FOUNDATION)
-      problems.push(`${file}: alters foundation table ${t}; foundation tables are altered only by ${FOUNDATION} migrations`);
+      problems.push(`${file}: changes foundation table ${t}; foundation tables are altered only by ${FOUNDATION} migrations`);
   }
   for (const t of own) if (!created.has(t)) created.set(t, area);
   for (const t of matches(RENAMED_TO, sql)) if (!created.has(t)) created.set(t, area);

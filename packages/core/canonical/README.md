@@ -15,7 +15,7 @@ Runs in Node (sandbox A, tests); it uses `node:zlib` zstd and `node:crypto`, not
 `extractArchive(bytes)` returns a `Tree` or throws `ArchiveRefusal` with `reason`
 (`archive.bomb` | `archive.unsafe`) and a finer `code`. Never retried (REQ-VAL-014).
 
-1. Stored length over 3 MiB: `archive.bomb`.
+1. Stored length over 3 MiB (upload) or 20 MiB + 4 KiB (`canonical: true`): `archive.bomb`.
 2. The frame and block headers are walked without decoding (`zstd-frames.ts`): not zstd, truncated,
    trailing bytes, a dictionary, reserved bits, a skippable frame at all: `archive.unsafe`; a declared
    window (window descriptor, or the content size of a single-segment frame) over 8 MiB: `archive.bomb`.
@@ -63,10 +63,17 @@ Input: the tree. Output: bytes. Same tree, same bytes.
   `<len> path=<path>\n` (a directory's path without the trailing `/`), and the entry's own `name`
   holds the first 100 bytes of the path.
 - Content padded with zeros to 512; the archive ends with two zero blocks, no further padding.
-- zstd: one frame at level 12, `windowLog` 23, content size flag off, checksum off, dictionary id off,
-  single-threaded (`ZSTD_c_nbWorkers` 0). The result depends on the libzstd release (1.5.7 in Node
-  22.22); changing the release moves the compressed bytes, so re-pin the golden values in
-  `test/canonical.test.ts` and the `cn` encoder together.
+- zstd (D56): one frame of raw blocks only, written by hand, a pure function of the tar and
+  independent of any zstd release. Bytes: magic `28 b5 2f fd`; frame header descriptor `00` (no
+  content size, not single-segment, no checksum, no dictionary); window descriptor `68` (window
+  2^23, the 8 MiB maximum); then the tar cut into blocks of 131,072 bytes (the last one shorter), each
+  preceded by a 3-byte little-endian header `size << 3 | last << 0` with block type 0 (raw), `last`
+  set on the final block only. No trailing bytes. A tar is never empty, so there is always at least one block.
+- The tar of a canonical archive may not exceed the 20 MiB unpacked cap, or the re-pack is refused
+  (`archive.bomb`), so re-extraction by the same decoder always succeeds.
+
+The 3 MiB cap applies to the stored upload. The raw-framed canonical form is up to 20 MiB plus 4 KiB,
+which `extractArchive(bytes, { canonical: true })` accepts and the default refuses.
 
 `isCanonical(bytes)` is true exactly when re-packing the bytes' own tree reproduces them: that is
 the grammar `cn` enforces (REQ-DELIV-017).
