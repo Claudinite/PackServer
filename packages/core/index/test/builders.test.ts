@@ -31,6 +31,17 @@ describe("scope index version selection (IT-DELIV-003, ARCH-REV M11)", () => {
     expect(full.versions.map((x) => x.version)).toContain("1.1.0");
   });
 
+  it("always lists a revoked version, however old its revocation and however far down the history", () => {
+    const versions = [
+      v(1, { status: "revoked", reason: "cve", security: "CVE-1", status_changed_at: minusDays(400) }),
+      v(2, { status: "yanked", reason: "bad", status_changed_at: minusDays(400) }),
+      ...Array.from({ length: 22 }, (_, i) => v(i + 10)),
+    ];
+    const listed = selectListedVersions({ name: "@acme/big", versions }, NOW).map((x) => x.version);
+    expect(listed).toContain("1.1.0");
+    expect(listed).not.toContain("1.2.0");
+  });
+
   it("yanked versions do not use up the 20 eligible seats", () => {
     const versions = [...Array.from({ length: 20 }, (_, i) => v(i + 1)), v(30, { status: "yanked", reason: "bad", status_changed_at: minusDays(1) })];
     const listed = selectListedVersions({ name: "@acme/x", versions }, NOW).map((x) => x.version);

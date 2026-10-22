@@ -91,7 +91,8 @@ export function latestEligible(versions: readonly Pick<IndexVersion, "version" |
 
 /**
  * The versions a scope index carries for one pack: the 20 newest eligible plus every version whose
- * status left `active` within the last 180 days. The rest live in the pack's `versions.json`.
+ * status left `active` within the last 180 days, and every revoked version whatever its age, so cn
+ * sees a revocation without fetching `versions.json`. The rest live in the pack's `versions.json`.
  */
 export function selectListedVersions(pack: PackRecord, now: Date): VersionRecord[] {
   assertUniqueVersions(pack);
@@ -103,7 +104,8 @@ export function selectListedVersions(pack: PackRecord, now: Date): VersionRecord
   const recentlyChanged = pack.versions.filter(
     (v) => v.status !== "active" && Date.parse(v.status_changed_at as string) >= cutoff,
   );
-  const listed = new Set([...newest, ...recentlyChanged]);
+  const revoked = pack.versions.filter((v) => v.status === "revoked");
+  const listed = new Set([...newest, ...recentlyChanged, ...revoked]);
   return [...listed].sort(byNewest);
 }
 
