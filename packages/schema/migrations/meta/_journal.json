@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1792709198334,
+      "tag": "20261022224638_foundation_tables",
+      "breakpoints": true
+    }
+  ]
+}

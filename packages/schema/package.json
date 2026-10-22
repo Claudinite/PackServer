@@ -8,9 +8,18 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:check": "drizzle-kit check",
+    "db:migrate": "wrangler d1 migrations apply registry --config wrangler.jsonc",
+    "gen:range": "node scripts/gen-range.mjs"
   },
   "dependencies": {
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "drizzle-orm": "catalog:"
+  },
+  "devDependencies": {
+    "drizzle-kit": "catalog:",
+    "wrangler": "catalog:"
   }
 }
