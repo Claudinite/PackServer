@@ -6,18 +6,18 @@ Writing this out changed six decisions in the [architecture](README.md). They're
 
 ## What changed
 
-1. **Sessions move from KV to D1.** KV is eventually consistent, and a write can take 60 seconds or more to reach other locations (Cloudflare's own wording). A logout, a revoked session or a fresh step-up approval would not be seen everywhere at once. Only signed-in traffic touches sessions, so a primary-key lookup in D1 per request is cheap, and revocation takes effect immediately. A hybrid (sessions in KV, with D1 holding only changes KV may not have propagated yet, cleared after a few hours) was considered: it works, but every request would still need the same D1 lookup, so it adds a second store and dual writes without saving the call. It becomes worthwhile only if session writes start contending with publishing or the table grows far beyond the ~1 GB estimate.
-2. **KV is now only a cache and OAuth storage.** It holds what `workers-oauth-provider` requires, short-lived OAuth state, and the cached GitHub OIDC signing keys. Nothing there is the system of record.
+1. **Sessions stay in KV, and the ~60-second revocation delay is accepted** (decided with Ariel 2026-10-22). KV is eventually consistent: a logout or revoked session can take 60 seconds or more to be seen everywhere (Cloudflare gives no upper bound). That's acceptable because anything dangerous (approving a publish, minting a token, changing owners, grants or trusted publishers) needs a fresh passkey assertion at that moment, which a stolen session can't produce. D1-backed sessions, a KV + D1 hybrid and 5-minute signed cookies were considered; each added a store call or a longer delay for no real security gain.
+2. **KV holds sessions, OAuth storage and caches.** Sessions, what `workers-oauth-provider` requires, short-lived OAuth state, and the cached GitHub OIDC signing keys. Everything there is either short-lived or reproducible by signing in again.
 3. **Bulky per-version JSON moves from D1 to R2.** The extracted inventory, provenance and validation report become a `meta.json` next to each archive. D1 keeps only the columns that are filtered, sorted or shown in lists (counts, context tokens, repo, commit). This protects D1's 10 GB cap: inventory JSON at a few KB per version over 2M versions would have used most of it.
 4. **The audit log is a write-once log, not a database.** It's append-only, almost never queried, grows without bound, and above all must not be editable, by a bug or by an attacker holding a Worker's bindings. A database row can be updated or deleted by anything that can write to the database. The record goes to a bucket-locked R2 bucket in a second Cloudflare account, with a hash chain whose daily head is published externally, so tampering is detected even though R2 locks can be removed by anyone with bucket-settings permission (decided 2026-10-22; see [audit-log record](#audit-log-record)). The two screens that show activity (a user's security page, an org's audit view) read a 90-day `recent_activity` table in the registry D1, which is a convenience copy, not the record.
-5. **Write-on-read hot spots are removed.** `tokens.last_used_at` is updated at most once an hour per token, and `sessions.last_seen_at` at most once every 15 minutes per session (enough for the 12-hour idle timeout), instead of on every call. The hourly stats rollup only rewrites packs whose numbers changed. Without these, every authenticated read would also be a D1 write.
+5. **Write-on-read hot spots are removed.** `tokens.last_used_at` is updated at most once an hour per token, and a session's last-seen time in KV at most once every 15 minutes (enough for the 12-hour idle timeout), instead of on every call. The hourly stats rollup only rewrites packs whose numbers changed. Without these, every authenticated read would also be a D1 write.
 6. **PackServer never writes to GitHub.** An earlier draft mirrored packs to a GitHub repo for web sessions that can't reach us, and posted Check Runs on publishers' commits. Both are gone. GitHub is only read: repo links, OIDC claims, webhooks, and the source commit recorded in each signed attestation. Web-session reachability is solved on the client side (network allowlist, or update checks from GitHub Actions).
 
 ## The stores at a glance
 
 | Store | What's in it | Writes | Reads | System of record? |
 |---|---|---|---|---|
-| D1 `registry` | Accounts, scopes, packs, versions (lean), grants, sessions, tokens, community data, credit ledger, stats | Low volume, small rows, must be consistent | High volume, relational, filtered, full-text | Yes |
+| D1 `registry` | Accounts, scopes, packs, versions (lean), grants, tokens, community data, credit ledger, stats | Low volume, small rows, must be consistent | High volume, relational, filtered, full-text | Yes |
 | R2 `audit-log` (bucket-locked, second Cloudflare account) | Audit events as NDJSON batches | Append-only, via a Queue, batched | Rare: incident review, compliance export | Yes |
 | D1 `registry.recent_activity` | Last 90 days of audit events per user and scope | One row per sensitive action, pruned daily | Security page, org audit view | No (copy of the R2 log) |
 | R2 `packs-staging` | Uploaded archives awaiting validation | Once per upload, by the uploader through a presigned URL | Once or twice, by the validator | No (deleted after 14 days) |
@@ -29,7 +29,7 @@ Writing this out changed six decisions in the [architecture](README.md). They're
 | Durable Object `ScopeCoordinator` | Per-scope publish lock, daily quotas, index rebuild debounce | Per publish or quota check in that scope | Same calls | Yes, for quotas |
 | Workflows (platform-managed) | Validation run state, step results | Per step | By the workflow itself and the dashboard status | No (D1 is updated at each milestone) |
 | Queues | Notifications, re-index jobs | Per event | Consumed once | No |
-| KV `oauth` / `cache` | OAuth grants and tokens (library-owned), OAuth state, JWKS cache | Per OAuth flow, per key rotation | Per MCP request with a token | OAuth grants only |
+| KV `sessions` / `oauth` / `cache` | Web sessions, OAuth grants and tokens (library-owned), OAuth state, JWKS cache | Per login/logout, last-seen at most every 15 min, per OAuth flow | Every signed-in request, every MCP request with a token | Sessions and OAuth grants |
 | Sandbox disk | Unpacked pack during validation | During one run | During one run | No (destroyed) |
 | Secrets Store | Stripe, GitHub App, signing and AI Gateway keys | By people, at rotation | At Worker start | Yes |
 | Outside Cloudflare | Stripe (payments), email provider; GitHub is read-only | Per event | Per event | Stripe is the record for money |
@@ -40,7 +40,7 @@ Writing this out changed six decisions in the [architecture](README.md). They're
 
 **Writes.** Signups, credential enrolment, scope and member changes, grants, pack creation, version state changes, stars, reviews, outcomes, reports, ledger entries, and the hourly stats rollup. At 1M repos that is on the order of a few hundred thousand to a few million rows a month: 40k versions with a handful of rows each, community actions from far fewer people than repos, and rollup updates for packs whose numbers moved. That's within the 50M rows a month the plan includes, and well under what one SQLite primary sustains (about 1,000 one-millisecond queries a second).
 
-**Reads.** Pack pages, directory and category listings, search (FTS5), dashboard views, access checks, session lookups, and the MCP endpoint. These are joins and filtered sorts over modest tables, exactly what SQLite is good at. Read replicas (Sessions API) move read latency close to users. A request that just wrote uses `first-primary` so it reads its own write.
+**Reads.** Pack pages, directory and category listings, search (FTS5), dashboard views, access checks, and the MCP endpoint. These are joins and filtered sorts over modest tables, exactly what SQLite is good at. Read replicas (Sessions API) move read latency close to users. A request that just wrote uses `first-primary` so it reads its own write.
 
 **Why it fits.** The data is relational (packs belong to scopes, grants join principals to resources) and must be consistent: a credit spent twice or a grant that disappears are bugs. Writes are low volume and reads dominate, which is the shape D1 handles well. FTS5 runs inside the same database, so keyword search needs no second system.
 
@@ -138,13 +138,13 @@ Anonymous rate limiting stays on the Workers Rate Limiting binding, which is app
 
 **Why it fits.** At-least-once delivery with retries for work that can lag a few seconds and must not block the publish. Consumers are idempotent (keyed on version id and event type).
 
-### KV `oauth` and `cache`
+### KV `sessions`, `oauth` and `cache`
 
-**Writes.** `workers-oauth-provider` stores client registrations, grants and hashed tokens in its KV namespace; the library requires this. OAuth state during login is written with a 10-minute TTL. GitHub's OIDC signing keys are cached when they rotate.
+**Writes.** A session record (`sid hash → user, MFA time, created, last seen`) is written at login, refreshed at most every 15 minutes, and deleted at logout or revocation, with a KV expiry at the 7-day absolute limit. `workers-oauth-provider` stores client registrations, grants and hashed tokens in its KV namespace; the library requires this. OAuth state during login is written with a 10-minute TTL. GitHub's OIDC signing keys are cached when they rotate.
 
-**Reads.** Every MCP request that carries a token, and each OIDC exchange.
+**Reads.** Every signed-in web request, every MCP request that carries a token, and each OIDC exchange. Reads are served from the nearest location, so session checks add almost no latency and no D1 call.
 
-**Why it fits.** Fast global reads of small values that change rarely. The cost of KV's consistency delay is bounded: an access token revoked in KV might still work for a minute or more somewhere else, so MCP access tokens are short-lived (1 hour) and refresh tokens are checked at refresh. Sessions, which need instant revocation, are no longer here (decision 1).
+**Why it fits.** Fast global reads of small values that change rarely. The cost of KV's consistency delay is bounded: an access token revoked in KV might still work for a minute or more somewhere else, so MCP access tokens are short-lived (1 hour) and refresh tokens are checked at refresh. Web sessions live with the same delay; sensitive actions are protected by a fresh passkey assertion instead (decision 1).
 
 ### Sandbox disk
 

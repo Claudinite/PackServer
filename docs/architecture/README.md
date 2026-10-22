@@ -40,7 +40,7 @@ Indicative running cost at launch scale is about $30/month (Workers Paid $5, a P
                          │              │   │    │                                                │
  CLI / CI ─API+OIDC─▶ publish Worker (/api/publish, GitHub OIDC exchange, presigned uploads)     │
                          │              ▼   ▼    ▼                                                │
- GitHub ──webhooks─▶  github Worker   D1 (registry)   KV (OAuth, cache)      Vectorize (embeds)  │
+ GitHub ──webhooks─▶  github Worker   D1 (registry)   KV (sessions, OAuth)   Vectorize (embeds)  │
  Stripe ──webhooks─▶  billing Worker    │                                                         │
                          │              ▼                                                         │
                          └──▶ Workflows: ValidatePackWorkflow ──▶ Sandbox (Container microVM)     │
@@ -90,8 +90,8 @@ The validator does not trust the declared inventory: it extracts the real one (c
 ```
 users(id, handle, email, email_verified_at, created_at, status)
 credentials(id, user_id, type[passkey|totp|recovery], public_key|secret_enc, sign_count, transports, created_at, last_used_at)
-identities(user_id, provider[github|google], subject, login, linked_at)          -- linked logins
-sessions(id_hash, user_id, mfa_at, created_at, last_seen_at, revoked_at)        -- 12h idle / 7d absolute; step-up window 10 min; last_seen_at written at most every 15 min
+identities(user_id, provider[github], subject, login, linked_at)                 -- linked logins
+sessions → KV (sid hash → user_id, mfa_at, created_at, last_seen_at; 12h idle / 7d absolute; last_seen written at most every 15 min)
 
 scopes(id, name UNIQUE, kind[user|org], verified_github_org, verified_domain, verified_publisher_at)
 scope_members(scope_id, user_id, role[owner|admin|publisher|member])
@@ -134,12 +134,13 @@ Publishers are the attack surface that matters (the 2025–2026 npm, crates.io a
 
 ### Accounts and login
 
+- **PackServer is its own identity provider.** It issues its own sessions and verifies every signed-in request locally; no request calls GitHub or Google. GitHub traffic is limited to sign-in, org-membership checks for scope verification, cached OIDC signing keys, App repo fetches and inbound webhooks. There is no Google sign-in.
 - **Primary factors:** passkey (WebAuthn, discoverable credential, user verification required), or "Sign in with GitHub" (GitHub requires 2FA for all contributors). Email + one-time code is the bootstrap and recovery path only.
 - **MFA from day one.** Every account can enrol passkeys and TOTP immediately. MFA is **required** for anyone who publishes, manages a scope, mints tokens, changes visibility or transfers ownership. Reviewers (star, works-for-me, bug report) only need a verified email.
 - **Passkeys first, TOTP as fallback.** npm stopped allowing new TOTP setups in 2025 because TOTP is phishable; we keep it as a fallback factor but nudge to passkeys and allow scopes to enforce "passkeys only" for their members.
 - **Recovery:** 10 single-use recovery codes shown once; account recovery without a factor goes to a manual, delayed (72 h) review with notification to every verified email, never instant.
-- **Step-up:** sensitive actions (approve a staged publish, mint a token, add a scope owner, change billing) require a fresh WebAuthn assertion within the last 10 minutes, even inside a valid session.
-- **Sessions:** opaque session id in a `__Host-` cookie (Secure, HttpOnly, SameSite=Lax), state in D1 so revocation is immediate (KV can take 60 seconds or more to propagate), 12 h idle / 7 day absolute, revocable list on `/account/security`. CSRF tokens on all state-changing forms.
+- **Step-up:** sensitive actions (approve a staged publish, mint a token, add a scope owner, change billing) require a WebAuthn assertion made for that specific action (the challenge is bound to the action and its target), even inside a valid session. There is no reusable step-up window, so a stolen or revoked session can never perform them.
+- **Sessions:** opaque session id in a `__Host-` cookie (Secure, HttpOnly, SameSite=Lax), state in KV (a revocation can take 60 seconds or more to reach every location, accepted because sensitive actions require a fresh passkey assertion), 12 h idle / 7 day absolute, revocable list on `/account/security`. CSRF tokens on all state-changing forms.
 - **Implementation:** `@simplewebauthn/server` (runs on WebCrypto, lists Workers as supported), `otpauth`-style TOTP over WebCrypto HMAC, credential public keys and sign counters in D1, TOTP secrets encrypted with a key from Secrets Store. Turnstile on signup, login and code requests. Rate limits per IP and per account on every auth endpoint.
 
 ### Scopes (namespaces) and proving "this is really Google"
