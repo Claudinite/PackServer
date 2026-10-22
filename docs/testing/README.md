@@ -333,9 +333,9 @@ The default day-to-day flow under agents: Ariel names the requirement ID (or ask
 
 Decided on 2026-10-22: all six architecture/UI conflicts ([../requirements/README.md](../requirements/README.md#conflicts-between-the-architecture-and-the-ui-flows)); the 29 security-review requirements are confirmed.
 
-3. **CI-only Cloudflare account** ($5/month). This plan recommends it; say if the production account's preview environment must do instead.
-4. **Public or private repository?** It removes the Actions cost and changes nothing else.
-5. **Playwright scope.** `ui` scenarios only for flows that are about the page (passkey ceremonies, the wizard, step-up, Turnstile). Driving every flow in `docs/ui/flows.md` through a browser nightly grows the lane from ~6 to ~25 minutes.
+1. **CI-only Cloudflare account** ($5/month). This plan recommends it; say if the production account's preview environment must do instead.
+2. **Public or private repository?** It removes the Actions cost and changes nothing else.
+3. **Playwright scope.** `ui` scenarios only for flows that are about the page (passkey ceremonies, the wizard, step-up, Turnstile). Driving every flow in `docs/ui/flows.md` through a browser nightly grows the lane from ~6 to ~25 minutes.
 
 ## 15. Sources
 
