@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { extractArchive, LIMITS } from "../index.ts";
 import { pax, rawTar, sparseNoise, zstd, type RawEntry } from "../fixtures.ts";
@@ -136,14 +137,30 @@ describe("nested archives (IT-VAL-020)", () => {
     ["gzip", [0x1f, 0x8b, 8, 0]],
     ["zip", [0x50, 0x4b, 3, 4, 0]],
     ["xz", [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0]],
-    ["bzip2", [0x42, 0x5a, 0x68, 0x39]],
+    ["bzip2", [0x42, 0x5a, 0x68, 0x39, 0x31, 0x41, 0x59, 0x26, 0x53, 0x59]],
     ["7z", [0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]],
-    ["rar", [0x52, 0x61, 0x72, 0x21, 0x1a]],
+    ["rar", [0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x00]],
     ["lz4", [0x04, 0x22, 0x4d, 0x18]],
   ];
   for (const [what, head] of magics) {
     it(`refuses a file that is ${what} under an innocent name`, async () => {
       await expectRefused(up([{ name: "docs/notes.txt", content: Uint8Array.from(head) }]), "archive.unsafe", "nested-archive");
+    });
+  }
+  it("refuses a real gzip file", async () => {
+    await expectRefused(up([{ name: "docs/notes.txt", content: gzipSync("hello") }]), "archive.unsafe", "nested-archive");
+  });
+  const lookalikes: [string, number[]][] = [
+    ["1f 8b with another method", [0x1f, 0x8b, 0x07, 0x00, 1, 2, 3, 4]],
+    ["1f 8b 08 with reserved flag bits", [0x1f, 0x8b, 0x08, 0xe0, 1, 2, 3, 4]],
+    ["BZh without the block magic", [0x42, 0x5a, 0x68, 0x39, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]],
+    ["BZh with a level of 0", [0x42, 0x5a, 0x68, 0x30, 0x31, 0x41, 0x59, 0x26, 0x53, 0x59]],
+    ["7z signature without the version bytes", [0x37, 0x7a, 0xbc, 0xaf, 0x00, 0x00]],
+    ["Rar! without the marker tail", [0x52, 0x61, 0x72, 0x21, 0x00, 0x00, 0x00]],
+  ];
+  for (const [what, head] of lookalikes) {
+    it(`accepts a binary that only resembles an archive: ${what}`, async () => {
+      expect((await extractArchive(up([{ name: "assets/blob.bin", content: Uint8Array.from(head) }]))).files).toHaveLength(1);
     });
   }
   it("refuses an uncompressed tar inside the pack", async () => {

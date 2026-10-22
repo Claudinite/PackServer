@@ -56,12 +56,12 @@ export const isArchiveName = (path: string) => EXTENSIONS.test(path);
 export function isArchiveContent(head: Uint8Array): boolean {
   const at = (i: number) => head[i] ?? -1;
   if (at(0) === 0x28 && at(1) === 0xb5 && at(2) === 0x2f && at(3) === 0xfd) return true;
-  if (at(0) === 0x1f && at(1) === 0x8b) return true;
+  if (at(0) === 0x1f && at(1) === 0x8b && at(2) === 0x08 && at(3) >= 0 && (at(3) & 0xe0) === 0) return true;
   if (at(0) === 0x50 && at(1) === 0x4b && (at(2) === 3 || at(2) === 5 || at(2) === 7) && (at(3) === 4 || at(3) === 6 || at(3) === 8)) return true;
   if (at(0) === 0xfd && at(1) === 0x37 && at(2) === 0x7a && at(3) === 0x58 && at(4) === 0x5a) return true;
-  if (at(0) === 0x42 && at(1) === 0x5a && at(2) === 0x68) return true;
-  if (at(0) === 0x37 && at(1) === 0x7a && at(2) === 0xbc && at(3) === 0xaf) return true;
-  if (at(0) === 0x52 && at(1) === 0x61 && at(2) === 0x72 && at(3) === 0x21) return true;
+  if (at(0) === 0x42 && at(1) === 0x5a && at(2) === 0x68 && at(3) >= 0x31 && at(3) <= 0x39 && [0x31, 0x41, 0x59, 0x26, 0x53, 0x59].every((b, i) => at(4 + i) === b)) return true;
+  if (at(0) === 0x37 && at(1) === 0x7a && at(2) === 0xbc && at(3) === 0xaf && at(4) === 0x27 && at(5) === 0x1c) return true;
+  if (at(0) === 0x52 && at(1) === 0x61 && at(2) === 0x72 && at(3) === 0x21 && at(4) === 0x1a && at(5) === 0x07) return true;
   if (at(0) === 0x04 && at(1) === 0x22 && at(2) === 0x4d && at(3) === 0x18) return true;
   return head.length >= 262 && at(257) === 0x75 && at(258) === 0x73 && at(259) === 0x74 && at(260) === 0x61 && at(261) === 0x72;
 }
