@@ -309,7 +309,7 @@ Every redaction is listed in `envelope.redactions` so the diff engine knows a pl
 
 - R2 bucket `shadow-records`, private, no custom domain, server-side encryption at rest (R2 default). Objects are written by the queue consumer only; the `admin` Worker and the comparison job have read bindings; no other Worker is bound to it.
 - Lifecycle rule: delete after **14 days**. Reports (§7.6) are aggregated and live in `shadow-reports` with 90-day retention; they contain examples only in redacted form.
-- Human access: the triage page in `admin` behind Cloudflare Access; raw JSONL download requires the `shadow:raw` Access group. Direct bucket access is through `wrangler` with an account token held by two people.
+- Human access: the triage page in `admin` behind Cloudflare Access; raw JSONL download requires the `shadow:raw` Access group. Direct bucket access is through `wrangler` with an R2 token scoped to this bucket, held only by Ariel.
 - Queue messages are transient (≤ 4 days by default; consumer keeps up within seconds).
 - Per-release HMAC key for id hashing lives in Secrets Store, rotated per release, so a leaked batch cannot be joined to another release's batch.
 
