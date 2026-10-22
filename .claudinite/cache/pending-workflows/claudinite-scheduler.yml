@@ -1,0 +1,112 @@
+# Claudinite's task scheduler, written by cn init with the cron rewritten
+# to this repo's hashed minute. cn schedule run repairs the queue, asks
+# every scheduled task and readies what is due; drain starts the executor
+# when the run left something pickable. No update changes this file: a
+# change it needs arrives as an issue carrying the patch.
+name: claudinite-scheduler
+
+on:
+  schedule:
+    - cron: "25 10,22 * * *"
+  workflow_dispatch:
+    inputs:
+      wake:
+        description: Task ids to run now (pack/task or a bare task name, space-separated)
+        required: false
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: claudinite-scheduler-run
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  scheduler-run:
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      pull-requests: read
+    outputs:
+      pickable: ${{ steps.run.outputs.pickable }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/claudinite
+            ~/.npm/_cacache
+          key: cn-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.claudinite/settings.yaml') }}
+          restore-keys: cn-${{ runner.os }}-${{ runner.arch }}-
+      - name: install the pinned engine
+        run: npx --yes --prefer-offline @claudinite/setup@1.0.1
+      - name: cn schedule run
+        id: run
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CLAUDINITE_WAKE: ${{ inputs.wake }}
+          CLAUDINITE_VARS: ${{ toJSON(vars) }}
+          FLEET_GITHUB_TOKEN: ${{ secrets.FLEET_GITHUB_TOKEN }}
+        run: .claudinite/bin/cn schedule run
+
+  drain:
+    needs: scheduler-run
+    if: needs.scheduler-run.outputs.pickable == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/claudinite
+            ~/.npm/_cacache
+          key: cn-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.claudinite/settings.yaml') }}
+          restore-keys: cn-${{ runner.os }}-${{ runner.arch }}-
+      - name: install the pinned engine
+        run: npx --yes --prefer-offline @claudinite/setup@1.0.1
+      - name: cn execute dispatch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CLAUDINITE_VARS: ${{ toJSON(vars) }}
+        run: .claudinite/bin/cn execute dispatch
+
+  report-failure:
+    needs: [scheduler-run, drain]
+    if: >-
+      always()
+      && (needs.scheduler-run.result == 'failure' || needs.drain.result == 'failure')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/claudinite
+            ~/.npm/_cacache
+          key: cn-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.claudinite/settings.yaml') }}
+          restore-keys: cn-${{ runner.os }}-${{ runner.arch }}-
+      - name: install the pinned engine
+        run: npx --yes --prefer-offline @claudinite/setup@1.0.1
+      - name: cn schedule report-failure
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: .claudinite/bin/cn schedule report-failure

@@ -1,0 +1,103 @@
+# Claudinite's task executor, written by cn init. cn execute loop claims
+# each ready work item, runs it and converges it; continue-the-chain starts
+# a fresh run after one dies, and past three says so on an issue; its
+# last step keeps the usage record the fold leaves as an artifact. It
+# carries no cron: the scheduler's drain is the delivery and a label event
+# is latency. No update changes this file; cn init adds a declared task's
+# secrets beneath the marker line.
+name: claudinite-executor
+
+on:
+  issues:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      continuation_depth:
+        description: How many dead runs this chain has continued through, set by continue-the-chain
+        required: false
+        type: string
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  execute:
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.event.label.name == 'task:status:waiting-for-executor'
+      || github.event.label.name == 'task:urgent'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    permissions:
+      actions: write
+      contents: write
+      id-token: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/claudinite
+            ~/.npm/_cacache
+          key: cn-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.claudinite/settings.yaml') }}
+          restore-keys: cn-${{ runner.os }}-${{ runner.arch }}-
+      - name: install the pinned engine
+        run: npx --yes --prefer-offline @claudinite/setup@1.0.1
+      - name: cn execute loop
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CLAUDINITE_VARS: ${{ toJSON(vars) }}
+          CCR_ROUTINE_TOKEN: ${{ secrets.CCR_ROUTINE_TOKEN }}
+          # claudinite:secrets
+          CLAUDINITE_MANAGER_TOKEN: ${{ secrets.CLAUDINITE_MANAGER_TOKEN }}
+        run: .claudinite/bin/cn execute loop
+      # The usage fold leaves its record here; a run that folded nothing
+      # leaves the folder empty and uploads nothing.
+      - name: keep the usage record
+        if: always() && hashFiles('.claudinite/temp/usage-record/*.json') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: claudinite-usage
+          path: .claudinite/temp/usage-record/
+          retention-days: 90
+          include-hidden-files: true
+          if-no-files-found: ignore
+
+  continue-the-chain:
+    needs: execute
+    if: failure() || cancelled()
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/claudinite
+            ~/.npm/_cacache
+          key: cn-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.claudinite/settings.yaml') }}
+          restore-keys: cn-${{ runner.os }}-${{ runner.arch }}-
+      - name: install the pinned engine
+        run: npx --yes --prefer-offline @claudinite/setup@1.0.1
+      - name: cn execute dispatch --continue
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CLAUDINITE_CONTINUATION_DEPTH: ${{ inputs.continuation_depth }}
+        run: .claudinite/bin/cn execute dispatch --continue
