@@ -4,7 +4,7 @@
 import { generateKeyPairSync, randomBytes } from "node:crypto";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
-import { cloudflareConfigFromEnv, createSecretsStore, secretPrefix } from "./lib/secrets-store.mjs";
+import { ConfigError, createSecretsStore, resolveCloudflareConfig, secretPrefix } from "./lib/secrets-store.mjs";
 
 export const HMAC_SECRETS = [
   ["SELFTEST_HMAC_KEY", "self-test request signing (release.md)"],
@@ -21,8 +21,8 @@ Generates in memory and uploads to Cloudflare Secrets Store:
   ${HMAC_SECRETS.map(([n]) => n).join(", ")}
 Staging names carry the prefix STAGING_. Prints only the two public signing halves.
 
-Requires CF_BOOTSTRAP_TOKEN and CLOUDFLARE_ACCOUNT_ID in the environment
-(CLOUDFLARE_SECRETS_STORE_ID when the account has more than one store).
+Requires CF_BOOTSTRAP_TOKEN in the environment. CLOUDFLARE_ACCOUNT_ID is looked up when the token
+sees exactly one account; CLOUDFLARE_SECRETS_STORE_ID picks a store when there are several.
 
   --kid            key id of the active key (default: current UTC month)
   --dry-run        print the secret names that would be created; no network, no keys generated
@@ -119,16 +119,9 @@ export async function main(argv, envVars, deps = {}) {
     return 0;
   }
 
-  let store;
   try {
-    const cfg = cloudflareConfigFromEnv(envVars);
-    store = createSecretsStore({ fetch: deps.fetch ?? fetch, ...cfg });
-  } catch (e) {
-    err(`${e.message}\n\n${USAGE}`);
-    return 2;
-  }
-
-  try {
+    const cfg = await resolveCloudflareConfig(envVars, deps.fetch ?? fetch);
+    const store = createSecretsStore({ fetch: deps.fetch ?? fetch, sleep: deps.sleep, ...cfg });
     const existing = await store.listNames();
     const present = plan.names.filter((n) => existing.has(n));
     if (present.length && !values["skip-existing"]) {
@@ -162,6 +155,10 @@ export async function main(argv, envVars, deps = {}) {
     out("Bind only the active key to the validator; the standby stays bound to nothing.");
     return 0;
   } catch (e) {
+    if (e instanceof ConfigError) {
+      err(`${e.message}\n\n${USAGE}`);
+      return 2;
+    }
     err(`failed: ${e.message}`);
     return 1;
   }

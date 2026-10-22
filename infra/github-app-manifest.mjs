@@ -7,7 +7,8 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
-import { cloudflareConfigFromEnv, createSecretsStore, secretPrefix } from "./lib/secrets-store.mjs";
+import { createInterface } from "node:readline/promises";
+import { ConfigError, createSecretsStore, resolveCloudflareConfig, secretPrefix } from "./lib/secrets-store.mjs";
 
 const ORG = "Claudinite";
 const execFileP = promisify(execFile);
@@ -21,9 +22,15 @@ GITHUB_APP_ID, GITHUB_APP_CLIENT_ID, GITHUB_APP_CLIENT_SECRET, GITHUB_APP_WEBHOO
 GITHUB_APP_PRIVATE_KEY in Secrets Store (staging names carry the prefix STAGING_). Then prints
 the install URL. The credentials are never printed or written to disk.
 
-Run as a ${ORG} organisation owner (\`gh auth login\`). Requires CF_BOOTSTRAP_TOKEN and
-CLOUDFLARE_ACCOUNT_ID in the environment (CLOUDFLARE_SECRETS_STORE_ID when the account has
-more than one store). GitHub allows one hour for form, callback and conversion.
+Run as a ${ORG} organisation owner (\`gh auth login\`). Requires CF_BOOTSTRAP_TOKEN in the
+environment. CLOUDFLARE_ACCOUNT_ID is looked up when the token sees exactly one account;
+CLOUDFLARE_SECRETS_STORE_ID picks a store when there are several. GitHub allows one hour for
+form, callback and conversion.
+
+GitHub shows the credentials once, so before the browser opens the script proves it can write
+to Secrets Store (a throwaway secret, created and deleted). After the exchange, store writes
+retry with backoff; if some still fail the values stay in memory and you are asked to press
+Enter to retry the remaining names. Nothing is written to disk.
 
   --port     fixed local port (default: a free one)
   --dry-run  print the manifest and the secret names; no server, no network
@@ -51,7 +58,7 @@ export function buildManifest(env, port) {
     public: true,
     request_oauth_on_install: true,
     default_events: ["installation", "installation_repositories", "issues"],
-    default_permissions: { metadata: "read", members: "read", issues: "read", contents: "read", emails: "read" },
+    default_permissions: { metadata: "read", members: "read", issues: "read", contents: "read", email_addresses: "read" },
   };
 }
 
@@ -93,6 +100,42 @@ function openBrowser(url) {
   execFile(cmd, args, () => {});
 }
 
+const defaultPrompt = async (question) => {
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    return await rl.question(question);
+  } finally {
+    rl.close();
+  }
+};
+
+// Values stay in memory only. Returns the names that could not be stored (empty on success).
+async function storeAll({ store, items, comment, out, err, prompt, appUrl, appId, clientId }) {
+  let pending = items;
+  for (;;) {
+    const failed = [];
+    for (const item of pending) {
+      try {
+        await store.create(item.name, item.value, comment);
+        out(`created ${item.name}`);
+      } catch (e) {
+        err(`could not store ${item.name}: ${e.message}`);
+        failed.push(item);
+      }
+    }
+    if (!failed.length) return [];
+    const answer = (await prompt(`${failed.length} secret(s) not stored (${failed.map((f) => f.name).join(", ")}). Press Enter to retry, or type abort: `)).trim().toLowerCase();
+    if (answer === "abort") {
+      err(
+        `GitHub will not show these again, but they can be regenerated: open ${appUrl} and generate a new client secret, private key and webhook secret, then store ${failed.map((f) => f.name).join(", ")} yourself. ` +
+          `The App ID (${appId}) and client ID (${clientId}) are public and were not lost.`,
+      );
+      return failed.map((f) => f.name);
+    }
+    pending = failed;
+  }
+}
+
 async function convert(fetchImpl, code, token) {
   const res = await fetchImpl(`https://api.github.com/app-manifests/${encodeURIComponent(code)}/conversions`, {
     method: "POST",
@@ -100,6 +143,9 @@ async function convert(fetchImpl, code, token) {
   });
   if (!res.ok) throw new Error(`manifest conversion failed: HTTP ${res.status}`);
   const body = await res.json();
+  if (typeof body.slug !== "string" || !/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(body.slug)) {
+    throw new Error("conversion response has no usable App slug");
+  }
   for (const [name, pick] of SECRET_FIELDS) {
     if (!pick(body)) throw new Error(`conversion response is missing the field behind ${name}`);
   }
@@ -110,6 +156,13 @@ async function convert(fetchImpl, code, token) {
 function waitForCallback({ state, listen, port, timeoutMs }) {
   return new Promise((resolve, reject) => {
     const server = createServer((req, res) => {
+      // Only the exact loopback origin may read the form or deliver the code; this stops a
+      // DNS-rebinding page from reading the state.
+      if (req.headers.host !== `127.0.0.1:${server.address().port}`) {
+        res.writeHead(421, { "content-type": "text/plain" });
+        res.end("wrong host");
+        return;
+      }
       const url = new URL(req.url, "http://127.0.0.1");
       if (url.pathname === "/" && req.method === "GET") {
         const address = server.address();
@@ -184,15 +237,9 @@ export async function main(argv, envVars, deps = {}) {
     return 0;
   }
 
-  let store;
   try {
-    store = createSecretsStore({ fetch: deps.fetch ?? fetch, ...cloudflareConfigFromEnv(envVars) });
-  } catch (e) {
-    err(`${e.message}\n\n${USAGE}`);
-    return 2;
-  }
-
-  try {
+    const fetchImpl = deps.fetch ?? fetch;
+    const store = createSecretsStore({ fetch: fetchImpl, sleep: deps.sleep, ...(await resolveCloudflareConfig(envVars, fetchImpl)) });
     const names = SECRET_FIELDS.map(([n]) => prefix + n);
     const existing = await store.listNames();
     const present = names.filter((n) => existing.has(n));
@@ -200,6 +247,8 @@ export async function main(argv, envVars, deps = {}) {
       err(`refusing to run: already in Secrets Store: ${present.join(", ")}\nA second App registration would orphan them; remove them deliberately first.`);
       return 1;
     }
+    await store.probeWrite(`PACKSERVER_WRITE_PROBE_${randomBytes(4).toString("hex")}`);
+    out("Secrets Store write access confirmed.");
     const token = await (deps.ghToken ?? ghToken)();
     const state = (deps.state ?? (() => randomBytes(16).toString("hex")))();
     const code = await waitForCallback({
@@ -216,13 +265,25 @@ export async function main(argv, envVars, deps = {}) {
       },
     });
     const converted = await convert(deps.fetch ?? fetch, code, token);
-    for (const [name, pick] of SECRET_FIELDS) {
-      await store.create(prefix + name, pick(converted), `GitHub App ${converted.slug ?? ""} (${values.env})`.trim());
-      out(`created ${prefix + name}`);
-    }
+    const items = SECRET_FIELDS.map(([name, pick]) => ({ name: prefix + name, value: pick(converted) }));
+    const left = await storeAll({
+      store,
+      items,
+      comment: `GitHub App ${converted.slug} (${values.env})`,
+      out,
+      err,
+      prompt: deps.prompt ?? defaultPrompt,
+      appUrl: converted.html_url ?? `https://github.com/organizations/${ORG}/settings/apps/${converted.slug}`,
+      appId: converted.id,
+      clientId: converted.client_id,
+    });
     out(`Install the App: https://github.com/apps/${converted.slug}/installations/new`);
-    return 0;
+    return left.length ? 1 : 0;
   } catch (e) {
+    if (e instanceof ConfigError) {
+      err(`${e.message}\n\n${USAGE}`);
+      return 2;
+    }
     err(`failed: ${e.message}`);
     return 1;
   }

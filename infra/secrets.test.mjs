@@ -2,18 +2,29 @@ import { describe, expect, it } from "vitest";
 import { createPublicKey, createPrivateKey, sign, verify } from "node:crypto";
 import { kidFor, nextKid, main, generateSigningKey } from "./secrets.mjs";
 
-function fakeCloudflare({ existing = [], failList = false, failCreateOn } = {}) {
+function fakeCloudflare({ existing = [], failList = false, failCreateOn, accounts = [{ id: "acct" }], flaky = 0, networkFlaky = 0 } = {}) {
+  let flakyLeft = flaky;
+  let netLeft = networkFlaky;
   const calls = [];
   const created = [];
   const fetch = async (url, init) => {
     calls.push(`${init.method} ${url}`);
+    if (netLeft > 0 && init.method === "POST") {
+      netLeft--;
+      throw new Error("socket hang up");
+    }
     const json = (status, body) => ({ ok: status < 400, status, json: async () => body });
+    if (url.endsWith("/client/v4/accounts")) return json(200, { success: true, result: accounts });
     if (url.endsWith("/secrets_store/stores")) return json(200, { success: true, result: [{ id: "store1", name: "default" }] });
     if (url.includes("/secrets?page=")) {
       if (failList) return json(500, { success: false, errors: [{ code: 1, message: "boom" }] });
       return json(200, { success: true, result: existing.map((name) => ({ name })), result_info: { total_pages: 1 } });
     }
     if (init.method === "POST") {
+      if (flakyLeft > 0) {
+        flakyLeft--;
+        return json(503, { success: false, errors: [{ code: 3, message: "unavailable" }] });
+      }
       const [item] = JSON.parse(init.body);
       if (item.name === failCreateOn) return json(500, { success: false, errors: [{ code: 2, message: "nope" }] });
       created.push(item);
@@ -27,10 +38,11 @@ function fakeCloudflare({ existing = [], failList = false, failCreateOn } = {}) 
 const run = async (argv, env = {}, deps = {}) => {
   const out = [];
   const err = [];
-  const code = await main(argv, env, { out: (s) => out.push(s), err: (s) => err.push(s), now: () => new Date("2026-11-05T00:00:00Z"), ...deps });
+  const code = await main(argv, env, { sleep: async () => {}, out: (s) => out.push(s), err: (s) => err.push(s), now: () => new Date("2026-11-05T00:00:00Z"), ...deps });
   return { code, out: out.join("\n"), err: err.join("\n") };
 };
 const ENV = { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" };
+const TOKEN_ONLY = { CF_BOOTSTRAP_TOKEN: "t" };
 
 describe("kid helpers", () => {
   it("formats the month and rolls the year", () => {
@@ -51,6 +63,30 @@ describe("secrets.mjs", () => {
     expect((await run([], ENV)).code).toBe(2);
     expect((await run(["--env", "prod"], ENV)).code).toBe(2);
     expect((await run(["--env", "staging", "--kid", "2026-13"], ENV)).code).toBe(2);
+  });
+
+  it("looks the account up when only the token is set and it sees one account", async () => {
+    const cf = fakeCloudflare();
+    const r = await run(["--env", "production"], TOKEN_ONLY, { fetch: cf.fetch });
+    expect(r.code).toBe(0);
+    expect(cf.calls.some((c) => c.includes("/accounts/acct/secrets_store/"))).toBe(true);
+  });
+
+  it("exits 2 naming CLOUDFLARE_ACCOUNT_ID when the token sees several accounts or none", async () => {
+    for (const accounts of [[{ id: "a" }, { id: "b" }], []]) {
+      const cf = fakeCloudflare({ accounts });
+      const r = await run(["--env", "production"], TOKEN_ONLY, { fetch: cf.fetch });
+      expect(r.code).toBe(2);
+      expect(r.err).toContain("CLOUDFLARE_ACCOUNT_ID");
+      expect(cf.created).toEqual([]);
+    }
+  });
+
+  it("retries a 5xx and a dropped connection with backoff, then succeeds", async () => {
+    const cf = fakeCloudflare({ flaky: 1, networkFlaky: 1 });
+    const r = await run(["--env", "production"], ENV, { fetch: cf.fetch });
+    expect(r.code).toBe(0);
+    expect(cf.created).toHaveLength(6);
   });
 
   it("refuses without Cloudflare credentials and makes no call", async () => {
