@@ -1,0 +1,162 @@
+# Claudinite's CI gate, written by cn init. check runs cn check world over
+# the change from main's own engine: it checks out main, sets up and keeps
+# the engine main pins outside the tree, and only then checks out the
+# change, so nothing the change holds runs before main's pin guard has
+# passed it. A main that pins no engine yet has no guard to keep, so the
+# PR that adopts Claudinite is judged by the engine it pins, and so is a
+# change on a main whose engine predates this gate. On any other PR that
+# guard refuses a moved pin; on an update PR it verifies
+# the new pin and reports the move, and the job then runs the new
+# engine's own check world over this repo, which judges the workflows the
+# update carries. The update job dispatches this workflow on its PR's
+# branch, since GitHub starts no pull_request run for a PR the job token
+# opened; land then merges that PR once check is green. check caches the
+# coded checks binary under its own key, so only a run whose engine or
+# checks changed builds it.
+name: claudinite-ci
+
+on:
+  # A draft is work in progress: its checks start once it is marked ready.
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: The update PR this run checks, and lands when check passes
+        type: string
+        default: ""
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: who opened the change
+        id: who
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR: ${{ inputs.pr }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          base=origin/main
+          case $EVENT in
+            pull_request) author=$PR_AUTHOR ;;
+            workflow_dispatch)
+              if [ -n "$PR" ]; then
+                case $PR in
+                  *[!0-9]*) echo "::error::input pr must be a PR number, not $PR"; exit 1 ;;
+                esac
+                author=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .user.login)
+              else
+                author=$ACTOR base=HEAD
+              fi ;;
+            *) author=$ACTOR base=HEAD ;;
+          esac
+          echo "author=$author" >> "$GITHUB_OUTPUT"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+      - if: hashFiles('.claudinite/settings.yaml') != ''
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/claudinite
+            ~/.npm/_cacache
+          key: cn-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.claudinite/settings.yaml') }}
+          restore-keys: cn-${{ runner.os }}-${{ runner.arch }}-
+      - name: install the engine main pins
+        id: main-pins
+        if: hashFiles('.claudinite/settings.yaml') != ''
+        run: npx --yes --prefer-offline @claudinite/setup@1.0.1
+      - name: keep main's engine outside the tree
+        id: main-engine
+        if: steps.main-pins.outcome == 'success'
+        run: |
+          install "$(readlink -f .claudinite/bin/cn)" "$RUNNER_TEMP/cn-base"
+          mkdir -p "$RUNNER_TEMP/cn-probe"
+          code=0
+          "$RUNNER_TEMP/cn-base" check world --repo "$RUNNER_TEMP/cn-probe" --pr-author probe --base-ref HEAD --pin-output /dev/null --defer-workflows >/dev/null 2>&1 || code=$?
+          case $code in
+            0) echo "judges=true" >> "$GITHUB_OUTPUT" ;;
+            2) echo "main's engine predates the guard that leaves an update's workflows to the engine it pins, so the engine the change pins judges it" ;;
+            *) echo "::error::main's engine exited $code on an empty repository"; exit 1 ;;
+          esac
+      - name: move the tree to the change
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: install the engine the change pins
+        if: steps.main-engine.outputs.judges != 'true'
+        run: npx --yes --prefer-offline @claudinite/setup@1.0.1
+      - name: judge the change by the engine it pins
+        if: steps.main-engine.outputs.judges != 'true'
+        run: install "$(readlink -f .claudinite/bin/cn)" "$RUNNER_TEMP/cn-base"
+      - name: name the checks build
+        id: checks
+        continue-on-error: true
+        run: >-
+          "$RUNNER_TEMP/cn-base" check key >> "$GITHUB_OUTPUT"
+      - name: restore the checks build
+        if: steps.checks.outputs.key != ''
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.checks.outputs.dir }}
+          key: claudinite-checks-${{ runner.os }}-${{ runner.arch }}-${{ steps.checks.outputs.key }}
+      - name: cn check world, from main's engine
+        id: world
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          AUTHOR: ${{ steps.who.outputs.author }}
+          BASE: ${{ steps.who.outputs.base }}
+        run: >-
+          "$RUNNER_TEMP/cn-base" check world --pr-author "$AUTHOR" --base-ref "$BASE" --pin-output "$GITHUB_OUTPUT" --defer-workflows
+      - name: install the engine the update pins
+        if: steps.world.outputs.pin == 'moved'
+        run: npx --yes --prefer-offline @claudinite/setup@1.0.1
+      - name: cn check world, from the new engine
+        if: steps.world.outputs.pin == 'moved'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          AUTHOR: ${{ steps.who.outputs.author }}
+          BASE: ${{ steps.who.outputs.base }}
+        run: .claudinite/bin/cn check world --pr-author "$AUTHOR" --base-ref "$BASE"
+
+  land:
+    needs: check
+    if: github.event_name == 'workflow_dispatch' && inputs.pr != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: install the pinned engine
+        run: npx --yes --prefer-offline @claudinite/setup@1.0.1
+      - name: cn update land
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+        run: .claudinite/bin/cn update land --pr "$PR" --sha "$GITHUB_SHA"
