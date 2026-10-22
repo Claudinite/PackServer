@@ -91,7 +91,7 @@ The validator does not trust the declared inventory: it extracts the real one (c
 users(id, handle, email, email_verified_at, created_at, status)
 credentials(id, user_id, type[passkey|totp|recovery], public_key|secret_enc, sign_count, transports, created_at, last_used_at)
 identities(user_id, provider[github|google], subject, login, linked_at)          -- linked logins
-sessions(id_hash, user_id, mfa_at, created_at, last_seen_at, revoked_at)        -- 12h idle / 7d absolute; step-up window 10 min
+sessions(id_hash, user_id, mfa_at, created_at, last_seen_at, revoked_at)        -- 12h idle / 7d absolute; step-up window 10 min; last_seen_at written at most every 15 min
 
 scopes(id, name UNIQUE, kind[user|org], verified_github_org, verified_domain, verified_publisher_at)
 scope_members(scope_id, user_id, role[owner|admin|publisher|member])
