@@ -5,3 +5,4 @@ export * from "./idempotency";
 export * from "./ratelimit";
 export * from "./turnstile";
 export * from "./selftest-runner";
+export * from "./body";

@@ -1,6 +1,7 @@
 import type { Context, MiddlewareHandler } from "hono";
 import type { RateLimit, Turnstile } from "@packserver/ports";
 import { clientIp, RATE_LIMIT_RETRY_AFTER_S } from "./ratelimit";
+import { BodyTooLarge, formFields } from "./body";
 import { refusal } from "./refusals";
 
 export const TURNSTILE_FIELD = "cf-turnstile-response";
@@ -24,12 +25,6 @@ export interface TurnstileOptions {
   fallbackKey?: (c: Context) => string | Promise<string>;
 }
 
-async function form(c: Context): Promise<Record<string, unknown>> {
-  const type = c.req.header("content-type") ?? "";
-  if (!type.includes("application/x-www-form-urlencoded") && !type.includes("multipart/form-data")) return {};
-  return c.req.parseBody();
-}
-
 /** Refuses with `human-check` unless a Turnstile token verifies; sets `humanCheck` on the context otherwise. */
 export function turnstile(options: TurnstileOptions): MiddlewareHandler<{ Variables: TurnstileVariables }> {
   const useFallback = async (c: Context): Promise<Response | undefined> => {
@@ -40,7 +35,13 @@ export function turnstile(options: TurnstileOptions): MiddlewareHandler<{ Variab
   };
 
   return async (c, next) => {
-    const body = await form(c);
+    let body: Record<string, unknown>;
+    try {
+      body = await formFields(c);
+    } catch (error) {
+      if (error instanceof BodyTooLarge) return refusal("quota", { status: 413, message: "request body too large" });
+      throw error;
+    }
     const field = body[TURNSTILE_FIELD];
     const token = c.req.header(TURNSTILE_TOKEN_HEADER) ?? (typeof field === "string" ? field : undefined);
 

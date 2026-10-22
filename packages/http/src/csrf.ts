@@ -1,4 +1,5 @@
 import type { Context, MiddlewareHandler } from "hono";
+import { BodyTooLarge, formFields } from "./body";
 import { refusal } from "./refusals";
 
 export const CSRF_HEADER = "X-CSRF-Token";
@@ -35,9 +36,7 @@ export interface CsrfOptions {
 async function presentedToken(c: Context): Promise<string | undefined> {
   const header = c.req.header(CSRF_HEADER);
   if (header) return header;
-  const type = c.req.header("content-type") ?? "";
-  if (!type.includes("application/x-www-form-urlencoded") && !type.includes("multipart/form-data")) return undefined;
-  const field = (await c.req.parseBody())[CSRF_FIELD];
+  const field = (await formFields(c))[CSRF_FIELD];
   return typeof field === "string" ? field : undefined;
 }
 
@@ -51,7 +50,13 @@ export function csrf(options: CsrfOptions): MiddlewareHandler {
     }
     const session = await options.sessionId(c);
     if (!session) return refusal("signed-out");
-    const presented = await presentedToken(c);
+    let presented: string | undefined;
+    try {
+      presented = await presentedToken(c);
+    } catch (error) {
+      if (error instanceof BodyTooLarge) return refusal("quota", { status: 413, message: "request body too large" });
+      throw error;
+    }
     if (!presented || !sameString(presented, await csrfToken(options.secret, session))) {
       return refusal("forbidden", { message: "missing or invalid CSRF token" });
     }

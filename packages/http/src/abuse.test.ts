@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { describe, expect, it } from "vitest";
 import { createFakePorts, FakeRateLimit, TURNSTILE_PASS_TOKEN } from "@packserver/ports/fakes";
 import { csrf, csrfToken, idempotency, rateLimit, turnstile, type TurnstileVariables } from "./index";
@@ -47,7 +47,7 @@ describe("IT-ABUSE-007 CSRF and idempotency", () => {
     const { app, created } = formApp();
     const init = { session: "s1", origin: ORIGIN, key: "key-00000002", token: await csrfToken(SECRET, "s1") };
     const first = await post(app, init);
-    const second = await post(app, { ...init, body: "different" });
+    const second = await post(app, init);
     expect(first.status).toBe(201);
     expect(second.status).toBe(201);
     expect(await second.json()).toEqual({ id: 1 });
@@ -68,6 +68,90 @@ describe("IT-ABUSE-007 CSRF and idempotency", () => {
     const { app } = formApp();
     app.get("/page", (c) => c.text("page"));
     expect((await app.request("/page")).status).toBe(200);
+  });
+});
+
+describe("idempotency details", () => {
+  function app2(caller: (c: Context) => string | undefined = (c) => c.req.header("x-session")) {
+    const ports = createFakePorts();
+    const app = new Hono();
+    const runs: string[] = [];
+    app.use(idempotency({ kv: ports.kv.sessions!, caller }));
+    app.post("/x", async (c) => {
+      const status = Number(c.req.header("x-status") ?? 201);
+      runs.push(String(status));
+      return c.json({ n: runs.length }, status as 201);
+    });
+    const send = (headers: Record<string, string>, body = "a=1") =>
+      app.request("/x", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", ...headers }, body });
+    return { send, runs, ports };
+  }
+  const h = (extra: Record<string, string> = {}) => ({ "x-session": "s1", "idempotency-key": "key-0000000A", ...extra });
+
+  it("lets a retry run fresh after any outcome other than 2xx/3xx", async () => {
+    for (const status of [400, 403, 429, 500]) {
+      const { send, runs } = app2();
+      await send(h({ "x-status": String(status) }));
+      const retry = await send(h());
+      expect(retry.headers.get("idempotent-replay")).toBeNull();
+      expect(runs).toEqual([String(status), "201"]);
+    }
+  });
+
+  it("stores and replays a 2xx", async () => {
+    const { send, runs } = app2();
+    await send(h());
+    const replay = await send(h());
+    expect(replay.headers.get("idempotent-replay")).toBe("true");
+    expect(runs).toHaveLength(1);
+  });
+
+  it("neither stores nor replays for an anonymous caller", async () => {
+    const { send, runs, ports } = app2();
+    const anon = { "idempotency-key": "key-0000000A" };
+    await send(anon);
+    const second = await send(anon);
+    expect(second.headers.get("idempotent-replay")).toBeNull();
+    expect(runs).toHaveLength(2);
+    expect(await ports.kv.sessions!.list("idem:")).toEqual([]);
+  });
+
+  it("gives the in-progress marker a short TTL and the result a long one", async () => {
+    const { send, ports } = app2();
+    const kv = ports.kv.sessions!;
+    const put = kv.put.bind(kv);
+    const ttls: Array<[string, number | undefined]> = [];
+    kv.put = async (k, v, o) => {
+      ttls.push([v === "pending" ? "pending" : "result", o?.ttl_seconds]);
+      return put(k, v, o);
+    };
+    await send(h());
+    expect(ttls.find(([k]) => k === "pending")?.[1]).toBe(60);
+    expect(ttls.find(([k]) => k === "result")?.[1]).toBe(86_400);
+  });
+
+  it("accepts the key from a form field", async () => {
+    const { send, runs } = app2();
+    await send({ "x-session": "s1" }, "idempotency-key=key-0000000F&a=1");
+    const replay = await send({ "x-session": "s1" }, "idempotency-key=key-0000000F&a=1");
+    expect(replay.headers.get("idempotent-replay")).toBe("true");
+    expect(runs).toHaveLength(1);
+  });
+
+  it("refuses a different body under the same key", async () => {
+    const { send, runs } = app2();
+    await send(h(), "a=1");
+    const clash = await send(h(), "a=2");
+    expect(clash.status).toBe(409);
+    expect(await clash.json()).toMatchObject({ reason: "exists" });
+    expect(runs).toHaveLength(1);
+  });
+
+  it("refuses a body over 64 KiB before parsing", async () => {
+    const { send, runs } = app2();
+    const res = await send(h(), "a=" + "x".repeat(70_000));
+    expect(res.status).toBe(413);
+    expect(runs).toHaveLength(0);
   });
 });
 
