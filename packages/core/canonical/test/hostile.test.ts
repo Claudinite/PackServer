@@ -243,8 +243,8 @@ describe("zstd structure (IT-VAL-022, IT-VAL-023)", () => {
 describe("limits sit exactly where REQ-VAL-022 puts them", () => {
   it("allows 5,000 entries and refuses the 5,001st", async () => {
     const make = (n: number) => zstd(rawTar(Array.from({ length: n }, (_, i) => file(`f${String(i).padStart(5, "0")}`, createHash("sha256").update(String(i)).digest("hex")))), 9);
-    expect((await extractArchive(make(LIMITS.entries))).files).toHaveLength(LIMITS.entries);
-    await expectRefused(make(LIMITS.entries + 1), "archive.bomb", "entry-count");
+    expect((await extractArchive(make(LIMITS.files))).files).toHaveLength(LIMITS.files);
+    await expectRefused(make(LIMITS.files + 1), "archive.bomb", "entry-count");
   });
   it("allows a 5 MiB file and refuses one byte more", async () => {
     const make = (n: number) => zstd(rawTar([file("big.bin", "")].map((e) => ({ ...e, content: sparseNoise(n, 3) }))));

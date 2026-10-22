@@ -6,8 +6,9 @@ export const LIMITS = {
   archiveBytes: 3 * MiB,
   totalUnpackedBytes: 20 * MiB,
   fileBytes: 5 * MiB,
-  entries: 5_000,
-  /** Unpacked bytes over stored bytes for the archive as a whole. */
+  /** Regular-file entries; directories are bounded by the depth and path limits and the unpacked cap. */
+  files: 5_000,
+  /** File content bytes over stored bytes for the archive as a whole. */
   ratio: 100,
   pathDepth: 32,
   pathBytes: 4_096,

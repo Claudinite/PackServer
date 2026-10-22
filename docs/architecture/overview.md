@@ -47,7 +47,7 @@ on Cloudflare's Free plan at launch; the switch to Pro and its trigger are in
 ## Domain model
 
 A **pack** is `@scope/name`. A **version** is immutable: same name and version, same bytes, SHA-256
-recorded. The archive is a `tar.zst` of at most 3 MB compressed holding `pack.json`, `RULES.md`,
+recorded. The archive is uploaded as a `tar.zst` of at most 3 MB and served in the raw-framed canonical form (D56) of at most 20 MB + 4 KiB, holding `pack.json`, `RULES.md`,
 `skills/`, `declared-checks.json`, `checks/*.go`, `tasks/`, `README.md`, and whatever else the pack
 ships; cn strips `provenance/`, `test/` and `docs/` when it vendors. Registry metadata (categories,
 tags, license, repository) lives beside the manifest in `meta.json`, never in keys cn reads.

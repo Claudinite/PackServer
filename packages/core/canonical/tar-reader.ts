@@ -29,7 +29,7 @@ export class TarReader {
   private pendingPath: Uint8Array | null = null;
   private paxChunks: Uint8Array[] = [];
   private zeroBlocks = 0;
-  private entries = 0;
+  private files = 0;
 
   private readonly sink: TarSink;
 
@@ -107,6 +107,7 @@ export class TarReader {
     if (this.zeroBlocks > 0) throw unsafe("tar-data-after-end");
     verifyChecksum(block);
 
+    checkMagic(block);
     const type = block[156]!;
     const mode = octal(block.subarray(100, 108), "mode");
     const isPax = type === 0x78; // 'x'
@@ -127,7 +128,7 @@ export class TarReader {
     else if (type === 0x31 || type === 0x32) throw unsafe("link-entry");
     else throw unsafe("entry-type");
 
-    if (++this.entries > LIMITS.entries) throw bomb("entry-count");
+    if (kind === "file" && ++this.files > LIMITS.files) throw bomb("entry-count");
 
     const size = sizeField(block.subarray(124, 136));
     if (size === null) throw unsafe("size-field");
@@ -148,8 +149,7 @@ const padding = (size: number) => (BLOCK - (size % BLOCK)) % BLOCK;
 
 function ustarPath(block: Uint8Array): Uint8Array {
   const name = cString(block.subarray(0, 100));
-  const ustar = block[257] === 0x75 && block[258] === 0x73 && block[259] === 0x74 && block[260] === 0x61 && block[261] === 0x72;
-  const prefix = ustar ? cString(block.subarray(345, 500)) : new Uint8Array(0);
+  const prefix = hasUstarMagic(block) ? cString(block.subarray(345, 500)) : new Uint8Array(0);
   if (prefix.length === 0) return name;
   const out = new Uint8Array(prefix.length + 1 + name.length);
   out.set(prefix, 0);
@@ -158,21 +158,28 @@ function ustarPath(block: Uint8Array): Uint8Array {
   return out;
 }
 
+const hasUstarMagic = (block: Uint8Array) => block[257] === 0x75 && block[258] === 0x73 && block[259] === 0x74 && block[260] === 0x61 && block[261] === 0x72;
+
+/** Either no magic at all (v7) or exactly POSIX `ustar\0` `00`; GNU's `ustar  ` reuses the prefix bytes for times. */
+function checkMagic(block: Uint8Array): void {
+  if (!hasUstarMagic(block)) {
+    if (block.subarray(257, 265).some((b) => b !== 0)) throw unsafe("tar-magic");
+    return;
+  }
+  if (block[262] !== 0 || block[263] !== 0x30 || block[264] !== 0x30) throw unsafe("tar-magic");
+}
+
 function cString(field: Uint8Array): Uint8Array {
   const nul = field.indexOf(0);
   return (nul === -1 ? field : field.subarray(0, nul)).slice();
 }
 
 function octal(field: Uint8Array, what: string): number {
+  let i = 0;
+  while (i < field.length && field[i] === 0x20) i++;
   let text = "";
-  for (const b of field) {
-    if (b === 0 || b === 0x20) {
-      if (text === "") continue;
-      break;
-    }
-    if (b < 0x30 || b > 0x37) throw unsafe("octal-field", what);
-    text += String.fromCharCode(b);
-  }
+  while (i < field.length && field[i]! >= 0x30 && field[i]! <= 0x37) text += String.fromCharCode(field[i++]!);
+  for (; i < field.length; i++) if (field[i] !== 0 && field[i] !== 0x20) throw unsafe("octal-field", what);
   return text === "" ? 0 : parseInt(text, 8);
 }
 

@@ -9,13 +9,13 @@ const MAX_BLOCK = 128 * 1024;
 /**
  * Walks the frame and block headers of a zstd stream without decoding anything, so the checks that
  * need only declared parameters (window, skippable frames, dictionaries, structure) cost a few
- * header reads. Returns the number of frames.
+ * header reads. Returns the end offset of each frame, so a decoder can be fed one frame at a time.
  */
-export function inspectFrames(bytes: Uint8Array): number {
+export function inspectFrames(bytes: Uint8Array): number[] {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const end = bytes.length;
   let pos = 0;
-  let frames = 0;
+  const ends: number[] = [];
   const need = (n: number) => {
     if (pos + n > end) throw unsafe("zstd-truncated");
   };
@@ -73,7 +73,7 @@ export function inspectFrames(bytes: Uint8Array): number {
       need(4);
       pos += 4;
     }
-    frames++;
+    ends.push(pos);
   }
-  return frames;
+  return ends;
 }

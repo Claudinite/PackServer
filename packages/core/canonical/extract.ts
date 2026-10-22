@@ -4,6 +4,7 @@ import { ArchiveRefusal, bomb, unsafe } from "./errors.ts";
 import { CANONICAL_ARCHIVE_BYTES, LIMITS } from "./limits.ts";
 import { collisionKey, isArchiveContent, isArchiveName, normalisePath } from "./paths.ts";
 import { TarReader, type TarEntry, type TarSink } from "./tar-reader.ts";
+import { tarOf } from "./tar-writer.ts";
 import { buildTree, type Tree, type TreeFile } from "./tree.ts";
 import { inspectFrames } from "./zstd-frames.ts";
 
@@ -20,6 +21,7 @@ class Collector implements TarSink {
   private readonly nodes = new Map<string, Node>();
   readonly files: Omit<TreeFile, "sha256" | "size">[] = [];
   readonly dirs: string[] = [];
+  contentBytes = 0;
   private current: { path: string; executable: boolean; chunks: Uint8Array[]; head: Uint8Array; seen: number } | null = null;
 
   entry(entry: TarEntry): void {
@@ -37,6 +39,7 @@ class Collector implements TarSink {
   data(chunk: Uint8Array): void {
     const cur = this.current;
     if (!cur) return;
+    this.contentBytes += chunk.length;
     cur.chunks.push(chunk.slice());
     if (cur.head.length < 512) {
       const head = new Uint8Array(Math.min(512, cur.head.length + chunk.length));
@@ -91,38 +94,45 @@ class Collector implements TarSink {
 export async function extractArchive(archive: Uint8Array, opts: { canonical?: boolean } = {}): Promise<Tree> {
   // The 3 MB cap is on what a publisher uploads; the canonical form is raw-framed and larger.
   if (archive.length > (opts.canonical ? CANONICAL_ARCHIVE_BYTES : LIMITS.archiveBytes)) throw bomb("archive-size");
-  inspectFrames(archive);
+  const frames = inspectFrames(archive);
 
   const collector = new Collector();
   const tar = new TarReader(collector);
-  const decoder = createZstdDecompress({
-    params: { [constants.ZSTD_d_windowLogMax]: Math.log2(LIMITS.windowBytes) },
-  });
-  const maxProduced = Math.min(LIMITS.totalUnpackedBytes, archive.length * LIMITS.ratio);
-
-  const slices = (function* () {
-    for (let i = 0; i < archive.length; i += SLICE) yield archive.subarray(i, i + SLICE);
-  })();
-  const source = Readable.from(slices, { objectMode: false });
-  source.on("error", () => {});
+  const maxContent = archive.length * LIMITS.ratio;
 
   let produced = 0;
-  try {
-    source.pipe(decoder);
-    for await (const chunk of decoder as AsyncIterable<Uint8Array>) {
-      produced += chunk.length;
-      if (produced > maxProduced) {
-        throw bomb(produced > LIMITS.totalUnpackedBytes ? "unpacked-size" : "ratio");
+  let start = 0;
+  for (const end of frames) {
+    // A fresh decoder per frame: node's zstd stream drops the bytes that follow a frame's end within one write.
+    const decoder = createZstdDecompress({ params: { [constants.ZSTD_d_windowLogMax]: Math.log2(LIMITS.windowBytes) } });
+    const source = Readable.from(slicesOf(archive.subarray(start, end)), { objectMode: false });
+    source.on("error", () => {});
+    try {
+      source.pipe(decoder);
+      for await (const chunk of decoder as AsyncIterable<Uint8Array>) {
+        produced += chunk.length;
+        if (produced > LIMITS.totalUnpackedBytes) throw bomb("unpacked-size");
+        tar.push(chunk);
+        if (collector.contentBytes > maxContent) throw bomb("ratio");
       }
-      tar.push(chunk);
+    } catch (e) {
+      if (e instanceof ArchiveRefusal) throw e;
+      throw unsafe("zstd-corrupt");
+    } finally {
+      source.destroy();
+      decoder.destroy();
     }
-    tar.finish();
-  } catch (e) {
-    if (e instanceof ArchiveRefusal) throw e;
-    throw unsafe("zstd-corrupt");
-  } finally {
-    source.destroy();
-    decoder.destroy();
+    start = end;
   }
-  return buildTree(collector.files, collector.dirs);
+  if (produced === 0) throw unsafe("tar-empty");
+  tar.finish();
+
+  const tree = buildTree(collector.files, collector.dirs);
+  // What is accepted must re-pack and re-extract: the canonical tar obeys the same unpacked cap.
+  if (tarOf(tree).length > LIMITS.totalUnpackedBytes) throw bomb("unpacked-size", "canonical form");
+  return tree;
+}
+
+function* slicesOf(bytes: Uint8Array): Generator<Uint8Array> {
+  for (let i = 0; i < bytes.length; i += SLICE) yield bytes.subarray(i, i + SLICE);
 }

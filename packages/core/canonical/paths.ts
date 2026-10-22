@@ -22,7 +22,7 @@ export function normalisePath(raw: Uint8Array, isDir: boolean): string {
   // eslint-disable-next-line no-control-regex -- control characters in names are exactly what is refused
   if (/[\u0000-\u001f\u007f\\]/.test(name)) throw unsafe("path-characters");
   if (name.startsWith("/") || /^[A-Za-z]:/.test(name)) throw unsafe("path-absolute");
-  while (name.startsWith("./")) name = name.slice(2);
+  if (name.startsWith("./")) name = name.slice(2);
   if (isDir) name = name.replace(/\/$/, "");
   else if (name.endsWith("/")) throw unsafe("path-file-trailing-slash");
   if (name === "" || name === ".") {

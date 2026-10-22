@@ -42,7 +42,7 @@ describe("deterministic re-pack (IT-VAL-033)", () => {
 
   it("is one zstd frame with a window of at most 8 MiB, no skippable frames, no checksum, no content size", async () => {
     const a = await canonicaliseArchive(fixtureArchive("gcp"));
-    expect(inspectFrames(a.archive)).toBe(1);
+    expect(inspectFrames(a.archive)).toHaveLength(1);
     expect(Array.from(a.archive.subarray(0, 4))).toEqual([0x28, 0xb5, 0x2f, 0xfd]);
     const descriptor = a.archive[4]!;
     expect(descriptor & 0x20, "single segment").toBe(0);
@@ -56,7 +56,7 @@ describe("deterministic re-pack (IT-VAL-033)", () => {
   it("packs a pack near the unpacked cap raw-framed, past the 3 MB upload cap, and reads it back", async () => {
     const big = buildTree([1, 2, 3].map((i) => ({ path: `f${i}.bin`, executable: false, content: sparseNoise(5 * 1024 * 1024, i) })));
     const archive = canonicalArchive(big);
-    expect(inspectFrames(archive)).toBe(1);
+    expect(inspectFrames(archive)).toHaveLength(1);
     expect(archive.length).toBeGreaterThan(LIMITS.archiveBytes);
     await expectRefused(archive, "archive.bomb", "archive-size");
     expect(treeHash(await extractArchive(archive, { canonical: true }))).toBe(treeHash(big));
@@ -197,7 +197,7 @@ describe("tamper negatives", () => {
   });
 
   it("limits are the documented numbers", () => {
-    expect(LIMITS).toMatchObject({ totalUnpackedBytes: 20 * 2 ** 20, fileBytes: 5 * 2 ** 20, entries: 5000, ratio: 100, pathDepth: 32, pathBytes: 4096, componentBytes: 255, windowBytes: 8 * 2 ** 20, archiveBytes: 3 * 2 ** 20 });
+    expect(LIMITS).toMatchObject({ totalUnpackedBytes: 20 * 2 ** 20, fileBytes: 5 * 2 ** 20, files: 5000, ratio: 100, pathDepth: 32, pathBytes: 4096, componentBytes: 255, windowBytes: 8 * 2 ** 20, archiveBytes: 3 * 2 ** 20 });
   });
 });
 
