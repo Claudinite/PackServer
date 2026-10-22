@@ -8,8 +8,8 @@ Status: proposal, 2026-10-22, revised the same day after a practice review, a se
 > - One invariant: **what a scenario asserts changes only when its requirement changes.** Everything else (DSL, drivers, fakes, production code) changes freely. [stability-checks.md](stability-checks.md) enforces it in CI, from the base branch, so a PR cannot switch the gate off.
 > - All seven Workers run as production bundles in one local `workerd`; D1, R2, KV, Durable Objects, Workflows and Queues are the real local implementations; everything else is faked at a port and an unfaked outbound call fails the test.
 > - Coverage = every active requirement in [../requirements/](../requirements/README.md) has at least one green scenario naming its ID. That is a traceability measure, not proof that the scenario proves the statement; review and the see-it-fail job are the defence.
-> - PR lane ~10 minutes wall-clock; ~$25–30/month of CI on a private repo. The tooling bet is proven by [a spike](../../spike/test-dsl/RESULTS.md): harness, MSW, DSL, http driver, Recorder and N/N-1 all ran.
-> - Decision still open (§14): browser test scope. The architecture/UI conflicts and the security-review requirements are settled.
+> - PR lane under 10 minutes wall-clock; CI fits inside the free Actions minutes of a private repo (~$0–3/month, §11). The tooling bet is proven by [a spike](../../spike/test-dsl/RESULTS.md): harness, MSW, DSL, http driver, Recorder and N/N-1 all ran.
+> - Every open question is decided (§14).
 
 Companion documents: [dsl.md](dsl.md) (the World DSL and example scenarios), [stability-checks.md](stability-checks.md) (the gate and the hatches), [../requirements/](../requirements/README.md) (the register), [research/tooling.md](research/tooling.md) and [research/dsl-patterns.md](research/dsl-patterns.md) (sources for every tool claim), [../../spike/test-dsl/](../../spike/test-dsl/README.md) (the runnable proof and its measured numbers). The sibling plans are cited by path until they merge; the agreements with them are restated here where they bind this plan.
 
@@ -25,7 +25,7 @@ Ariel's brief, verbatim: "mainly integration tests for a complete system, with a
 | G4 | Scenario files rarely change unless a requirement changes | scenario churn is gated against the register; a mechanical-refactor lane exists for DSL renames so the DSL can evolve without loosening the gate | [stability-checks.md](stability-checks.md) |
 | G5 | Integration scenarios carry full coverage of requirements | a register with stable IDs; every scenario names its IDs; a matrix per run; a watermark that only ratchets up. "Covered" means "at least one green scenario names the ID"; whether the scenario proves the statement is a review question, helped by see-it-fail | §8 |
 | G6 | Unit tests are free and unlimited | `packages/core` is plain functions; unit tests live beside them and are gated by nothing but review | §2 |
-| G7 | Fast, deterministic, cheap | injected clock and RNG, no sleeps, hermetic per-test state, sharded CI, ~10 min per PR, tens of dollars a month | §7, §9, §11 |
+| G7 | Fast, deterministic, cheap | injected clock and RNG, no sleeps, hermetic per-test state, one-runner CI under 10 min per PR, inside the free Actions minutes | §7, §9, §11 |
 
 Non-goals: load testing (release plan, canary stage), penetration testing (a separate review), testing Cloudflare's own products (we test our use of them).
 
@@ -38,9 +38,9 @@ The suite is a honeycomb, not a pyramid: integration scenarios are the widest la
 | Integration scenario (`tests/scenarios/**/*.scenario.ts`) | an actor observes the behaviour a requirement promises, through the whole system | yes | every PR, in-process driver | whoever changes the requirement |
 | Browser flow (scenario tagged `ui`) | the page does what the scenario says, including passkey ceremonies | yes, for requirements with `coverage: scenario+ui`, counted from the nightly browser run | nightly and on `apps/web` changes | same |
 | Unit test (`packages/*/src/**/*.test.ts`, `apps/*/src/**/*.test.ts`) | a function or a Durable Object does what its author meant | no | every PR | whoever writes the code |
-| Contract test (`tests/contracts/<port>/*.contract.ts`) | a fake and the real service behave the same for the calls we make | no | fake on every PR, real nightly | whoever writes a fake |
+| Contract test (`tests/contracts/<port>/*.contract.ts`) | a fake and the real service behave the same for the calls we make | no | fake on every PR, real weekly | whoever writes a fake |
 | Probe (scenario tagged `probe-safe`) | a deployed version answers correctly before it gets traffic | no (a subset, not new coverage) | pre-traffic in the release flow; periodically by monitoring | same as scenarios |
-| Mutation run (StrykerJS on `packages/core` unit tests) | the unit tests would notice if `core` logic were wrong | no; a strength report | nightly, incremental on PRs | nobody; it is a report |
+| Mutation run (StrykerJS on `packages/core` unit tests) | the unit tests would notice if `core` logic were wrong | no; a strength report | weekly, incremental on PRs | nobody; it is a report |
 
 Unit tests are for pure logic with a large input space (version ranges, the risk score, archive path checks, OIDC claim matching, the CSP string), Durable Object internals through `runInDurableObject`, Workflow step bodies, and anything a scenario would need thirty variants of. A unit test never stands in for a scenario: a requirement with only unit tests says `coverage: unit-only` with a reason, and that is reviewed.
 
@@ -220,13 +220,13 @@ Every fake is a plain object owned by the World, reset per scenario, with the Re
 
 | Real-backend suite | Against | Schedule |
 |---|---|---|
-| Vectorize, Workers AI | search and review scenarios through the `http` driver against `staging` | nightly |
-| AI Gateway → Anthropic | the real gateway, $1 spend cap, Haiku | nightly |
-| Stripe | a Stripe Sandbox via Stripe CLI `trigger` | nightly |
-| GitHub OIDC, App, webhooks, OAuth login | a throwaway org and repo with a real App installed with read permissions only; OIDC exchange against `staging`; the suite asserts the App's token requests no write permission | nightly |
-| Sigstore Rekor | the public staging log (`rekor.sigstage.dev`), one head entry a night, verified by inclusion proof | nightly |
-| Mail, DNS proof, Access on the admin host | provider test mode; a real cheap test domain; the admin host with and without the probe token | nightly |
-| Workflows, CDN index TTL, Analytics Engine rollup, presigned R2 PUT/GET | `staging`, through the `http` driver | nightly (Workflows), weekly (the rest) |
+| Vectorize, Workers AI | search and review scenarios through the `http` driver against `staging` | weekly |
+| AI Gateway → Anthropic | the real gateway, $1 spend cap, Haiku | weekly |
+| Stripe | a Stripe Sandbox via Stripe CLI `trigger` | weekly |
+| GitHub OIDC, App, webhooks, OAuth login | a throwaway org and repo with a real App installed with read permissions only; OIDC exchange against `staging`; the suite asserts the App's token requests no write permission | weekly |
+| Sigstore Rekor | the public staging log (`rekor.sigstage.dev`), one head entry a week, verified by inclusion proof | weekly |
+| Mail, DNS proof, Access on the admin host | provider test mode; a real cheap test domain; the admin host with and without the probe token | weekly |
+| Workflows, CDN index TTL, Analytics Engine rollup, presigned R2 PUT/GET | `staging`, through the `http` driver | weekly |
 | Sandbox container | the real image on a Docker-capable runner; monthly against a deployed preview container. REQ-VAL-011 (no network, no secrets inside) and the decompression limits of REQ-VAL-022/023 (every bomb fixture refused within the memory, disk and time limits) are proven here, not in-process | weekly, and on every PR that changes the validator image |
 
 The Claudinite `cloudflare-workers` pack's `wire-bindings-seam` rule says D1, R2 and Workflows cannot be exercised locally; that premise is out of date (only Vectorize and Workers AI lack a local simulation), and a one-paragraph amendment goes to the pack's maintainers through the fleet process. The rule's advice (one seam, one place to swap) still holds and this plan follows it.
@@ -251,23 +251,31 @@ The Claudinite `cloudflare-workers` pack's `wire-bindings-seam` rule says D1, R2
 
 ## 9. CI pipeline
 
-Per pull request (GitHub Actions, hosted Linux 2-core; stage 4 is extrapolated from the spike's 4-vCPU timings, the rest are estimates):
+The default is lean: the whole plan fits inside the free GitHub Actions minutes of a private repository (Ariel, 2026-10-22). Parallelism is added only when a measured run gets slow, never up front.
 
-| Stage | What | Parallel with | Time |
-|---|---|---|---|
-| 1 lint + checks | ESLint (incl. the scenario override), typecheck, `requirements:matrix` static pass, `scenario-gate` (runs from the base branch, see stability-checks.md §4) | — | ~2 min |
-| 2 build | `wrangler deploy --dry-run --outdir dist` for seven Workers, cached by lockfile + source hash; the production-seam grep (§5) | 1 | ~2 min |
-| 3 unit | Vitest per Worker project with `@cloudflare/vitest-plugin` plus plain Node for `core` | 2 | ~2 min |
-| 4 scenarios, in-process | `vitest --project scenarios --shard=i/3` on 3 runners; with reset-per-file and alias isolation, ~500 scenarios cost ~2.5 min of bodies plus ~2.4 s boot per file, so each shard is well inside the budget (spike timings) | 3 | ~2–3 min each |
-| 5 contracts, fake backend | one runner | 4 | ~1 min |
-| 6 browser (conditional) | `ui` scenarios, only when `apps/web/**` or `tests/drivers/browser/**` changed | 4 | ~4 min |
-| 7 see-it-fail (conditional) | new scenarios run against the base commit's build; must fail | 4 | ~2 min |
-| 8 mutation, incremental (conditional) | StrykerJS on changed `core` files, unit-test runner, report only | 4 | ~3 min |
-| 9 matrix + summary | join JUnit from 4 and the latest nightly 6, publish the matrix, enforce the watermark | after 4 | <1 min |
+Per pull request, one job on one hosted Linux 2-core runner, steps in sequence (timings at ~500 scenarios, extrapolated from the spike; at launch the suite is a fraction of that):
 
-Wall-clock target under 10 minutes; roughly 15–20 billable minutes per run. On `main` after a merge the release plan's compat stage (§4.5) and the self-test scenarios (REQ-OPS-005..011: full and shallow on every Worker through `world.operator.selfTest()`; a shallow run must make no outbound or service-binding call, asserted through the Recorder) add ~13 minutes.
+| Step | What | Time |
+|---|---|---|
+| 1 lint + checks | ESLint (incl. the scenario override), typecheck, `requirements:matrix` static pass; `scenario-gate` runs as its own small job from the base branch (stability-checks.md §4) | ~1–2 min |
+| 2 build | `wrangler deploy --dry-run --outdir dist` for seven Workers, cached by lockfile + source hash; the production-seam grep (§5) | ~1 min |
+| 3 unit | Vitest per Worker project with `@cloudflare/vitest-plugin` plus plain Node for `core` | ~1 min |
+| 4 scenarios, in-process | `vitest --project scenarios`, unsharded; reset-per-file and alias isolation keep ~500 scenarios to a few minutes of bodies plus ~2.4 s boot per file (spike timings) | ~3–4 min |
+| 5 contracts, fake backend | | <1 min |
+| 6 matrix + summary | publish the matrix, enforce the watermark | <1 min |
 
-Nightly, one scheduled workflow with `workflow_dispatch` for reruns: the real-backend suites (§6, ~20 min), `http` probes against `staging` (~3 min), every `ui` scenario (~6 min), the `slow` lane (~10 min), the full StrykerJS run over `packages/core` unit tests with the ratcheting watermark (~20 min), and the fixture-drift PR (~1 min).
+Conditional jobs, only when their trigger holds: see-it-fail (a new scenario file, ~2 min), browser (`apps/web/**` or the browser driver changed, ~4 min), incremental mutation (changed `core` files, ~3 min).
+
+Rules that keep minutes down: `paths-ignore` for docs-only changes (`docs/**`, `*.md`); `concurrency` with `cancel-in-progress`, so a newer push to the same PR cancels the older run; dependency and build caches; draft PRs run nothing until marked ready. The suite is sharded (`--shard=i/n`) only if step 4 alone passes 10 minutes for a week.
+
+Target: ~7–8 billable minutes per PR run, under 10 minutes wall-clock. On `main` after a merge the release plan's compat stage (§4.5) and the self-test scenarios (REQ-OPS-005..011: full and shallow on every Worker through `world.operator.selfTest()`; a shallow run must make no outbound or service-binding call, asserted through the Recorder) add ~13 minutes.
+
+Scheduled runs, each skipped when `main` has not changed since the last successful run:
+
+- **Nightly (~10 min):** `http` probes against `staging` (~3 min) and the page-specific `ui` scenarios (passkey ceremonies, the publish wizard, step-up dialogs, Turnstile; ~6 min; Ariel chose this scope on 2026-10-22), plus the fixture-drift PR (~1 min).
+- **Weekly (~55 min):** the real-backend suites (§6, ~20 min), the `slow` lane (~10 min), the full StrykerJS run over `packages/core` unit tests with the ratcheting watermark (~20 min), and the Docker sandbox job (~5 min; also on every PR that changes the validator image).
+
+**Budget guard.** A monthly job reads the repository's Actions usage and opens an issue when the month passes 80% of the included minutes, naming the workflows that used them, so nothing is billed by surprise.
 
 **Workflow hardening.** The `nightly` environment restricts deployments to `main`, so a `workflow_dispatch` from another ref gets no secrets. Fork PRs run lint, unit and in-process scenarios with no secrets; nightly, browser-with-Turnstile-keys and compat never run on forks. Every workflow sets `permissions: { contents: read }` at the top and widens per job (`pull-requests: write` for the matrix comment; `contents: write, pull-requests: write` for the drift PR via a scoped GitHub App token, never a PAT). Nightly jobs run with an egress allowlist (`step-security/harden-runner` or equivalent) naming the Stripe, GitHub, Cloudflare, mail and Anthropic hosts, since MSW does not stop a dependency that uses `net` directly. No job on `pull_request_target` checks out or runs head code (stability-checks.md §4).
 
@@ -282,22 +290,24 @@ Nightly, one scheduled workflow with `workflow_dispatch` for reruns: the real-ba
 
 ## 11. Cost analysis
 
-Assumptions: a private repo with 3,000 included Actions minutes a month; hosted Linux 2-core at $0.006/minute ([GitHub Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions)); ~300 PR and `main` runs a month; Workers Paid ($5/month) already in place.
+Assumptions: a private repository on an organisation plan with 2,000 (Free) or 3,000 (Team) included Actions minutes a month; hosted Linux 2-core at $0.006/minute after that ([GitHub Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions)); ~150 PR runs a month that are not docs-only and not cancelled by a newer push; ~40 merges to `main`; scheduled runs skipped on ~10 quiet days; Workers Paid ($5/month) already in place for hosting.
 
-| Item | Minutes/month | Cost/month | Notes |
-|---|---|---|---|
-| PR + main runs: ~16 billable min × 300 | 4,800 | $11 after the free minutes | the three scenario shards are the bulk; reset-per-file keeps them short |
-| Nightly: ~60 min × 30 | 1,800 | $11 | mutation on unit tests only; the scenario-killed variant would have added ~$6 and hours of runtime (§12) |
-| Weekly Docker sandbox + monthly preview run | ~50 | <$1 | |
-| Compat stage on `main` | ~500 | $3 | release plan's line; listed so the total is honest |
-| **GitHub Actions total** | **~7,150** | **~$25** | on a Free plan add ~$6; on Enterprise Cloud $0; on a public repo $0 |
-| Cloudflare: nightly traffic to `staging` (Vectorize, Workers AI, D1, R2) | — | cents | inside the Paid plan's included quota; no second account |
-| Anthropic via AI Gateway, nightly | — | ≤ $1 | spend cap on the gateway |
-| Stripe Sandbox, GitHub throwaway org, mail test mode | — | $0 | |
-| DNS test domain | — | ~$1 | a real cheap domain; `.test` does not resolve |
-| **Total** | | **~$25–30/month** | against the product's ~$30/month hosting estimate |
+| Item | Minutes/month | Notes |
+|---|---|---|
+| PR runs: ~7.5 min × 150 | ~1,100 | one runner, no shards (§9) |
+| Conditional PR jobs | ~150 | see-it-fail, browser, incremental mutation, only when triggered |
+| `main` merges: compat + self-test, ~13 min × 40 | ~520 | the release plan's line; listed so the total is honest |
+| Nightly: ~10 min × ~20 changed days | ~200 | |
+| Weekly: ~55 min × 4 | ~220 | |
+| **GitHub Actions total** | **~2,200** | **$0** on Team (3,000 included); about **$1** a month over on Free; $0 on a public repo |
 
-Not in the table: a few hours a month of driver maintenance while the harness and `miniflare 5.x-beta` settle. Workers Builds (no Docker, one concurrent build on Free) does not suit the sharded suite.
+Other costs: Cloudflare traffic to `staging` is cents inside the Paid plan's quota (no second account); Anthropic via AI Gateway in the weekly suite is capped at $1; Stripe Sandbox, the GitHub test org and mail test mode are free; the DNS test domain is about $1 a month.
+
+**Total: about $0–3 a month.** If the budget guard (§9) fires, the first levers are moving the compat stage from every merge to release candidates only (−~500 min, the release plan's call) and running the PR scenarios only when code under `apps/`, `packages/` or `tests/` changed.
+
+An earlier draft of this plan estimated ~$25–35 a month. That came from pessimistic assumptions, not the tooling: 300 runs a month, three shards per run, and a 60-minute nightly that included mutation testing and the real-backend suites every night.
+
+Not in the table: a few hours a month of driver maintenance while the harness and `miniflare 5.x-beta` settle. Workers Builds (no Docker, one concurrent build on Free) is not used for tests.
 
 ## 12. Risks
 
@@ -326,15 +336,15 @@ The remaining known upstream issues (DO RPC teardown noise, plugin snapshot size
 | M5 publish path | fake GitHub (OIDC, App, signed webhooks, read-only with a write-attempt recorder), fake Sandbox, Workflow introspection, the `Uploads` port, REQ-PUB-*, REQ-VAL-*, REQ-DELIV-*, REQ-SCOPE-016/017 | publishing, validation, delivery areas at 100%; the weekly Docker sandbox job exists |
 | M6 payments and access | fake Stripe with signed webhooks, the billing contract suite, REQ-PAY-*, REQ-PRIV-* | payments and private areas at 100% |
 | M7 community, moderation, admin, abuse, audit | fake Access identity with signature checks, admin actor, abuse and quarantine scenarios, the local audit bucket with chain, `world.audit.tamper()`/`verify()` and the Rekor fake, REQ-COMM/MOD/ADMIN/ABUSE/AUDIT-* | matrix at 100% of active + provisional |
-| M8 honesty and strength | every real-backend suite wired with secrets in the `nightly` environment, redaction and drift PRs, the mutation watermark | a month of nightlies with no unexplained drift |
+| M8 honesty and strength | every real-backend suite wired with secrets in the `nightly` environment, redaction and drift PRs, the mutation watermark | a month of weekly real-backend runs with no unexplained drift |
 
 The default day-to-day flow under agents: Ariel names the requirement ID (or asks for a new one) in the session; the agent writes the register entry, the scenario, the World verbs and the implementation in one PR under the bot identity; Ariel reviews and merges. No role split is needed.
 
 ## 14. Open questions for Ariel
 
-Decided on 2026-10-22: all six architecture/UI conflicts ([../requirements/README.md](../requirements/README.md#conflicts-between-the-architecture-and-the-ui-flows)); the 29 security-review requirements are confirmed; Cloudflare stays one account, with tests reaching `staging` only through an Access token scoped to its hostnames (§6); the repository stays private for now, so the Actions cost in §11 applies.
+Decided on 2026-10-22: all six architecture/UI conflicts ([../requirements/README.md](../requirements/README.md#conflicts-between-the-architecture-and-the-ui-flows)); the 29 security-review requirements are confirmed; Cloudflare stays one account, with tests reaching `staging` only through an Access token scoped to its hostnames (§6); the repository stays private for now, and CI is sized to its free Actions minutes (§11); browser runs cover only the page-specific flows (§9).
 
-1. **Playwright scope.** `ui` scenarios only for flows that are about the page (passkey ceremonies, the wizard, step-up, Turnstile). Driving every flow in `docs/ui/flows.md` through a browser nightly grows the lane from ~6 to ~25 minutes.
+No questions are open.
 
 ## 15. Sources
 
