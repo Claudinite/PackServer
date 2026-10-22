@@ -1,0 +1,18 @@
+{
+  "version": "1.61009.1",
+  "minEngineVersion": "1.61001.1",
+  "githubActions": [
+    "findOrCreateTracker",
+    "writeTracker"
+  ],
+  "ruleRoutingGuidance": {
+    "belongs": "cross-project working discipline, issue-branch-PR lifecycle, repo hygiene, doc/reference integrity and the general engineering, testing and debugging skills",
+    "excludes": "technology-specific content — its own tech pack; git procedure and GitHub Actions workflow or platform behaviour — git-github; filing, deferring, sequencing and verifying work through the queue, and migration plans — task-flow"
+  },
+  "pitch": "The working discipline every session follows, whatever the repo builds. Some fifty rules make Claude start from the problem, prove each change works now rather than later, fix warnings at their cause and track work through pull requests. About a dozen skills cover bug investigation, committing, writing trustworthy tests, investigating slow CI and handing a person the steps only they can take. Dozens of checks hold the discipline in place, and a pair of scheduled tasks look into CI that got slower and improve the repo's comments without anyone asking.",
+  "seededByDefault": true,
+  "requires": [
+    "claudinite-lifecycle",
+    "git-github"
+  ]
+}

@@ -1,0 +1,181 @@
+{
+  "version": 1,
+  "tasks": {
+    "basics/ci-performance": {
+      "path": ".claudinite/shared/packs/basics/tasks/ci-performance/task.json",
+      "declaration": {
+        "id": "ci-performance",
+        "description": "Reads where this repository's CI time goes from the Actions run history, keeps a standing record of each workflow's median, and hands an agent a real regression already localised to a workflow and a before-and-after delta.",
+        "trigger": "schedule",
+        "preconditions": [
+          "schedule:at-most-weekly",
+          "substantive-change || prs-touched",
+          "last-run-not-parked"
+        ],
+        "expected_outcome": "fresh_pr",
+        "automerge": "anything",
+        "code_worker_mjs": "worker.mjs",
+        "code_work_timeout": 300,
+        "agent_model": "sonnet",
+        "agent_instructions": "task.md",
+        "agent_execution_timeout": 3600
+      }
+    },
+    "basics/improve-comments": {
+      "path": ".claudinite/shared/packs/basics/tasks/improve-comments/task.json",
+      "declaration": {
+        "id": "improve-comments",
+        "description": "Reads a slice of the repository's code as comments, deletes the ones that restate the code, corrects the ones that drifted, and adds the why only a reader's guess carried.",
+        "trigger": "schedule",
+        "preconditions": [
+          "schedule:at-most-weekly",
+          "substantive-change",
+          "commits-outside:.claudinite/shared/"
+        ],
+        "expected_outcome": "amend_existing_or_create_new_pr",
+        "automerge": [
+          "comment-only-changes",
+          "readme-changes"
+        ],
+        "agent_model": "opus",
+        "agent_instructions": "task.md",
+        "agent_execution_timeout": 1800
+      }
+    },
+    "claudinite/adopt-requested-packs": {
+      "path": ".claudinite/temp/packs/claudinite/tasks/adopt-requested-packs/task.json",
+      "declaration": {
+        "id": "adopt-requested-packs",
+        "description": "The member half of the fleet fan-out: adopts the packs an add-packs work list asks for, in this repository, by this repository's own agent.",
+        "trigger": "request",
+        "expected_outcome": "fresh_pr",
+        "automerge": [
+          "claudinite-shared-packs",
+          "claudinite-settings-updates",
+          "generated-file-changes"
+        ],
+        "agent_model": "sonnet",
+        "agent_instructions": "task.md",
+        "agent_execution_timeout": 3600
+      }
+    },
+    "claudinite/growth-dedup": {
+      "path": ".claudinite/temp/packs/claudinite/tasks/growth-dedup/task.json",
+      "declaration": {
+        "id": "growth-dedup",
+        "description": "The growth lifecycle's pruning stage: reconciles this repository's local packs against the canon it mounts, removing local items the canon now covers and keeping those the canon states too generally.",
+        "trigger": "schedule",
+        "preconditions": [
+          "schedule:at-most-weekly",
+          "mount-moved || commits-under:.claudinite/local"
+        ],
+        "expected_outcome": "supersede_existing_pr",
+        "automerge": [
+          "under:.claudinite/local"
+        ],
+        "code_worker_mjs": "worker.mjs",
+        "code_work_timeout": 600,
+        "agent_model": "opus",
+        "agent_instructions": "task.md",
+        "agent_execution_timeout": 1800
+      }
+    },
+    "claudinite/growth-extract": {
+      "path": ".claudinite/temp/packs/claudinite/tasks/growth-extract/task.json",
+      "declaration": {
+        "id": "growth-extract",
+        "description": "The growth lifecycle's capture stage: mines the window's repository activity and the captured conversation logs for durable lessons, folds them into this repository's local packs, and runs prose-to-checks over what it wrote.",
+        "schedule_after": [
+          "engine/update"
+        ],
+        "trigger": "schedule",
+        "preconditions": [
+          "schedule:at-most-daily",
+          "substantive-change"
+        ],
+        "expected_outcome": "amend_existing_or_create_new_pr",
+        "automerge": [
+          "under:.claudinite/local"
+        ],
+        "agent_model": "opus",
+        "agent_instructions": "task.md",
+        "agent_execution_timeout": 2700
+      }
+    },
+    "claudinite/prose-to-checks-sweep": {
+      "path": ".claudinite/temp/packs/claudinite/tasks/prose-to-checks-sweep/task.json",
+      "declaration": {
+        "id": "prose-to-checks-sweep",
+        "description": "Mines this repository's existing pack prose for always-testable rules the conversion missed and converts the strongest ones into checks.",
+        "trigger": "schedule",
+        "preconditions": [
+          "schedule:at-most-weekly",
+          "repo-active"
+        ],
+        "expected_outcome": "amend_existing_or_create_new_pr",
+        "automerge": [
+          "under:.claudinite/local"
+        ],
+        "agent_model": "opus",
+        "agent_instructions": "task.md",
+        "agent_execution_timeout": 2700
+      }
+    },
+    "claudinite/rule-revalidation": {
+      "path": ".claudinite/temp/packs/claudinite/tasks/rule-revalidation/task.json",
+      "declaration": {
+        "id": "rule-revalidation",
+        "description": "Re-probes the pack rules whose truth lives outside this repository, such as what the harness rejects or which tools exist, and corrects the ones the platform has moved under.",
+        "trigger": "schedule",
+        "preconditions": [
+          "schedule:at-most-weekly",
+          "repo-active"
+        ],
+        "expected_outcome": "supersede_existing_pr",
+        "automerge": [
+          "under:.claudinite/local"
+        ],
+        "agent_model": "opus",
+        "agent_instructions": "task.md",
+        "agent_execution_timeout": 2700
+      }
+    },
+    "claudinite/usage-review": {
+      "path": ".claudinite/temp/packs/claudinite/tasks/usage-review/task.json",
+      "declaration": {
+        "id": "usage-review",
+        "description": "Compares what each skill declares about its own usage against what the record shows, by a file of readable rule declarations, and writes the findings with their causes and recommendations. Changes nothing it reviews.",
+        "schedule_after": [
+          "engine/usage-fold"
+        ],
+        "trigger": "schedule",
+        "preconditions": [
+          "schedule:at-most-daily",
+          "fold-moved-since-review",
+          "window-has-sessions:10"
+        ],
+        "expected_outcome": "amend_existing_or_create_new_pr",
+        "automerge": "nothing",
+        "code_worker_mjs": "worker.mjs",
+        "code_work_timeout": 900
+      }
+    },
+    "claudinite/usage-triage": {
+      "path": ".claudinite/temp/packs/claudinite/tasks/usage-triage/task.json",
+      "declaration": {
+        "id": "usage-triage",
+        "description": "Turns a usage-review finding that has stood two weeks into a proposed change to this repo's own local packs - the edit itself, one pull request per subject, for the owner to merge or decline.",
+        "trigger": "schedule",
+        "preconditions": [
+          "schedule:at-most-weekly",
+          "lasting-usage-finding"
+        ],
+        "expected_outcome": "fresh_pr",
+        "automerge": "nothing",
+        "agent_model": "opus",
+        "agent_instructions": "task.md",
+        "agent_execution_timeout": 2700
+      }
+    }
+  }
+}

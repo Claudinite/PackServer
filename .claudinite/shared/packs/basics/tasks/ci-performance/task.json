@@ -1,0 +1,17 @@
+{
+  "id": "ci-performance",
+  "description": "Reads where this repository's CI time goes from the Actions run history, keeps a standing record of each workflow's median, and hands an agent a real regression already localised to a workflow and a before-and-after delta.",
+  "trigger": "schedule",
+  "preconditions": [
+    "schedule:at-most-weekly",
+    "substantive-change || prs-touched",
+    "last-run-not-parked"
+  ],
+  "expected_outcome": "fresh_pr",
+  "automerge": "anything",
+  "code_worker_mjs": "worker.mjs",
+  "code_work_timeout": 300,
+  "agent_model": "sonnet",
+  "agent_instructions": "task.md",
+  "agent_execution_timeout": 3600
+}

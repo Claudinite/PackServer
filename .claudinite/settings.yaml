@@ -1,0 +1,26 @@
+engine:
+  channel: "staging"
+  version: "1.61022.1"
+  manifest: "sha512-i5BVf/1ZZ7V72caB3LQeHH9kPE0CjmE0VDcypLFRmCO2oljavRtYCTTMRzbz8Cnf2xfoplEr2SG35NO10S3VXQ=="
+packs:
+  channel: "canary"
+  declared:
+    - "basics"
+    - "cloudflare-workers"
+    - "node"
+    - "jwt"
+    - "public-website"
+    - "claudinite"
+    - "git-github"
+    - "html"
+  manager:
+    repo: "Claudinite/FleetManager"
+tasks:
+  routines:
+    default:
+      url: "https://api.anthropic.com/v1/claude_code/routines/trig_01Nw5qgRAzap9x2JTuo3wFKR/fire"
+      tokenSecret: "CCR_ROUTINE_TOKEN"
+  frequency:
+    "engine/update": "daily"
+  merge:
+    "engine/update": "merge-safe-changes"
