@@ -111,7 +111,7 @@ engine repository's CI once the issues land. The end-to-end paths are [JT-001](j
 - **Covers:** REQ-DELIV-017, REQ-CN-004
 - **Runs:** nightly
 - **Action:** a member adopts a version; the world then serves, for the same index entry, the upload (non-canonical) bytes; then canonical bytes with one flipped byte; then an archive a lenient extractor would accept (duplicate entry) whose hash the world also forges into a tampered index.
-- **Assert:** the first adopt vendors; each of the three others is refused with a verification error and nothing is written under `.claudinite/shared/packs/`; the attestation is shown in the update PR but a tampered attestation alone does not change what cn verifies against (the index entry does).
+- **Assert:** the first adopt vendors; each of the three others is refused with a verification error and nothing is vendored into the member repo; the attestation is shown in the update PR but a tampered attestation alone does not change what cn verifies against (the index entry does).
 
 ### IT-DELIV-018 A security revocation disables executable parts; other statuses report
 - **Covers:** REQ-DELIV-018, REQ-CN-007
