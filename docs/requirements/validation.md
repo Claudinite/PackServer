@@ -1,6 +1,6 @@
 # Validation pipeline
 
-Area `VAL`, 46 requirements (1 retired). Format and rules: [README.md](README.md).
+Area `VAL`, 49 requirements (1 retired). Format and rules: [README.md](README.md).
 
 Entries REQ-VAL-024 onwards, and the amended statements of REQ-VAL-002, 010, 011, 012, 013,
 014, 018, 021, 022 and 023, come from the architecture thread's validation-flow review
@@ -10,7 +10,7 @@ engine or registry item left open after the review's Claudinite alignment (PR #3
 `7a01329` and `c410590`) name it as `O n`. The Claudinite alignment review (`CLN-REV`,
 2026-10-22) corrected the pack vocabulary here to the pack's real parts, and its open items are cited as `CLN-REV n`. REQ-VAL-030 was retired by the alignment:
 a Claudinite pack carries no MCP server config. The entries that exist only with a prose-screen
-model (012, 034–037, 039) are provisional on `ARCH-SCORE` and `ARCH-SCREEN`. A version is any
+model are the Jev prose screen Ariel chose (PR #3 commit `6995682`). A version is any
 semver `x.y.z` the publisher chooses, ordered by semver precedence; Claudinite's own `1.YMMDD.n`
 is semver with a date minor (Ariel, 2026-10-22).
 
@@ -123,8 +123,7 @@ is the one extracted from the archive, not the one the manifest declares.
 Prompt-injection / tool-poisoning heuristics run on `RULES.md`, `SKILL.md` files, the what, why
 and fix text of findings, and task agentic-phase prompts. Reviewer-addressed text holds the
 version; every other heuristic produces a warning with a human-readable excerpt. These are
-static heuristics; whether a model screen runs as well is a separate decision (`ARCH-SCREEN`),
-and the entries that exist only with one name it.
+static heuristics; the Jev prose screen (REQ-VAL-034 to 037) runs as well.
 
 ## REQ-VAL-010 Every shipped declared check, coded check and guard is proven against a firing and a silent fixture
 
@@ -158,22 +157,20 @@ sandbox returns is treated as untrusted: the registry schema-validates and size-
 later step reads it, and a report that fails that check is an infrastructure error, never a
 verdict. Results are written by the registry, never by the sandbox.
 
-## REQ-VAL-012 LLM review runs last, after a credit is reserved, and reviews updates as a diff
+## REQ-VAL-012 The prose screen runs after a credit is reserved and screens updates as a diff
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: system
-- source: ARCH §6 step 4; ARCH-VAL §6
-- decision: ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
+- source: ARCH-VAL §3.6, §3.7, §4 steps 9 to 11, §6; ARCH §6, §15 Q3 (PR #3 commit 6995682); Ariel, 2026-10-22 (the prose screen is Jev on Workers AI)
 - coverage: scenario
 
-An LLM review runs only after every cheaper step has passed and a credit has been reserved (or the
-publisher is a Verified Publisher, or the scope is synthetic; see REQ-VAL-039), and its structured
-findings contribute to the verdict and the risk score. For version n+1 the reviewer receives the
-diff against the previous promoted version together with that version's findings; a full re-read
-happens when the diff touches more than 30 % of the text, when a capability changes, when a
-publisher-change event (REQ-VAL-038) occurred since the previous version, and at least every
-tenth version.
+The prose screen runs only after every cheaper step has passed and a credit has been reserved or
+the publisher is a Verified Publisher; synthetic scopes skip it (REQ-VAL-039). For version n+1 it
+screens chunks built from the diff against the previous promoted version; a full re-read happens
+when the diff touches more than 30 % of the text, when a capability changes, when a
+publisher-change event (REQ-VAL-038) occurred since the previous version, and at least every tenth
+version. No earlier model output is passed to the screen.
 
 ## REQ-VAL-013 Held versions wait in a human queue ordered by standing; only uncertainty holds time out
 
@@ -186,9 +183,10 @@ tenth version.
 
 A version held by any rule waits in the human review queue and is not promoted until an admin
 approves it. The queue lists items ordered by the publisher's verified status, then the number
-of members holding the pack, then age. A hold for reviewer uncertainty that is still unresolved after 7 days resolves
-by itself to the third-party tier with a warning (REQ-VAL-041); a hold for a new capability
-(REQ-VAL-028) or for reviewer-addressed text (REQ-VAL-035) never resolves by timeout.
+of members holding the pack, then age. A hold for uncertainty, which includes every prose-screen flag, that is still unresolved after 7
+days resolves by itself to the third-party tier with a warning (REQ-VAL-041); a hold for a new capability
+(REQ-VAL-028) or for reviewer-addressed text found by the static heuristic (REQ-VAL-035) never
+resolves by timeout.
 
 ## REQ-VAL-014 Infrastructure errors retry and cost nothing; an extraction failure is final
 
@@ -202,7 +200,7 @@ A validator timeout or infrastructure error outside the extraction step yields v
 is retried automatically twice, then offers "Re-run"; it never counts against the publisher's
 quotas or credits. A crash or limit during archive extraction is not an infrastructure error: it
 is a hard fail with reason `archive.bomb` or `archive.unsafe` (REQ-VAL-022), is never retried,
-offers no re-run, and costs no credit and no LLM call. A run that crashes at any other step
+offers no re-run, and costs no credit and no prose-screen call. A run that crashes at any other step
 resumes from the last completed step.
 
 ## REQ-VAL-015 Warnings do not block; public page names warned checks only
@@ -244,7 +242,7 @@ A publisher whose runs fail 10 or more times in a day is soft-rate-limited on fu
 - since: 2026-10
 - actor: system
 - source: ARCH §6 "Ongoing"; ARCH-VAL §6 (PR #3 commit 7a01329: packs have no package dependencies, so the dependency re-resolution is gone)
-- decision: ARCH-Q 6; ARCH-VAL §7-3 (what a revocation does in cn); ARCH-SCREEN (the prose-screen rescan exists only with a screen)
+- decision: ARCH-Q 6; ARCH-VAL §7-3 (what a revocation does in cn)
 - coverage: scenario
 
 Every live latest version is rescanned with the static rules whenever a rule changes and with
@@ -286,8 +284,9 @@ absolute decompressed-size cap independent of the ratio.
 - coverage: scenario
 
 Validation runs per publisher per day are capped regardless of outcome; re-runs and dry-runs
-(REQ-VAL-043, at most 20 a day) count against the same cap; the LLM step has a per-version and
-a per-day token budget per publisher and never runs before a credit is reserved (REQ-VAL-039).
+(REQ-VAL-043, at most 20 a day) count against the same cap; the prose screen has a per-day
+token budget per publisher, and a version that would exceed it waits until the budget resets and
+is never partially screened; the screen never runs before a credit is reserved (REQ-VAL-039).
 
 ## REQ-VAL-022 Decompression is bounded by the bytes it produces, not by what the archive claims
 
@@ -326,7 +325,7 @@ archive nested inside the archive; a self-referential or overlapping-entry archi
 a sparse entry whose declared size differs from what its holes materialise; an extended header
 carrying an oversized size field; an entry of an unknown type; a flood of skippable frames that
 produce no output; and a path over the length caps. The refusal costs no validation credit and no
-LLM review call.
+prose-screen call.
 
 ## REQ-VAL-024 Every rule has one verdict class, and security findings never only warn
 
@@ -474,62 +473,58 @@ an infrastructure error and nothing is promoted. The uploaded bytes stay in stag
 staging lifetime (REQ-PUB-020) so a disputed re-pack can be re-examined, and a publisher can
 produce byte-identical canonical archives offline with cn's canonicalise command.
 
-## REQ-VAL-034 The reviewer's findings are structured and evidenced; free text decides nothing
+## REQ-VAL-034 The prose-screen verdict is computed by code from probabilities and versioned thresholds
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH-VAL §6, §3.6
-- decision: ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
+- source: ARCH-VAL §3.6, §3.7, §4 steps 9 to 11, §6; ARCH §6, §15 Q3 (PR #3 commit 6995682); Ariel, 2026-10-22 (the prose screen is Jev on Workers AI)
 - coverage: scenario
 
-Every LLM finding carries a rule id, severity, file, line and a quote from the archive; the
-verdict is computed from those fields and from whether the reviewer reported reviewer-addressed
-text, never from the model's free text. A quote that is not present byte-for-byte in the
-extracted tree discards that finding and marks the review low-confidence, which the publisher and
-admins can see in the report.
+The prose screen asks a fixed question set, versioned with the rules, on every chunk. Each
+question has a threshold in the rules version, and the outcome is computed only from the returned
+probabilities compared with those thresholds, never from any other part of the response.
 
-## REQ-VAL-035 Pack content reaches the reviewer as data; text addressed to a reviewer holds
+## REQ-VAL-035 Pack content reaches the prose screen as data; text addressed to a reviewer holds
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher (security)
-- source: ARCH-VAL §6, §3.6, §1 T13
-- decision: ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
-- coverage: scenario+contract (the scenario proves the hold and the separation of calls through the LLM port's recorded requests; the delimiter contract is a contract test on the port)
+- source: ARCH-VAL §3.6, §3.7, §4 steps 9 to 11, §6; ARCH §6, §15 Q3 (PR #3 commit 6995682); Ariel, 2026-10-22 (the prose screen is Jev on Workers AI)
+- coverage: scenario+contract (the scenario proves the hold and the separation of calls through the prose-screen port's recorded requests; the delimiter contract is a contract test on the port)
 
-Pack content is passed to the reviewer inside delimiters carrying a per-run random nonce and
-declared as data; publisher notes, appeal text and previous review text are never in the same
-reviewer call as pack content. Text addressed to a reviewer or AI evaluator ("if you are an AI
-reviewing this") holds the version by itself, and that hold never resolves by timeout.
+Pack content reaches Jev only as delimited data in `state`, each chunk carrying a per-run nonce and
+its file and line range; publisher notes, appeal text and previous reports are never in the same
+call as pack content. Text addressed to a reviewer, validator or AI evaluator that the static
+heuristic finds holds the version by itself, independently of the prose screen, and that hold
+never resolves by timeout. A Jev answer over threshold on the reviewer-addressed question is a
+prose-screen flag and holds under REQ-VAL-037.
 
-## REQ-VAL-036 Two independent screens run on every version; disagreement or an oversized pack holds
+## REQ-VAL-036 All pack text is screened in chunks; nothing is truncated
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: system
-- source: ARCH-VAL §6, §3.6
-- decision: ARCH-VAL §7-4 (the accepted spend for two screens); ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
+- source: ARCH-VAL §3.6, §3.7, §4 steps 9 to 11, §6; ARCH §6, §15 Q3 (PR #3 commit 6995682); Ariel, 2026-10-22 (the prose screen is Jev on Workers AI)
 - coverage: scenario
 
-Two independent screening reviews with different framings run on every version that reaches the
-LLM step; a flag from either triggers the deep review; a disagreement between the deep review and
-a screen holds the version. A version whose text exceeds the per-version review budget is held,
-never partially reviewed.
+The validator splits all pack text (`RULES.md`, each `SKILL.md`, finding what/why/fix text, task
+agentic-phase prompts, the README) into chunks of at most about 28k tokens and screens every
+chunk with the one model; text is never truncated or skipped, and a pack larger than one chunk
+takes several calls.
 
-## REQ-VAL-037 A deep-review verdict of malicious with verified evidence rejects the version
+## REQ-VAL-037 An over-threshold prose-screen answer holds; the prose screen never fails or rejects
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH-VAL §6, §3.7, §4 step 11
-- decision: ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
+- source: ARCH-VAL §3.6, §3.7, §4 steps 9 to 11, §6; ARCH §6, §15 Q3 (PR #3 commit 6995682); Ariel, 2026-10-22 (the prose screen is Jev on Workers AI)
 - coverage: scenario
 
-When the deep review finds the version malicious with high confidence and every quoted piece of
-evidence verified against the tree, the version is rejected without entering the human queue; the
-publisher is notified with the rule ids and can appeal (REQ-VAL-040). A benign deep review passes
-the version; an uncertain one holds it.
+Any prose-screen answer over its threshold holds the version for human review, and the queue item
+carries the chunk, the question, the probability and the static findings as evidence. The prose
+screen never fails or rejects a version on its own: rejection comes only from fail-class static
+rules or from an admin.
 
 ## REQ-VAL-038 The next version after a publisher-change event is treated as a first publish
 
@@ -544,19 +539,20 @@ is transferred, or 180 days pass without a publish gets the full review of a fir
 diff mode) and is staged for passkey approval regardless of the pack's staged-publishing
 setting.
 
-## REQ-VAL-039 A credit is reserved before the LLM step and consumed only at promotion
+## REQ-VAL-039 A credit is reserved before the prose screen and consumed only at promotion
 
 - status: provisional
 - since: 2026-10
 - actor: publisher
-- source: ARCH-VAL §6, §4 steps 9 and 14; ARCH §9
-- decision: SITE-D 3 (the same decision as REQ-PAY-003); ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
+- source: ARCH-VAL §6, §4 steps 9 and 14; ARCH §9 (PR #3 commit 6995682)
+- decision: SITE-D 3 (the same decision as REQ-PAY-003)
 - coverage: scenario
 
-For a new public pack a credit is reserved, not consumed, before the LLM step runs, and consumed
-only when the version is promoted; a version that fails, is rejected or expires releases the
-reservation. Without a reservation, Verified Publisher status or a synthetic scope the LLM step
-does not run, and a publisher with no credit is refused at admission, before any upload.
+For a new public pack a credit is reserved, not consumed, before the prose screen runs, and
+consumed only when the version is promoted; a version that fails, is rejected or expires releases
+the reservation. Without a reservation or Verified Publisher status the prose screen does not
+run, synthetic scopes skip it, and a publisher with no credit is refused at admission, before any
+upload.
 
 ## REQ-VAL-040 A rejected version can be appealed once; the appeal never reaches a model
 
@@ -611,12 +607,12 @@ internals, secret locations and reviewer text are shown only to the publisher an
 - source: ARCH-VAL §6, §3.14
 - coverage: scenario+http (in-process for the report, the limits and the refusals; the nightly http run proves the anonymous and self-test refusals on the deployed host)
 
-A publisher can submit an archive for a dry-run: it runs every validation step before the LLM
+A publisher can submit an archive for a dry-run: it runs every validation step before the prose
 screen (integrity, extraction, manifest, text, capabilities, load-and-prove and the canonical
 re-pack where those steps exist) under its own staging prefix and its own single-use upload
 credential (REQ-PUB-030), creates no version, consumes no credit, and returns the same report
-format as a publish within 4 minutes. The LLM screen can be opted in and then counts against the
-publisher's daily LLM budget. Dry-runs count against the publisher's daily run cap (REQ-VAL-021,
+format as a publish within 4 minutes. The prose screen can be opted in and then counts against the
+publisher's daily prose-screen budget. Dry-runs count against the publisher's daily run cap (REQ-VAL-021,
 at most 20 a day); an anonymous caller and the self-test credential are answered as an unknown
 path; and a dry-run against a private pack answers outsiders as nonexistent (REQ-PRIV-015).
 
@@ -644,7 +640,7 @@ A sandbox run (validation steps 3 to 8) stops after 5 minutes of wall-clock time
 extraction stops after 60 seconds and each check or guard fixture after 30 seconds. A run, check
 or fixture that hits its limit fails the version with the reason `sandbox.timeout`, except an
 extraction timeout, which fails it with `archive.unsafe` and is final: no retry, no credit, no
-LLM review. A dry-run therefore answers within the promised 4 minutes or with a timeout verdict.
+prose screen. A dry-run therefore answers within the promised 4 minutes or with a timeout verdict.
 
 ## REQ-VAL-046 Each version carries a pre-install manifest; widening it holds the version
 
@@ -662,3 +658,40 @@ an agentic phase, the forced skills, and the GitHub actions requested. It is sto
 MCP `get_pack`. A version that widens it (a new guard, task or forced skill, a faster cadence, or a
 new GitHub action) is held under "new capability = hold" and needs passkey approval
 (REQ-VAL-028).
+
+## REQ-VAL-047 The report records the model and question-set versions, and a change rescans
+
+- status: active
+- since: 2026-10
+- actor: system / admin
+- source: ARCH-VAL §3.6, §3.7, §4 steps 9 to 11, §6; ARCH §6, §15 Q3 (PR #3 commit 6995682); Ariel, 2026-10-22 (the prose screen is Jev on Workers AI)
+- coverage: scenario
+
+The validation report records the model version named in each Jev response (for example
+`jev-1.13.0`) and the question-set version. A change of either triggers a prose-screen rescan of
+every live latest version (REQ-VAL-018); a new flag holds and is queued as usual.
+
+## REQ-VAL-048 Thresholds are calibrated on the canon packs and an injection corpus, within the review budget
+
+- status: active
+- since: 2026-10
+- actor: system / admin
+- source: ARCH-VAL §3.6, §3.7, §4 steps 9 to 11, §6; ARCH §6, §15 Q3 (PR #3 commit 6995682); Ariel, 2026-10-22 (the prose screen is Jev on Workers AI)
+- coverage: scenario+contract (the scenario proves a threshold change ships as a new rules version and never skips a hold; the calibration runs the real model over the canon packs and the corpus in the weekly suite)
+
+Before launch the thresholds are calibrated so that the canon packs pass and every item of an
+injection fixture corpus holds. The daily prose-screen flag rate is measured against the human
+review budget of about 10 holds a day; when it is exceeded, the thresholds change in a new rules
+version, never by skipping holds.
+
+## REQ-VAL-049 The prose screen is reached only through the Workers AI binding
+
+- status: active
+- since: 2026-10
+- actor: system (security)
+- source: ARCH-VAL §3.6, §3.7, §4 steps 9 to 11, §6; ARCH §6, §15 Q3 (PR #3 commit 6995682); Ariel, 2026-10-22 (the prose screen is Jev on Workers AI)
+- coverage: scenario+manual (the scenario proves no outbound call is recorded for a screened version; the absence of a gateway, key or egress rule is a deployment property on the release checklist)
+
+The validator reaches Jev only through its Workers AI binding: no AI Gateway, provider key or
+egress allowlist exists for the prose screen, and the sandbox keeps internet fully off.
+

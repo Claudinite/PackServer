@@ -17,8 +17,8 @@ The entries were derived on 2026-10-22 from the v0 design documents. They are no
 | SEC | the security review of the test plan, 2026-10-22; see "Entries from the security review" below | the one source that is not a design document |
 | ARCH-VAL §n | `docs/architecture/validation.md`, section n: the architecture thread's review of the validation flow (2026-10-22). §6 is its list of testable statements; §7 its five open decisions, cited as `ARCH-VAL §7-1`..`§7-5`; see "Entries from the validation-flow review" below. Commits `7a01329` and `c410590` aligned it with the Claudinite engine and sent per-ID deltas, applied below under "Reconciled with the Claudinite alignment" | PR #3 (architecture), commits `a82d7fd`..`c410590`, unmerged |
 | O n | the architecture thread's engine and registry items left open by that alignment, `O1`..`O8` (`docs/architecture/validation.md`, `data-stores.md` as of `7a01329`), tabled under "Open decisions the register depends on" | same PR |
-| ARCH-SCREEN | the prose-screen model: a model on Workers AI (Jev's recommendation), Haiku screens with a Sonnet deep review, or no model at all; Ariel's call, not yet made | open, with the architecture thread |
-| ARCH-SCORE | `docs/architecture/pack-score.md`: the code-only pack score (0–100) and Ariel's "no agentic scans" direction (2026-10-22); whether the two single-shot LLM screens stay is an open decision | PR #3 (architecture), commit `b69215b`, unmerged |
+| ARCH-SCREEN | **resolved** (Ariel, 2026-10-22): the prose screen is Jev on Workers AI (PR #3 commit `6995682`); no entry cites it any more |
+| ARCH-SCORE | `docs/architecture/pack-score.md`: the code-only pack score (0–100) and Ariel's "no agentic scans" direction (2026-10-22); the prose screen that stays is Jev on Workers AI (ARCH-SCREEN, resolved) | PR #3 (architecture), commit `b69215b`, unmerged |
 | CLN-REV | the Claudinite alignment review of this register and the test plan (2026-10-22), `/mnt/project-files/claudinite/reviews/tests.md`, read against the primer `/mnt/project-files/claudinite/claudinite-primer.md` (what a Claudinite pack is, how it reaches a member, the date-form version). Its nine owner decisions are cited as `CLN-REV 1`..`CLN-REV 9`; see "Entries from the Claudinite alignment review" below | project files, not in this repository |
 
 Until those PRs merge the citations are to documents this branch cannot link; the links are left as plain text on purpose so the reference-integrity check does not flag them.
@@ -49,7 +49,7 @@ One file per area, in the order a user meets them:
 | [accounts.md](accounts.md) | `REQ-ACC` | 25 | accounts, MFA, sessions, recovery |
 | [scopes.md](scopes.md) | `REQ-SCOPE` | 17 | scopes, orgs, domain and GitHub proofs, Verified Publisher |
 | [publishing.md](publishing.md) | `REQ-PUB` | 34 (1 retired) | trusted publishing, tokens, web upload, lifecycle |
-| [validation.md](validation.md) | `REQ-VAL` | 46 (1 retired) | the validation pipeline |
+| [validation.md](validation.md) | `REQ-VAL` | 49 (1 retired) | the validation pipeline |
 | [delivery.md](delivery.md) | `REQ-DELIV` | 20 (3 retired) | downloads, the signed index, what cn does with a status |
 | [search-mcp.md](search-mcp.md) | `REQ-SEARCH` | 19 | search, browse, the MCP endpoint |
 | [private.md](private.md) | `REQ-PRIV` | 19 | private packs, the GitHub org allowlist, access grants |
@@ -63,7 +63,7 @@ One file per area, in the order a user meets them:
 | [telemetry.md](telemetry.md) | `REQ-TELEM` | 7 | counters and the dashboard |
 | [operations.md](operations.md) | `REQ-OPS` | 12 | synthetic scopes, probes, the self-test contract, recorded-traffic redaction, the production configuration |
 
-280 entries: 197 derived from the design documents, 29 from the security review, 8 from the release plan (the self-test contract and the redaction rule), 28 from the validation-flow review, 1 from the Claudinite alignment review, 5 from Ariel's decisions of 2026-10-22 (the GitHub org allowlist and Trending) 10 from the architecture thread's pack-score proposal and 2 from its Polar billing design. 217 are active, 58 provisional and 5 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. The totals were recounted from the files on 2026-10-22, after Ariel's decisions of that day were applied (PR #3 commits `99457a2`, `2ff18f5`, `5b1ac94` and `07b211d`).
+283 entries: 197 derived from the design documents, 29 from the security review, 8 from the release plan (the self-test contract and the redaction rule), 31 from the validation-flow review (three of them from its prose-screen decision), 1 from the Claudinite alignment review, 5 from Ariel's decisions of 2026-10-22 (the GitHub org allowlist and Trending) 10 from the architecture thread's pack-score proposal and 2 from its Polar billing design. 226 are active, 52 provisional and 5 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. The totals were recounted from the files on 2026-10-22, after Ariel's decisions of that day were applied (PR #3 commits `99457a2`, `2ff18f5`, `5b1ac94`, `07b211d` and `6995682`).
 
 ## Entry format
 
@@ -250,8 +250,8 @@ The ones that touch the most entries:
 | CLN-REV 8 (ranking by members or stars) | **resolved** (Ariel, 2026-10-22): every signal stays beside the pack score (stars, ratings, Trending, fetch counts); REQ-SEARCH-013 is active, REQ-COMM-014 adds Trending | — |
 | ARCH-VAL §7-4 (tiers canon / community / third-party per version; uncertainty holds time out to third-party after 7 days; two independent screens; reopens ARCH-Q 9) | REQ-VAL-010 (which tier a missing fixture holds), 013, 036, 041, 042, REQ-SEARCH-019, REQ-DELIV-019 | tier fields in the views (and the index, with O6), the queue timeout, which tier never leaves `staging`, default search exclusions |
 | ARCH-VAL §7-5 (serve a canonical re-pack instead of the uploaded bytes; attestation over both hashes; cn accepts canonical form only) | REQ-VAL-033, REQ-VAL-042 (the hashes shown), REQ-PUB-021, REQ-DELIV-001, REQ-DELIV-017 | which bytes and hashes the download, index and attestation scenarios assert |
-| ARCH-SCORE (whether the LLM screens stay at all, after Ariel asked for no agentic scans and a code-only pack score) | REQ-VAL-012, 034, 035, 036, 037, 039, REQ-ADMIN-006 | whether any scenario scripts the LLM fake; the pack-score requirements arrive from the architecture thread once Ariel decides |
-| ARCH-SCREEN (which prose-screen model, if the screens stay: a model on Workers AI as Jev recommended, Haiku screens with a Sonnet deep review, or none) | the same entries as ARCH-SCORE, plus REQ-VAL-018 (the rescan on a screen-model change) | what the LLM fake answers as, whether two screens and a deep review exist as distinct calls, and the per-version budget the hold in REQ-VAL-036 is measured against |
+| ARCH-SCORE (whether the LLM screens stay at all) | **resolved** with ARCH-SCREEN; the key now names only the pack score's tuning (REQ-SCORE-*) | — |
+| ARCH-SCREEN (which prose-screen model) | **resolved**: Jev on Workers AI; REQ-VAL-012, 034–037 and REQ-ADMIN-006 are active, two screens and the auto-reject are gone, REQ-VAL-047 to 049 are new | — |
 
 The ARCH-VAL items reopen four architecture questions the register already names (ARCH-Q 6, 7, 8, 9); an entry provisional on both keeps both in `decision:` so either landing is visible.
 

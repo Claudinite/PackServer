@@ -81,7 +81,7 @@ await publisher.orgs.create('acme')
 await publisher.credits.buy(5)                                           // drives the fake Polar checkout + webhook
 await publisher.credits.beginPurchase(5)                                 // -> Checkout handle; the webhook is delivered by the scenario
 await publisher.publish(archive).as('@acme/gcp@1.61004.1', { visibility?: 'private', staged?: true })  // web upload path
-await publisher.dryRun(archive, { llm?: true })                         // -> Report; no version, no credit (REQ-VAL-043); as a publisher only
+await publisher.dryRun(archive, { proseScreen?: true })                         // -> Report; no version, no credit (REQ-VAL-043); as a publisher only
 await publisher.packs.reserve('@acme/gcp')                               // pending name
 await version.appeal('the quoted line is a code comment, not an instruction')   // once per rejected version (REQ-VAL-040)
 await publisher.trustedPublishers.add(pack, { repo, workflowFile, environment?, path })
@@ -154,9 +154,9 @@ world.github.rotateJwks()                                                // the 
 world.polar.event('order.paid' | 'order.refunded' | 'subscription.revoked', { checkout })   // an event the World can deliver, incl. replay
 world.polar.dropDeliveries()                                           // Polar's deliveries fail; only the hourly reconciliation sees the change (REQ-PAY-014)
 await world.polar.deliver(event, { signature?: 'wrong' })               // sends it to the webhook endpoint
-world.llm.script({ screen: 'first' | 'second' | 'deep', findings: [{ rule, severity, file, line, quote }], addressesReviewer?: true })
-                                            // what the faked reviewer answers; a quote absent from the tree is the hallucination negative (REQ-VAL-034)
-world.llm.script({ screen: 'deep', verdict: 'malicious' | 'benign' | 'uncertain', findings })        // the deep review (REQ-VAL-037)
+world.proseScreen.script({ file?, probabilities: { 'reviewer-addressed'?: 0.97, … } })   // what the faked Jev answers for the chunks of that file, per question (REQ-VAL-034, 037)
+world.proseScreen.releaseModel('jev-1.14.0')                            // the binding starts naming a new model version; live versions are rescanned (REQ-VAL-047)
+world.archive('injection-corpus', { item })                             // one item of the injection fixture corpus the thresholds must hold (REQ-VAL-048)
 await run.reason()                          // the hard-fail reason code, e.g. 'archive.bomb', 'archive.unsafe'
 await run.resources()                       // { withinLimits, peakMemory, bytesWritten } as the sandbox fake measured them (REQ-VAL-022)
 await run.attempts()                        // how many times the run was started; 1 for a final failure (REQ-VAL-014)
@@ -203,7 +203,7 @@ await run.findings()                       // Finding[]: { rule, class: 'fail' |
 await run.holdReasons()                    // why a held version waits: 'new-capability' | 'reviewer-addressed' | 'uncertainty' | 'missing-fixtures' | 'budget' | 'disagreement' | 'name-near-miss' | 'install-url'
 await run.urls()                           // the URL inventory with each domain's class (REQ-VAL-026)
 await run.capabilities();  await run.manifest()   // the extracted set and manifest, before promotion
-await run.lowConfidence()                  // true when a reviewer quote was discarded (REQ-VAL-034)
+await run.screened()                       // per chunk: { file, lines, probabilities, thresholds, model, questionSet } (REQ-VAL-036, 047, REQ-ADMIN-006)
 await world.rules.list()                   // the published rule list: { id, class }[] (REQ-VAL-024)
 await admin.queue.list()                   // QueueItem[] in queue order; each has .diff, .capabilityChanges, .findings, .holdReasons
 await agent.search('deploy', { includeUnreviewed?: true })   // third-party packs only when asked (REQ-SEARCH-019)
@@ -274,7 +274,7 @@ export interface World {
   delivery: { serveInstead(v: Version, a: Archive): void };          // in-process only
   cron: { run(job: CronJob): Promise<void> };
   clock: Clock;
-  github: FakeGitHub;   polar: FakePolar;   llm: FakeLlm;   sandbox: FakeSandbox;
+  github: FakeGitHub;   polar: FakePolar;   proseScreen: FakeProseScreen;   sandbox: FakeSandbox;
   mail: FakeMail;       dns: FakeDns;         turnstile: FakeTurnstile;   rekor: FakeRekor;
   audit: { for(subject: User | Org): Promise<AuditEntry[]>; batches(): Promise<AuditBatch[]>; heads(): Promise<AuditHead[]>;
            verify(): Promise<AuditVerdict>; tamper(b: AuditBatch, how: { drop: true } | { alter: true }): void };
@@ -311,7 +311,7 @@ export interface Publisher extends User {
   orgs: { create(name: string): Promise<Org> };
   credits: { buy(n: number): Promise<void>; beginPurchase(n: number): Promise<Checkout>; balance(): Promise<number> };
   publish(a: Archive): { as(nameAtVersion: string, o?: PublishOpts): Promise<Version> };
-  dryRun(a: Archive, o?: { llm?: boolean }): Promise<Report>;
+  dryRun(a: Archive, o?: { proseScreen?: boolean }): Promise<Report>;
   packs: { reserve(name: string): Promise<Pack> };
   trustedPublishers: { add(p: Pack, tp: TrustedPublisherSpec): Promise<TrustedPublisher> };
   tokens: PublisherTokens;
@@ -523,7 +523,7 @@ scenario('REQ-VAL-014 REQ-VAL-022 REQ-VAL-023 every decompression bomb is refuse
     expect(await run.attempts()).toBe(1);                              // final: never retried as an infrastructure error
   }
   expect(await publisher.credits.balance()).toBe(1);
-  await expect(world.llm).not.toHaveBeenAsked();
+  await expect(world.proseScreen).not.toHaveBeenAsked();
 });
 ```
 

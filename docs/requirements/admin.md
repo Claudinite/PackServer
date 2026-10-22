@@ -59,16 +59,17 @@ An admin can grant or revoke Verified Publisher status.
 An admin can resolve a scope dispute by reassigning a handle to the verified domain owner; the
 previous holder is renamed and notified.
 
-## REQ-ADMIN-006 Admins see full validation reports and LLM reviews
+## REQ-ADMIN-006 Admins see full validation reports and prose-screen results
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: admin
-- source: ARCH §7 (validation-reports)
-- decision: ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
+- source: ARCH §7 (validation-reports); ARCH-VAL §3.6, §3.7, §4 steps 9 to 11, §6; ARCH §6, §15 Q3 (PR #3 commit 6995682); Ariel, 2026-10-22 (the prose screen is Jev on Workers AI)
 - coverage: scenario
 
-An admin can view the full validation report and LLM review of any version.
+An admin can view the full validation report of any version, including for every screened chunk
+the questions asked, the probabilities returned, the thresholds applied, the question-set version
+and the Jev model version named in the response.
 
 ## REQ-ADMIN-007 Admins process delayed recoveries and clear refund flags
 
@@ -101,5 +102,5 @@ as not found.
 - source: SEC (security review, 2026-10-22); ARCH §13
 - coverage: scenario
 
-Admin reads of private content (private packs, validation reports, LLM reviews, security
+Admin reads of private content (private packs, validation reports, prose-screen results, security
 reports) are audited with the actor.
