@@ -1,4 +1,17 @@
-import { FLOAT_SIGNIFICANT_DIGITS, REQUEST_HEADER_ALLOWLIST, RESPONSE_HEADER_ALLOWLIST } from "@packserver/schema";
+import {
+  FLOAT_SIGNIFICANT_DIGITS,
+  REQUEST_HEADER_ALLOWLIST,
+  RESPONSE_HEADER_ALLOWLIST,
+  type VOLATILE_PLACEHOLDERS,
+} from "@packserver/schema";
+
+type Placeholder = (typeof VOLATILE_PLACEHOLDERS)[number];
+const SIG: Placeholder = "<sig>";
+const SESSION: Placeholder = "<session>";
+const OPAQUE: Placeholder = "<opaque>";
+const ROWID: Placeholder = "<rowid>";
+const TS: Placeholder = "<ts>";
+const uuidPlaceholder = (n: number): string => ("<uuid:n>" satisfies Placeholder).replace("n", String(n));
 
 const HOUR_MS = 3_600_000;
 
@@ -35,10 +48,10 @@ const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 const ISO_TS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 const KEY_PLACEHOLDERS: ReadonlyArray<readonly [RegExp, string]> = [
-  [/^(sig|signature|x-signature)$/i, "<sig>"],
-  [/^(session|session_id|sid)$/i, "<session>"],
-  [/^(cursor|nonce|opaque)$/i, "<opaque>"],
-  [/^(rowid|row_id|last_row_id)$/i, "<rowid>"],
+  [/^(sig|signature|x-signature)$/i, SIG],
+  [/^(session|session_id|sid)$/i, SESSION],
+  [/^(cursor|nonce|opaque)$/i, OPAQUE],
+  [/^(rowid|row_id|last_row_id)$/i, ROWID],
 ];
 
 /** Replaces volatile values with typed placeholders; one instance per record so `<uuid:n>` numbering is stable within it. */
@@ -65,7 +78,7 @@ export class Normalizer {
   private string(s: string): string {
     if (ISO_TS.test(s)) {
       const t = Date.parse(s);
-      if (!Number.isNaN(t) && Math.abs(t - this.nowMs) <= HOUR_MS) return "<ts>";
+      if (!Number.isNaN(t) && Math.abs(t - this.nowMs) <= HOUR_MS) return TS;
     }
     return s.replace(UUID, (m) => {
       const id = m.toLowerCase();
@@ -74,7 +87,7 @@ export class Normalizer {
         n = this.uuids.size + 1;
         this.uuids.set(id, n);
       }
-      return `<uuid:${n}>`;
+      return uuidPlaceholder(n);
     });
   }
 }
@@ -164,7 +177,20 @@ function allowlisted<T extends string>(
 }
 
 export const requestHeaders = (h: Headers | Record<string, string>) => allowlisted(h, REQUEST_HEADER_ALLOWLIST);
-export const responseHeaders = (h: Headers | Record<string, string>) => allowlisted(h, RESPONSE_HEADER_ALLOWLIST);
+/** Query values (an OAuth `code` or `state`) and the fragment never reach a record; the keys stay. */
+export function stripLocationQuery(location: string): string {
+  const [withQuery = ""] = location.split("#");
+  const [path = "", query] = withQuery.split("?");
+  if (query === undefined) return path;
+  const keys = query.split("&").filter(Boolean).map((kv) => `${kv.split("=")[0]}=`);
+  return keys.length ? `${path}?${keys.join("&")}` : path;
+}
+
+export function responseHeaders(h: Headers | Record<string, string>) {
+  const out = allowlisted(h, RESPONSE_HEADER_ALLOWLIST);
+  if (out.location !== undefined) out.location = stripLocationQuery(out.location);
+  return out;
+}
 
 /** Rows of a query without `ORDER BY` are sorted by canonical JSON so replays compare equal. */
 export function sortUnorderedRows(rows: readonly unknown[]): unknown[] {

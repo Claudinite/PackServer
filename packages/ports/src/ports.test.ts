@@ -60,9 +60,9 @@ describe("fakes", () => {
   it("repeats ids and floats for the same seed and expires KV by the fake clock", async () => {
     expect(createFakePorts({ seed: 7 }).rng.uuid()).toBe(createFakePorts({ seed: 7 }).rng.uuid());
     const p = createFakePorts();
-    await p.kv.put("k", "v", { ttl_seconds: 10 });
-    expect(await p.kv.get("k")).toBe("v");
+    await p.kv["sessions"]!.put("k", "v", { ttl_seconds: 10 });
+    expect(await p.kv["sessions"]!.get("k")).toBe("v");
     p.clock.advance("11s");
-    expect(await p.kv.get("k")).toBeNull();
+    expect(await p.kv["sessions"]!.get("k")).toBeNull();
   });
 });

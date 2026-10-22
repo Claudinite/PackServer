@@ -1,4 +1,4 @@
-import type { Finding } from "@packserver/schema";
+import type { Finding, QuotaRpc, RootCoordinatorRpc, ScopeCoordinatorRpc } from "@packserver/schema";
 
 export class PortError extends Error {
   constructor(
@@ -215,11 +215,39 @@ export interface Queue {
   sendBatch(messages: unknown[]): Promise<void>;
 }
 
-export interface DurableObjects {
-  call(namespace: string, name: string, method: string, args: unknown): Promise<unknown>;
+export interface Workflow {
+  create(request: { id?: string; params: unknown }): Promise<{ id: string }>;
+  status(id: string): Promise<{ status: string }>;
 }
 
-export interface Ports {
+export interface RateLimit {
+  limit(request: { key: string }): Promise<{ success: boolean }>;
+}
+
+export interface DoRpcs {
+  ScopeCoordinator: ScopeCoordinatorRpc;
+  Quota: QuotaRpc;
+  RootCoordinator: RootCoordinatorRpc;
+}
+export type DoNamespace = keyof DoRpcs;
+export type DoMethod<D extends DoNamespace> = keyof DoRpcs[D] & string;
+export type DoArgs<D extends DoNamespace, M extends DoMethod<D>> = DoRpcs[D][M] extends (...a: infer A) => unknown ? A : never;
+export type DoResult<D extends DoNamespace, M extends DoMethod<D>> = DoRpcs[D][M] extends (...a: never[]) => infer R
+  ? Awaited<R>
+  : never;
+
+/** Typed by the schema's RPC contract; every result carries `schema_version`. */
+export interface DurableObjects {
+  call<D extends DoNamespace, M extends DoMethod<D>>(
+    namespace: D,
+    name: string,
+    method: M,
+    args: DoArgs<D, M>,
+  ): Promise<DoResult<D, M>>;
+}
+
+/** Ports with exactly one instance per Worker. */
+export interface SinglePorts {
   clock: Clock;
   rng: Rng;
   github: GitHub;
@@ -238,8 +266,16 @@ export interface Ports {
   audit: AuditSink;
   transparency: Transparency;
   d1: D1;
-  r2: R2;
-  kv: KV;
-  queue: Queue;
   durableObjects: DurableObjects;
 }
+
+/** Ports a Worker holds once per binding; the record names the binding as its target. */
+export interface BindingPorts {
+  r2: R2;
+  kv: KV;
+  queues: Queue;
+  workflows: Workflow;
+  rateLimits: RateLimit;
+}
+
+export type Ports = SinglePorts & { [K in keyof BindingPorts]: Readonly<Record<string, BindingPorts[K]>> };

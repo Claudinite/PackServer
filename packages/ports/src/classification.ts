@@ -1,7 +1,13 @@
+import { REQUEST_HEADER_ALLOWLIST, RESPONSE_HEADER_ALLOWLIST } from "@packserver/schema";
 import { hmacHex, type HashKey } from "./hash";
 
 export const DATA_CLASSES = ["public", "operational", "personal", "secret", "customer-content"] as const;
 export type DataClass = (typeof DATA_CLASSES)[number];
+
+/** Least to most restrictive; where two classes meet, the later one wins. */
+const STRICTNESS: Record<DataClass, number> = { public: 0, operational: 1, personal: 2, "customer-content": 3, secret: 4 };
+export const stricter = (a: DataClass | undefined, b: DataClass | undefined): DataClass | undefined =>
+  a === undefined ? b : b === undefined ? a : STRICTNESS[b] > STRICTNESS[a] ? b : a;
 
 /** A path is dot-joined segments; `*` matches one segment, `**` any number (including none). */
 export type ClassRules = Readonly<Record<string, DataClass>>;
@@ -36,6 +42,8 @@ export function classOf(rules: ClassRules, path: string): DataClass | undefined 
  * never kept in clear because nobody thought to classify it.
  */
 export const BASE_RULES: ClassRules = {
+  ...Object.fromEntries(REQUEST_HEADER_ALLOWLIST.map((h) => [`request.headers.${h}`, "operational" as const])),
+  ...Object.fromEntries(RESPONSE_HEADER_ALLOWLIST.map((h) => [`response.headers.${h}`, "operational" as const])),
   "**.email": "personal",
   "**.ip": "personal",
   "**.password": "secret",
@@ -48,14 +56,24 @@ export const BASE_RULES: ClassRules = {
   "**.private_key": "secret",
   "**.signature_key": "secret",
   "request.method": "public",
-  "request.headers.**": "operational",
   "request.path_params.scope": "public",
   "request.path_params.pack": "public",
   "request.path_params.version": "public",
-  "response.headers.**": "operational",
   "response.error.name": "operational",
   "response.error.message": "customer-content",
 };
+
+/**
+ * A rule may deny with `**` (a key name anywhere) but never grant with it: a field nobody named
+ * stays unclassified, so it is stored as customer-content and reported.
+ */
+export function assertNoCatchAllGrant(rules: ClassRules): void {
+  for (const [pattern, cls] of Object.entries(rules)) {
+    if (pattern.endsWith("**") && (cls === "public" || cls === "operational")) {
+      throw new Error(`rule "${pattern}" grants ${cls} to unnamed fields; name each leaf instead`);
+    }
+  }
+}
 
 export interface Redaction {
   value: unknown;
@@ -78,18 +96,22 @@ export async function redact(
   const unclassified: string[] = [];
   const DROPPED = Symbol("dropped");
 
-  const placeholder = async (cls: "personal" | "customer-content", v: unknown) =>
-    `<${cls}:${(await hmacHex(key, JSON.stringify(v) ?? "undefined")).slice(0, 16)}>`;
+  const isBytes = (v: unknown): v is Uint8Array | ArrayBuffer => v instanceof Uint8Array || v instanceof ArrayBuffer;
+
+  const placeholder = async (cls: "personal" | "customer-content", v: unknown) => {
+    const material = isBytes(v) ? new Uint8Array(v instanceof ArrayBuffer ? v : v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength)) : (JSON.stringify(v) ?? "undefined");
+    return `<${cls}:${(await hmacHex(key, material)).slice(0, 16)}>`;
+  };
 
   const walk = async (v: unknown, p: string, inherited: DataClass | undefined): Promise<unknown> => {
     if (v === null || v === undefined) return v;
-    const own = classOf(rules, p);
-    const cls = own ?? inherited;
+    let cls = stricter(classOf(rules, p), inherited);
+    if (isBytes(v)) cls = stricter(cls, "customer-content");
     if (cls === "secret") {
       redactions.push(p);
       return DROPPED;
     }
-    if (isContainer(v)) {
+    if (isContainer(v) && !isBytes(v)) {
       if (Array.isArray(v)) {
         const items = await Promise.all(v.map((item, i) => walk(item, `${p}.${i}`, cls)));
         return items.filter((item) => item !== DROPPED);

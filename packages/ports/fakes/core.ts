@@ -7,15 +7,21 @@ import {
   type Clock,
   type D1,
   type D1Result,
+  type DoArgs,
+  type DoMethod,
+  type DoNamespace,
+  type DoResult,
   type DurableObjects,
   type KV,
   type Queue,
+  type RateLimit,
   type R2,
   type Rng,
   type Stats,
   type StatsPoint,
   type Transparency,
   type Uploads,
+  type Workflow,
 } from "../src/ports";
 
 const UNITS: Record<string, number> = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 };
@@ -136,16 +142,59 @@ export class FakeD1 implements D1 {
 
 export class FakeDurableObjects implements DurableObjects {
   readonly calls: Array<{ namespace: string; name: string; method: string; args: unknown }> = [];
-  private readonly objects = new Map<string, Record<string, (args: unknown) => unknown>>();
-  register(namespace: string, name: string, methods: Record<string, (args: unknown) => unknown>): this {
-    this.objects.set(`${namespace}/${name}`, methods);
+  private readonly objects = new Map<string, Record<string, (args: never) => unknown>>();
+  register<D extends DoNamespace>(
+    namespace: D,
+    name: string,
+    methods: { [M in DoMethod<D>]?: (...args: DoArgs<D, M>) => DoResult<D, M> },
+  ): this {
+    this.objects.set(`${namespace}/${name}`, Object.fromEntries(
+      Object.entries(methods).map(([m, fn]) => [m, (args: unknown[]) => (fn as (...a: unknown[]) => unknown)(...args)]),
+    ) as never);
     return this;
   }
-  async call(namespace: string, name: string, method: string, args: unknown) {
+  async call<D extends DoNamespace, M extends DoMethod<D>>(
+    namespace: D,
+    name: string,
+    method: M,
+    args: DoArgs<D, M>,
+  ): Promise<DoResult<D, M>> {
     this.calls.push({ namespace, name, method, args });
     const fn = this.objects.get(`${namespace}/${name}`)?.[method];
     if (!fn) throw new PortError("unscripted", `no Durable Object method ${namespace}/${name}.${method}`);
-    return fn(args);
+    return (await fn(args as never)) as DoResult<D, M>;
+  }
+}
+
+export class FakeWorkflow implements Workflow {
+  readonly instances = new Map<string, { params: unknown; status: string }>();
+  async create(request: { id?: string; params: unknown }) {
+    const id = request.id ?? `wf-${this.instances.size + 1}`;
+    if (!this.instances.has(id)) this.instances.set(id, { params: request.params, status: "running" });
+    return { id };
+  }
+  async status(id: string) {
+    const i = this.instances.get(id);
+    if (!i) throw new PortError("not_found", `no workflow instance ${id}`);
+    return { status: i.status };
+  }
+}
+
+/** Approximate like the real binding: refuses after `limit` calls for a key inside the period. */
+export class FakeRateLimit implements RateLimit {
+  private readonly hits = new Map<string, number[]>();
+  constructor(
+    private readonly clock: Clock,
+    private readonly limitPerPeriod: number,
+    private readonly periodMs: number,
+  ) {}
+  async limit(request: { key: string }) {
+    const now = this.clock.now();
+    const recent = (this.hits.get(request.key) ?? []).filter((t) => now - t < this.periodMs);
+    const success = recent.length < this.limitPerPeriod;
+    if (success) recent.push(now);
+    this.hits.set(request.key, recent);
+    return { success };
   }
 }
 

@@ -7,7 +7,7 @@ import {
   type InvocationKind,
   type RecorderMode,
 } from "@packserver/schema";
-import { BASE_RULES, redact, type ClassRules } from "./classification";
+import { BASE_RULES, assertNoCatchAllGrant, redact, type ClassRules } from "./classification";
 import { hmacHex, principalHash, sha256Hex, type HashKey } from "./hash";
 import {
   Normalizer,
@@ -82,6 +82,12 @@ export interface FinishInput {
   d1Bookmark?: string | null;
 }
 
+/** Only the `at …` frames: the message line of a stack can carry a person's data. */
+function stackFrames(error: Error): string {
+  const frames = (error.stack ?? "").split("\n").filter((l) => /^\s+at\s/.test(l));
+  return frames.length ? frames.join("\n") : error.name;
+}
+
 function sortedQuery(q: FinishInput["request"]["query"]): Record<string, string | string[]> {
   const out: Record<string, string | string[]> = {};
   if (!q) return out;
@@ -121,6 +127,7 @@ export function createRecorder(options: RecorderOptions): Recorder {
   }
   if (!options.keys) throw new Error("a wet recorder needs redaction and principal keys");
   const keys = options.keys;
+  assertNoCatchAllGrant(options.rules ?? {});
   const rules: ClassRules = { ...BASE_RULES, ...options.rules };
   const startMs = options.clock.now();
   const normalizer = new Normalizer(startMs);
@@ -166,18 +173,22 @@ export function createRecorder(options: RecorderOptions): Recorder {
     let rowCount: number | undefined;
     let unordered: boolean | undefined;
     if (spec.kind === "d1" && resultNorm && typeof resultNorm === "object") {
-      const withRows = resultNorm as { rows?: unknown[] };
-      if (Array.isArray(withRows.rows)) {
-        rowCount = withRows.rows.length;
+      const batch = Array.isArray(resultNorm);
+      const sets = (batch ? resultNorm : [resultNorm]) as Array<{ rows?: unknown[] }>;
+      if (sets.every((r) => Array.isArray(r?.rows))) {
+        rowCount = sets.reduce((n, r) => n + (r.rows as unknown[]).length, 0);
         if (!ordered) {
           unordered = true;
-          resultNorm = { ...withRows, rows: sortUnorderedRows(withRows.rows) };
+          const sorted = sets.map((r) => ({ ...r, rows: sortUnorderedRows(r.rows as unknown[]) }));
+          resultNorm = batch ? sorted : sorted[0];
         }
       }
     }
     const resultJson = canonicalJson(resultNorm);
+    const requestJson = canonicalJson(requestNorm);
     const tooBig = byteLength(resultJson) > INVOCATION_BODY_CAP_BYTES || (rowCount !== undefined && rowCount > D1_ROW_CAP);
-    if (tooBig) truncated = true;
+    const requestTooBig = byteLength(requestJson) > INVOCATION_BODY_CAP_BYTES;
+    if (tooBig || requestTooBig) truncated = true;
     const entry: Invocation = {
       seq: index,
       parent: spec.parent ?? null,
@@ -185,8 +196,8 @@ export function createRecorder(options: RecorderOptions): Recorder {
       target: spec.target,
       op: spec.op,
       effect: spec.effect,
-      request: requestNorm,
-      request_hash: await sha256Hex(canonicalJson(requestNorm)),
+      request: requestTooBig ? null : requestNorm,
+      request_hash: await sha256Hex(requestJson),
       ...(tooBig ? {} : { result: resultNorm }),
       result_hash: await sha256Hex(resultJson),
       ...(rowCount !== undefined ? { row_count: rowCount } : {}),
@@ -273,7 +284,7 @@ export function createRecorder(options: RecorderOptions): Recorder {
         ? {
             name: res.error.name,
             message: String(await clean(res.error.message, "response.error.message")),
-            stack_hash: await sha256Hex(res.error.stack ?? res.error.message),
+            stack_hash: await hmacHex(keys.redaction, stackFrames(res.error)),
           }
         : null;
       const envelope = RecordEnvelope.parse({

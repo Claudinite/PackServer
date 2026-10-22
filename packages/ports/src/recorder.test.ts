@@ -1,7 +1,7 @@
 import { RecordEnvelope } from "@packserver/schema";
 import { describe, expect, it } from "vitest";
-import { createFakePorts, FakeClock, type FakePorts } from "../fakes";
-import { instrumentAll, PORT_SPECS } from "./instrument";
+import { createFakePorts, FakeClock, FakeKV, type FakePorts } from "../fakes";
+import { BINDING_SPECS, instrumentAll, PORT_SPECS } from "./instrument";
 import { createRecorder, type FinishInput } from "./recorder";
 
 const context = { request_id: "ray-1", side: "live", worker: "publish", version_id: "v1", release_id: "r1" };
@@ -65,7 +65,7 @@ describe("Recorder envelope", () => {
     clock.advance(250);
     p.clock.now();
     p.rng.float();
-    await p.kv.put("k", "v");
+    await p.kv["sessions"]!.put("k", "v");
     const envelope = (await recorder.finish(finishInput()))!;
     expect(envelope.invocations.map((i) => i.seq)).toEqual([0, 1, 2, 3]);
     expect(envelope.invocations.map((i) => i.kind)).toEqual(["clock", "clock", "random", "kv"]);
@@ -163,7 +163,7 @@ describe("redaction (REQ-OPS-012)", () => {
     await p.d1.query("select owner, text from packs where owner = ?", [email]);
     await p.mail.send({ to: email, subject: marker, text: `${marker} ${token}` });
     await p.turnstile.verify(token, "198.51.100.7");
-    await p.queue.send({ email, marker });
+    await p.queues["notify"]!.send({ email, marker });
     const envelope = (await recorder.finish(finishInput({}, { email, token, text: marker, ...extraBody })))!;
     return { envelope, lines, recorder, ports };
   }
@@ -204,12 +204,12 @@ describe("redaction (REQ-OPS-012)", () => {
 });
 
 describe("recorded fakes", () => {
-  it("only wraps documented methods and rejects an unclassified one", () => {
+  it("rejects a method no spec classifies", () => {
     const { recorder } = wet();
-    const stray = { ...createFakePorts().kv, mystery: async () => 1 };
-    expect(() => (instrumentAll({ ...createFakePorts(), kv: stray as never }, recorder).kv as unknown as { mystery(): unknown }).mystery()).toThrow(
-      "no recorder classification",
-    );
+    const stray = Object.assign(Object.create(new FakeKV(new FakeClock())) as object, { mystery: async () => 1 });
+    const ports = createFakePorts();
+    const wrapped = instrumentAll({ ...ports, kv: { sessions: stray as never } }, recorder);
+    expect(() => (wrapped.kv["sessions"] as unknown as { mystery(): unknown }).mystery()).toThrow("no recorder classification");
   });
 });
 
@@ -217,19 +217,20 @@ describe("port inventory", () => {
   const methodsOf = (o: object) =>
     Object.getOwnPropertyNames(Object.getPrototypeOf(o) as object).filter((n) => n !== "constructor" && typeof (o as never)[n] === "function");
 
-  it("classifies exactly the public async methods each fake exposes", () => {
-    const ports = createFakePorts() as unknown as Record<string, object>;
-    for (const [name, spec] of Object.entries(PORT_SPECS)) {
-      const port = ports[name]!;
+  it("classifies exactly the public methods each fake exposes", () => {
+    const ports = createFakePorts() as unknown as Record<string, object | Record<string, object>>;
+    const one = (name: string, spec: { methods: object }, port: object) => {
       const portMethods = methodsOf(port).filter((m) => Object.keys(spec.methods).includes(m));
       expect(Object.keys(spec.methods).sort(), name).toEqual(portMethods.sort());
-    }
+    };
+    for (const [name, spec] of Object.entries(PORT_SPECS)) one(name, spec, ports[name] as object);
+    for (const [name, spec] of Object.entries(BINDING_SPECS)) one(name, spec, Object.values(ports[name] as Record<string, object>)[0]!);
   });
 
   it("leaves no field unclassified when every port is called with sample data", async () => {
     const ports: FakePorts = createFakePorts();
     ports.d1.on(/./, () => ({ rows: [{ id: 1 }], meta: { changes: 1, last_row_id: 3 } }));
-    ports.durableObjects.register("ns", "n", { m: () => ({ ok: true }) });
+    ports.durableObjects.register("Quota", "n", { peek: () => ({ schema_version: 1, count: 0 }) });
     ports.github.repos.set("a/b", { slug: "a/b", id: 1, default_branch: "main", private: false, archived: false });
     ports.sandbox.scriptInspect("k", { tree_hash: "h", canonical_key: "c", file_count: 1, findings: [] });
     ports.sandbox.scriptRun("c", { loaded: true, round_trip_ok: true, checks: [], egress_attempts: [], findings: [] });
@@ -258,10 +259,15 @@ describe("port inventory", () => {
     await p.audit.append({ type: "t" }); await p.audit.head();
     await p.transparency.anchor({ seq: 0, hash: "h" });
     await p.d1.query("select 1 from t", [1]); await p.d1.batch([{ sql: "update t set a = ?", params: [1] }]);
-    await p.r2.put("k", new Uint8Array([1]), { content_type: "x" }); await p.r2.get("k"); await p.r2.head("k"); await p.r2.list("k"); await p.r2.delete("k");
-    await p.kv.put("k", "v", { ttl_seconds: 5 }); await p.kv.get("k"); await p.kv.list("k"); await p.kv.delete("k");
-    await p.queue.send({ a: 1 }); await p.queue.sendBatch([{ a: 1 }]);
-    await p.durableObjects.call("ns", "n", "m", { a: 1 });
+    const r2 = p.r2["public"]!;
+    await r2.put("k", new Uint8Array([1]), { content_type: "x" }); await r2.get("k"); await r2.head("k"); await r2.list("k"); await r2.delete("k");
+    const kv = p.kv["sessions"]!;
+    await kv.put("k", "v", { ttl_seconds: 5 }); await kv.get("k"); await kv.list("k"); await kv.delete("k");
+    await p.queues["notify"]!.send({ a: 1 }); await p.queues["notify"]!.sendBatch([{ a: 1 }]);
+    const wf = await p.workflows["validate-pack"]!.create({ id: "i", params: { a: 1 } });
+    await p.workflows["validate-pack"]!.status(wf.id);
+    await p.rateLimits["default"]!.limit({ key: "k" });
+    await p.durableObjects.call("Quota", "n", "peek", [{ kind: "reviews", principal: "p", day: "2026-10-22" }]);
     await recorder.finish(finishInput({ pathParams: { scope: "acme" }, query: {} }));
     expect(recorder.unclassifiedPaths()).toEqual([]);
   });
