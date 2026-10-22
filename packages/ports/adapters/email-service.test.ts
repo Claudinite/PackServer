@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { EmailServiceMail, type MailTelemetry, type SendEmailBinding } from "./email-service";
 
-function setup(failures: number) {
+function setup(failures: number, code = "E_SENDER_NOT_VERIFIED") {
   const events: string[] = [];
   const sent: unknown[] = [];
   let left = failures;
   const binding: SendEmailBinding = {
     async send(message) {
       sent.push(message);
-      if (left-- > 0) throw Object.assign(new Error("nope"), { code: "E_SENDER_NOT_VERIFIED" });
+      if (left-- > 0) throw Object.assign(new Error("nope"), { code });
       return { messageId: "m-1" };
     },
   };
@@ -33,6 +33,12 @@ describe("EmailServiceMail", () => {
     const { mail, events } = setup(3);
     for (let i = 0; i < 3; i++) await expect(mail.send(msg)).rejects.toMatchObject({ code: "E_SENDER_NOT_VERIFIED" });
     expect(events).toEqual(["email.failed", "email.failed", "ticket:email_failed", "email.failed"]);
+  });
+
+  it("does not count recipient-specific errors toward the streak", async () => {
+    const { mail, events } = setup(5, "E_RECIPIENT_SUPPRESSED");
+    for (let i = 0; i < 4; i++) await expect(mail.send(msg)).rejects.toThrow();
+    expect(events).toEqual(Array(4).fill("email.failed"));
   });
 
   it("resets the count after a success", async () => {

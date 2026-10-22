@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@packserver/ports": "workspace:*"
+    "@packserver/ports": "workspace:*",
+    "@packserver/schema": "workspace:*"
   }
 }

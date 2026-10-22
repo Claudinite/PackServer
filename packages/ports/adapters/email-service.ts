@@ -18,6 +18,9 @@ export interface MailTelemetry {
   ticket(kind: "email_failed", fields: Record<string, string | number>): void;
 }
 
+/** Errors about one recipient say nothing about the provider's health. */
+const RECIPIENT_ERRORS = new Set(["E_RECIPIENT_SUPPRESSED", "E_RECIPIENT_NOT_ALLOWED", "E_VALIDATION_ERROR"]);
+
 export interface EmailServiceOptions {
   from: string;
   telemetry: MailTelemetry;
@@ -51,14 +54,15 @@ export class EmailServiceMail implements Mail {
       telemetry.signal("email.sent", { id: result.messageId });
       return { id: result.messageId };
     } catch (error) {
-      this.consecutiveFailures += 1;
       const code = (error as { code?: unknown }).code;
+      const providerFault = !(typeof code === "string" && RECIPIENT_ERRORS.has(code));
+      if (providerFault) this.consecutiveFailures += 1;
       const fields = {
         code: typeof code === "string" ? code : "unknown",
         consecutive_failures: this.consecutiveFailures,
       };
       telemetry.signal("email.failed", fields);
-      if (this.consecutiveFailures === failureThreshold) telemetry.ticket("email_failed", fields);
+      if (providerFault && this.consecutiveFailures === failureThreshold) telemetry.ticket("email_failed", fields);
       throw error;
     }
   }

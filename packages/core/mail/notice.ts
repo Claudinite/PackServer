@@ -11,6 +11,9 @@ export const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 export function render(notice: Notice): Pick<MailMessage, "subject" | "text" | "html"> {
+  if (notice.action && !notice.action.url.startsWith("https://")) {
+    throw new Error("notice action links must be https");
+  }
   const textParts = [...notice.paragraphs];
   if (notice.action) textParts.push(`${notice.action.label}: ${notice.action.url}`);
   const htmlParts = notice.paragraphs.map((p) => `<p>${escapeHtml(p)}</p>`);

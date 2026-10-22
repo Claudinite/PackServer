@@ -4,6 +4,6 @@ import type { FakeMail } from "@packserver/ports/fakes";
 export function inbox(mail: FakeMail, address: string) {
   return mail.inbox(address).map((m) => ({
     ...m,
-    links: [...m.text.matchAll(/https?:\/\/[^\s<>"]+/g)].map((x) => x[0]),
+    links: [...(m.html ?? "").matchAll(/<a href="([^"]+)"/g)].map((x) => (x[1] ?? "").replace(/&amp;/g, "&")),
   }));
 }

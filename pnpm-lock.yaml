@@ -53,6 +53,9 @@ importers:
       '@packserver/ports':
         specifier: workspace:*
         version: link:../ports
+      '@packserver/schema':
+        specifier: workspace:*
+        version: link:../schema
 
   packages/ports:
     dependencies:

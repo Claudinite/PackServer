@@ -5,15 +5,15 @@ import { inbox } from "./testing";
 
 const url = "https://packserver.example/x?a=1&b=2";
 const SAMPLES: { [K in NoticeKind]: NoticeData<K> } = {
-  "factor-added": { factor: "passkey", securityUrl: url, holdHours: 24 },
+  "factor-added": { factor: "passkey", securityUrl: url, lockApplies: true },
   "new-device-sign-in": { device: "Firefox on Linux", location: "Oslo", at: "2026-10-22 10:00 UTC", securityUrl: url },
   "trusted-publisher-changed": { pack: "@acme/pack", change: "added", publisher: "acme/repo", actor: "ann", packUrl: url },
-  "validation-verdict": { pack: "@acme/pack", version: "1.0.0", verdict: "failed", findings: [{ file: "a.md", line: 3, message: "bad" }], runUrl: url },
+  "validation-verdict": { pack: "@acme/pack", version: "1.0.0", verdict: "failed", findings: [{ rule: "r1", class: "fail", file: "a.md", line: 3, quote: null, hint: "bad" }], runUrl: url },
   "version-published": { pack: "@acme/pack", version: "1.0.0", path: "CI", actor: "ann", versionUrl: url },
   "domain-proof-warning": { scope: "@acme", domain: "acme.test", failedChecks: 1, removalDate: "2026-11-21", scopeUrl: url },
   "verified-publisher-decision": { scope: "@acme", decision: "denied", reason: "no MFA", scopeUrl: url },
   "report-status-changed": { pack: "@acme/pack", status: "fixed", fixedIn: "1.0.1", reportUrl: url },
-  "version-withdrawn": { pack: "@acme/pack", version: "1.0.0", action: "yanked", reason: null, packUrl: url },
+  "version-withdrawn": { items: [{ pack: "@acme/pack", version: "1.0.0", action: "yanked", reason: null }], packUrl: url },
   "pack-actioned": { pack: "@acme/pack", action: "quarantined", reason: "malware", appealUrl: url },
   "appeal-decided": { pack: "@acme/pack", outcome: "denied", packUrl: url },
   "domain-drift-warning": { pack: "@acme/pack", version: "1.0.0", domain: "x.test", versionUrl: url },
@@ -44,6 +44,38 @@ describe("notices", () => {
   });
 });
 
+describe("notice rules", () => {
+  it.each(Object.keys(SAMPLES) as NoticeKind[])("%s never names PackServer", (kind) => {
+    const out = renderNotice(kind, SAMPLES[kind] as never);
+    expect(`${out.subject}${out.text}${out.html}`).not.toContain("PackServer");
+  });
+
+  it("requires a reason when a Verified Publisher application is denied", () => {
+    // @ts-expect-error a denial without a reason does not type-check
+    const bad: NoticeData<"verified-publisher-decision"> = { scope: "@acme", decision: "denied", scopeUrl: url };
+    expect(bad).toBeDefined();
+    const ok = renderNotice("verified-publisher-decision", { scope: "@acme", decision: "granted", scopeUrl: url });
+    expect(ok.text).not.toContain("Reason");
+  });
+
+  it("mentions the 24-hour lock only when it applies", () => {
+    const d = SAMPLES["factor-added"];
+    expect(renderNotice("factor-added", { ...d, lockApplies: true }).text).toContain("24 hours");
+    expect(renderNotice("factor-added", { ...d, lockApplies: false }).text).not.toContain("24 hours");
+  });
+
+  it("refuses a non-https action link", () => {
+    expect(() => renderNotice("pack-actioned", { ...SAMPLES["pack-actioned"], appealUrl: "http://x.test" })).toThrow(/https/);
+    expect(() => renderNotice("pack-actioned", { ...SAMPLES["pack-actioned"], appealUrl: "javascript:alert(1)" })).toThrow(/https/);
+  });
+
+  it("digests several withdrawals into one notice", () => {
+    const d = SAMPLES["version-withdrawn"];
+    const out = renderNotice("version-withdrawn", { ...d, items: [...d.items, { pack: "@b/c", version: "2.0.0", action: "deprecated", reason: "old" }] });
+    expect(out.text).toContain("@b/c 2.0.0");
+  });
+});
+
 describe("inbox", () => {
   it("returns an address's notices with links parsed", async () => {
     const { mail } = createFakePorts();
@@ -53,5 +85,11 @@ describe("inbox", () => {
     expect(box).toHaveLength(1);
     expect(box[0]?.links).toEqual([url]);
     expect(box[0]?.html).toContain("<a href");
+  });
+
+  it("takes links from the action link only, not publisher-written text", async () => {
+    const { mail } = createFakePorts();
+    await sendNotice(mail, "a@example.test", "pack-actioned", { ...SAMPLES["pack-actioned"], reason: "see https://evil.test/x" });
+    expect(inbox(mail, "a@example.test")[0]?.links).toEqual([url]);
   });
 });
