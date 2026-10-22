@@ -219,7 +219,7 @@ The full design, threat model and rationale are in [validation.md](validation.md
  5  text hygiene     secrets, bidi/zero-width/tag chars, URL inventory, fetch-from-URL       Sandbox
  6  capabilities     extracted set (guards, coded checks, tasks with cadence, PR-opening    Sandbox
                      and agentic phase, env setup, forced skills, GitHub actions in
-                     pack.json); declared ⊇ extracted; new capability vs previous = hold
+                     pack.json); declared ⊇ extracted; new capabilities marked "new", not held
  7  load            pinned cn loads the pack; coded checks compile; worker.mjs and env     Sandbox
                      setup run once in Node with a scrubbed environment; any egress
                      during the run = fail (fixture tests are out of v1)
@@ -401,6 +401,6 @@ Still open from the [registry trust research](../registry-trust-research.md), an
 
 6. ~~Remote revocation or report only?~~ Decided: the split. A security `revoked` disables the version's guards, coded checks, tasks and env setup in cn by default, a repo can opt into `reportOnly`, and every other status only reports ([validation.md](validation.md) §3.12). cn adds the check at update or adopt time and at session start.
 7. ~~Must a pack pass our CI before listing, and must each check ship fixtures?~~ Decided: every pack must load under cn or it fails; fixture tests (a firing and a silent case per check) are out of scope for v1.
-8. **Should packs declare capabilities** (guards, coded checks, tasks and their cadence, env setup, the GitHub actions they need, forced skills), with an update that adds one held for review? `pack.json` already declares the GitHub actions. Closed for our own canon in the first security review; public submissions may justify reopening it.
+8. ~~Should an update that adds a capability be held?~~ Decided: capabilities are extracted into the pre-install manifest and new ones are highlighted on the page and in the update PR, but nothing is held.
 9. **Tiers** like Claude Code's: canon (curated by us), community (pinned, scanned, tested), third-party (unchecked, with a warning)? "Canon" already means the central pack set, so a tier named `canon` reads as "is on the shelf".
 10. **Ranking signals** only cn has: how many repos keep a pack, how often its checks fire, how often members drop it. These would replace most of the star/rating weight in §10 if cn reports them.
