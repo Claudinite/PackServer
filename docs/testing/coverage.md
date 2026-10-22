@@ -7,11 +7,11 @@ integration test" list. Pass/fail status is never recorded here (see [README.md]
 
 ## Totals
 
-- Register: 289 live ids (289 active, 0 provisional), 29 retired.
-- Covered by at least one integration test: 286 of 289.
+- Register: 290 live ids (290 active, 0 provisional), 29 retired.
+- Covered by at least one integration test: 287 of 290.
 - Not covered by an integration test: 3 (milestone: 1, manual: 1, policy: 1).
-- Tests specified: 292 (277 in the v1 burndown, 15 later-phase; 10 journeys).
-- Tests per page: accounts 26, admin 16, billing 2, catalog-search 6, cn-client-contract 28, community 39, journeys 10, mcp 16, operations 18, pack-pages-manifest 5, private-packs 20, publishing 49, validation-pack-score 57.
+- Tests specified: 293 (278 in the v1 burndown, 15 later-phase; 10 journeys).
+- Tests per page: accounts 26, admin 16, billing 2, catalog-search 6, cn-client-contract 28, community 39, journeys 10, mcp 16, operations 19, pack-pages-manifest 5, private-packs 20, publishing 49, validation-pack-score 57.
 
 ## REQ id → tests
 
@@ -306,6 +306,7 @@ integration test" list. Pass/fail status is never recorded here (see [README.md]
 | REQ-OPS-011 | active | A schema outside the version's supported range fails the self-test | [IT-OPS-011](operations.md#it-ops-011) |  |
 | REQ-OPS-012 | active | A recorded invocation never holds a personal, customer-content or secret value in clear | [IT-OPS-012](operations.md#it-ops-012) |  |
 | REQ-OPS-013 | active | Production deploys only from a protected main branch under a hardware-key account |  | **manual** — branch rulesets, write access and the owner's second factor are repository and account settings; the first-release checklist verifies them and the judge's `page.account_change` watch pages on drift. |
+| REQ-OPS-014 | active | Data a release writes stays readable by the previous release | [IT-OPS-014](operations.md#it-ops-014) |  |
 
 ## Retired ids
 

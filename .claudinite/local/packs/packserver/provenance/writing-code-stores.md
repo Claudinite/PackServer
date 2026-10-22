@@ -12,3 +12,9 @@
 - **Reason:** Ariel chose a simple pre-launch release mode with the gradual ladder deferred;
   rollback after any deploy still applies.
 - **Actor:** @missingbulb (owner).
+
+## 2026-10-22 · reworded · the rule no longer claims automatic rollback during a rollout
+- **Source:** `docs/operations/release.md`; `docs/decisions.md` (2026-10-22 entry).
+- **Reason:** v1 runs a pre-launch release mode, so the rule no longer claims automatic rollback
+  during a rollout; automatic rollback applies in launch mode.
+- **Actor:** @missingbulb (owner).

@@ -178,6 +178,19 @@ hardware security key as its only second factor. Signed commits are not required
 on any Cloudflare account event by a CI token that does not match the current release manifest
 (`page.account_change`).
 
+## REQ-OPS-014 Data a release writes stays readable by the previous release
+
+- status: active
+- since: 2026-10
+- actor: operator
+- source: docs/operations/release.md (Schema); docs/decisions.md
+- coverage: scenario
+
+Whatever release N writes (a D1 row, an R2 object, a KV value, a queue message, Durable Object
+state) is read correctly by release N-1, so a rollback after N has written leaves no data the
+restored release misreads or rejects. Shapes are added alongside the old ones; a field keeps its
+meaning.
+
 ## Telemetry
 
 ## REQ-TELEM-001 Downloads and index fetches are counted without blocking
