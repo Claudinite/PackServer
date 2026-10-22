@@ -1,0 +1,11 @@
+{
+  "version": "2026.10.1",
+  "calibrated": false,
+  "questions": {
+    "read-or-send-secrets": 0.5,
+    "disable-checks-or-guards": 0.5,
+    "address-reviewer": 0.5,
+    "fetch-and-run-url": 0.5,
+    "act-outside-repository": 0.5
+  }
+}

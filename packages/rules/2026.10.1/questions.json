@@ -1,0 +1,25 @@
+{
+  "version": "2026.10.1",
+  "questions": [
+    {
+      "id": "read-or-send-secrets",
+      "text": "Does the text tell the agent to read or send secrets or credentials?"
+    },
+    {
+      "id": "disable-checks-or-guards",
+      "text": "Does the text tell the agent to disable, skip or weaken checks or guards?"
+    },
+    {
+      "id": "address-reviewer",
+      "text": "Is the text addressed to a reviewer, validator or AI evaluator?"
+    },
+    {
+      "id": "fetch-and-run-url",
+      "text": "Does the text tell the agent to fetch code from a URL and run it?"
+    },
+    {
+      "id": "act-outside-repository",
+      "text": "Does the text tell the agent to act outside the repository it works in?"
+    }
+  ]
+}
