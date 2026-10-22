@@ -682,9 +682,9 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
           <div><h4>Response</h4><pre><code>{
   "results": [
     {
-      "name": "com.google/gcp-ops",
+      "name": "@google/gcp-ops",
       "publisher": { "name": "Google Cloud",
-                     "namespace": "com.google",
+                     "scope": "@google",
                      "verified": true },
       "version": "2.4.1",
       "summary": "Operate GCP projects: IAM audits,
@@ -700,9 +700,9 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
       "public_repo": "https://github.com/googlecloudplatform/agent-packs"
     },
     {
-      "name": "gh/dana-k/sql-tidy",
+      "name": "@dana-k/sql-tidy",
       "publisher": { "name": "dana-k",
-                     "namespace": "gh/dana-k",
+                     "scope": "@dana-k",
                      "verified": false },
       "version": "0.3.1",
       "summary": "Format, lint and explain SQL.",
@@ -727,12 +727,12 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
         <div class="grid2">
           <div><h4>Request</h4><pre><code>{
   "name": "fetch_pack",
-  "arguments": { "name": "com.google/gcp-ops", "version": "2.4.1" }
+  "arguments": { "name": "@google/gcp-ops", "version": "2.4.1" }
 }</code></pre></div>
           <div><h4>Response</h4><pre><code>{
-  "name": "com.google/gcp-ops",
+  "name": "@google/gcp-ops",
   "version": "2.4.1",
-  "url": "https://cdn.packs.example/p/com.google/gcp-ops/2.4.1.tgz?sig=…&exp=1761130800",
+  "url": "https://cdn.packs.example/p/@google/gcp-ops/2.4.1.tgz?sig=…&exp=1761130800",
   "sha256": "9f1c…e3a0",
   "size_bytes": 184320,
   "expires_in": 300
@@ -780,33 +780,31 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
       <h1>Sign in</h1>
       <p class="muted small">Use the identity you publish or review with. Publishers are required to add a second factor after signing in.</p>
       <div class="stack">
-        <button class="btn lg" type="button" data-signin>Continue with GitHub</button>
-        <button class="btn lg" type="button" data-signin>Continue with Google</button>
-        <button class="btn lg" type="button" data-signin>Sign in with a passkey</button>
+        <button class="btn lg primary" type="button" data-signin>Sign in with a passkey</button>
+        <button class="btn lg" type="button" data-signin>Sign in with GitHub</button>
       </div>
-      <div class="or">or email</div>
-      <form data-toast="Magic link sent — check your inbox" >
-        <div class="field"><label class="lbl" for="si-email">Email</label><input type="email" id="si-email" placeholder="you@example.com"></div>
-        <button class="btn primary block" type="submit">Email me a sign-in link</button>
+      <div class="or">lost your passkey?</div>
+      <form data-toast="Recovery code sent — check your inbox">
+        <div class="field"><label class="lbl" for="si-email">Account email</label><input type="email" id="si-email" placeholder="you@example.com"></div>
+        <button class="btn block" type="submit">Email me a recovery code</button>
       </form>
-      <p class="tiny muted mt2">We never store passwords. Sign-in links expire after 15 minutes and work once.</p>
+      <p class="tiny muted mt2">No passwords. Email codes are only for creating an account and for recovery; you'll also need a recovery code, or a 72-hour manual review.</p>
     </div>
     <div class="tabpanel" data-tabgroup="auth" data-panel="up" hidden>
       <h1>Create account</h1>
       <p class="muted small">One account works for starring, reviewing and publishing. You can add an organization later.</p>
       <div class="stack">
         <button class="btn lg" type="button" data-signin>Sign up with GitHub</button>
-        <button class="btn lg" type="button" data-signin>Sign up with Google</button>
       </div>
       <div class="or">or email</div>
-      <form data-toast="Verification link sent">
+      <form data-toast="We emailed you a 6-digit code — next you'll create a passkey">
         <div class="field"><label class="lbl" for="su-email">Email</label><input type="email" id="su-email" placeholder="you@example.com"></div>
         <div class="field"><label class="lbl" for="su-handle">Handle</label><input type="text" id="su-handle" placeholder="your-handle"><div class="hint">Shown on reviews and packs. Lowercase, dashes allowed.</div></div>
         <label class="check mb2"><input type="checkbox" id="su-pub"> I intend to publish packs (we'll ask you to set up MFA next)</label>
         <button class="btn primary block" type="submit">Create account</button>
       </form>
     </div>
-    <div class="wire-note">Social sign-in buttons switch the persona to Member and return to the previous page. The step-up and MFA flows are on <a href="#mfa">#mfa</a>.</div>
+    <div class="wire-note">Sign-in buttons stand in for the passkey and GitHub flows. Passkey setup is on <a href="#mfa">#mfa</a>.</div>
   </div>
 </section>
 
@@ -868,9 +866,9 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
 <!-- ================= REVIEW ================= -->
 <section class="view" id="view-review" data-view="review" hidden>
   <div class="auth" style="max-width:600px">
-    <div class="crumbs"><a href="#pack">com.google/gcp-ops</a> / Write a review</div>
-    <h1>Review com.google/gcp-ops</h1>
-    <div class="row mb2" style="gap:12px"><span class="pack-icon">GC</span><div><b>com.google/gcp-ops</b> <span class="ver">v2.4.1</span><br><span class="small muted">by Google Cloud <span class="verified"><span class="vmark">✓</span></span></span></div></div>
+    <div class="crumbs"><a href="#pack">@google/gcp-ops</a> / Write a review</div>
+    <h1>Review @google/gcp-ops</h1>
+    <div class="row mb2" style="gap:12px"><span class="pack-icon">GC</span><div><b>@google/gcp-ops</b> <span class="ver">v2.4.1</span><br><span class="small muted">by Google Cloud <span class="verified"><span class="vmark">✓</span></span></span></div></div>
     <form data-toast="Review posted" data-go="pack">
       <fieldset class="plain">
         <legend>Your rating</legend>
@@ -891,9 +889,10 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
 <!-- ================= REPORT ================= -->
 <section class="view" id="view-report" data-view="report" hidden>
   <div class="auth" style="max-width:640px">
-    <div class="crumbs"><a href="#pack">com.google/gcp-ops</a> / Report a bug</div>
-    <h1>Report a bug in <span class="mono">com.google/gcp-ops</span></h1>
+    <div class="crumbs"><a href="#pack">@google/gcp-ops</a> / Report a bug</div>
+    <h1>Report a bug in <span class="mono">@google/gcp-ops</span></h1>
     <p class="muted small">Reports go to the publisher and appear on the pack's Issues tab unless marked as a security vulnerability.</p>
+    <div class="wire-note">For packs with a public repo, "Report on GitHub" opens a pre-filled issue in that repo instead of this form; PackServer never posts to GitHub itself. This form is used for packs without a public repo and for private security reports.</div>
     <form data-toast="Report filed as #42 — the publisher has been notified" data-go="pack">
       <div class="grid2">
         <div class="field"><label class="lbl" for="rp-version">Pack version</label><select id="rp-version"><option>2.4.1 (latest)</option><option>2.4.0</option><option>2.3.2</option></select></div>
@@ -982,7 +981,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
           <tr><td>ci-fallback <span class="pill warn">publish scope</span></td><td class="mono small">packs:publish</td><td class="mono small">2026-11-05</td><td><button class="btn sm ghost" type="button" data-toast="Token revoked">Revoke</button></td></tr>
         </tbody></table></div>
         <button class="btn mt2" type="button" data-stepup="Create API token" data-toast="Token created — copy it now, it will not be shown again">New token…</button>
-        <div class="wire-note">Creating a token always triggers step-up re-authentication (modal).</div>
+        <div class="wire-note">Creating a token always asks for a passkey tap bound to that token (no reusable re-auth window).</div>
       </div>
     </div>
   </div>
@@ -1010,12 +1009,12 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
   <div class="table-wrap"><table>
     <thead><tr><th>Pack</th><th>Latest</th><th>Status</th><th>Source</th><th>Fetches/7d</th><th>Stars</th><th>Issues</th><th></th></tr></thead>
     <tbody>
-      <tr><td><a href="#pack"><b>com.google/gcp-ops</b></a><br><span class="tiny muted">Operate GCP projects</span></td><td class="ver">2.4.1</td><td><span class="pill ok">Published</span></td><td class="small"><span class="pill outline">GitHub · tag</span></td><td class="mono">9,318</td><td class="mono">1,842</td><td class="mono">3</td><td><a class="btn sm" href="#pack">Manage</a></td></tr>
-      <tr><td><b>com.google/gke-autopilot</b><br><span class="tiny muted">GKE cluster ops</span></td><td class="ver">1.9.0 → 1.10.0</td><td><span class="pill info">Validating</span></td><td class="small"><span class="pill outline">GitHub · tag</span></td><td class="mono">4,210</td><td class="mono">903</td><td class="mono">1</td><td><a class="btn sm" href="#validation">View run</a></td></tr>
-      <tr><td><b>com.google/vpc-review</b><br><span class="tiny muted">Network posture reviews</span></td><td class="ver">0.4.0 → 0.5.0</td><td><span class="pill warn">Staged — awaiting owner approval</span></td><td class="small"><span class="pill outline">GitHub · tag</span></td><td class="mono">2,044</td><td class="mono">512</td><td class="mono">0</td><td><button class="btn sm primary" type="button" data-stepup="Approve com.google/vpc-review 0.5.0 for publishing" data-toast="vpc-review 0.5.0 approved and published">Approve with passkey</button></td></tr>
-      <tr><td><b>com.google/bq-migrate</b><br><span class="tiny muted">BigQuery schema migrations</span></td><td class="ver">1.2.0</td><td><span class="pill fail">Failed validation</span></td><td class="small"><span class="pill outline">GitHub · tag</span></td><td class="mono">1,102</td><td class="mono">311</td><td class="mono">2</td><td><a class="btn sm" href="#validation">See report</a></td></tr>
-      <tr><td><b>com.google/internal-incident-runbooks</b><br><span class="tiny muted">On-call playbooks</span></td><td class="ver">0.7.3</td><td><span class="pill warn">Private</span></td><td class="small"><span class="pill outline">Upload</span></td><td class="mono">287</td><td class="mono">—</td><td class="mono">0</td><td><a class="btn sm" href="#access">Access</a></td></tr>
-      <tr><td><b>com.google/vertex-eval</b><br><span class="tiny muted">Model eval harness</span></td><td class="ver">—</td><td><span class="pill">Draft</span></td><td class="small"><span class="pill outline">Upload</span></td><td class="mono">—</td><td class="mono">—</td><td class="mono">—</td><td><a class="btn sm" href="#publish">Continue</a></td></tr>
+      <tr><td><a href="#pack"><b>@google/gcp-ops</b></a><br><span class="tiny muted">Operate GCP projects</span></td><td class="ver">2.4.1</td><td><span class="pill ok">Published</span></td><td class="small"><span class="pill outline">GitHub · tag</span></td><td class="mono">9,318</td><td class="mono">1,842</td><td class="mono">3</td><td><a class="btn sm" href="#pack">Manage</a></td></tr>
+      <tr><td><b>@google/gke-autopilot</b><br><span class="tiny muted">GKE cluster ops</span></td><td class="ver">1.9.0 → 1.10.0</td><td><span class="pill info">Validating</span></td><td class="small"><span class="pill outline">GitHub · tag</span></td><td class="mono">4,210</td><td class="mono">903</td><td class="mono">1</td><td><a class="btn sm" href="#validation">View run</a></td></tr>
+      <tr><td><b>@google/vpc-review</b><br><span class="tiny muted">Network posture reviews</span></td><td class="ver">0.4.0 → 0.5.0</td><td><span class="pill warn">Staged — awaiting owner approval</span></td><td class="small"><span class="pill outline">GitHub · tag</span></td><td class="mono">2,044</td><td class="mono">512</td><td class="mono">0</td><td><button class="btn sm primary" type="button" data-stepup="Approve @google/vpc-review 0.5.0 for publishing" data-toast="vpc-review 0.5.0 approved and published">Approve with passkey</button></td></tr>
+      <tr><td><b>@google/bq-migrate</b><br><span class="tiny muted">BigQuery schema migrations</span></td><td class="ver">1.2.0</td><td><span class="pill fail">Failed validation</span></td><td class="small"><span class="pill outline">GitHub · tag</span></td><td class="mono">1,102</td><td class="mono">311</td><td class="mono">2</td><td><a class="btn sm" href="#validation">See report</a></td></tr>
+      <tr><td><b>@google/internal-incident-runbooks</b><br><span class="tiny muted">On-call playbooks</span></td><td class="ver">0.7.3</td><td><span class="pill warn">Private</span></td><td class="small"><span class="pill outline">Upload</span></td><td class="mono">287</td><td class="mono">—</td><td class="mono">0</td><td><a class="btn sm" href="#access">Access</a></td></tr>
+      <tr><td><b>@google/vertex-eval</b><br><span class="tiny muted">Model eval harness</span></td><td class="ver">—</td><td><span class="pill">Draft</span></td><td class="small"><span class="pill outline">Upload</span></td><td class="mono">—</td><td class="mono">—</td><td class="mono">—</td><td><a class="btn sm" href="#publish">Continue</a></td></tr>
     </tbody>
   </table></div>
   <h3 class="mt3">Recent activity</h3>
@@ -1078,7 +1077,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
     <h2>3 · Listing</h2>
     <div class="layout right">
       <div>
-        <div class="field"><label class="lbl" for="ls-name">Name</label><input type="text" id="ls-name" value="com.google/gcp-ops" class="mono"><div class="hint">Namespace is proven, not chosen: <code>com.google/</code> (reverse domain, DNS-verified) or <code>gh/&lt;github-org&gt;/</code> (GitHub-verified). The pack name comes from the manifest.</div></div>
+        <div class="field"><label class="lbl" for="ls-name">Name</label><input type="text" id="ls-name" value="@google/gcp-ops" class="mono"><div class="hint">Packs live in your scope <code>@google/</code>; the pack name comes from the manifest. The scope's badges show what was proven (GitHub org, domain).</div></div>
         <div class="field"><label class="lbl" for="ls-summary">Summary (≤ 140 chars)</label><input type="text" id="ls-summary" value="Operate GCP projects: IAM audits, Cloud Run deploys, log triage and key rotation."></div>
         <div class="field"><label class="lbl" for="ls-cats">Categories (up to 3)</label><div class="chips"><span class="chip">Cloud ops ×</span><span class="chip">Security review ×</span><button class="chip" type="button">+ add</button></div></div>
         <div class="field"><label class="lbl" for="ls-icon">Icon</label><div class="row"><span class="pack-icon lg">GC</span><button class="btn sm" type="button" id="ls-icon">Upload 256×256 PNG/SVG</button></div></div>
@@ -1122,7 +1121,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
       </div>
       <aside class="panel">
         <h3>Order summary</h3>
-        <div class="row between small"><span>1 publish credit · com.google/gcp-ops (new pack)</span><span class="mono">$1.00</span></div>
+        <div class="row between small"><span>1 publish credit · @google/gcp-ops (new pack)</span><span class="mono">$1.00</span></div>
         <div class="row between small muted"><span>Future versions</span><span class="mono">free</span></div>
         <div class="tiny muted mt1">Credit bundles: 10 for $9 · 50 for $40 · <a href="#billing">buy credits</a></div>
         <div class="row between small muted"><span>Tax</span><span class="mono">$0.00</span></div>
@@ -1139,14 +1138,14 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
     <div id="pub-final-pre" style="max-width:640px">
       <div class="panel">
         <dl class="kv">
-          <dt>Pack</dt><dd class="mono">com.google/gcp-ops@2.4.1</dd>
+          <dt>Pack</dt><dd class="mono">@google/gcp-ops@2.4.1</dd>
           <dt>Source</dt><dd class="mono">github.com/googlecloudplatform/agent-packs · packs/gcp-ops/ · v2.4.1</dd>
           <dt>Validation</dt><dd><span class="pill ok">Passed</span> <span class="pill warn">1 warning</span></dd>
           <dt>Visibility</dt><dd>Public · $1.00</dd>
           <dt>Artifact</dt><dd class="mono small">sha256 9f1c…e3a0 · 180 KB</dd>
         </dl>
       </div>
-      <p class="small muted mt2">Publishing is a sensitive action: we'll ask you to re-authenticate with your passkey.</p>
+      <p class="small muted mt2">Publishing is a sensitive action: you'll confirm this exact version with a passkey tap.</p>
       <button class="btn primary lg" type="button" data-stepup="Publish gcp-ops 2.4.1" data-after="pub-success">Publish gcp-ops 2.4.1</button>
     </div>
     <div id="pub-success" hidden style="max-width:640px">
@@ -1166,7 +1165,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
 <section class="view" id="view-validation" data-view="validation" hidden>
   <div class="crumbs"><a href="#dashboard">Dashboard</a> / <a href="#pack">gcp-ops</a> / Validation</div>
   <div class="page-head">
-    <div><h1>Validation report <span class="ver">val_01JB2K</span></h1><p class="muted">com.google/gcp-ops@2.4.1 · from <code>googlecloudplatform/agent-packs@7c1e9d2</code> · ran 2026-10-21 09:14 UTC · 41 s</p></div>
+    <div><h1>Validation report <span class="ver">val_01JB2K</span></h1><p class="muted">@google/gcp-ops@2.4.1 · from <code>googlecloudplatform/agent-packs@7c1e9d2</code> · ran 2026-10-21 09:14 UTC · 41 s</p></div>
     <div class="row"><span class="pill ok" style="font-size:.9rem">PASSED</span><span class="pill warn">1 warning</span><button class="btn sm" type="button" data-toast="Re-run queued">Re-run</button></div>
   </div>
   <div class="layout right">
@@ -1211,7 +1210,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
         <dl class="kv small">
           <dt>SHA-256</dt><dd class="mono">9f1c7e02b4…e3a0</dd>
           <dt>Size</dt><dd class="mono">184,320 B</dd>
-          <dt>Stored</dt><dd class="mono">r2://packs/com.google/gcp-ops/2.4.1.tgz</dd>
+          <dt>Stored</dt><dd class="mono">r2://packs/@google/gcp-ops/2.4.1.tgz</dd>
           <dt>Signed</dt><dd>Sigstore (OIDC identity: <span class="mono">github.com/googlecloudplatform/agent-packs/.github/workflows/publish.yml@refs/tags/v2.4.1</span>)</dd>
         </dl>
       </div>
@@ -1232,7 +1231,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
     <div>
       <form data-toast="Repository connected — waiting for first tag">
         <h2>1 · Repository</h2>
-        <div class="row mb2"><span class="pill ok">GitHub App installed on googlecloudplatform</span><button class="btn sm ghost" type="button">Install on another org</button></div>
+        <div class="row mb2"><span class="pill ok">Trusted publisher: googlecloudplatform/agent-packs</span><span class="pill outline">Optional read-only GitHub App: installed</span></div>
         <div class="grid2">
           <div class="field"><label class="lbl" for="gh-repo">Repository</label><select id="gh-repo"><option>googlecloudplatform/agent-packs</option><option>googlecloudplatform/cloud-run-samples</option></select></div>
           <div class="field"><label class="lbl" for="gh-path">Path to pack</label><input type="text" id="gh-path" value="packs/gcp-ops/" class="mono"><div class="hint">Monorepos: one connection per pack path.</div></div>
@@ -1293,29 +1292,29 @@ jobs:
 <section class="view" id="view-org" data-view="org" hidden>
   <div class="crumbs"><a href="#dashboard">Dashboard</a> / Organization</div>
   <div class="page-head">
-    <div><h1>Google Cloud <span class="verified"><span class="vmark">✓</span>Verified</span></h1><p class="muted">Namespaces <code>com.google/</code> and <code>gh/googlecloudplatform/</code> · 14 packs · 6 members</p></div>
-    <button class="btn" type="button" data-toast="Create organization form would open (name, namespace, contact)">Create another organization</button>
+    <div><h1>Google Cloud <span class="verified"><span class="vmark">✓</span>Verified</span></h1><p class="muted">Scope <code>@google/</code> · github.com/googlecloudplatform · google.com ✓ · 14 packs · 6 members</p></div>
+    <button class="btn" type="button" data-toast="Create organization form would open (name, scope, contact)">Create another organization</button>
   </div>
   <div class="layout right">
     <div>
       <div class="section">
-        <div class="note mb2"><b>Verify your namespace via GitHub org or DNS TXT challenge.</b> A DNS-verified domain gives you the reverse-domain namespace <code>com.google/</code>; a verified GitHub org gives you <code>gh/googlecloudplatform/</code>. Either one lets you publish under that namespace; both plus MFA on all members earn the Verified Publisher badge.</div>
-        <div class="section-head"><h2>Verified domains → <span class="mono">com.google/</span></h2><span class="pill ok">Badge active</span></div>
-        <p class="small muted">Prove you control a domain by publishing a DNS TXT record. We re-check every 30 days; the badge is suspended if the record disappears.</p>
+        <div class="note mb2"><b>Prove your scope <code>@google/</code> through a GitHub org or a domain.</b> Each proof adds its own badge ("github.com/googlecloudplatform", "google.com ✓"). Verified Publisher needs both, MFA enforced for all members, and a manual review by PackServer.</div>
+        <div class="section-head"><h2>Domains</h2><span class="pill ok">Badge active</span></div>
+        <p class="small muted">Prove you control a domain with a DNS TXT record, or a file at <code>/.well-known/packserver-auth</code>. We re-check every 30 days; the badge is suspended if the record disappears.</p>
         <div class="domain-row"><span class="mono grow">google.com</span><span class="pill ok">Verified</span><span class="tiny muted">next check 2026-10-27</span><button class="btn sm ghost" type="button" data-toast="Re-check queued">Re-check</button></div>
         <div class="domain-row"><span class="mono grow">cloud.google.com</span><span class="pill ok">Verified</span><span class="tiny muted">next check 2026-10-27</span><button class="btn sm ghost" type="button" data-toast="Re-check queued">Re-check</button></div>
         <div class="domain-row"><span class="mono grow">googlecloud.dev</span><span class="pill warn">Pending — record not found</span><button class="btn sm" type="button" data-toast="Checking DNS… not found yet (propagation can take up to 1h)">Check now</button></div>
         <div class="panel mt2">
           <b class="small">Add this TXT record to <span class="mono">googlecloud.dev</span></b>
-          <dl class="kv small mt1"><dt>Host</dt><dd class="mono">_packserver</dd><dt>Type</dt><dd class="mono">TXT</dd><dt>Value</dt><dd><div class="codebox"><pre><code>packserver-verify=org_gc_7f3a9c2e1d4b</code></pre><button class="btn sm copy" type="button" data-copy="packserver-verify=org_gc_7f3a9c2e1d4b">Copy</button></div></dd></dl>
+          <dl class="kv small mt1"><dt>Host</dt><dd class="mono">_packserver-challenge</dd><dt>Type</dt><dd class="mono">TXT</dd><dt>Value</dt><dd><div class="codebox"><pre><code>packserver-verify=org_gc_7f3a9c2e1d4b</code></pre><button class="btn sm copy" type="button" data-copy="packserver-verify=org_gc_7f3a9c2e1d4b">Copy</button></div></dd></dl>
         </div>
         <form class="row mt2" data-toast="Domain added — verification pending"><div class="grow"><label for="org-newdomain" class="lbl">Add domain</label><input type="text" id="org-newdomain" placeholder="example.com" class="mono"></div><button class="btn" type="submit" style="align-self:flex-end">Add</button></form>
       </div>
 
       <div class="section">
-        <div class="section-head"><h2>GitHub organization → <span class="mono">gh/googlecloudplatform/</span></h2></div>
+        <div class="section-head"><h2>GitHub organization</h2></div>
         <div class="domain-row"><span class="mono grow">github.com/googlecloudplatform</span><span class="pill ok">Verified · you are an org admin</span><button class="btn sm ghost" type="button" data-toast="GitHub re-authorization opens">Re-verify</button></div>
-        <p class="small muted mt1">Verified by signing in with GitHub as an admin of the org and installing the PackServer GitHub App. Required for trusted publishing from that org's repos.</p>
+        <p class="small muted mt1">Verified by signing in with GitHub as an org admin, or by installing the read-only PackServer GitHub App. PackServer never writes to GitHub.</p>
       </div>
 
       <div class="section">
@@ -1422,7 +1421,7 @@ jobs:
         </tbody></table></div>
         <h4>What the requester sees on the pack page</h4>
         <div class="panel" style="max-width:560px">
-          <div class="row mb1"><span class="pack-icon">IR</span><div><b class="mono">com.google/internal-incident-runbooks</b> <span class="pill warn">Gated</span><br><span class="small muted">by Google Cloud · access granted on request</span></div></div>
+          <div class="row mb1"><span class="pack-icon">IR</span><div><b class="mono">@google/internal-incident-runbooks</b> <span class="pill warn">Gated</span><br><span class="small muted">by Google Cloud · access granted on request</span></div></div>
           <form data-toast="Access request sent — the owner has been notified">
             <div class="grid2"><div class="field"><label class="lbl" for="rq-name">Your name</label><input type="text" id="rq-name"></div><div class="field"><label class="lbl" for="rq-org">Organization</label><input type="text" id="rq-org"></div></div>
             <div class="field"><label class="lbl" for="rq-use">Intended use</label><textarea id="rq-use" style="min-height:60px" placeholder="What will you or your agents do with this pack?"></textarea></div>
@@ -1447,11 +1446,11 @@ jobs:
         <div class="panel mb2 row between"><div><b>Publish credits</b><br><span class="small muted">3 unused credits · 2 consumed this quarter</span></div><button class="btn sm" type="button" data-stepup="Buy credit bundle" data-toast="10 credits added">Buy bundle</button></div>
         <div class="section-head"><h2>Receipts</h2><button class="btn sm" type="button" data-toast="Exporting CSV">Export CSV</button></div>
         <div class="table-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Status</th><th></th></tr></thead><tbody>
-          <tr><td class="mono small">2026-10-21</td><td>Publish credit · com.google/gcp-ops (new pack)</td><td class="mono">$1.00</td><td><span class="pill ok">Paid</span></td><td><a href="#billing">Receipt</a></td></tr>
+          <tr><td class="mono small">2026-10-21</td><td>Publish credit · @google/gcp-ops (new pack)</td><td class="mono">$1.00</td><td><span class="pill ok">Paid</span></td><td><a href="#billing">Receipt</a></td></tr>
           <tr><td class="mono small">2026-10-01</td><td>Private packs · October (1 pack) <span class="pill warn">price TBD</span></td><td class="mono">$—</td><td><span class="pill">Not billed</span></td><td></td></tr>
-          <tr><td class="mono small">2026-09-14</td><td>Publish credit · com.google/gke-autopilot (new pack)</td><td class="mono">$1.00</td><td><span class="pill ok">Paid</span></td><td><a href="#billing">Receipt</a></td></tr>
-          <tr><td class="mono small">2026-09-02</td><td>Publish credit · com.google/bq-migrate <span class="tiny muted">(not consumed — validation failed)</span></td><td class="mono">$0.00</td><td><span class="pill">Released</span></td><td></td></tr>
-          <tr><td class="mono small">2026-08-20</td><td>Publish credit · com.google/vertex-eval (new pack)</td><td class="mono">$1.00</td><td><span class="pill fail">Refunded</span></td><td><a href="#billing">Receipt</a></td></tr>
+          <tr><td class="mono small">2026-09-14</td><td>Publish credit · @google/gke-autopilot (new pack)</td><td class="mono">$1.00</td><td><span class="pill ok">Paid</span></td><td><a href="#billing">Receipt</a></td></tr>
+          <tr><td class="mono small">2026-09-02</td><td>Publish credit · @google/bq-migrate <span class="tiny muted">(not consumed — validation failed)</span></td><td class="mono">$0.00</td><td><span class="pill">Released</span></td><td></td></tr>
+          <tr><td class="mono small">2026-08-20</td><td>Publish credit · @google/vertex-eval (new pack)</td><td class="mono">$1.00</td><td><span class="pill fail">Refunded</span></td><td><a href="#billing">Receipt</a></td></tr>
         </tbody></table></div>
       </div>
       <div class="section">
@@ -1491,10 +1490,10 @@ jobs:
 
 <div class="modal-backdrop" id="modal-stepup" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-stepup-title">
-    <h2 id="modal-stepup-title">Confirm it's you</h2>
-    <p class="small muted">To <b id="modal-stepup-action">publish</b>, re-authenticate with your second factor. This is required for sensitive actions even in an active session.</p>
+    <h2 id="modal-stepup-title">Confirm this action</h2>
+    <p class="small muted">Confirm <b id="modal-stepup-action">publish</b> with a passkey tap. The confirmation is bound to this one action; every sensitive action asks again.</p>
     <div class="passkey-anim">Touch your passkey or security key…</div>
-    <details class="small"><summary class="muted">Use authenticator app instead</summary><div class="field mt1"><label class="lbl" for="stepup-code">6-digit code</label><input type="text" id="stepup-code" inputmode="numeric" class="mono" placeholder="123 456"></div></details>
+    <details class="small"><summary class="muted">TOTP only? Enter a fresh code</summary><div class="field mt1"><label class="lbl" for="stepup-code">6-digit code</label><input type="text" id="stepup-code" inputmode="numeric" class="mono" placeholder="123 456"></div></details>
     <div class="actions"><button class="btn ghost" type="button" data-close>Cancel</button><button class="btn primary" type="button" id="stepup-confirm">Confirm with passkey</button></div>
   </div>
 </div>
@@ -1508,7 +1507,7 @@ jobs:
   /* ---------------- data ---------------- */
   var PACKS = {
     'gcp-ops': {
-      token: 'pack', name: 'com.google/gcp-ops', icon: 'GC', publisher: 'Google Cloud', publisherHref: '#publisher', verified: true,
+      token: 'pack', name: '@google/gcp-ops', icon: 'GC', publisher: 'Google Cloud', publisherHref: '#publisher', verified: true,
       version: '2.4.1', updated: '2 hours ago', license: 'Apache-2.0', targets: 'claude, ant',
       summary: 'Operate GCP projects: IAM audits, Cloud Run deploys, log triage and key rotation.',
       categories: ['Cloud ops', 'Security review'], stars: 1842, rating: 4.7, ratings: 236, fetches: '9,318 / 7d',
@@ -1542,7 +1541,7 @@ jobs:
       ]
     },
     'sql-tidy': {
-      token: 'pack2', name: 'gh/dana-k/sql-tidy', icon: 'SQ', publisher: 'dana-k', publisherHref: '#browse', verified: false,
+      token: 'pack2', name: '@dana-k/sql-tidy', icon: 'SQ', publisher: 'dana-k', publisherHref: '#browse', verified: false,
       version: '0.3.1', updated: '12 days ago', license: 'MIT', targets: 'claude',
       summary: 'Format, lint and explain SQL across Postgres, BigQuery and DuckDB. One skill, two checks, no fuss.',
       categories: ['Data engineering'], stars: 214, rating: 3.9, ratings: 31, fetches: '640 / 7d',
@@ -1574,11 +1573,11 @@ jobs:
 
   var CARD_PACKS = [
     PACKS['gcp-ops'],
-    { token: 'pack', name: 'com.google/gke-autopilot', icon: 'GK', publisher: 'Google Cloud', verified: true, version: '1.9.0', summary: 'Create, upgrade and troubleshoot GKE Autopilot clusters with safe defaults.', stars: 903, rating: 4.5, counts: { S: 4, C: 2, T: 2, H: 1, Cm: 3, A: 1, M: 0 }, repo: true, cats: ['Cloud ops'] },
-    { token: 'pack', name: 'com.hashicorp/terraform-reviewer', icon: 'TF', publisher: 'HashiCorp', verified: true, version: '3.1.0', summary: 'Review Terraform plans for drift, blast radius and policy violations before apply.', stars: 1510, rating: 4.6, counts: { S: 3, C: 5, T: 1, H: 2, Cm: 2, A: 1, M: 0 }, repo: true, cats: ['Cloud ops', 'Security review'] },
+    { token: 'pack', name: '@google/gke-autopilot', icon: 'GK', publisher: 'Google Cloud', verified: true, version: '1.9.0', summary: 'Create, upgrade and troubleshoot GKE Autopilot clusters with safe defaults.', stars: 903, rating: 4.5, counts: { S: 4, C: 2, T: 2, H: 1, Cm: 3, A: 1, M: 0 }, repo: true, cats: ['Cloud ops'] },
+    { token: 'pack', name: '@hashicorp/terraform-reviewer', icon: 'TF', publisher: 'HashiCorp', verified: true, version: '3.1.0', summary: 'Review Terraform plans for drift, blast radius and policy violations before apply.', stars: 1510, rating: 4.6, counts: { S: 3, C: 5, T: 1, H: 2, Cm: 2, A: 1, M: 0 }, repo: true, cats: ['Cloud ops', 'Security review'] },
     PACKS['sql-tidy'],
-    { token: 'pack', name: 'gh/finops-collective/gcp-cost-cutter', icon: 'CC', publisher: 'finops-collective', verified: false, version: '1.0.4', summary: 'Find idle resources and committed-use gaps across GCP billing exports.', stars: 388, rating: 4.1, counts: { S: 2, C: 1, T: 3, H: 0, Cm: 2, A: 1, M: 1 }, repo: true, cats: ['Cloud ops'] },
-    { token: 'pack', name: 'gh/pytest-dev/pytest-doctor', icon: 'PT', publisher: 'pytest-dev', verified: false, version: '0.9.2', summary: 'Diagnose flaky tests, fixture misuse and slow suites; proposes fixes as diffs.', stars: 2204, rating: 4.8, counts: { S: 5, C: 3, T: 1, H: 1, Cm: 4, A: 2, M: 0 }, repo: true, cats: ['Testing'] }
+    { token: 'pack', name: '@finops-collective/gcp-cost-cutter', icon: 'CC', publisher: 'finops-collective', verified: false, version: '1.0.4', summary: 'Find idle resources and committed-use gaps across GCP billing exports.', stars: 388, rating: 4.1, counts: { S: 2, C: 1, T: 3, H: 0, Cm: 2, A: 1, M: 1 }, repo: true, cats: ['Cloud ops'] },
+    { token: 'pack', name: '@pytest-dev/pytest-doctor', icon: 'PT', publisher: 'pytest-dev', verified: false, version: '0.9.2', summary: 'Diagnose flaky tests, fixture misuse and slow suites; proposes fixes as diffs.', stars: 2204, rating: 4.8, counts: { S: 5, C: 3, T: 1, H: 1, Cm: 4, A: 2, M: 0 }, repo: true, cats: ['Testing'] }
   ];
 
   function countsOf(p) {
@@ -1651,7 +1650,7 @@ jobs:
           (p.gated ? '<a class="btn primary" href="#access" data-auth="request access" data-authlink>Request access</a>' : '') +
           '<button class="btn" type="button" data-auth="star" data-star>☆ Star</button>' +
           '<a class="btn" href="#review" data-auth="rate" data-authlink>Rate &amp; review</a>' +
-          '<a class="btn ghost" href="#report" data-auth="report a bug" data-authlink>Report bug</a>' +
+          '<a class="btn ghost" href="#report" data-auth="report a bug" data-authlink>' + (p.repo ? 'Report on GitHub ↗' : 'Report bug') + '</a>' +
         '</div>' +
       '</div>' +
       '<div class="layout right">' +
@@ -1690,7 +1689,7 @@ jobs:
             reviews +
           '</div>' +
           '<div class="tabpanel" data-tabgroup="pack" data-panel="issues" hidden>' +
-            '<div class="row between mb2"><span class="small muted">Bug reports are visible to everyone; security reports are private.</span><a class="btn" href="#report" data-auth="report a bug" data-authlink>Report a bug</a></div>' +
+            '<div class="row between mb2"><span class="small muted">' + (p.repo ? 'Bugs are filed as GitHub issues in the pack\'s repo (we open a pre-filled issue; you submit it). Status syncs back here. Security reports stay private on PackServer.' : 'No public repo, so bugs are reported here. Security reports are private.') + '</span><a class="btn" href="#report" data-auth="report a bug" data-authlink>' + (p.repo ? 'Report on GitHub ↗' : 'Report a bug') + '</a></div>' +
             issues +
           '</div>' +
         '</div>' +

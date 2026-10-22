@@ -42,76 +42,88 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <header class="top"><span class="tag">PackServer · UI scheme</span>
 <p class="lede">Action flows and sitemap for the pack registry. Source: <code>docs/ui/flows.md</code> and <code>docs/ui/sitemap.md</code> in PR #4.</p></header>
 <div class="layout">
-<nav class="toc" aria-label="Contents"><h4>Action flows</h4><ol><li><a href="#f-1-sign-up-mfa-enrollment">1. Sign-up + MFA enrollment</a></li><li><a href="#f-2-sign-in-with-step-up">2. Sign-in with step-up</a></li><li><a href="#f-3-star-rate-review">3. Star, rate, review</a></li><li><a href="#f-4-file-bug-report-incl-private-security-report">4. File bug report (incl. private security report)</a></li><li><a href="#f-5-publish-via-upload">5. Publish via upload</a></li><li><a href="#f-6-publish-via-github-path-with-trusted-publishing">6. Publish via GitHub path with trusted publishing</a></li><li><a href="#f-7-validation-failure-and-resubmit">7. Validation failure and resubmit</a></li><li><a href="#f-8-payment-via-stripe-checkout">8. Payment via Stripe Checkout</a></li><li><a href="#f-9-verify-organization">9. Verify organization</a></li><li><a href="#f-10-private-pack-access-options">10. Private pack access (options)</a></li><li><a href="#f-11-agent-discovering-amp-fetching-a-pack-via-mcp">11. Agent discovering &amp; fetching a pack via MCP</a></li><li><a href="#f-12-yank-deprecate-a-version">12. Yank / deprecate a version</a></li><li><a href="#f-13-report-abuse-moderation">13. Report abuse / moderation</a></li></ol><h4>Sitemap</h4><ol><li><a href="#s-personas">Personas</a></li><li><a href="#s-sitemap-tree">Sitemap tree</a></li><li><a href="#s-page-by-page">Page-by-page</a></li><li><a href="#s-navigation-header-states">Navigation / header states</a></li><li><a href="#s-permission-matrix">Permission matrix</a></li><li><a href="#s-private-pack-access-options-not-decided">Private pack access: options (not decided)</a></li><li><a href="#s-open-decisions">Open decisions</a></li></ol></nav>
+<nav class="toc" aria-label="Contents"><h4>Action flows</h4><ol><li><a href="#f-1-sign-up-mfa-enrollment">1. Sign-up + MFA enrollment</a></li><li><a href="#f-2-sign-in-and-per-action-confirmation">2. Sign-in and per-action confirmation</a></li><li><a href="#f-3-star-rate-review">3. Star, rate, review</a></li><li><a href="#f-4-file-bug-report-incl-private-security-report">4. File bug report (incl. private security report)</a></li><li><a href="#f-5-publish-via-upload">5. Publish via upload</a></li><li><a href="#f-6-publish-via-github-path-with-trusted-publishing">6. Publish via GitHub path with trusted publishing</a></li><li><a href="#f-7-validation-failure-and-resubmit">7. Validation failure and resubmit</a></li><li><a href="#f-8-payment-via-stripe-checkout">8. Payment via Stripe Checkout</a></li><li><a href="#f-9-verify-organization">9. Verify organization</a></li><li><a href="#f-10-private-pack-access-options">10. Private pack access (options)</a></li><li><a href="#f-11-agent-discovering-amp-fetching-a-pack-via-mcp">11. Agent discovering &amp; fetching a pack via MCP</a></li><li><a href="#f-12-yank-deprecate-a-version">12. Yank / deprecate a version</a></li><li><a href="#f-13-report-abuse-moderation">13. Report abuse / moderation</a></li></ol><h4>Sitemap</h4><ol><li><a href="#s-personas">Personas</a></li><li><a href="#s-sitemap-tree">Sitemap tree</a></li><li><a href="#s-page-by-page">Page-by-page</a></li><li><a href="#s-navigation-header-states">Navigation / header states</a></li><li><a href="#s-permission-matrix">Permission matrix</a></li><li><a href="#s-private-pack-access-options-not-decided">Private pack access: options (not decided)</a></li><li><a href="#s-open-decisions">Open decisions</a></li></ol></nav>
 <main class="doc"><article id="flows"><h1>PackServer Action Flows</h1>
-<p>Each flow: goal, steps, diagram, failure/edge states. Page IDs refer to <code>sitemap.md</code>. &quot;Step-up&quot; = fresh MFA assertion within the last 5 minutes (GitHub &quot;sudo mode&quot; pattern).</p>
+<p>Each flow: goal, steps, diagram, failure/edge states. Page IDs refer to <code>sitemap.md</code>. &quot;Confirm with passkey&quot; = a per-action confirmation: a fresh passkey assertion whose challenge is bound to that one action (or, for TOTP-only members, a fresh TOTP code typed into that action&#39;s dialog). There is no re-auth window: every sensitive action asks again.</p>
 <p>Shared conventions:</p>
 <ul>
-<li>Sessions: HttpOnly cookie, 30 days, bound to device fingerprint; step-up stamps <code>reauth_at</code> in the session.</li>
+<li>Sign-in methods: passkey (default), &quot;Sign in with GitHub&quot;, and an emailed one-time code used only for sign-up and account recovery. No Google sign-in, no passwords.</li>
+<li>Sessions: opaque id in a <code>__Host-</code> cookie, state in Workers KV, 12 h idle / 7 day absolute. A revoked session can keep loading ordinary pages for about 60 s (KV propagation) but is refused at once for sensitive actions, which also check a revocation table in D1.</li>
 <li>All mutating actions are POST with CSRF token and idempotency key.</li>
-<li>Async work (validation, payments webhooks, GitHub checks) runs in Cloudflare Workers consuming a Queue; UI polls or uses SSE/WebSocket via a Durable Object per run.</li>
+<li>PackServer never writes to GitHub: no Check Runs, no mirroring, no comments. An optional GitHub App only reads (repo tarballs, org membership, issue webhooks). Results go to the dashboard and email; &quot;Report on GitHub&quot; only opens a pre-filled issue the user files themselves.</li>
+<li>Async work (validation, payment webhooks) runs in Cloudflare Workers consuming a Queue; UI polls or uses SSE/WebSocket via a Durable Object per run.</li>
 </ul>
 <hr>
 <h2 id="f-1-sign-up-mfa-enrollment">1. Sign-up + MFA enrollment</h2>
 <p><strong>Goal</strong>: new user gets an account; if they intend to publish, MFA is enrolled before anything else.</p>
 <ol>
-<li><code>signin</code>: user picks GitHub, Google, passkey, or email magic link.</li>
-<li>OAuth/OIDC callback (or magic link click) → server verifies, creates <code>user</code> + <code>identity</code> rows, issues session.</li>
+<li><code>signin</code> &gt; Create account: &quot;Sign in with GitHub&quot;, or enter an email and type the one-time code we send.</li>
+<li>GitHub OAuth callback (or code accepted) → server creates <code>user</code> + <code>identity</code> rows, issues session.</li>
 <li>First-login step: choose handle (checked for uniqueness and reserved names) and display name.</li>
-<li>Prompt: &quot;Enable MFA now?&quot; with &quot;Required to publish&quot; note. Member may skip; Publisher enrollment cannot.</li>
-<li><code>mfa</code>: Add passkey (WebAuthn <code>navigator.credentials.create</code>, resident key, user verification required). Fallback: TOTP (QR + manual secret, confirm one code).</li>
-<li>Show recovery codes once (10 codes, download/print, &quot;I saved them&quot; checkbox).</li>
+<li><code>mfa</code>: create a passkey (WebAuthn, resident key, user verification required), which becomes the default way to sign in. Fallback: TOTP (QR + manual secret, confirm one code). Members may skip; publishing is blocked until MFA exists.</li>
+<li>Show recovery codes once (10 codes, download, &quot;I saved them&quot; checkbox).</li>
 <li>Return to <code>account</code> or to the original destination.</li>
 </ol>
 <div class="diagram"><pre class="mermaid">sequenceDiagram
   participant U as User
   participant S as signin page
   participant W as Worker (auth)
-  participant P as IdP (GitHub/Google)
+  participant G as GitHub OAuth
   participant M as mfa page
-  U-&gt;&gt;S: choose provider
-  S-&gt;&gt;P: redirect with state and PKCE
-  P--&gt;&gt;W: callback code
-  W-&gt;&gt;P: exchange code, fetch profile
-  W-&gt;&gt;W: create user + identity, issue session
-  W--&gt;&gt;U: redirect to choose handle
+  alt Sign in with GitHub
+    U-&gt;&gt;S: Sign in with GitHub
+    S-&gt;&gt;G: redirect with state and PKCE
+    G--&gt;&gt;W: callback code
+    W-&gt;&gt;G: exchange code, fetch profile
+  else Email code (sign-up only)
+    U-&gt;&gt;W: email address
+    W--&gt;&gt;U: 6-digit code by email
+    U-&gt;&gt;W: code
+  end
+  W-&gt;&gt;W: create user + identity, session in KV
+  W--&gt;&gt;U: choose handle
   U-&gt;&gt;W: handle + display name
-  W--&gt;&gt;M: prompt enroll MFA
+  W--&gt;&gt;M: prompt to create passkey
   U-&gt;&gt;M: create passkey (WebAuthn)
   M-&gt;&gt;W: attestation
   W-&gt;&gt;W: store credential, mark mfa_enrolled
   W--&gt;&gt;U: show recovery codes once</pre></div><p>Failure / edge states:</p>
 <ul>
-<li>Email already linked to another identity → &quot;Sign in with X instead, then link in Account &gt; Security&quot; (no silent account merging; prevents takeover via unverified email).</li>
+<li>Email already linked to another identity → &quot;Sign in with your passkey or GitHub instead, then link in Account &gt; Security&quot; (no silent account merging; prevents takeover via unverified email).</li>
 <li>WebAuthn unsupported → TOTP path offered automatically.</li>
 <li>Handle taken / reserved (<code>admin</code>, <code>claude</code>, <code>anthropic</code>, publisher names of verified orgs) → inline error.</li>
-<li>Magic link expired (15 min) or reused → &quot;Request a new link&quot;.</li>
+<li>Email code expired (10 min) or wrong 5 times → &quot;Send a new code&quot;.</li>
 <li>User closes recovery-codes screen without confirming → banner on <code>account</code> until confirmed.</li>
 </ul>
 <hr>
-<h2 id="f-2-sign-in-with-step-up">2. Sign-in with step-up</h2>
-<p><strong>Goal</strong>: returning user signs in; sensitive actions require a fresh MFA assertion.</p>
+<h2 id="f-2-sign-in-and-per-action-confirmation">2. Sign-in and per-action confirmation</h2>
+<p><strong>Goal</strong>: returning user signs in; every sensitive action is confirmed on its own.</p>
 <ol>
-<li><code>signin</code>: same providers; passkey can sign in directly (discoverable credential, &quot;Sign in with a passkey&quot;).</li>
-<li>If MFA enrolled: after IdP callback, prompt for passkey or TOTP (or recovery code).</li>
-<li>Session issued with <code>auth_level = mfa</code> or <code>password-only</code>.</li>
-<li>Later, user triggers a sensitive action (publish, yank, transfer, change visibility, create token, remove MFA factor, change email).</li>
-<li>If <code>reauth_at</code> older than 5 min → modal &quot;Confirm it&#39;s you&quot; → passkey/TOTP → <code>reauth_at</code> refreshed → action proceeds.</li>
+<li><code>signin</code>: &quot;Sign in with a passkey&quot; (default, discoverable credential) or &quot;Sign in with GitHub&quot;. Email codes are not a sign-in method for existing accounts; they appear only under &quot;Lost your passkey?&quot; (recovery).</li>
+<li>GitHub sign-in on an account with MFA → prompt for passkey or TOTP (or a recovery code) before the session is issued.</li>
+<li>Later, user triggers a sensitive action: approve a staged publish, publish, yank, change visibility, mint a token, change owners or members, grant private access, edit trusted publishers, change billing, remove an MFA factor, change email.</li>
+<li>A &quot;Confirm with passkey&quot; dialog names the action (e.g. &quot;Approve @google/vpc-review 0.5.0&quot;). The WebAuthn challenge is derived from that action&#39;s parameters, so the assertion cannot be replayed for anything else. TOTP-only members type a fresh code in the same dialog.</li>
+<li>Worker verifies the assertion and checks the session against the D1 revocation table (not just cached KV), then performs the action. The next sensitive action asks again.</li>
 </ol>
 <div class="diagram"><pre class="mermaid">flowchart TD
   A["Sensitive action requested"] --&gt; B{"MFA enrolled?"}
-  B -- no, publisher action --&gt; C["Redirect to mfa: enrollment required"]
-  B -- no, member action --&gt; D["Proceed (member-level)"]
-  B -- yes --&gt; E{"reauth_at &lt; 5 min?"}
-  E -- yes --&gt; F["Proceed"]
-  E -- no --&gt; G["Step-up modal: passkey / TOTP / recovery code"]
-  G -- success --&gt; H["Refresh reauth_at"] --&gt; F
-  G -- fail x5 --&gt; I["Lock step-up 15 min, email alert"]</pre></div><p>Failure / edge states:</p>
+  B -- "no, publisher action" --&gt; C["Redirect to mfa: enrollment required"]
+  B -- "no, member action" --&gt; D["Proceed (member-level)"]
+  B -- yes --&gt; E["Dialog names the action"]
+  E --&gt; F{"Factor"}
+  F -- passkey --&gt; G["Passkey tap, challenge bound to this action"]
+  F -- "TOTP only" --&gt; H["Fresh TOTP code in this dialog"]
+  G --&gt; I{"Session still valid at source?"}
+  H --&gt; I
+  I -- yes --&gt; J["Perform action, audit log"]
+  I -- "no, revoked" --&gt; K["Refuse, sign in again"]
+  G -- "fail x5" --&gt; L["Lock sensitive actions 15 min, email alert"]</pre></div><p>Failure / edge states:</p>
 <ul>
-<li>Lost all factors → recovery code; if none, support flow with identity re-verification (publisher packs frozen meanwhile).</li>
+<li>Lost all factors → &quot;Lost your passkey?&quot; → email code + recovery code; with no recovery code, a support flow with identity re-verification (publisher packs frozen meanwhile).</li>
 <li>Recovery code used → warn, offer regeneration.</li>
-<li>Session from new device/geo → email notice (npm/GitHub pattern).</li>
-<li>Step-up on an API token request from an agent is not possible → tokens are minted only in the browser.</li>
+<li>Session from new device or location → email notice (npm/GitHub pattern).</li>
+<li>Revoked session: ordinary pages may load for up to ~60 s; any sensitive action is refused immediately.</li>
+<li>Agents cannot confirm actions → tokens are minted only in the browser.</li>
 </ul>
 <hr>
 <h2 id="f-3-star-rate-review">3. Star, rate, review</h2>
@@ -154,7 +166,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <h2 id="f-4-file-bug-report-incl-private-security-report">4. File bug report (incl. private security report)</h2>
 <p><strong>Goal</strong>: member reports a defect; security issues go to publisher privately.</p>
 <ol>
-<li><code>pack</code> &gt; Issues → &quot;Report a bug&quot; → <code>report</code>.</li>
+<li><code>pack</code> &gt; Issues → &quot;Report a bug&quot;. If the pack links a public repo, this opens a pre-filled GitHub issue in that repo (pack, version, environment) that the user files themselves; PackServer reads its status back through the read-only GitHub App&#39;s issue webhooks. Packs without a public repo use the in-site <code>report</code> form.</li>
 <li>Fields: version, type (bug / docs / security), severity, repro steps, environment, attachments (≤5 MB, images/text only).</li>
 <li>If type = security → toggle &quot;Private security report&quot; auto-on: report is visible only to pack owners/maintainers and PackServer security; not listed in Issues tab.</li>
 <li>Submit → issue created; publisher notified (email + dashboard alert). Private security reports also create a 90-day disclosure timer (publisher-visible).</li>
@@ -162,7 +174,10 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <li>Public issues appear in <code>pack</code> &gt; Issues; private ones in <code>account</code> &gt; My reports (reporter) and <code>dashboard</code> alerts (publisher).</li>
 </ol>
 <div class="diagram"><pre class="mermaid">flowchart TD
-  A["report page"] --&gt; B{"type = security?"}
+  R["Report a bug"] --&gt; P{"public repo linked?"}
+  P -- "yes, not security" --&gt; GI["Open pre-filled GitHub issue, user files it"] --&gt; F
+  P -- "no, or security" --&gt; A["report page"]
+  A --&gt; B{"type = security?"}
   B -- yes --&gt; C["Private: visible to owners + PackServer security"]
   B -- no --&gt; D["Public issue in pack Issues tab"]
   C --&gt; E["Notify publisher security contact"]
@@ -187,7 +202,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <li>On pass/warn → step 3 Listing details, pre-filled from manifest (name, summary, category, repo URL if declared). Publisher confirms &quot;No public repo&quot; if none.</li>
 <li>Step 4 Visibility &amp; price → Public ($1) or Private (TBD price, pick access model).</li>
 <li>Step 5 Pay → Stripe Checkout (or one-click with saved method). See flow 8.</li>
-<li>Step 6 Publish → step-up auth → Worker copies archive from staging to the public (or private) R2 bucket under <code>packs/{publisher}/{pack}/{version}/</code>, writes <code>version</code> row, invalidates cache, emits &quot;published&quot; event.</li>
+<li>Step 6 Publish → confirm with passkey → Worker copies archive from staging to the public (or private) R2 bucket under <code>packs/{publisher}/{pack}/{version}/</code>, writes <code>version</code> row, invalidates cache, emits &quot;published&quot; event.</li>
 </ol>
 <div class="diagram"><pre class="mermaid">sequenceDiagram
   participant Pu as Publisher
@@ -210,7 +225,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
   Pu-&gt;&gt;Wz: listing, visibility
   Wz-&gt;&gt;St: Checkout session
   St--&gt;&gt;W: webhook payment_intent.succeeded
-  Pu-&gt;&gt;Wz: Publish (step-up)
+  Pu-&gt;&gt;Wz: Publish (passkey tap)
   W-&gt;&gt;R2: copy staging to packs bucket
   W--&gt;&gt;Pu: published, redirect to pack</pre></div><p>Failure / edge states:</p>
 <ul>
@@ -223,56 +238,58 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 </ul>
 <hr>
 <h2 id="f-6-publish-via-github-path-with-trusted-publishing">6. Publish via GitHub path with trusted publishing</h2>
-<p><strong>Goal</strong>: tag/release in a GitHub repo auto-publishes <code>packs/gcp/</code> with no long-lived secrets, validation results posted as a GitHub check. Pattern: PyPI/npm trusted publishing (GitHub OIDC) + GitHub Checks API.</p>
-<p>Setup (once, in <code>github</code>):</p>
+<p><strong>Goal</strong>: a tag in a GitHub repo publishes <code>packs/gcp-ops/</code> with no long-lived secrets. Pattern: PyPI/npm trusted publishing (GitHub OIDC). PackServer never writes to GitHub; the workflow itself reports the result.</p>
+<p>Setup (once, in <code>github</code>, each change confirmed with a passkey):</p>
 <ol>
-<li>Install the PackServer GitHub App on the repo/org (grants <code>contents:read</code>, <code>checks:write</code>, <code>metadata:read</code>).</li>
-<li>Add mapping: repo, path, tag pattern (<code>v*</code> or <code>gcp-v*</code>), target pack, trusted publisher = (owner, repo, workflow file, environment).</li>
-<li>Copy the provided workflow YAML (uses <code>id-token: write</code> and calls PackServer with the OIDC token).</li>
+<li>Add a trusted publisher: owner, repo, workflow file, optional environment, path, tag pattern (<code>v*</code>), target pack.</li>
+<li>Choose release mode: publish automatically when validation passes, or stage for owner approval (default for verified orgs).</li>
+<li>Copy the provided workflow YAML (<code>id-token: write</code>; it uploads the pack folder with the OIDC token). PackServer gets no write access to the repo.
+Alternative without a workflow: install the read-only PackServer GitHub App; a matching tag push webhook makes PackServer fetch that path&#39;s tarball and run the same validation. Results go to the dashboard and email only.</li>
 </ol>
 <p>Per release:
-4. Tag pushed → GitHub Actions workflow runs → requests OIDC token from GitHub → <code>POST /api/publish/oidc</code> with token + ref + path.
-5. Worker verifies JWT against GitHub&#39;s JWKS, matches <code>repository</code>, <code>workflow_ref</code>, <code>environment</code> claims to the mapping → mints a 15-min single-use publish token.
-6. Worker creates a GitHub Check Run &quot;PackServer validation&quot; (queued) on the commit, fetches the tarball of the path at that ref into R2 staging, enqueues validation.
-7. Validator Worker runs; posts check run <code>in_progress</code> → <code>completed</code> with conclusion and summary (annotations for errors).
-8. On pass: if the mapping has &quot;Require owner approval&quot; on (default for verified orgs), the version lands as <strong>Staged</strong> and an owner approves it with a passkey on <code>dashboard</code> before it goes live. Otherwise, if pack already paid (existing public pack, new version) → publish directly. If first publish or private → mark &quot;awaiting payment&quot;, dashboard alert, email; publisher completes flow 8 then publish. (Decision: new versions of an already-paid public pack are free.)
-9. Pack version live; check run summary links to <code>pack</code>.</p>
+4. Tag pushed → workflow runs → requests an OIDC token → <code>POST /api/publish/oidc</code> with the token and the pack archive built from the path at that ref.
+5. Worker verifies the JWT against GitHub&#39;s JWKS and matches <code>repository</code>, <code>workflow_ref</code>, <code>environment</code> and <code>ref</code> claims to a trusted publisher → stores the archive in R2 staging, enqueues validation, returns a run id and status URL.
+6. The workflow polls the status URL and prints the verdict and report link in its own job log; it exits non-zero on failure, so the GitHub run shows red or green without PackServer writing anything.
+7. On pass: if the trusted publisher is in stage mode, the version becomes <strong>Staged</strong> and an owner approves it on <code>dashboard</code> with a passkey tap bound to that version. Otherwise, if the pack already has its credit (existing pack, new version) → publish directly. A new pack without a credit → &quot;awaiting payment&quot;, dashboard alert and email; publisher completes flow 8.
+8. Version live; the status URL now links to <code>pack</code>.</p>
 <div class="diagram"><pre class="mermaid">sequenceDiagram
   participant GH as GitHub Actions
   participant W as Worker (api)
-  participant GA as GitHub API
   participant R2s as R2 staging
   participant Q as Queue
   participant V as Worker (validator)
+  participant O as Owner (dashboard)
   participant R2 as R2 packs
-  GH-&gt;&gt;GH: tag v1.2.0 pushed, workflow runs
+  GH-&gt;&gt;GH: tag v2.4.1 pushed, workflow runs
   GH-&gt;&gt;GH: request OIDC token (id-token write)
-  GH-&gt;&gt;W: POST /api/publish/oidc with JWT, ref, path
-  W-&gt;&gt;W: verify JWT via JWKS, match mapping claims
-  W--&gt;&gt;GH: 202 run_id, short-lived publish token
-  W-&gt;&gt;GA: create check run (queued)
-  W-&gt;&gt;GA: fetch tarball at ref
+  GH-&gt;&gt;W: POST /api/publish/oidc with JWT + archive
+  W-&gt;&gt;W: verify JWT via JWKS, match trusted publisher
   W-&gt;&gt;R2s: store staging archive
   W-&gt;&gt;Q: enqueue validation
+  W--&gt;&gt;GH: 202 run_id + status URL
   Q-&gt;&gt;V: run checks
-  V-&gt;&gt;GA: check run in_progress
   V-&gt;&gt;W: verdict + report
-  alt pass and already paid
+  GH-&gt;&gt;W: poll status URL
+  alt pass, stage mode
+    W--&gt;&gt;GH: staged, awaiting owner approval
+    O-&gt;&gt;W: approve with passkey (bound to this version)
     W-&gt;&gt;R2: publish version
-    W-&gt;&gt;GA: check completed success, link to pack
-  else pass, payment needed
-    W-&gt;&gt;GA: check completed neutral "awaiting payment"
-    W--&gt;&gt;W: dashboard alert + email
+  else pass, auto mode, credit available
+    W-&gt;&gt;R2: publish version
+    W--&gt;&gt;GH: published, link to pack
+  else pass, new pack needs credit
+    W--&gt;&gt;GH: awaiting payment (job exits neutral)
   else fail
-    W-&gt;&gt;GA: check completed failure with annotations
+    W--&gt;&gt;GH: failed + report link (job exits 1)
   end</pre></div><p>Failure / edge states:</p>
 <ul>
-<li>JWT claims mismatch (wrong workflow file, fork PR, environment missing) → 403 with exact claim diff in check summary; nothing staged.</li>
-<li>Mapping disabled or repo App uninstalled → check failure &quot;PackServer not configured&quot;.</li>
-<li>Path has no manifest at that ref → fail with annotation at expected file path.</li>
-<li>Version in manifest ≠ tag → fail (prevent accidental republish); configurable &quot;tag is source of truth&quot;.</li>
-<li>Duplicate deliveries (GitHub retries) → idempotent on (repo, sha, path).</li>
-<li>Trusted publishing is preferred; fallback &quot;publish token&quot; (scoped, 90-day expiry, shown once) exists for non-GitHub CI and is marked &quot;less secure&quot; in <code>github</code>.</li>
+<li>JWT claims mismatch (wrong workflow file, fork PR, environment missing) → 403 with the exact claim diff in the response, printed in the job log; nothing staged.</li>
+<li>Trusted publisher removed or disabled → 403 &quot;No trusted publisher matches&quot;.</li>
+<li>Path has no manifest → validation fails with the expected file path in the report.</li>
+<li>Version in manifest ≠ tag → fail (prevents accidental republish); configurable &quot;tag is source of truth&quot;.</li>
+<li>Workflow retries the upload → idempotent on (repo, sha, path).</li>
+<li>Staged version not approved in 14 days → expires; dashboard notice.</li>
+<li>Trusted publishing is preferred; a fallback &quot;publish token&quot; (scoped, 90-day expiry, shown once, minted with a passkey tap) exists for non-GitHub CI and is marked &quot;less secure&quot; in <code>github</code>.</li>
 </ul>
 <hr>
 <h2 id="f-7-validation-failure-and-resubmit">7. Validation failure and resubmit</h2>
@@ -391,31 +408,34 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 </ul>
 <hr>
 <h2 id="f-9-verify-organization">9. Verify organization</h2>
-<p><strong>Goal</strong>: an org proves control of a domain and/or GitHub org, earning a verified badge so &quot;com.google/gcp&quot; is trustworthy.</p>
+<p><strong>Goal</strong>: an org proves control of a domain and/or GitHub org, earning a verified badge so &quot;@google/gcp&quot; is trustworthy.</p>
 <ol>
-<li><code>org</code> &gt; Create org: handle, display name. Creator becomes <code>owner</code> (step-up).</li>
-<li>Verification tab → &quot;Add domain&quot;: enter <code>example.com</code> → shown TXT record <code>_packserver.example.com  TXT  &quot;packserver-verify=&lt;token&gt;&quot;</code>.</li>
+<li><code>org</code> &gt; Create org: handle, display name. Creator becomes <code>owner</code> (confirm with passkey).</li>
+<li>Verification tab → &quot;Add domain&quot;: enter <code>example.com</code> → shown TXT record <code>_packserver-challenge.example.com  TXT  &quot;&lt;signed token&gt;&quot;</code>, or the alternative file <code>https://example.com/.well-known/packserver-auth</code> (MCP Registry model).</li>
 <li>Click &quot;Check now&quot; → Worker resolves via DNS-over-HTTPS (1.1.1.1), accepts if token matches. Re-checks every 30 days; badge removed after 2 failed re-checks with email warning.</li>
-<li>&quot;Verify GitHub org&quot;: install PackServer GitHub App on the org (requires GitHub org owner) → App installation webhook confirms <code>account.login</code> and <code>account.type = Organization</code>; owner must also be an org owner on GitHub (checked via App API).</li>
-<li>Badge shown on <code>publisher</code> and all pack headers; hover lists verified domains / GitHub org.</li>
+<li>&quot;Verify GitHub org&quot;: either install the read-only PackServer GitHub App on the org, or sign in with GitHub and we confirm the user is an org admin via the API. The scope name defaults to the org login.</li>
+<li>Badges state exactly what was proven: &quot;github.com/google&quot; for a GitHub org, &quot;google.com ✓&quot; for a domain. <strong>Verified Publisher</strong> additionally needs domain proof + linked GitHub org + MFA enforced for all members + manual review by PackServer.</li>
 <li>Handle policy: a verified domain&#39;s label (e.g. <code>google</code>) can be claimed as handle even if squatted by an unverified user (user is renamed, notified; npm dispute-lite).</li>
 </ol>
 <div class="diagram"><pre class="mermaid">flowchart TD
-  A["Create org (step-up)"] --&gt; B["Verification tab"]
+  A["Create org (confirm with passkey)"] --&gt; B["Verification tab"]
   B --&gt; C["Add domain: show TXT record"]
   C --&gt; D["Check now via DoH"]
   D -- match --&gt; E["Domain verified, re-check every 30d"]
   D -- no match --&gt; F["Not found yet: propagation hint, retry"]
-  B --&gt; G["Install GitHub App on org"]
-  G --&gt; H["Installation webhook + owner check"]
+  B --&gt; G["Install read-only App, or GitHub sign-in"]
+  G --&gt; H["Confirm org admin"]
   H -- ok --&gt; I["GitHub org verified"]
   H -- not org owner --&gt; J["Error: must be GitHub org owner"]
-  E --&gt; K["Verified badge"]
-  I --&gt; K</pre></div><p>Failure / edge states:</p>
+  E --&gt; K["Domain badge"]
+  I --&gt; K2["GitHub org badge"]
+  K --&gt; VP["Verified Publisher after manual review"]
+  K2 --&gt; VP</pre></div><p>Failure / edge states:</p>
 <ul>
 <li>Domain already verified by another org → conflict; second org can trigger a re-check which revokes the first if the TXT now points to the second (domain owner wins).</li>
 <li>Public suffix (e.g. <code>github.io</code>) → rejected; subdomain allowed with warning (badge shows full host).</li>
-<li>GitHub App uninstalled → verification revoked after grace period (7 days), alert.</li>
+<li>GitHub App uninstalled and admin no longer confirmable → GitHub org badge revoked after 7 days, alert.</li>
+<li>Scope and pack names are never recycled after deletion (Hugging Face re-registration attack).</li>
 <li>Org deleted → packs must be transferred first (blocking).</li>
 </ul>
 <hr>
@@ -442,7 +462,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 </ol>
 <p>Option C – Scoped read tokens for agents:</p>
 <ol>
-<li><code>access</code>: &quot;Create agent token&quot; (step-up): name, scope <code>read:pack/{id}</code> (or <code>read:org/{org}/*</code>), expiry (max 1 year), optional CIDR allow-list.</li>
+<li><code>access</code>: &quot;Create agent token&quot; (confirm with passkey): name, scope <code>read:pack/{id}</code> (or <code>read:org/{org}/*</code>), expiry (max 1 year), optional CIDR allow-list.</li>
 <li>Token shown once; copy into agent config as MCP <code>Authorization: Bearer</code>.</li>
 <li>Audit log on <code>access</code>: token name, last used, fetch counts; revoke anytime.</li>
 </ol>
@@ -462,7 +482,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <ul>
 <li>Under A, B and C, private packs are never indexed in <code>browse</code> or <code>search_packs</code> for unauthorized callers; 404 (not 403) to avoid existence leaks. Under D the owner chooses to list the pack publicly so people can request access; its contents still return 404 until granted.</li>
 <li>Downloads served through a Worker that checks authorization then streams from private R2 (never a public R2 URL); optional 5-min signed URLs for large archives.</li>
-<li>Making a private pack public: step-up, confirmation that all versions become public and permanent.</li>
+<li>Making a private pack public: passkey confirmation, confirmation that all versions become public and permanent.</li>
 <li>Making a public pack private: only future versions; previously public versions remain fetchable by exact version.</li>
 </ul>
 <hr>
@@ -473,8 +493,8 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <ol>
 <li>Agent connects to <code>https://mcp.packserver.dev</code> (Streamable HTTP MCP), no auth.</li>
 <li><code>search_packs(&quot;deploy to GCP Cloud Run&quot;, category=&quot;cloud&quot;)</code> → ranked list of compact summaries: description (max 1024 chars, per the Agent Skills convention), contents counts by type, context cost in tokens, stars, rating, verified flag. Full content stays behind <code>get_pack</code> so a search costs the agent little context.</li>
-<li><code>get_pack(&quot;com.google/gcp&quot;)</code> → summary, warnings, validation verdict, latest version.</li>
-<li><code>download_pack(&quot;com.google/gcp&quot;, &quot;1.2.0&quot;)</code> → R2 signed URL (public bucket behind cache) + sha256; agent installs locally.</li>
+<li><code>get_pack(&quot;@google/gcp&quot;)</code> → summary, warnings, validation verdict, latest version.</li>
+<li><code>download_pack(&quot;@google/gcp&quot;, &quot;1.2.0&quot;)</code> → R2 signed URL (public bucket behind cache) + sha256; agent installs locally.</li>
 </ol>
 <p>Private (option C token or personal token):
 5. Same with <code>Authorization: Bearer ps_rt_…</code>; <code>search_packs</code> now includes private packs the token can read.
@@ -488,9 +508,9 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
   Ag-&gt;&gt;M: search_packs "deploy to GCP"
   M-&gt;&gt;D: query public index
   M--&gt;&gt;Ag: results with stars, rating, verified
-  Ag-&gt;&gt;M: get_pack com.google/gcp
+  Ag-&gt;&gt;M: get_pack @google/gcp
   M--&gt;&gt;Ag: metadata, contents summary, sha256
-  Ag-&gt;&gt;M: download_pack com.google/gcp 1.2.0
+  Ag-&gt;&gt;M: download_pack @google/gcp 1.2.0
   M-&gt;&gt;R2: sign URL (public bucket)
   M--&gt;&gt;Ag: url + sha256
   Ag-&gt;&gt;R2: GET archive
@@ -512,22 +532,22 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <ol>
 <li><code>pack</code> &gt; Versions (publisher view) → version row menu → &quot;Deprecate&quot; (warning only) or &quot;Yank&quot; (hidden from resolution).</li>
 <li>Enter reason (shown publicly) and, for yank, optional &quot;security&quot; flag (creates advisory stub).</li>
-<li>Step-up auth → confirm.</li>
+<li>Confirm with passkey (bound to this version).</li>
 <li>Deprecate: version still resolvable; MCP/CLI show warning. Yank: <code>latest</code> moves to previous non-yanked version; exact-version fetch still works with <code>yanked: true</code>; search excludes it.</li>
 <li>Notify users who starred the pack (opt-in digest) and open issues referencing the version.</li>
-<li>Un-yank possible by owner (step-up), logged.</li>
+<li>Un-yank possible by owner (confirm with passkey), logged.</li>
 </ol>
 <div class="diagram"><pre class="mermaid">flowchart TD
   A["Versions tab: choose version"] --&gt; B{"Action"}
-  B -- deprecate --&gt; C["Reason, step-up"] --&gt; D["Flag version, warning on fetch"]
-  B -- yank --&gt; E["Reason, security flag, step-up"] --&gt; F["Hide from search and latest, exact fetch still allowed"]
+  B -- deprecate --&gt; C["Reason, passkey tap"] --&gt; D["Flag version, warning on fetch"]
+  B -- yank --&gt; E["Reason, security flag, passkey tap"] --&gt; F["Hide from search and latest, exact fetch still allowed"]
   F --&gt; G["Advisory stub if security"]
   D --&gt; H["Notify starrers (digest)"]
   F --&gt; H</pre></div><p>Failure / edge states:</p>
 <ul>
 <li>Yanking the only version → pack shows &quot;No available versions&quot;, stays listed with reason.</li>
 <li>Delete is not offered for public packs after 72h (npm unpublish rule); within 72h and zero downloads, full delete allowed.</li>
-<li>Private packs: delete allowed any time (step-up), with 7-day soft-delete.</li>
+<li>Private packs: delete allowed any time (confirm with passkey), with 7-day soft-delete.</li>
 <li>Yank initiated by moderation → reason prefixed &quot;Removed by PackServer&quot;.</li>
 </ul>
 <hr>
@@ -579,7 +599,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 </tr>
 <tr>
 <td><strong>Member</strong></td>
-<td>Signed-in individual (GitHub / Google / passkey / magic link)</td>
+<td>Signed-in individual (passkey or GitHub; email code for sign-up and recovery only)</td>
 <td>Everything above + star, rate (1-5), write reviews, file bug reports and private security reports, manage profile, MFA (optional), sessions, personal read tokens</td>
 </tr>
 <tr>
@@ -714,7 +734,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <td><code>/signin</code></td>
 <td>Sign in or sign up</td>
 <td>Anon</td>
-<td>Buttons: GitHub, Google, Passkey; email magic link; &quot;What you get&quot; blurb; after first login: handle + display name step</td>
+<td>Buttons: Sign in with a passkey (default), Sign in with GitHub; email one-time code for sign-up and &quot;Lost your passkey?&quot; recovery only; &quot;What you get&quot; blurb; after first login: handle + display name step</td>
 <td>Sign in, sign up, continue to <code>mfa</code> if required</td>
 </tr>
 <tr>
@@ -723,7 +743,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <td>MFA enrollment &amp; management</td>
 <td>Member</td>
 <td>Passkey (WebAuthn) primary; TOTP fallback with QR + manual key; recovery codes (download/print once); list of enrolled factors with last-used; &quot;MFA required for publishers&quot; banner</td>
-<td>Add passkey, add TOTP, regenerate recovery codes, remove factor (step-up)</td>
+<td>Add passkey, add TOTP, regenerate recovery codes, remove factor (confirm with passkey)</td>
 </tr>
 <tr>
 <td><code>review</code></td>
@@ -747,7 +767,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <td>Member settings</td>
 <td>Member</td>
 <td>Tabs: Profile (avatar, handle, display name, bio, links), Starred packs, My reviews, My reports, Security (MFA status -&gt; <code>mfa</code>, active sessions w/ revoke, API tokens: name, scopes <code>read:private</code>, expiry, last used), Become a publisher CTA</td>
-<td>Edit profile, revoke session, create/revoke token (step-up), delete account</td>
+<td>Edit profile, revoke session, create/revoke token (confirm with passkey), delete account</td>
 </tr>
 <tr>
 <td><code>dashboard</code></td>
@@ -762,7 +782,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <td><code>/publish</code></td>
 <td>6-step wizard</td>
 <td>Publisher</td>
-<td>Stepper: 1 Source (GitHub repo + path picker via installed GitHub App, or upload archive drag-drop with size limit) → 2 Validate (live log, links to <code>validation</code>) → 3 Listing details (name, slug, category, tags, summary, README preview, repo link / &quot;no public repo&quot; confirm, icon) → 4 Visibility &amp; price (Public $1 one-time / Private: price TBD, access model picker) → 5 Pay (Stripe Checkout redirect, or &quot;payment method on file&quot; one-click) → 6 Publish (confirm, step-up auth, publish)</td>
+<td>Stepper: 1 Source (GitHub repo + path (trusted publishing workflow, or the read-only GitHub App), or upload archive drag-drop with size limit) → 2 Validate (live log, links to <code>validation</code>) → 3 Listing details (name, slug, category, tags, summary, README preview, repo link / &quot;no public repo&quot; confirm, icon) → 4 Visibility &amp; price (Public $1 one-time / Private: price TBD, access model picker) → 5 Pay (Stripe Checkout redirect, or &quot;payment method on file&quot; one-click) → 6 Publish (confirm with passkey, publish)</td>
 <td>Next/back, save draft, cancel</td>
 </tr>
 <tr>
@@ -778,7 +798,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <td><code>/dashboard/github</code></td>
 <td>GitHub auto-publish config</td>
 <td>Publisher</td>
-<td>Installed GitHub App repos; per-pack row: repo, path (e.g. <code>packs/gcp/</code>), trigger (tag pattern <code>v*</code> / release), trusted publishing config (owner, repo, workflow file, environment) in PyPI style; recent runs with GitHub check status; &quot;Copy workflow YAML&quot;</td>
+<td>Trusted publishers and (optional) read-only GitHub App repos; per-pack row: repo, path (e.g. <code>packs/gcp/</code>), trigger (tag pattern <code>v*</code> / release), trusted publishing config (owner, repo, workflow file, environment) in PyPI style; recent runs with PackServer status (nothing is written back to GitHub); &quot;Copy workflow YAML&quot;</td>
 <td>Connect repo, add/edit mapping, disable, view run</td>
 </tr>
 <tr>
@@ -786,7 +806,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <td><code>/orgs/{org}/settings</code></td>
 <td>Org management</td>
 <td>Publisher (owner/maintainer)</td>
-<td>Tabs: General (name, handle, avatar); Verification (domain via DNS TXT with record shown + &quot;Check now&quot;; GitHub org via App install on org); Members (list with role, invite by handle/email, pending invites); Security (require MFA for all members: on by default); Danger (transfer packs, delete org)</td>
+<td>Tabs: General (name, handle, avatar); Verification (domain via DNS TXT with record shown + &quot;Check now&quot;; GitHub org via read-only App install or GitHub sign-in as org admin); Members (list with role, invite by handle/email, pending invites); Security (require MFA for all members: on by default); Danger (transfer packs, delete org)</td>
 <td>Create org, verify, invite, change role, remove</td>
 </tr>
 <tr>
@@ -795,7 +815,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <td>Private pack access (OPTIONS, not decided)</td>
 <td>Publisher (owner/maintainer)</td>
 <td>Visibility chip; access model panel with the 2-3 options below; audit log of grants/fetches</td>
-<td>Grant/revoke per chosen model, change visibility (step-up)</td>
+<td>Grant/revoke per chosen model, change visibility (confirm with passkey)</td>
 </tr>
 <tr>
 <td><code>billing</code></td>
@@ -843,7 +863,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 </tbody></table>
 </div><p>Mobile: hamburger with the same items; search collapses to icon. Alert badge on avatar when <code>dashboard</code> has alerts.</p>
 <h2 id="s-permission-matrix">Permission matrix</h2>
-<p>Legend: ✓ allowed · S = allowed with step-up re-auth · ✗ not allowed · (own) = only own items</p>
+<p>Legend: ✓ allowed · S = allowed, each time confirmed with a passkey tap bound to that action (fresh TOTP code for TOTP-only members) · ✗ not allowed · (own) = only own items</p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -1096,14 +1116,14 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <li><strong>Private pack access model</strong>: A (org members), B (allow-list), C (scoped tokens), D (gated access requests) or combination. Decide, and decide private pricing.</li>
 <li><strong>Charge timing</strong>: proposal is charge-after-validation-passes (see <code>flows.md</code> &gt; Payment). Alternative: charge-on-submit with refund on fail.</li>
 <li><strong>MFA scope</strong>: proposal is required for publishers, optional for members. Decide whether org owners must re-verify MFA for all members (npm &quot;enforce 2FA&quot; style).</li>
-<li><strong>Namespace model</strong>: scoped, matching the backend design: <code>gh/&lt;github-org&gt;/&lt;pack&gt;</code> (proven by GitHub org ownership) or reverse-domain <code>com.google/&lt;pack&gt;</code> (proven by DNS TXT), MCP-Registry style. The Verified Publisher badge is a separate layer on top. Scoped names remove name-squatting disputes.</li>
+<li><strong>Namespace model</strong>: scoped <code>@&lt;scope&gt;/&lt;pack&gt;</code>, matching the backend design. A scope belongs to a user or an org; its badge states what was proven (GitHub org, domain). Names are never recycled. Scoped names remove name-squatting disputes.</li>
 <li><strong>Validation gate strictness</strong>: which checks are hard-fail (schema, secrets, size) vs. warn (prompt-injection heuristics, missing tests). Proposal in <code>validation</code> page.</li>
 <li><strong>Public validation detail</strong>: show full report publicly vs. only verdict + check names. Proposal: verdict + check list public, logs publisher-only.</li>
 <li><strong>Rating eligibility</strong>: anyone signed-in vs. only accounts that fetched the pack (download-gated, Docker Hub-like). Proposal: any member, with &quot;verified fetch&quot; badge on reviews from accounts that pulled the pack.</li>
 <li><strong>Review moderation</strong>: publisher reply only vs. publisher can flag; proposal: reply + flag, never delete.</li>
 <li><strong>Anonymous abuse reports</strong>: allow with captcha vs. require sign-in. Proposal: allow with captcha (Turnstile).</li>
 <li><strong>Category taxonomy</strong>: fixed curated list vs. free tags. Proposal: fixed top-level categories + free tags.</li>
-<li><strong>Org verification method</strong>: namespace verification MCP-Registry style, by GitHub org ownership or a DNS TXT challenge on the domain. Proposal: either grants the verified badge, both shown on the publisher page.</li>
+<li><strong>Org verification method</strong> (settled by the backend design): GitHub org proof (read-only App install or GitHub sign-in as org admin) and domain proof (DNS TXT or <code>.well-known</code> file) each give their own badge; Verified Publisher needs both plus scope-wide MFA and manual review.</li>
 </ol>
 </article></main>
 </div></div>
