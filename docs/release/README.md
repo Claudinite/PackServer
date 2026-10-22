@@ -35,6 +35,17 @@ Same account rather than a separate account (research §D): $0 instead of $5–3
 
 Access protection: one Access application per staging hostname, policy "team group via IdP with MFA" plus a Service Auth policy for the CI service token (research §D). The `web-staging` Worker additionally validates `Cf-Access-Jwt-Assertion` so a misconfigured Access app fails closed. Staging hostnames appear in certificate transparency logs; that is acceptable because nothing on staging is secret or real.
 
+**Isolation inside one account.** Every staging resource is its own `*-staging` D1 database, R2 bucket, KV namespace, Vectorize index, Queue and DO namespace; nothing is shared with production, and a CI check fails if the `staging` block of any `wrangler.toml` names a production resource id. Cloudflare API tokens cannot be scoped to a single Worker or wrangler environment (Workers Scripts, D1, R2 and Queues permissions are account-wide; only R2 tokens can be limited to named buckets), so the boundary is who holds which credential, not the token's scope:
+
+| Credential | Holder | Can |
+|---|---|---|
+| Production deploy API token | GitHub `production` environment only | upload/deploy Workers, run D1 migrations |
+| Staging deploy API token (same permissions; the account cannot tell them apart) | GitHub `staging` environment, operators | same; used only with `--env staging`, audited via the account audit log |
+| Staging test service token (Access) | nightly and per-merge test jobs | reach staging hostnames over HTTP only; the Access app that accepts it covers only `*staging.packserver.dev`; no Cloudflare API access at all |
+| Probe service token (Access) | release pipeline, uptime monitor | `/__selftest*` and probe routes on production (§5.2) |
+
+Nightly real-backend scenario runs (test plan, docs/testing §6) write under the `@probe` scope on staging and clean up after themselves; the monthly re-seed (§2.2) wipes anything left over.
+
 ### 2.2 Seeding staging without production PII
 
 Monthly (cron in `admin-staging`, or by hand): `wrangler d1 export --remote registry --no-data` for schema, then a scrubbing script that exports only the tables needed for realistic behaviour (`scopes`, `packs`, `pack_versions`, `pack_stats`, `trusted_publishers` with repository fields intact), **restricted to rows of public packs** (`WHERE visibility = 'public'`; private pack names, summaries and version metadata are customer data and never leave production, nor do `packs-private` objects), and synthesises the rest: `users` replaced by generated handles with `@example.invalid` emails, `credentials`/`sessions`/`tokens`/`identities`/`grants`/`reviews`/`reports`/`credit_ledger`/`subscriptions` emptied and refilled from the fixture generator, `audit` not copied. R2: the public archives of the 1,000 most-installed packs plus every pack under the `@probe` and `@packserver-canary` scopes, copied with `rclone` between buckets. The export blocks other D1 requests while it runs (research §B.1), so it runs at the quietest hour and is capped to the lean tables.
