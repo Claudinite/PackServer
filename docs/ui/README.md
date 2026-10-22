@@ -1,8 +1,10 @@
 # PackServer UI scheme
 
-- [`wireframes-v2.html`](wireframes-v2.html) and [`design-direction.md`](design-direction.md): the calmer v2 direction (bottom-line marks, details on hover or click). v1 below is kept for reference.
-- [`wireframes.html`](wireframes.html): clickable wireframes for every screen. Open it in a browser; the bar at the top switches persona (Anonymous, Member, Publisher) and jumps between screens.
-- [`sitemap.md`](sitemap.md): personas, sitemap, page-by-page inventory, header states, permission matrix, private-access options, open decisions.
-- [`flows.md`](flows.md) (rendered with diagrams in [`flows.html`](flows.html), generated from flows.md and sitemap.md): step-by-step action flows with sequence diagrams (sign-up and MFA, reviews, bug reports, publishing by upload and from GitHub, validation, payment, org verification, private access, agent fetch over MCP, yank, moderation).
+PackServer serves Claudinite packs: bundles of rules, skills, checks, guards and scheduled tasks that a repo declares, pins and updates like a dependency. Ground truth for vocabulary and pack anatomy is `/mnt/project-files/claudinite/claudinite-primer.md`; the alignment review that these files follow is `/mnt/project-files/claudinite/reviews/ui.md`.
 
-Aligned with the registry research (passkeys, OIDC trusted publishing, namespace verification, gated access requests) and the backend design (`@<scope>/<pack>` names, passkey or GitHub sign-in with per-action passkey confirmation, no writes to GitHub, per-new-pack publish credits, staged CI publishes).
+- [`wireframes-v2.html`](wireframes-v2.html) and [`design-direction.md`](design-direction.md): the calmer v2 direction (bottom-line marks, details on hover or click). v1 below is kept for reference.
+- [`wireframes.html`](wireframes.html): clickable wireframes for every screen. Open it in a browser; the bar at the top switches viewer role (Anonymous, Signed-in, Publisher) and jumps between screens.
+- [`sitemap.md`](sitemap.md): roles and personas, sitemap, page-by-page inventory, header states, permission matrix, private-access options, open decisions.
+- [`flows.md`](flows.md) (rendered with diagrams in [`flows.html`](flows.html), generated from flows.md and sitemap.md): step-by-step action flows with sequence diagrams (sign-up and MFA, reviews, bug reports, publishing by upload and from GitHub, validation, payment, org verification, private access, discovery over MCP, revocation, moderation).
+
+Aligned with the registry research (passkeys, OIDC trusted publishing, namespace verification, gated access requests), with the backend design (`@<scope>/<pack>` names, passkey or GitHub sign-in with per-action passkey confirmation, no writes to GitHub, per-new-pack publish credits, CI publishes awaiting approval), and with the Claudinite engine design (pack anatomy: `RULES.md`, `skills/`, `declared-checks.json`, `checks/*.go`, `tasks/<name>/task.json`, `pack.json`; date-based versions `1.YMMDD.n`; signed per-pack index with `staging`/`stable` channels; adoption by `cn adopt <id>` or a `packs.declared` entry in `.claudinite/settings.yaml`, landing as a pull request).
