@@ -139,6 +139,15 @@ describe("check-migrations", () => {
     expect(r.out).toMatch(/foundation tables are altered only by foundation/);
   });
 
+  it.each([
+    ["renamed onto a new name", "CREATE TABLE `__new_extra` (id text);\n--> statement-breakpoint\nALTER TABLE `__new_extra` RENAME TO `extra`;"],
+    ["never renamed", "CREATE TABLE `__new_extra` (id text);"],
+  ])("counts a __new_ table %s as creating a foundation table", (_label, sql) => {
+    const r = run({ ...base, "20260102000000_foundation_more.sql": sql });
+    expect(r.ok).toBe(false);
+    expect(r.out).toMatch(/first foundation/);
+  });
+
   it("requires the contract's expand to have touched the same table", () => {
     const files = {
       ...base,

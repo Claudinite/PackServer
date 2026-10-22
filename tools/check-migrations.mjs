@@ -77,6 +77,12 @@ function rebuildStatements(sql, files, index) {
   return { rest, dropped, rebuilt };
 }
 
+/** A `__new_x` table is a rebuild only when this file renames it onto a table that already existed. */
+function isRebuildOfExisting(table, sql) {
+  const rename = sql.split(";").map((s) => REBUILD_RENAME.exec(s)).find((m) => m && m[1].toLowerCase() === table);
+  return Boolean(rename) && table.startsWith("__new_") && created.has(rename[2].toLowerCase());
+}
+
 const files = migrationFiles(dir);
 const seenPrefix = new Map();
 const created = new Map(); // table -> area
@@ -100,7 +106,7 @@ files.forEach((file, index) => {
 
   if (area === FOUNDATION) {
     firstFoundation ??= file;
-    if (file !== firstFoundation && [...own].some((t) => !INTERNAL.test(t)))
+    if (file !== firstFoundation && [...own].some((t) => !isRebuildOfExisting(t, sql)))
       problems.push(`${file}: only the first foundation migration (${firstFoundation}) may create foundation tables`);
   }
 
