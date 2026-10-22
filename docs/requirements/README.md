@@ -19,13 +19,13 @@ format below is fixed.
 | [community.md](community.md) | `COMM`, `MOD`, `ABUSE-002..009` | 40 | 1 |
 | [cn-client-contract.md](cn-client-contract.md) | `DELIV`, `CN` | 32 | 3 |
 | [admin.md](admin.md) | `ADMIN`, `AUDIT` | 17 | 0 |
-| [operations.md](operations.md) | `OPS`, `TELEM` | 20 | 0 |
+| [operations.md](operations.md) | `OPS`, `TELEM` | 21 | 0 |
 
 319 entries: 290 active, 29 retired, none provisional. Ids by area: ACC 001–025; SCOPE 001–018;
 PUB 001–035 (009, 010, 011, 015 retired); VAL 001–052 (028, 030, 039 retired); SCORE 001–010 (010
 retired); DELIV 001–021 (011, 019, 020 retired); SEARCH 001–023 (019 retired); PRIV 001–020; PAY
 001–018 (001–016 retired); COMM 001–015 (008 retired); MOD 001–018; ABUSE 001–009; ADMIN 001–010;
-AUDIT 001–007; TELEM 001–009; OPS 001–013; CN 001–015.
+AUDIT 001–007; TELEM 001–009; OPS 001–014; CN 001–015.
 
 The `SEARCH` area is split across three pages by reader (site, pack page, MCP); its ids stay one
 sequence. Cross-cutting terms (per-action assertion, statuses, the pre-install manifest) are defined

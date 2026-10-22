@@ -85,6 +85,12 @@ is the only gate before every Worker goes to 100% (Ariel B7 2026-10-22).
 - **Action:** a signed-in person publishes a pack whose text contains a marker string and whose request carried an email and a token; read the invocation records the Recorder wrote and the fakes' records.
 - **Assert:** the email appears only as a keyed hash behind a `personal` placeholder; the marker appears only as a `customer-content` placeholder; the token is absent; a field the test leaves unclassified in a fixture is treated as customer-content; the fakes' records carry the same placeholders.
 
+### IT-OPS-014 Data a release writes stays readable by the previous release
+- **Covers:** REQ-OPS-014
+- **Runs:** push, release
+- **Action:** run the N-1 build's readers against everything the N build writes in the scenario suite (D1 rows, R2 objects, KV values, queue messages at `schema: n`, Durable Object state), then roll the Worker back to N-1 over the data N wrote and replay the read paths.
+- **Assert:** every N-1 reader accepts every record N wrote and returns the same observable result as N; the rolled-back release serves its pages and API without an error, and its self-test passes.
+
 ## Telemetry
 
 ### IT-TELEM-001 Downloads and index fetches are counted without blocking
