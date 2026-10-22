@@ -27,7 +27,7 @@ Status: design, 2026-10-22. Layer 2 of the plan in [README.md](README.md). Packa
 | `OrgMember` | `await org.invite(user).as('maintainer')` | role `owner` \| `maintainer` (the UI's two roles; the architecture's four map onto them in the driver) |
 | `Agent` | `world.agents.anonymous()`, `await world.agents.withToken(token)`, `await world.agents.oauth(user)` | an MCP client; `anonymous` needs no await |
 | `CiWorkflow` | `world.github.workflow({ repo, workflowFile, environment?, ref?, forkOf? })` | a GitHub Actions run that can request OIDC tokens and run the publish action |
-| `Member` | `world.member(policy?)` | a member repo running the pinned cn: fetches indexes, verifies signatures, downloads, vendors, reports what it holds, runs the update task, lints and builds the canonical archive offline (`cn lint`, `cn vendor`); `policy` sets the channel it selects on and a minimum tier. Sessions never read the registry, so there is no session verb |
+| `Member` | `world.member(policy?)` | a member repo running the pinned cn: fetches indexes, verifies signatures, downloads, vendors, reports what it holds, runs the update task, lints and builds the canonical archive offline (`cn lint` and cn's canonicalise command); `policy` sets a minimum tier. Sessions never read the registry, so there is no session verb |
 | `Admin` | `await world.admins.create()` | a person with an Access identity on the admin host; `world.visitor().withForgedAccessHeader()` is the negative |
 | `Clock` | `world.clock` | `advance(duration)`, `set(iso)`, `now()` |
 | probe publisher | `await world.probe.publisher()` | the publisher of the synthetic scope (`@probe`); the only actor a `probe-safe` scenario may write as. In-process it is a synthetic scope like any other; under `http` it is the probe token |
@@ -107,7 +107,7 @@ await org.billing.subscribe('team', { seats: 3 })
 await org.delete()
 
 // Agent (MCP)
-await agent.search('deploy to GCP', { category?, includeStaging?, channel?, minEngineVersion?, verifiedOnly? })   // staging versions only when asked (REQ-SEARCH-004)
+await agent.search('deploy to GCP', { category?, minEngineVersion?, verifiedOnly?, includeUnreviewed? })   // third-party versions only when asked (REQ-SEARCH-019)
 await agent.categories()
 await agent.get(pack, version?)
 await agent.download(pack, version)
@@ -125,10 +125,10 @@ workflow.oidcToken({ aud?, iss?, exp?, nbf?, alg?, kid?, ...claims })    // mint
 await workflow.upload(archive, { reuse?: upload })                       // the 15-minute upload credential; reuse replays it
 world.github.webhook(event, { signature?: 'wrong' | 'missing', installation? })  // a delivery the World can send
 await member.fetchIndex('acme');  await member.fetchRoot();  await member.download(pack, version);  await member.reportHolding(pack, version)
-world.member({ channel?: 'stable' | 'staging', minTier?: 'community' })   // a member with a policy (REQ-DELIV-019, 020; REQ-VAL-041)
+world.member({ minTier?: 'community' })                                  // a member with a policy (REQ-VAL-041)
 await member.adopt(pack, version)                                        // -> Vendored | a verification refusal (REQ-DELIV-017)
-await member.updateCheck(pack)                                               // -> { proposed?: Version, capabilityDiff?, revoked? } : what one update run proposes on the member's channel and which held versions it reports as revoked (REQ-DELIV-018, 019)
-await member.lint(archive);  await member.vendor(archive)                        // cn lint and cn vendor: the offline rule set and the canonical archive (REQ-VAL-044, REQ-VAL-033)
+await member.updateCheck(pack)                                               // -> { proposed?: Version, capabilityDiff?, revoked? } : what one update run proposes and which held versions it reports as revoked (REQ-DELIV-018)
+await member.lint(archive);  await member.canonicalize(archive)                  // the offline rule set and the canonical archive (REQ-VAL-044, REQ-VAL-033)
 
 // Admin
 await admin.queue.list();  await admin.queue.approve(version);  await admin.queue.reject(version, reason)
@@ -142,8 +142,8 @@ await admin.recovery.approve(user)
 // World-level
 await world.validation.completes(version)                                // runs the workflow to a verdict, gates auto-answered
 await world.validation.of(version)                                       // -> ValidationRun handle (verdict(), report(), findings())
-await world.cron.run('domain-rechecks' | 'stats-rollup' | 'staging-expiry' | 'rescan' | 'domain-drift' | 'soak-promotion' | 'queue-timeouts' | 'audit-head' | 'audit-verify' | 'activity-prune')
-                                            // 'domain-drift' re-resolves the URL domains of live versions (REQ-VAL-018); 'soak-promotion' moves versions past their soak to stable (REQ-DELIV-019)
+await world.cron.run('domain-rechecks' | 'stats-rollup' | 'staging-expiry' | 'rescan' | 'domain-drift' | 'queue-timeouts' | 'audit-head' | 'audit-verify' | 'activity-prune')
+                                            // 'domain-drift' re-resolves the URL domains of live versions (REQ-VAL-018)
 await world.clock.advance('31d')
 world.dns.publishTxt(name, value);  world.dns.remove(name)
 world.github.repo('acme/tool');  world.github.installApp({ org, installer })
@@ -259,7 +259,7 @@ export interface World {
   visitor(): Visitor;
   agents: { anonymous(): Agent; withToken(t: Token): Promise<Agent>; oauth(u: User): Promise<Agent> };
   admins: { create(): Promise<Admin>; notifications(): Promise<Notification[]> };
-  member(policy?: { channel?: Channel; minTier?: Tier }): Member;
+  member(policy?: { minTier?: Tier }): Member;
   packs: { public(name: string, opts?: { versions?: string[] }): Promise<Pack>; private(name: string): Promise<Pack>; nonexistent(name: string): Pack; get(name: string): Pack };
   probe: { publisher(): Promise<Publisher> };
   tokens: { leakReport(tokenOrPrefix: string): Promise<void> };
@@ -318,7 +318,7 @@ export interface Version {
   readonly pack: Pack;  readonly version: string;
   status(): Promise<VersionStatus>;  sha256(): Promise<string>;  attestation(): Promise<Attestation>;
   uploadSha256(): Promise<string>;  canonicalSha256(): Promise<string>;
-  capabilities(): Promise<ReadonlySet<PackCapability>>;  tier(): Promise<Tier>;  channel(): Promise<Channel>;
+  capabilities(): Promise<ReadonlySet<PackCapability>>;  tier(): Promise<Tier>;  publishedAt(): Promise<Date>;
   approve(o?: Sensitive): Promise<void>;  deprecate(reason: string, o?: Sensitive): Promise<void>;
   yank(o: { reason: string; security?: boolean } & Sensitive): Promise<void>;  unyank(o?: Sensitive): Promise<void>;
   delete(o?: Sensitive): Promise<void>;
@@ -326,7 +326,6 @@ export interface Version {
 }
 
 export type Tier = 'reviewed' | 'community' | 'third-party';   // the top tier's name is CLN-REV 6
-export type Channel = 'staging' | 'stable';                     // the engine's channels; what promotes is O7
 // the capability set of REQ-VAL-027, as the validator extracts it from the archive
 export type PackCapability =
   | 'guard' | 'coded-check' | 'env-setup' | 'forced-skill'
@@ -338,8 +337,8 @@ export interface Member {
   download(p: Pack, version: string): Promise<Download>;  reportHolding(p: Pack, version: string): Promise<void>;
   adopt(p: Pack, version: string): Promise<Vendored>;                 // refused for verification when the archive is not canonical (REQ-DELIV-017)
   updateCheck(p: Pack): Promise<{ proposed?: Version; capabilityDiff?: ReadonlyArray<PackCapability>;
-                                  revoked?: ReadonlyArray<{ version: string; reason: string }> }>;   // one update run: never proposes a revoked or off-channel version, reports held revoked ones (REQ-DELIV-018, 019)
-  lint(a: Archive): Promise<Finding[]>;  vendor(a: Archive): Promise<Archive>;
+                                  revoked?: ReadonlyArray<{ version: string; reason: string }> }>;   // one update run: never proposes a revoked version, reports held revoked ones (REQ-DELIV-018)
+  lint(a: Archive): Promise<Finding[]>;  canonicalize(a: Archive): Promise<Archive>;
 }
 
 // every sensitive verb accepts this; the default makes the action-bound assertion with the actor's passkey
@@ -631,26 +630,16 @@ scenario('REQ-SEARCH-003 an agent finds a pack by task phrasing and can narrow b
   expect(results.card(gcp).pitch.length).toBeLessThanOrEqual(1024);
 }, { tags: ['agent'] });
 
-scenario('REQ-SEARCH-004 REQ-DELIV-019 agents do not see staging versions unless they ask, and a member on stable is offered one only after the soak', async (world) => {
-  const pack = await world.packs.public('@acme/gcp');                 // published at the epoch, long since stable
-  const owner = await pack.owner();                                   // not a Verified Publisher: a 72-hour soak
+scenario('REQ-SEARCH-004 a promoted version is visible at once, carrying its publish time', async (world) => {
+  const pack = await world.packs.public('@acme/gcp');
+  const owner = await pack.owner();
   const fresh = await owner.publish(world.archive('gcp', { version: '1.61005.1' })).as('@acme/gcp@1.61005.1');
   await world.validation.completes(fresh);
-  const agent = world.agents.anonymous();
-  const member = world.member({ channel: 'stable' });
+  const publishedAt = await fresh.publishedAt();
 
-  expect(await fresh.channel()).toBe('staging');
-  expect((await agent.search('gcp')).card(pack).latest).toBe('1.61004.1');
-  expect((await agent.search('gcp', { includeStaging: true })).card(pack).latest).toBe('1.61005.1');
-  expect((await member.updateCheck(pack)).proposed).toBeUndefined();
-  await world.clock.advance('71h59m');
-  await world.cron.run('soak-promotion');
-  expect((await agent.search('gcp')).card(pack).latest).toBe('1.61004.1');
-  await world.clock.advance('1m');
-  await world.cron.run('soak-promotion');
-  expect(await fresh.channel()).toBe('stable');
-  expect((await agent.search('gcp')).card(pack).latest).toBe('1.61005.1');
-  expect((await member.updateCheck(pack)).proposed).toMatchObject({ version: '1.61005.1' });
+  expect((await world.agents.anonymous().search('gcp')).card(pack)).toMatchObject({ latest: '1.61005.1', publishedAt });
+  expect((await world.member().fetchIndex('acme')).entry(pack)).toMatchObject({ latest: '1.61005.1', publishedAt });
+  await expect(world.visitor().open(pack)).resolves.toMatchObject({ latest: '1.61005.1', publishedAt });
 }, { tags: ['agent'] });
 ```
 

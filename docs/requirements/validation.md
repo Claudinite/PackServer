@@ -244,7 +244,7 @@ A publisher whose runs fail 10 or more times in a day is soft-rate-limited on fu
 - since: 2026-10
 - actor: system
 - source: ARCH §6 "Ongoing"; ARCH-VAL §6 (PR #3 commit 7a01329: packs have no package dependencies, so the dependency re-resolution is gone)
-- decision: ARCH-Q 7; O5 (what a revocation does in cn); ARCH-SCREEN (the prose-screen rescan exists only with a screen)
+- decision: ARCH-Q 7; ARCH-VAL §7-3 (what a revocation does in cn); ARCH-SCREEN (the prose-screen rescan exists only with a screen)
 - coverage: scenario
 
 Every live latest version is rescanned with the static rules whenever a rule changes and with
@@ -463,18 +463,17 @@ than the pack's newest version, its `minEngineVersion` a three-part engine versi
 - status: provisional
 - since: 2026-10
 - actor: cn engine / publisher
-- source: ARCH-VAL §6, §3.16, §4 step 8 (PR #3 commit 7a01329)
-- decision: ARCH-VAL §7-5; O3 (the archive format: the canonical form is the `.tar.gz` that `cn vendor` produces)
+- source: ARCH-VAL §6, §3.16, §4 step 8
+- decision: ARCH-VAL §7-5
 - coverage: scenario+contract (the in-process scenario proves which bytes are promoted and the infrastructure-error path; the deterministic re-pack and the round-trip are proven against the real sandbox image)
 
 The archive promoted and served for a version is a deterministic re-pack of the validated tree
 (sorted paths, fixed metadata, plain entry names, a single compression frame within the window
-limit), not the uploaded bytes, and is the `.tar.gz` that `cn vendor` would produce. Before promotion the sandbox re-extracts the canonical archive
+limit) in PackServer's own `tar.zst` canonical form, not the uploaded bytes. Before promotion the sandbox re-extracts the canonical archive
 with the same bounded decoder and compares its tree hash with the validated tree; a mismatch is
 an infrastructure error and nothing is promoted. The uploaded bytes stay in staging for the
 staging lifetime (REQ-PUB-020) so a disputed re-pack can be re-examined, and a publisher can
-produce byte-identical canonical archives offline with `cn vendor`, the command the release
-workflow already uses to build a version's archive.
+produce byte-identical canonical archives offline with cn's canonicalise command.
 
 ## REQ-VAL-034 The reviewer's findings are structured and evidenced; free text decides nothing
 
@@ -580,7 +579,7 @@ resumes the run at the payment step without re-validating.
 - since: 2026-10
 - actor: anonymous visitor / agent / cn engine
 - source: ARCH-VAL §6, §3.10 (PR #3 commit 7a01329)
-- decision: ARCH-VAL §7-4; O6 (the tier reaches the signed index only once the engine has a `tier` field and a `minTier` setting); O7 (third-party versions stay on the `staging` channel); CLN-REV 6 (the top tier's name: `reviewed` is a placeholder, since `canon` already names Claudinite's central pack set)
+- decision: ARCH-VAL §7-4; O6 (the tier reaches the signed index only once the engine has a `tier` field and a `minTier` setting); CLN-REV 6 (the top tier's name: `reviewed` is a placeholder, since `canon` already names Claudinite's central pack set)
 - coverage: scenario
 
 Each promoted version carries one tier, `reviewed`, `community` or `third-party`, stored in
@@ -589,8 +588,7 @@ only once the engine has a `tier` field. A community version has passed every fa
 under cn, proven its fixtures and been found benign by both screens or a human. A third-party
 version (missing fixtures, or resolved from an uncertainty hold by timeout) carries a persistent
 warning on the pack page and in cn, is excluded from default MCP results unless the caller opts
-in (REQ-SEARCH-019), never fills an exploration slot, and stays on the `staging` channel
-(REQ-DELIV-019). cn can enforce a per-repo minimum tier once the index carries the field.
+in (REQ-SEARCH-019), and never fills an exploration slot. cn can enforce a per-repo minimum tier once the index carries the field.
 
 ## REQ-VAL-042 The public view shows tier, capabilities, provenance and hashes, never finding text
 

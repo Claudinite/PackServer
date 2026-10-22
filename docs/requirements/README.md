@@ -50,7 +50,7 @@ One file per area, in the order a user meets them:
 | [scopes.md](scopes.md) | `REQ-SCOPE` | 17 | scopes, orgs, domain and GitHub proofs, Verified Publisher |
 | [publishing.md](publishing.md) | `REQ-PUB` | 34 (1 retired) | trusted publishing, tokens, web upload, lifecycle |
 | [validation.md](validation.md) | `REQ-VAL` | 45 (1 retired) | the validation pipeline |
-| [delivery.md](delivery.md) | `REQ-DELIV` | 20 (1 retired) | downloads, the signed index, channels, what cn does with a status |
+| [delivery.md](delivery.md) | `REQ-DELIV` | 20 (3 retired) | downloads, the signed index, what cn does with a status |
 | [search-mcp.md](search-mcp.md) | `REQ-SEARCH` | 19 | search, browse, the MCP endpoint |
 | [private.md](private.md) | `REQ-PRIV` | 15 | private packs and access grants |
 | [payments.md](payments.md) | `REQ-PAY` | 13 | credits, subscriptions, Stripe events |
@@ -62,7 +62,7 @@ One file per area, in the order a user meets them:
 | [telemetry.md](telemetry.md) | `REQ-TELEM` | 7 | counters and the dashboard |
 | [operations.md](operations.md) | `REQ-OPS` | 12 | synthetic scopes, probes, the self-test contract, recorded-traffic redaction, the production configuration |
 
-262 entries: 197 derived from the design documents (47 of them provisional, 2 retired), 29 from the security review (one provisional), 8 from the release plan (the self-test contract and the redaction rule), 27 from the validation-flow review (21 provisional, 1 retired) and 1 from the Claudinite alignment review (provisional). 189 are active, 70 provisional and 3 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. (The totals were recounted from the files on 2026-10-22 when the architecture thread's Claudinite deltas were applied: REQ-VAL-030 was retired, REQ-OPS-012 was added, and no other status moved; REQ-DELIV-003, 004 and 005 returned to active when CLN-REV 1 was withdrawn, and REQ-SCOPE-001 when Ariel chose scoped ids.)
+262 entries: 197 derived from the design documents (46 of them provisional, 2 retired), 29 from the security review (one provisional), 8 from the release plan (the self-test contract and the redaction rule), 27 from the validation-flow review (20 provisional, 2 retired) and 1 from the Claudinite alignment review (retired). 190 are active, 67 provisional and 5 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. (The totals were recounted from the files on 2026-10-22 when the architecture thread's Claudinite deltas were applied: REQ-VAL-030 was retired, REQ-OPS-012 was added, and no other status moved; REQ-DELIV-003, 004 and 005 returned to active when CLN-REV 1 was withdrawn, and REQ-SCOPE-001 when Ariel chose scoped ids; REQ-DELIV-019 and 020 retired and REQ-SEARCH-004 became active when Ariel dropped channels and the cooldown.)
 
 ## Entry format
 
@@ -167,7 +167,7 @@ Two active entries became provisional by this fold: REQ-PUB-021 and REQ-DELIV-00
 
 ## Entries from the Claudinite alignment review
 
-The Claudinite alignment review (`CLN-REV`, 2026-10-22) read this register and the test plan against the Claudinite primer: a pack is `RULES.md`, `skills/`, `declared-checks.json`, `checks/*.go` (coded checks and hook judges, which are guards on PreToolUse), `tasks/` and `pack.json`; a member declares, adopts (`cn adopt`) and vendors a pack, and nothing is "installed"; Claudinite's own versions are `1.YMMDD.n` (PackServer accepts any semver `x.y.z` the publisher chooses, which includes that form: Ariel, 2026-10-22); Claudinite runs on Claude Code only. Its line findings were applied as wording: plugin vocabulary (commands, agents, MCP servers, shell hooks, session-start steps) became pack parts; `summary` became `pitch`; install counts became fetch counts and "members holding the pack" (the REQ-TELEM-007 signal); the `client` dimension left REQ-SEARCH-003, REQ-COMM-008 and REQ-TELEM-001; the reserved ids `fleet`, `local`, `global`, `temp`, `claudinite` and `cn` joined REQ-PUB-018 and REQ-ACC-002; the canonicalise command became `cn vendor` (REQ-VAL-033) and the offline lint `cn lint` (REQ-VAL-044).
+The Claudinite alignment review (`CLN-REV`, 2026-10-22) read this register and the test plan against the Claudinite primer: a pack is `RULES.md`, `skills/`, `declared-checks.json`, `checks/*.go` (coded checks and hook judges, which are guards on PreToolUse), `tasks/` and `pack.json`; a member declares, adopts (`cn adopt`) and vendors a pack, and nothing is "installed"; Claudinite's own versions are `1.YMMDD.n` (PackServer accepts any semver `x.y.z` the publisher chooses, which includes that form: Ariel, 2026-10-22); Claudinite runs on Claude Code only. Its line findings were applied as wording: plugin vocabulary (commands, agents, MCP servers, shell hooks, session-start steps) became pack parts; `summary` became `pitch`; install counts became fetch counts and "members holding the pack" (the REQ-TELEM-007 signal); the `client` dimension left REQ-SEARCH-003, REQ-COMM-008 and REQ-TELEM-001; the reserved ids `fleet`, `local`, `global`, `temp`, `claudinite` and `cn` joined REQ-PUB-018 and REQ-ACC-002; the offline lint became `cn lint` (REQ-VAL-044).
 
 Its nine owner decisions are Ariel's and were not answered here; the affected entries are provisional and keep their statements until a decision lands:
 
@@ -177,7 +177,7 @@ Its nine owner decisions are Ariel's and were not answered here; the affected en
 | CLN-REV 2 (pack naming `@<scope>/<pack>` against bare Claudinite ids; already ARCH-Q 5) | **resolved** (Ariel, 2026-10-22): ids are scoped `@scope/name` and cn adapts; REQ-SCOPE-001 is active | — |
 | CLN-REV 3 (MCP server configs and session-start steps as pack parts) | **resolved** by the architecture thread (PR #3 commit `7a01329`): REQ-VAL-030 retired, its import allowlist moved into REQ-VAL-006, the REQ-SCOPE-017 carve-out removed, session start gone from REQ-DELIV-018; no entry cites this key any more | — |
 | CLN-REV 4 (the capability set as the pre-install manifest: hooks added, tool calls guarded, tasks and cadence, forced skills, declared GitHub actions) | **folded into O8**: the set itself is decided (REQ-VAL-027); whether it is also signed into the index is the open part | — |
-| CLN-REV 5 (channels and the soak) | **folded into O7**: channels are the model (REQ-DELIV-019, 020, REQ-SEARCH-004); who promotes `staging` → `stable` is the open part | — |
+| CLN-REV 5 (channels and the soak) | **resolved** (Ariel, 2026-10-22): no channels and no cooldown; when to take a version is a cn or repository setting. REQ-DELIV-019 and 020 retired; REQ-SEARCH-004 exposes `published_at` | — |
 | CLN-REV 6 (the top tier's name; `canon` already means Claudinite's central pack set, so `reviewed` stands as a placeholder) | REQ-VAL-041, 042, the DSL's `Tier` | the tier word in the index, the views and the scenarios |
 | CLN-REV 7 (Verified Publisher: domain proof and GitHub org, or either) | REQ-SCOPE-010 | which proofs the grant needs |
 | CLN-REV 8 (ranking by how many members hold a pack, or by stars: the research says never; a user-chosen sort may stay if the default is the pack score) | REQ-VAL-013 (queue order), REQ-SEARCH-013 (browse sorts), REQ-COMM-011 | the queue order and the default browse sort |
@@ -195,11 +195,11 @@ The architecture thread aligned `docs/architecture/validation.md` with the Claud
 | Heuristics hold reviewer-addressed text and warn otherwise; the model screen is a separate decision | REQ-VAL-009 restated; REQ-VAL-012, 034..037, 039, REQ-VAL-018 and REQ-ADMIN-006 add `ARCH-SCREEN` next to `ARCH-SCORE` |
 | Fixtures for every declared check, coded check and guard; the sandbox loads with the newest and the lowest allowed engine; manifest version rules | REQ-VAL-010, 032 and 045 restated ("check or hook" became "check or guard") |
 | Packs have no package dependencies | REQ-VAL-018 drops the dependency re-resolution; only URL domains are re-resolved weekly |
-| The canonical archive is the `.tar.gz` that `cn vendor` produces (O3) | REQ-VAL-033 and REQ-DELIV-017 cite O3; REQ-DELIV-017 retires if PackServer canonicalises to exactly that |
-| Tier in `meta.json`, search and the page; in the index once the engine has the field (O6); third-party stays on `staging` (O7) | REQ-VAL-041 restated |
-| Downloads from an immutable versioned URL; cn verifies the index signature and sha256; the attestation is extra provenance | REQ-DELIV-001 restated, provisional on O1 and O3 as well; REQ-DELIV-016 adds O1 |
-| The engine's revoked model: `revoked` in the signed index, never selected, reported on every update run; nothing at session start | REQ-DELIV-018 restated, provisional on O5 (replaces ARCH-VAL §7-3); the member handle lost `sessionStart()` |
-| Channels replace the cooldown: `staging`, then `stable` after 24 h / 72 h; third-party stays on `staging` | REQ-DELIV-019 restated and REQ-DELIV-020 kept, both on O7; REQ-SEARCH-004 became "staging versions unless `include_staging`" |
+| ~~The canonical archive is the `.tar.gz` that `cn vendor` produces (O3)~~ reverted: PackServer's own `tar.zst` canonical form, and cn adapts | REQ-VAL-033 and REQ-DELIV-017 back on ARCH-VAL §7-5 only |
+| Tier in `meta.json`, search and the page; in the index once the engine has the field (O6) | REQ-VAL-041 restated (its `staging` clause went with the channels) |
+| ~~Downloads verified by the engine's index; the attestation is extra provenance~~ reverted: PackServer's own registry key and both hashes | REQ-DELIV-001 and 016 back to their statements before the alignment |
+| ~~The engine's revoked model~~ reverted: the split revocation design, a security `revoked` disabling guards, coded checks, tasks and env setup by default with a report-only opt-in | REQ-DELIV-018 back on ARCH-VAL §7-3 |
+| ~~Channels replace the cooldown~~ reverted, and the cooldown dropped too (Ariel, 2026-10-22) | REQ-DELIV-019 and 020 retired; REQ-SEARCH-004 restated to `published_at` |
 | The package-registry carve-out goes | REQ-SCOPE-017 back to "fetches nothing else"; the fake package registries left the test plan |
 | REQ-VAL-031, 045 and REQ-SEARCH-017 unchanged | wording only (`hook judge` → `guard`); the `search_packs` changes of ARCH §8 (`client?` dropped, `minEngineVersion` and `channel` added) touch the DSL's `agent.search` options, no entry |
 
@@ -224,13 +224,13 @@ Provisional entries name `ARCH-Q n` (architecture §15, questions 1–11), `SITE
 
 | Open item | What it asks | Entries |
 |---|---|---|
-| O1 | whether the packs index key is certified by the roots embedded in cn, or cn gains a second root (and so whether PackServer holds a key of its own) | REQ-DELIV-001, 016 |
+| O1 | **resolved**: PackServer holds its own registry signing key | — |
 | O2 | who keeps the `vendored` fallback branch of the public packs repo fed once PackServer publishes | none |
-| O3 | the archive format: the canonical re-pack is the `.tar.gz` that `cn vendor` produces; cn accepting canonical form only is an engine change | REQ-VAL-033, REQ-DELIV-001, 017 |
+| O3 | **resolved**: `tar.zst` in PackServer's own canonical form; cn adapts | — |
 | O4 | **resolved** with CLN-REV 2: ids are scoped `@scope/name` | — |
-| O5 | whether a security revocation goes further than the engine's report-only model: removal in the update PR, or a session-time disable | REQ-DELIV-018, REQ-VAL-018 |
+| O5 | **resolved**: back to the split revocation design, still Ariel's call as ARCH-VAL §7-3 | — |
 | O6 | engine changes PackServer would need: a `tier` index field and `minTier` setting, `cn pack lint` and `cn pack canonicalize` | REQ-VAL-041 |
-| O7 | who promotes `staging` → `stable` after the soak | REQ-DELIV-019, 020, REQ-SEARCH-004, REQ-VAL-041 |
+| O7 | **resolved**: no channels | — |
 | O8 | whether the capability set is carried in the signed index as the pre-install manifest, or the engine produces it | REQ-VAL-027, 042 |
 
 The ones that touch the most entries:
@@ -245,10 +245,10 @@ The ones that touch the most entries:
 | SITE-D 2 (private pack plans) | REQ-PAY-010, 011, REQ-AUDIT-003 | plan limits |
 | ARCH-VAL §7-1 (capabilities as an extracted, first-class model, new capability = hold; runtime network forbidden outright; reopens ARCH-Q 9) | REQ-VAL-027, 028, 029, 031, REQ-VAL-042 (the capability fields) | whether the capability and network scenarios exist |
 | ARCH-VAL §7-2 (the pack must load under cn, and every check ships firing and silent fixtures; reopens ARCH-Q 8) | REQ-VAL-010, REQ-VAL-032 | what the sandbox step asserts instead of "the pack's declared tests" |
-| O5 (revocation beyond the engine's report-only model; replaces ARCH-VAL §7-3, which the alignment withdrew; ARCH-Q 7) | REQ-DELIV-018, REQ-VAL-018 (who may revoke) | what the member handle observes on an update run after a revocation |
-| CLN-REV 8 and O7 (ranking by members or stars; who promotes the channel) | REQ-DELIV-019, 020, REQ-SEARCH-004, 013, REQ-VAL-013, REQ-COMM-011 | what moves a version to `stable`; the default order of the queue and of browse |
+| ARCH-VAL §7-3 (a security revocation disables the executable parts by default, with a report-only opt-in; ARCH-Q 7) | REQ-DELIV-018, REQ-VAL-018 (who may revoke) | what the member handle observes after a revocation |
+| CLN-REV 8 (ranking by members or stars) | REQ-SEARCH-013, REQ-VAL-013, REQ-COMM-011 | the default order of the queue and of browse |
 | ARCH-VAL §7-4 (tiers canon / community / third-party per version; uncertainty holds time out to third-party after 7 days; two independent screens; reopens ARCH-Q 10) | REQ-VAL-010 (which tier a missing fixture holds), 013, 036, 041, 042, REQ-SEARCH-019, REQ-DELIV-019 | tier fields in the views (and the index, with O6), the queue timeout, which tier never leaves `staging`, default search exclusions |
-| ARCH-VAL §7-5 (serve a canonical re-pack instead of the uploaded bytes; attestation over both hashes; cn accepts canonical form only, with O3) | REQ-VAL-033, REQ-VAL-042 (the hashes shown), REQ-PUB-021, REQ-DELIV-001, REQ-DELIV-017 | which bytes and hashes the download, index and attestation scenarios assert |
+| ARCH-VAL §7-5 (serve a canonical re-pack instead of the uploaded bytes; attestation over both hashes; cn accepts canonical form only) | REQ-VAL-033, REQ-VAL-042 (the hashes shown), REQ-PUB-021, REQ-DELIV-001, REQ-DELIV-017 | which bytes and hashes the download, index and attestation scenarios assert |
 | ARCH-SCORE (whether the LLM screens stay at all, after Ariel asked for no agentic scans and a code-only pack score) | REQ-VAL-012, 034, 035, 036, 037, 039, REQ-ADMIN-006 | whether any scenario scripts the LLM fake; the pack-score requirements arrive from the architecture thread once Ariel decides |
 | ARCH-SCREEN (which prose-screen model, if the screens stay: a model on Workers AI as Jev recommended, Haiku screens with a Sonnet deep review, or none) | the same entries as ARCH-SCORE, plus REQ-VAL-018 (the rescan on a screen-model change) | what the LLM fake answers as, whether two screens and a deep review exist as distinct calls, and the per-version budget the hold in REQ-VAL-036 is measured against |
 

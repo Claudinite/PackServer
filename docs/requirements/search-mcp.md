@@ -22,7 +22,7 @@ An agent can connect to the MCP endpoint without authentication and call `search
 - coverage: scenario
 
 `search_packs` returns ranked compact cards (id, pitch ≤ 1024 chars, inventory counts by part
-(rules, skills, checks, tasks), context cost, trust signals, latest stable version) and never
+(rules, skills, checks, tasks), context cost, trust signals, latest version) and never
 full contents.
 
 ## REQ-SEARCH-003 Task-phrased queries match by meaning; filters apply
@@ -34,20 +34,19 @@ full contents.
 - coverage: scenario
 
 A task-phrased query ("deploy to GCP Cloud Run") finds packs by meaning as well as by keyword;
-results can be filtered by category, part (rules, skills, checks, tasks), channel and
-verified-only.
+results can be filtered by category, part (rules, skills, checks, tasks) and verified-only.
 
-## REQ-SEARCH-004 Search hides staging versions unless include_staging
+## REQ-SEARCH-004 Search shows every version at once, with its publish time
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: agent
-- source: ARCH §8 (as of PR #3 commit 7a01329: `include_fresh` became `include_staging`, and a `channel` filter was added); ARCH-VAL §6, §3.11
-- decision: O7 (who promotes `staging` → `stable`, and so when a version leaves the default results; the soak lengths are REQ-DELIV-019)
+- source: ARCH §8; Ariel, 2026-10-22 (no freshness filter: when to take a version is the member's setting)
 - coverage: scenario
 
-By default `search_packs` excludes versions still on the `staging` channel; `include_staging`
-opts in, and a `channel` filter selects one channel outright.
+A promoted version appears in `search_packs`, `get_pack`, the site and the signed index as soon as
+it is promoted, each carrying the version's `published_at`; there is no freshness flag to opt in
+to.
 
 ## REQ-SEARCH-005 get_pack returns the full public view of a version
 
@@ -219,6 +218,6 @@ executed.
 - coverage: scenario
 
 Search over MCP and on the site excludes packs whose latest version is third-party tier
-(REQ-VAL-041) unless the caller opts into unreviewed results; the exploration slot
+(REQ-VAL-041) unless the caller opts in with `include_unreviewed`; the exploration slot
 (REQ-SEARCH-015) never shows one; and a third-party pack's page and MCP view carry the persistent
 warning.
