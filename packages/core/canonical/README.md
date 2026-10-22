@@ -21,7 +21,7 @@ accepts a different set of archives than this one breaks parity, so the rules ar
    `archive.bomb`.
 2. Frame walk, no decoding. The input is a sequence of zstd frames filling the input exactly; each is
    decoded on its own, in order, and the outputs are concatenated. Not zstd, truncated, bytes after the
-   last frame, reserved bits, a dictionary id, a block of the reserved type, a block over
+   last frame, more than 4,096 frames, reserved bits, a dictionary id, a block of the reserved type, a block over
    `min(window, 128 KiB)`, or any skippable frame: `archive.unsafe`. A declared window (the window
    descriptor, or the content size of a single-segment frame) over 8 MiB: `archive.bomb`.
 3. Streaming decode (`ZSTD_d_windowLogMax` 23), counting produced bytes and stopping at the first
