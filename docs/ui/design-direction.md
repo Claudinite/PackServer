@@ -155,7 +155,7 @@ Format: **Visible** (default) · **Hover** · **Click** · **Removed**.
 - Visible, above the fold, in this order: `@scope/name` with publisher mark (whether ids are scoped is open,
   D1); one-line summary; Trust mark with its word; the manifest of effects (§2.2b: guards and what they
   judge, tasks and cadence, forced skills, GitHub actions); Adopt block (`cn adopt <id>` with a copy button,
-  and a second copyable snippet with the `.claudinite/settings.yaml` declaration and an optional `version:`
+  and a second copyable snippet with the Claudinite settings declaration and an optional `version:`
   freeze, under one muted line "Lands as a pull request; updates arrive the same way"); then rating number,
   shape glyph, pulse, and "Updated 2 d ago · 1.61021.1 · stable · minEngineVersion 1.61006.1 · MIT" as a
   single muted line. Below: the README. Nothing is "installed": a pack is declared in settings and vendored
