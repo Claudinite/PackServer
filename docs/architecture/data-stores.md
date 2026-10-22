@@ -31,8 +31,8 @@ Writing this out changed six decisions in the [architecture](README.md). They're
 | Queues | Notifications, re-index jobs | Per event | Consumed once | No |
 | KV `sessions` / `oauth` / `cache` | Web sessions, OAuth grants and tokens (library-owned), OAuth state, JWKS cache | Per login/logout, last-seen at most every 15 min, per OAuth flow | Every signed-in request, every MCP request with a token | Sessions and OAuth grants |
 | Sandbox disk | Unpacked pack during validation | During one run | During one run | No (destroyed) |
-| Secrets Store | Stripe, GitHub App, signing and AI Gateway keys | By people, at rotation | At Worker start | Yes |
-| Outside Cloudflare | Stripe (payments), email provider; GitHub is read-only | Per event | Per event | Stripe is the record for money |
+| Secrets Store | Polar, GitHub App, signing and AI Gateway keys | By people, at rotation | At Worker start | Yes |
+| Outside Cloudflare | Polar (payments, merchant of record), email provider; GitHub is read-only | Per event | Per event | Polar is the record for money |
 
 ## Each store in detail
 
@@ -161,17 +161,17 @@ Scratch space for unpacking and running a pack during validation. Nothing is per
 
 ### Secrets Store
 
-Stripe keys, the GitHub App private key, the registry's index and attestation signing key (its public half is embedded in `cn`, which trusts it), and the AI Gateway token. They're written by people when keys rotate and read by Workers at startup, so rotating a key doesn't need a redeploy of every Worker.
+The Polar access token and webhook secret, the GitHub App private key, the registry's index and attestation signing key (its public half is embedded in `cn`, which trusts it), and the AI Gateway token. They're written by people when keys rotate and read by Workers at startup, so rotating a key doesn't need a redeploy of every Worker.
 
 ### Outside Cloudflare
 
-- **Stripe** is the record for money. Our `credit_ledger` mirrors it, keyed on the Stripe event id so a replayed webhook can't credit twice.
+- **Polar** is the record for money, as merchant of record. Our `credit_ledger` mirrors it, keyed on the Standard Webhooks `webhook-id` so a replayed webhook can't credit twice, and a nightly reconciliation against Polar's API repairs anything a lost delivery missed.
 - **GitHub** is never written to (decision 6). Bug reports open a pre-filled issue that the user files themselves.
 - **Email provider** sends sign-in codes and alerts. Nothing is stored there that we'd need back.
 
 ## What stays out of every store
 
 - Raw IP addresses (only hashes, in the audit log and in download events).
-- Card data (Stripe Checkout only).
+- Card data and tax details (Polar's hosted checkout only).
 - Plain-text tokens or TOTP secrets (hashes and encrypted secrets only).
 - Pack contents in D1 or in logs.

@@ -7,7 +7,7 @@ PackServer replaces the serving that ClaudinitePacks does today (its release wor
 This document is the technical plan. It is built almost entirely on Cloudflare's serverless platform and every component below maps to a product that is generally available today, except where flagged. Supporting research, with source links for every limit and price quoted here:
 
 - [research/cloudflare-platform.md](research/cloudflare-platform.md): Workers, R2, D1, Durable Objects, Vectorize, Workflows, Containers/Sandbox, MCP on Workers, security services, limits and prices.
-- [research/payments-access-community-ui.md](research/payments-access-community-ui.md): Stripe on Workers and fee math, private pack access models, ratings and ranking, sitemap, wireframes and user flows.
+- [research/payments-access-community-ui.md](research/payments-access-community-ui.md): payments (written for Stripe; billing is now Polar, §9) and fee math, private pack access models, ratings and ranking, sitemap, wireframes and user flows.
 - [research/registries-identity.md](research/registries-identity.md): identity, MFA, tokens, trusted publishing, provenance and namespace verification across npm, PyPI, crates.io, RubyGems, Maven Central, Docker Hub, VS Code Marketplace, Open VSX, Hugging Face, JFrog Artifactory, the MCP Registry and Claude plugin marketplaces. A broader registry comparison is in `docs/research/` (separate PR); this design follows its recommendations.
 - [../../spike/mcp-worker](../../spike/mcp-worker): a working spike of the MCP endpoint on Workers with D1 full-text search.
 
@@ -25,12 +25,12 @@ Cloudflare can carry the whole product. The pieces that needed proof are covered
 | Remote MCP for agents | `createMcpHandler` (stateless Streamable HTTP) | GA; **spike works** |
 | OAuth for MCP and API | `@cloudflare/workers-oauth-provider` | GA library |
 | Passkeys + TOTP | `@simplewebauthn/server` (WebCrypto, supports Workers), WebCrypto HMAC for TOTP | Libraries, no CF primitive |
-| Payments | Stripe Checkout + webhooks (`constructEventAsync` on SubtleCrypto) | Works on Workers |
+| Payments | Polar (merchant of record): hosted checkout, Standard Webhooks verified with WebCrypto | Fetch-based SDK, works on Workers |
 | Abuse control | Turnstile, Rate Limiting binding, WAF rules, Durable Objects for exact quotas | GA |
 | Admin access | Cloudflare Access (Zero Trust) in front of the admin app | GA |
 | Email | Email Service (sending) | **Beta**, keep a fallback provider |
 
-Indicative running cost at launch scale is about $30/month (Workers Paid $5, a Pro zone for WAF rate rules ~$25, everything else inside included quotas), plus Stripe fees and the prose screen (about $40/month at 40k versions with Jev).
+Indicative running cost at launch scale is about $30/month (Workers Paid $5, a Pro zone for WAF rate rules ~$25, everything else inside included quotas), plus Polar's fees and the prose screen (about $40/month at 40k versions with Jev).
 
 ## 2. System overview
 
@@ -43,7 +43,7 @@ Indicative running cost at launch scale is about $30/month (Workers Paid $5, a P
  CLI / CI ─API+OIDC─▶ publish Worker (/api/publish, GitHub OIDC exchange, presigned uploads)     │
                          │              ▼   ▼    ▼                                                │
  GitHub ──webhooks─▶  github Worker   D1 (registry)   KV (sessions, OAuth)   Vectorize (embeds)  │
- Stripe ──webhooks─▶  billing Worker    │                                                         │
+ Polar  ──webhooks─▶  billing Worker    │                                                         │
                          │              ▼                                                         │
                          └──▶ Workflows: ValidatePackWorkflow ──▶ Sandbox (Container microVM)     │
                                         │          │                    └─egress allowlist─▶ AI Gateway ─▶ Anthropic
@@ -55,7 +55,7 @@ Indicative running cost at launch scale is about $30/month (Workers Paid $5, a P
                          └────────────────────────────────────────────────────────────────────────┘
 ```
 
-All Workers live in one repository and share a `core` package (domain logic as plain functions, see §12 on lock-in). They are split by trust boundary, not by feature: the MCP Worker never holds Stripe or GitHub App secrets, and only the publish/validation side can write to `packs-public`.
+All Workers live in one repository and share a `core` package (domain logic as plain functions, see §12 on lock-in). They are split by trust boundary, not by feature: the MCP Worker never holds Polar or GitHub App secrets, and only the publish/validation side can write to `packs-public`.
 
 **Hostnames** (all in the existing `claudinite.com` zone, one level deep so Universal SSL covers them):
 
@@ -69,7 +69,7 @@ All Workers live in one repository and share a `core` package (domain logic as p
 | `mcp` | `registry.claudinite.com/mcp`, `/.well-known/oauth-*`, `/oauth/*` | D1 (read mostly), KV (OAuth), Vectorize, Workers AI, R2 private (read), rate limiter |
 | `publish` | `/api/publish/*`, `/api/oidc/*` | D1, R2 staging (write), Workflows, DO quotas |
 | `github` | `/hooks/github` | GitHub App key (Secrets Store), D1, Workflows |
-| `billing` | `/hooks/stripe`, `/api/billing/*` | Stripe keys, D1 (ledger), Workflows (send events) |
+| `billing` | `/hooks/polar`, `/api/billing/*` | Polar access token and webhook secret, D1 (ledger), Queue, Workflows (send events) |
 | `validator` | internal (Workflow + Sandbox DO) | R2 staging (read), R2 public/private (write), D1, Vectorize, AI Gateway token |
 | `admin` | `registry-admin.claudinite.com` behind Cloudflare Access | D1, R2, Workflows |
 
@@ -137,8 +137,8 @@ downloads → public: counted from the zone's Logpush http_requests archive in R
             private: Analytics Engine points from the serving Worker; both rolled up hourly into pack_stats
 pack_stats(pack_id, adoptions_30d, stars, works, fails, score_directory, score_mcp, updated_at)
 
-credit_ledger(id, owner_type, owner_id, delta, reason, stripe_event_id UNIQUE, pack_id, created_at)
-subscriptions(scope_id, stripe_customer_id, stripe_subscription_id, plan, seats, status)
+credit_ledger(id, owner_type, owner_id, delta, reason, polar_webhook_id UNIQUE, polar_order_id, pack_id, created_at)
+subscriptions(scope_id, polar_customer_id, polar_subscription_id, plan, seats, status, current_period_end)
 packs_fts  (FTS5 external-content over name, summary, keywords, inventory names)
 
 recent_activity(id, actor, scope_id, action, target, ip_hash, at, detail_json)  -- 90-day copy for UI
@@ -294,13 +294,27 @@ Proven by the spike in `spike/mcp-worker` (stateless `createMcpHandler`, D1 FTS5
 
 - **Search:** D1 FTS5 (BM25 with column weights) for lexical matching plus Vectorize semantic search over an embedding of each version's summary, categories and skill descriptions (`bge-m3` via Workers AI, about $0.05/month at 100k packs). Results are merged and re-ranked by the MCP score in §10. Private packs are filtered server-side via Vectorize metadata and `effective_access`. Cloudflare AI Search is 75× more expensive per query and stays off this hot path.
 
-## 9. Payments (Stripe)
+## 9. Payments (Polar, merchant of record)
 
-- **Stripe Checkout Sessions** (hosted), not raw PaymentIntents: built-in Stripe Tax, receipts and wallets, and no card data ever touches our Workers. Subscriptions via Checkout `mode=subscription`; the Stripe Customer Portal for plan and card management.
-- **Webhooks** on the `billing` Worker: read the raw body with `request.text()`, verify with `stripe.webhooks.constructEventAsync` (SubtleCrypto), 300 s tolerance, idempotent on `event.id` (unique column in `credit_ledger`), acknowledge fast and do the work by sending an event to the waiting Workflow.
-- **Public upload fee:** a $1 charge loses 33% to card fees ($0.30 + 2.9%), and a single $15 dispute wipes out 22 uploads, so the fee is a spam deterrent, not revenue. We sell **publish credits**: 1 for $1, 5 for $5, 12 for $10, 25 for $20. A credit is consumed when a **new public pack** is first published, by everyone, open-source packs included (decided by Ariel 2026-10-22); new versions of an existing pack are free but rate-limited (e.g. 20 per pack per day). Credits are waived for Verified Publishers. If validation fails, the credit is not consumed.
-- **Verified Publisher subscription: $99 a year** (decided by Ariel 2026-10-22), billed per scope through Stripe Checkout `mode=subscription`. It covers the manual review and the badge, and makes public publishing in that scope credit-free. Organisations that want to be recognised as the real source of their packs are the ones most willing to pay, so the review cost lands on them rather than on hobby publishers. If the subscription lapses, the badge is removed after a 30-day grace period. The scope, its packs and its domain or GitHub proofs stay, and new packs need credits again. Private-pack seats are billed separately.
-- **Private packs** are a subscription, not per upload, priced per seat like npm and Docker: Solo $5/month (10 private packs), Team $7/seat/month (unlimited packs, teams, audit log), Enterprise custom (SSO, domain access). A seat is a human who can read private packs; agent read tokens hang off a seat. Packs are tiny and R2 egress is free, so cost of goods is near zero.
+Billing runs on [Polar](https://polar.sh) as merchant of record (decided by Ariel 2026-10-22). Polar is the seller on every receipt. It collects and remits sales tax and VAT, owns chargebacks and refunds to the buyer, and pays PackServer out through Stripe Connect. PackServer never sees card data, never registers for VAT, and keeps no tax logic.
+
+- **Checkout:** the `billing` Worker creates a Polar checkout session through the API (`@polar-sh/sdk`, fetch-based, runs on Workers), with our `scope_id` and `user_id` in its metadata, and redirects to Polar's hosted checkout. Plan, card and invoice management is Polar's customer portal, linked from the dashboard.
+- **Webhooks** on the `billing` Worker at `/hooks/polar`: Polar signs with the Standard Webhooks scheme (`webhook-id`, `webhook-timestamp`, `webhook-signature`, HMAC-SHA256 over id, timestamp and raw body), verified with WebCrypto against the endpoint secret in Secrets Store, with a 5-minute timestamp tolerance. Idempotency is on `webhook-id` (unique column in `credit_ledger`). Polar times out after 10 seconds and recommends answering within 2, so the Worker verifies, writes the event to D1 and returns 202, and a Queue consumer does the work. The events used are `order.paid` (credits, first Verified Publisher payment, renewals with `billing_reason = subscription_cycle`), `order.refunded`, `subscription.active`, `subscription.canceled`, `subscription.revoked` and `subscription.past_due`.
+- **Reconciliation:** Polar retries a failed delivery up to 10 times, disables the endpoint after 10 consecutive failures (re-enabling is manual) and has no dead-letter queue, so a missed event could be lost. An hourly cron on the `billing` Worker lists orders and subscriptions changed since a stored cursor through the API and applies them through the same idempotent handler as the webhook. It emits `billing.reconciled` (with the number of events it had to repair) and `billing.endpoint_disabled` when Polar reports the endpoint disabled; the monitoring plan alerts on both. A WAF rule can also restrict `/hooks/polar` to Polar's published source IPs, as a second layer behind the signature.
+- **Products in Polar:** one-time products for credit bundles, a yearly subscription for Verified Publisher, and seat-based subscriptions for private packs.
+
+**Prices and what Polar keeps.** Polar's Starter plan takes 5% + 50¢ per transaction, plus 1.5% on international cards; organisations created before 27 May 2026 keep 4% + 40¢. Payouts cost $2 a month while active plus 0.25% + 25¢ each. Polar's Pro plan ($20/month, 3.8% + 40¢) only pays off above about $1,400 of monthly sales, so we stay on Starter.
+
+| Product | Price | Polar keeps (domestic card, Starter) |
+|---|---|---|
+| Publish credits: 5 / 12 / 25 | $5 / $10 / $20 | $0.75 (15%) / $1.00 (10%) / $1.50 (7.5%) |
+| Verified Publisher, per scope | $99/year | $5.45 (5.5%) |
+| Private packs, Solo / Team | $5/month / $7 per seat per month | $0.75 (15%) / $0.85 for one seat, falling with seats |
+
+- **Public publish fee:** $1 per new public pack, for everyone, open-source packs included (decided by Ariel 2026-10-22). A credit is consumed when a new public pack is first published; new versions of an existing pack are free but rate-limited (e.g. 20 per pack per day). If validation fails, the credit is not consumed. A single $1 sale would lose 55% to Polar, so the smallest bundle is 5 credits for $5. The fee is a spam deterrent, not revenue.
+- **Refunds:** a refunded credit order removes its unused credits from the ledger. Credits already consumed stay consumed, and the packs they published stay up.
+- **Verified Publisher subscription: $99 a year** (decided by Ariel 2026-10-22), per scope. It covers the manual review and the badge, and makes public publishing in that scope credit-free. If the subscription lapses (`subscription.revoked`), the badge is removed after a 30-day grace period. The scope, its packs and its domain or GitHub proofs stay, and new packs need credits again.
+- **Private packs** are a seat-based subscription, not per upload, priced like npm and Docker: Solo $5/month (10 private packs), Team $7/seat/month (unlimited packs, teams, audit log), Enterprise custom (SSO, domain access). A seat is a human who can read private packs. Repos reading through an allowlisted GitHub org (§11) don't use seats. Packs are tiny and R2 egress is free, so cost of goods is near zero.
 
 ## 10. Community signals and ranking
 
@@ -327,7 +341,7 @@ The permission model is JFrog-style rows of (resource, principal, action) in `gr
 Later phases, in order:
 
 1. **Launch extras:** per-user grants and expiring invite links for people outside an allowlisted org, and OAuth on MCP.
-2. **Hugging Face-style gated access** (early, the site design already includes it): a pack can be "gated": its listing is public, users request access through a form with owner-defined fields and terms, the owner approves, denies or sets auto-approve, and a grant API lets a paid flow (Stripe webhook) grant access. This also gives publishers a way to sell access later. Stored as `access_requests(pack_id, user_id, answers_json, status, decided_by)` feeding `grants`.
+2. **Hugging Face-style gated access** (early, the site design already includes it): a pack can be "gated": its listing is public, users request access through a form with owner-defined fields and terms, the owner approves, denies or sets auto-approve, and a grant API lets a paid flow (Polar webhook) grant access. This also gives publishers a way to sell access later. Stored as `access_requests(pack_id, user_id, answers_json, status, decided_by)` feeding `grants`.
 3. **Orgs:** scope teams, team grants, seat billing, audit log UI.
 4. **Directory-backed:** GitHub org/team sync through the GitHub App (webhooks + nightly reconcile), "anyone with a verified @company.com email" after domain proof.
 5. **Enterprise:** SAML/OIDC SSO, SCIM, IP allowlists on tokens.
@@ -366,7 +380,7 @@ Later phases, in order:
 | 1. Read path | Public directory and pack pages, FTS5 search, MCP endpoint (anonymous), CDN delivery; seed with the canon shelf (Claudinite/PublicPacks) |
 | 2. Identity | Email bootstrap, passkeys, TOTP, recovery codes, GitHub login, sessions, scopes with GitHub org and DNS proof |
 | 3. Publish path | Web upload + presigned R2, ValidatePackWorkflow with static checks and Sandbox run, GitHub trusted publishing Action, lifecycle states, attestations |
-| 4. Payments | Stripe Checkout credits, webhooks, ledger; private pack subscriptions |
+| 4. Payments | Polar checkout for credits, webhooks, ledger, nightly reconciliation; Verified Publisher and private pack subscriptions |
 | 5. Community | Stars, works-for-me, bug reports (GitHub-linked and in-site), ranking job, moderation queue in admin |
 | 6. Private access | Allowlists, invite links, read tokens, OAuth on MCP; then gated access and orgs |
 | 7. Hardening | Prose screen with tuned thresholds, staged publishing, Vectorize semantic search, rescans, security review, policies |

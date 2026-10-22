@@ -1,5 +1,7 @@
 # PackServer — Product research: Payments, Private access, Community, UI scheme
 
+> **Superseded on billing (2026-10-22):** Ariel chose Polar as merchant of record instead of Stripe. The Stripe material below is kept as research; the current billing design is ARCH §9.
+
 Date: 2026-10-21. Facts below were checked against the cited pages on this date; prices change, re-verify before launch.
 
 ---
