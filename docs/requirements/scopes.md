@@ -181,14 +181,17 @@ another org's pack or member by id; a grant on one pack does not read another; t
 resource the caller may not manage is "not found" where the resource is private and "forbidden"
 otherwise, consistently.
 
-## REQ-SCOPE-017 The domain-proof fetch is narrow and the registry fetches nothing else
+## REQ-SCOPE-017 The domain-proof fetch is narrow and the registry fetches nothing else but allowlisted package-registry lookups
 
 - status: active
 - since: 2026-10
 - actor: org owner (security)
-- source: SEC (security review, 2026-10-22); ARCH §4
-- coverage: scenario+unit (the fake DNS/HTTP proves the observable refusals; the fetch rules themselves are a unit test over the proof checker)
+- source: SEC (security review, 2026-10-22); ARCH §4; ARCH-VAL §6, §3.4 (amended for package-registry lookups)
+- coverage: scenario+unit (the fake DNS/HTTP and the fake package registries prove the observable refusals; the fetch rules themselves are a unit test over the proof checker and the lookup client)
 
 The `.well-known` domain check fetches only `https://<claimed-host>/.well-known/packserver-auth`,
 follows no redirects, caps the body size, and the registry never fetches `repo_url` or manifest
-links server-side.
+links server-side. The only other server-side fetches the registry makes on a user's behalf are
+the package-registry lookups of REQ-VAL-030: to a fixed allowlist of package-registry hosts, with
+only the package name taken from the pack, through the validator's egress handler, following no
+redirects and with the body capped; a host outside the allowlist is never contacted.

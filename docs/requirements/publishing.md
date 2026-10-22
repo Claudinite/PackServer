@@ -1,6 +1,6 @@
 # Publishing: trusted publishing, tokens, web upload, lifecycle
 
-Area `PUB`, 33 requirements (1 retired). Format and rules: [README.md](README.md).
+Area `PUB`, 34 requirements (1 retired). Format and rules: [README.md](README.md).
 
 Reconciled with the architecture revision of 2026-10-22: PackServer never writes to GitHub
 (DATA decision 6), so validation results reach the publisher through the dashboard and email,
@@ -227,27 +227,32 @@ Where staged publishing is on (default for verified publishers, for packs above 
 threshold, and for token uploads), a validated version waits as "staged" and is not downloadable
 until an owner approves it with a passkey.
 
-## REQ-PUB-020 Unpromoted staged objects expire after 14 days
+## REQ-PUB-020 Unpromoted staged objects expire after 14 days; dry-run uploads after an hour
 
 - status: active
 - since: 2026-10
 - actor: system
-- source: ARCH §7; DATA; Ariel 2026-10-22 (CONFLICT-6 resolved)
+- source: ARCH §7; DATA; Ariel 2026-10-22 (CONFLICT-6 resolved); ARCH-VAL §6
 - coverage: scenario
 
 A staged object not promoted within the staging lifetime (14 days) is deleted and must be
-re-uploaded and re-validated.
+re-uploaded and re-validated. A dry-run upload (REQ-VAL-043) lives in its own staging area for
+1 hour and is then deleted.
 
-## REQ-PUB-021 Every version carries a registry-signed attestation
+## REQ-PUB-021 Every version carries a registry-signed attestation over both hashes
 
-- status: active
+- status: provisional
 - since: 2026-10
 - actor: publisher / cn engine
-- source: ARCH §5.1, §7
+- source: ARCH §5.1, §7; ARCH-VAL §6, §3.16
+- decision: ARCH-VAL §7-5 (without the canonical re-pack the attestation covers one sha256, as before)
 - coverage: scenario
 
-Each published version carries an attestation signed by the registry over its sha256, pack,
-version and provenance, retrievable next to the archive.
+Each published version carries an attestation signed by the registry over the uploaded archive's
+sha256, the canonical archive's sha256 (REQ-VAL-033), the pack, the version, the provenance, the
+validation rules version and the signing key id, retrievable next to the archive. A publisher
+who kept the upload hash their client computed can verify through the attestation that it is the
+one the served canonical archive was made from.
 
 ## REQ-PUB-022 Maintainers publish and yank; only owners change visibility or billing
 
@@ -385,3 +390,17 @@ progress and verdict (queued, validating, awaiting payment, staged, published, f
 findings located by file and line) on the dashboard and receives the final verdict by email.
 PackServer creates no Check Run, commit status, release, issue or comment on GitHub for any
 publish; GitHub is only read.
+
+## REQ-PUB-034 Names near a verified scope or a popular pack are refused or held
+
+- status: provisional
+- since: 2026-10
+- actor: publisher
+- source: ARCH-VAL §6, §1 T9, §4 step 4
+- decision: ARCH-Q 3 (a hold needs the human queue)
+- coverage: scenario+unit (the scenario proves the refusal, the hold and the suggestion; the distance and confusable tables are unit tests)
+
+A pack name is ASCII only. A name within edit distance 2 of, or visually confusable with, a
+popular pack or a verified scope that it is not is refused with a suggestion of a scoped name
+(as REQ-PUB-018); a near miss on a verified scope that is not an exact collision holds the
+version for human review instead of refusing it outright.

@@ -1,17 +1,19 @@
 # Delivery and the signed index
 
-Area `DELIV`, 16 requirements (1 retired). Format and rules: [README.md](README.md).
+Area `DELIV`, 19 requirements (1 retired). Format and rules: [README.md](README.md).
 
-## REQ-DELIV-001 Public versions download from immutable URLs with SHA-256 and attestation
+## REQ-DELIV-001 Public versions download from immutable URLs with both hashes and the attestation
 
-- status: active
+- status: provisional
 - since: 2026-10
 - actor: anonymous visitor / cn engine
-- source: ARCH §7
+- source: ARCH §7; ARCH-VAL §6, §3.16
+- decision: ARCH-VAL §7-5 (without the canonical re-pack a download carries one sha256, as before)
 - coverage: scenario
 
 A public pack version is downloadable at an immutable, versioned URL and every download response
-carries the SHA-256 and the attestation URL.
+carries the canonical archive's SHA-256 (the bytes being served), the uploaded archive's SHA-256
+and the attestation URL; the signed index carries the canonical hash for every version.
 
 ## REQ-DELIV-002 Served bytes never change after publication
 
@@ -182,3 +184,45 @@ Neither bucket is listable or reachable except through the custom domain (public
 
 The index and attestation signing key carries a key id; cn accepts a published successor key
 during a rotation window, so a compromised key has a recovery path.
+
+## REQ-DELIV-017 cn accepts only canonical-form archives from the registry
+
+- status: provisional
+- since: 2026-10
+- actor: cn engine
+- source: ARCH-VAL §6, §3.16
+- decision: ARCH-VAL §7-5
+- coverage: scenario+unit (the scenario proves the refusal of a tampered or mis-served archive through the cn repo handle; the canonical grammar is a unit test in the engine's extractor)
+
+cn extracts an archive from the registry only when it is in canonical form (REQ-VAL-033) and its
+bytes match the canonical hash in the attestation; any other archive, including one that a lenient
+extractor would accept, is refused with a verification error and nothing is installed.
+
+## REQ-DELIV-018 A security revocation disables the version's executable surface in cn; other statuses only report
+
+- status: provisional
+- since: 2026-10
+- actor: cn engine
+- source: ARCH-VAL §6, §3.12
+- decision: ARCH-VAL §7-3
+- coverage: scenario
+
+When a version's status in the signed index becomes `revoked` with a security reason, a cn repo
+that has the version installed disables its hooks, checks, tasks, session-start steps and MCP
+servers at the next session start and keeps its prose loaded behind a banner, until a person in
+that repo acknowledges it. A repo can opt out per repo into report-only handling; `yanked`,
+`deprecated` and `quarantined` only report and never disable anything.
+
+## REQ-DELIV-019 cn proposes updates only after a tier-aware cooldown
+
+- status: provisional
+- since: 2026-10
+- actor: cn engine
+- source: ARCH-VAL §6, §3.11; ARCH §6 cooldown
+- decision: ARCH-VAL §7-4
+- coverage: scenario
+
+A cn update check proposes a new community-tier version only once it is 24 hours old when its
+publisher is a Verified Publisher and 72 hours old otherwise; a third-party version is never
+proposed by an update check. A proposal for a version that introduced new capabilities carries
+the capability diff in its description.

@@ -1,6 +1,6 @@
 # Search and MCP discovery
 
-Area `SEARCH`, 18 requirements. Format and rules: [README.md](README.md).
+Area `SEARCH`, 19 requirements. Format and rules: [README.md](README.md).
 
 ## REQ-SEARCH-001 Anonymous MCP access to public search and download tools
 
@@ -203,3 +203,17 @@ client registration per IP.
 
 A privileged MCP tool called by name by a caller to whom it was not listed is refused, not
 executed.
+
+## REQ-SEARCH-019 Third-party versions leave default results and the exploration slot
+
+- status: provisional
+- since: 2026-10
+- actor: agent / anonymous visitor
+- source: ARCH-VAL §6, §3.10
+- decision: ARCH-VAL §7-4
+- coverage: scenario
+
+Search over MCP and on the site excludes packs whose latest version is third-party tier
+(REQ-VAL-041) unless the caller opts into unreviewed results; the exploration slot
+(REQ-SEARCH-015) never shows one; and a third-party pack's page and MCP view carry the persistent
+warning.

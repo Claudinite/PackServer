@@ -1,6 +1,6 @@
 # PackServer test plan
 
-Status: proposal, 2026-10-22, revised the same day after a practice review, a security review, and the architecture decisions Ariel made that day (sessions stay in KV with a ~60 s revocation delay; step-up is a passkey assertion per action; PackServer is its own IdP with no Google sign-in; the audit record is a locked R2 log in a second account anchored in Sigstore Rekor; PackServer never writes to GitHub). Depends on the architecture PR (`docs/architecture/README.md`, `data-stores.md`), the UI flows PR (`docs/ui/flows.md`), the release plan (PR #8, `docs/release/README.md`, `docs/release/shadow-traffic.md`) and the monitoring plan (`docs/operations/monitoring.md`, branch `claude/project-thread-bwothd`); sections that depend on them say so. Nothing here is implemented yet; §13 says what gets built first.
+Status: proposal, 2026-10-22, revised the same day after a practice review, a security review, and the architecture decisions Ariel made that day (sessions stay in KV with a ~60 s revocation delay; step-up is a passkey assertion per action; PackServer is its own IdP with no Google sign-in; the audit record is a locked R2 log in a second account anchored in Sigstore Rekor; PackServer never writes to GitHub). Depends on the architecture PR (`docs/architecture/README.md`, `data-stores.md`, and `validation.md`, the validation-flow review folded into the register on 2026-10-22), the UI flows PR (`docs/ui/flows.md`), the release plan (PR #8, `docs/release/README.md`, `docs/release/shadow-traffic.md`) and the monitoring plan (`docs/operations/monitoring.md`, branch `claude/project-thread-bwothd`); sections that depend on them say so. Nothing here is implemented yet; §13 says what gets built first.
 
 > **What you get**
 >
@@ -56,7 +56,7 @@ flowchart TB
     S["scenario('REQ-PUB-004 a fork cannot publish', async (world) => { … })"]
   end
   subgraph L2["Layer 2 · tests/world/**  (the DSL; changes freely)"]
-    W["World: users · publishers · orgs · agents · cn · admins · operator · github · stripe · llm · mail · dns · rekor · audit · clock · telemetry"]
+    W["World: users · publishers · orgs · agents · cn · admins · operator · github · stripe · llm · sandbox · registries · mail · dns · rekor · audit · clock · telemetry"]
     M["handles and matchers"]
   end
   subgraph L3["Layer 3 · tests/drivers/**  (protocol drivers; change freely)"]
@@ -168,7 +168,7 @@ A gradual rollout has Workers of two builds talking to each other, so the releas
 
 ## 5. The ports layer and the Recorder
 
-`packages/core` does all I/O through ports: `Clock`, `Rng`, `Stripe`, `GitHub` (read-only by construction: the interface has no method that writes, so "PackServer never writes to GitHub" is a type, and the fake records any call that would), `OidcVerifier`, `VectorIndex`, `Embedder`, `Sandbox`, `LlmReviewer`, `Mail`, `Dns`, `Turnstile`, `AccessIdentity`, `Stats`, `Cache`, `Uploads`, `AuditSink` (the append-only batch writer to the audit bucket), `Transparency` (the Rekor client), and thin wrappers around the Cloudflare bindings. Production adapters are constructed from `env` in each Worker's entry; test doubles implement the same interfaces.
+`packages/core` does all I/O through ports: `Clock`, `Rng`, `Stripe`, `GitHub` (read-only by construction: the interface has no method that writes, so "PackServer never writes to GitHub" is a type, and the fake records any call that would), `OidcVerifier`, `VectorIndex`, `Embedder`, `Sandbox`, `LlmReviewer`, `PackageRegistry` (the existence and age lookups of REQ-VAL-030, allowlisted hosts only, so an unlisted host is unreachable by type), `Mail`, `Dns`, `Turnstile`, `AccessIdentity`, `Stats`, `Cache`, `Uploads`, `AuditSink` (the append-only batch writer to the audit bucket), `Transparency` (the Rekor client), and thin wrappers around the Cloudflare bindings. Production adapters are constructed from `env` in each Worker's entry; test doubles implement the same interfaces.
 
 The release plan's shadow-traffic design needs the same layer, and the two were agreed as one thing: every port call goes through one pluggable `Recorder`. The release thread's schema (`docs/release/shadow-traffic.md`, pending Ariel's confirmation) is the source of truth; restated so the test side cannot drift:
 
@@ -202,8 +202,9 @@ In production the Recorder redacts before it stores and keeps envelopes 14 days 
 | Rate Limiting binding | local, approximate; scenarios assert "refused after the limit", not counts | — |
 | Vectorize | **faked** Worker: brute-force cosine over an in-memory map | no local simulation |
 | Workers AI (`bge-m3`) | **faked** Worker: deterministic hash → unit vector; a recorded table for ranking tests | always remote and billed |
-| Sandbox / Containers | **faked** Worker implementing `Sandbox` (`run(archiveKey) → { report, exitCode, logs, egressAttempts }`), scripted per scenario | a 2–3 min image build does not belong on the PR path |
-| AI Gateway → Anthropic | **faked** by MSW with canned structured reviews; the `cf-aig-authorization` header is asserted | HTTP |
+| Sandbox / Containers | **faked** Worker implementing `Sandbox` (`run(archiveKey) → { extraction, tree, inventory, capabilities, loaded, checks, canonical, exitCode, logs, egressAttempts }`), scripted per scenario through `world.sandbox.script(...)`; the fake performs the bounded extraction of REQ-VAL-022 for real on the bomb corpus (it is small code) and scripts everything else (load result, fixture outcomes, canonical round-trip, egress) | a 2–3 min image build does not belong on the PR path |
+| Package registries (npm, PyPI, container images) for REQ-VAL-030 | **faked** by MSW behind the `PackageRegistry` port; `world.registries.npm.has(...)`, `.remove(...)` set what exists, how old it is and its integrity; a request to a host outside the port's allowlist is an unhandled frame and fails the test (REQ-SCOPE-017) | HTTP |
+| AI Gateway → Anthropic | **faked** by MSW with canned structured reviews per screen (`world.llm.script({ screen, findings, addressesReviewer })`); the fake rejects a request whose content is not inside the nonce delimiters or that carries publisher or appeal text next to pack content (REQ-VAL-035); the `cf-aig-authorization` header is asserted | HTTP |
 | Stripe | **faked** by MSW for the ~5 API calls; webhook events built and signed in the World (`stripe.webhooks.generateTestHeaderString`, presence in stripe-node 23 unverified). `stripe-mock` rejected: stateless, ignores bodies | HTTP |
 | GitHub OIDC | **faked**: an RSA keypair per run (`jose`), JWKS served by MSW, tokens minted with arbitrary claims | HTTP |
 | GitHub REST / App / webhooks | **faked** by MSW, read endpoints only; webhooks signed with `X-Hub-Signature-256` in the World; any write-shaped request (check runs, releases, issues, comments, statuses) is recorded and surfaced by `world.github.writes()`, which every scenario may expect to be empty | HTTP |
@@ -227,7 +228,7 @@ Every fake is a plain object owned by the World, reset per scenario, with the Re
 | Sigstore Rekor | the public staging log (`rekor.sigstage.dev`), one head entry a week, verified by inclusion proof | weekly |
 | Mail, DNS proof, Access on the admin host | provider test mode; a real cheap test domain; the admin host with and without the probe token | weekly |
 | Workflows, CDN index TTL, Analytics Engine rollup, presigned R2 PUT/GET | `staging`, through the `http` driver | weekly |
-| Sandbox container | the real image on a Docker-capable runner; monthly against a deployed preview container. REQ-VAL-011 (no network, no secrets inside) and the decompression limits of REQ-VAL-022/023 (every bomb fixture refused within the memory, disk and time limits) are proven here, not in-process | weekly, and on every PR that changes the validator image |
+| Sandbox container | the real image on a Docker-capable runner; monthly against a deployed preview container. This is the **sandbox contract corpus**: REQ-VAL-011 (pinned digest, no network, no registry binding, destroyed after the run, output schema-checked), the decompression limits of REQ-VAL-022/023 (every bomb fixture of [dsl.md §2.2](dsl.md), the four tar and frame shapes and the path caps included, refused within the memory, disk and time limits), REQ-VAL-029 (egress attempts recorded as evidence), REQ-VAL-032 (the pinned cn loads a fixture pack and refuses `'fails-to-load'`) and REQ-VAL-033 (the canonical re-pack is byte-identical across two runs and round-trips to the validated tree) are proven here, not in-process. The corpus is generated from the same fixture names the World uses, so the two cannot drift | weekly, and on every PR that changes the validator image |
 
 The Claudinite `cloudflare-workers` pack's `wire-bindings-seam` rule says D1, R2 and Workflows cannot be exercised locally; that premise is out of date (only Vectorize and Workers AI lack a local simulation), and a one-paragraph amendment goes to the pack's maintainers through the fleet process. The rule's advice (one seam, one place to swap) still holds and this plan follows it.
 
@@ -280,7 +281,7 @@ Nothing else runs on a push. Docs-only changes (`docs/**`, `*.md`) skip the work
 | see-it-fail | scenarios added since the last nightly, run against the build before they were added; each must fail there (stability-checks.md C5) | 10 min |
 | mutation | StrykerJS over `packages/core` unit tests, incremental, with a 15-minute time budget that works through the files changed most recently first and resumes where it stopped the next night | 17 min |
 | slow | the `slow`-tagged scenarios | 15 min |
-| sandbox | the real validator image on Docker with the bomb corpus and isolation checks (§6); only when the image changed | 15 min |
+| sandbox | the real validator image on Docker with the sandbox contract corpus (§6: bombs, isolation, load-and-prove, canonical round-trip); only when the image changed | 15 min |
 | fixture drift | refresh recorded fixtures, open a drift PR if any changed | 5 min |
 
 **Weekly**, the same limits: the real-backend suites of §6, split into jobs of at most 15 minutes each (Cloudflare `staging`, Stripe, GitHub, AI Gateway, mail and DNS, Rekor).
@@ -344,7 +345,7 @@ The remaining known upstream issues (DO RPC teardown noise, plugin snapshot size
 | M2 harness and World skeleton | the in-process driver booting whichever Workers exist, MSW fail-closed, the Clock/Rng ports and fake-clock Worker, the Recorder interface, `world.users`, `world.visitor()`, `world.agents.anonymous()`, `world.telemetry`, the first matchers, the production-seam grep | the first ten scenarios (REQ-SEARCH-001..007, REQ-PRIV-001, REQ-DELIV-001, REQ-TELEM-001) green and each seen red on base |
 | M3 http driver and probe-safe | the `http` driver with the env-var contract and the version assertion, JUnit output, `probe-safe` lint, a first probe set, `world.operator` and the self-test scenarios (REQ-OPS-005..011), REQ-OPS-* | the release plan's pre-traffic stage runs it against the RC and `staging`; monitoring runs it against production |
 | M4 identity | the fake GitHub login, the virtual authenticator in the World (used by every sensitive verb for its per-action assertion), TOTP, mail inbox, the `browser` driver, REQ-ACC-* incl. the session, revocation-bound and per-action-assertion negatives (ACC-010, 012, 021..025) | accounts area at 100%; passkey `ui` scenarios green twice |
-| M5 publish path | fake GitHub (OIDC, App, signed webhooks, read-only with a write-attempt recorder), fake Sandbox, Workflow introspection, the `Uploads` port, REQ-PUB-*, REQ-VAL-*, REQ-DELIV-*, REQ-SCOPE-016/017 | publishing, validation, delivery areas at 100%; the weekly Docker sandbox job exists |
+| M5 publish path | fake GitHub (OIDC, App, signed webhooks, read-only with a write-attempt recorder), fake Sandbox (with the bomb corpus generator), fake package registries, the per-screen LLM fake, Workflow introspection, the `Uploads` port, the dry-run verb, the cn repo handle with policies, REQ-PUB-*, REQ-VAL-*, REQ-DELIV-*, REQ-SCOPE-016/017 | publishing, validation, delivery areas at 100% of active + provisional; the weekly Docker sandbox job runs the contract corpus |
 | M6 payments and access | fake Stripe with signed webhooks, the billing contract suite, REQ-PAY-*, REQ-PRIV-* | payments and private areas at 100% |
 | M7 community, moderation, admin, abuse, audit | fake Access identity with signature checks, admin actor, abuse and quarantine scenarios, the local audit bucket with chain, `world.audit.tamper()`/`verify()` and the Rekor fake, REQ-COMM/MOD/ADMIN/ABUSE/AUDIT-* | matrix at 100% of active + provisional |
 | M8 honesty and strength | every real-backend suite wired with secrets in the `nightly` environment, redaction and drift PRs, the mutation watermark | a month of weekly real-backend runs with no unexplained drift |

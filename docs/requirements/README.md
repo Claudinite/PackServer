@@ -15,6 +15,7 @@ The entries were derived on 2026-10-22 from the v0 design documents. They are no
 | MON §8 | `docs/operations/monitoring.md` §8, the telemetry signal names that `REQ-TELEM-*` scenarios assert on | in an unmerged PR (monitoring, branch `claude/project-thread-bwothd`) |
 | release plan §n | `docs/release/README.md`, section n; §5 is the self-test contract behind REQ-OPS-005..011 | PR #8, unmerged |
 | SEC | the security review of the test plan, 2026-10-22; see "Entries from the security review" below | the one source that is not a design document |
+| ARCH-VAL §n | `docs/architecture/validation.md`, section n: the architecture thread's review of the validation flow (2026-10-22). §6 is its list of testable statements; §7 its five open decisions, cited as `ARCH-VAL §7-1`..`§7-5`; see "Entries from the validation-flow review" below | PR #3 (architecture), commit `a82d7fd`, unmerged |
 
 Until those PRs merge the citations are to documents this branch cannot link; the links are left as plain text on purpose so the reference-integrity check does not flag them.
 
@@ -43,10 +44,10 @@ One file per area, in the order a user meets them:
 |---|---|---|---|
 | [accounts.md](accounts.md) | `REQ-ACC` | 25 | accounts, MFA, sessions, recovery |
 | [scopes.md](scopes.md) | `REQ-SCOPE` | 17 | scopes, orgs, domain and GitHub proofs, Verified Publisher |
-| [publishing.md](publishing.md) | `REQ-PUB` | 33 (1 retired) | trusted publishing, tokens, web upload, lifecycle |
-| [validation.md](validation.md) | `REQ-VAL` | 23 | the validation pipeline |
-| [delivery.md](delivery.md) | `REQ-DELIV` | 16 (1 retired) | downloads, the signed index |
-| [search-mcp.md](search-mcp.md) | `REQ-SEARCH` | 18 | search, browse, the MCP endpoint |
+| [publishing.md](publishing.md) | `REQ-PUB` | 34 (1 retired) | trusted publishing, tokens, web upload, lifecycle |
+| [validation.md](validation.md) | `REQ-VAL` | 44 | the validation pipeline |
+| [delivery.md](delivery.md) | `REQ-DELIV` | 19 (1 retired) | downloads, the signed index, what cn does with a status |
+| [search-mcp.md](search-mcp.md) | `REQ-SEARCH` | 19 | search, browse, the MCP endpoint |
 | [private.md](private.md) | `REQ-PRIV` | 15 | private packs and access grants |
 | [payments.md](payments.md) | `REQ-PAY` | 13 | credits, subscriptions, Stripe events |
 | [community.md](community.md) | `REQ-COMM` | 13 | stars, reviews, outcomes, ranking |
@@ -57,7 +58,7 @@ One file per area, in the order a user meets them:
 | [telemetry.md](telemetry.md) | `REQ-TELEM` | 7 | counters and the dashboard |
 | [operations.md](operations.md) | `REQ-OPS` | 11 | synthetic scopes, probes, the self-test contract, the production configuration |
 
-231 entries: 195 derived from the design documents (47 of them provisional, 2 retired), 29 from the security review (one provisional) and 7 from the release plan's self-test contract. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file.
+259 entries: 197 derived from the design documents (44 of them provisional, 2 retired), 29 from the security review (one provisional), 7 from the release plan's self-test contract and 26 from the validation-flow review (22 provisional). 190 are active, 67 provisional and 2 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. (The totals were recounted from the files on 2026-10-22 when the validation-flow entries were added; the earlier text understated the design-derived count by two.)
 
 ## Entry format
 
@@ -144,6 +145,22 @@ Five existing entries were amended by the same review: REQ-PRIV-001 (headers and
 
 REQ-OPS-005..011 restate the self-test contract of the release plan §5 (PR #8) as observable promises: the response shape and the echoed version id, the `X-PackServer-Version` header on every response, per-check and overall timeouts, no trace left in any store, a per-principal rate limit that outsiders cannot spend, what shallow mode may touch, and the schema-range check. Their actor is the operator, so the statements may name the header and the fields; scenarios still observe them through the World (`world.operator.selfTest(...)`).
 
+## Entries from the validation-flow review
+
+The architecture thread reviewed the validation pipeline against the threat model for packs (PR #3, `docs/architecture/validation.md`, commit `a82d7fd`). Its §6 restates the pipeline as testable statements; they were folded in on 2026-10-22. Every one of them cites `ARCH-VAL §6`. The ones that depend on one of the review's five decisions for Ariel (§7) are provisional and name the item in `decision:`; the rest are active where they only sharpen a behaviour already promised, and provisional on an existing open decision (`ARCH-Q 3` for anything that needs the human queue to exist, `SITE-D 6`/`SITE-D 7` for verdict classes and the public view) otherwise.
+
+| Area | IDs | Theme |
+|---|---|---|
+| validation (amended) | REQ-VAL-002, 010, 011, 012, 013, 014, 018, 021, 022, 023 | the cap is checked without decompressing; load-and-prove fixtures replace "run the pack's tests" (010); pinned, untrusted sandbox (011); diff-mode review after a credit reservation (012); queue order and timeouts (013); an extraction crash is final, never a retry (014); rescan triggers (018); dry-runs count (021); archive-level ratio, path caps, the four added bomb shapes (022, 023) |
+| validation (new) | REQ-VAL-024..044 | rule classes; hidden Unicode; URL inventory; capabilities (027..031: extracted set, new capability holds, runtime network, MCP config pinning, floating versions); load under cn (032); canonical re-pack (033); LLM hardening (034..037); publisher-change events (038); credit reservation (039); appeal (040); tiers (041); the public view (042); dry-run (043); the offline linter agrees (044) |
+| publishing | REQ-PUB-020 (amended), 021 (amended, now provisional), 034 (new) | dry-run staging lifetime; attestation over both hashes; name near-miss and confusables |
+| delivery | REQ-DELIV-001 (amended, now provisional), 017, 018, 019 (new) | both hashes on a download; cn accepts canonical form only; the revocation split; tier-aware cooldown |
+| scopes | REQ-SCOPE-017 (amended) | the package-registry lookups of REQ-VAL-030 are the one allowlisted exception to "fetches nothing else" |
+| search-mcp | REQ-SEARCH-019 (new) | third-party versions leave default results and the exploration slot |
+| operations, admin | REQ-OPS-001, REQ-ADMIN-003 (amended) | synthetic publishes never count in the queue; what a queue item shows and offers |
+
+Two active entries became provisional by this fold: REQ-PUB-021 and REQ-DELIV-001 now promise the canonical hash, which exists only if Ariel adopts the canonical re-pack (`ARCH-VAL §7-5`); if that decision goes the other way they return to their previous statements. The decided numbers (3 MB compressed; 20 MB, 5 MB per file, 5k entries, 100:1, depth 32, 8 MB window) were kept; the review changed only the ratio's scope (per archive, since a per-entry ratio cannot be measured for a single-stream format) and added the path caps.
+
 ## Conflicts between the architecture and the UI flows
 
 The research that produced this register found six places where `docs/architecture/README.md` and `docs/ui/flows.md` give different values. The register uses the architecture document's value (it is newer) and marks the entry `conflict: CONFLICT-n`. Five still need a decision from Ariel before the affected scenarios are frozen; until then they are provisional. CONFLICT-1 was resolved on 2026-10-22 by removing the window altogether.
@@ -161,7 +178,7 @@ Three smaller disagreements were resolved without a conflict marker: MCP tool na
 
 ## Open decisions the register depends on
 
-Provisional entries name `ARCH-Q n` (architecture §15, questions 1–11) or `SITE-D n` (sitemap "Open decisions" 1–12). The ones that touch the most entries:
+Provisional entries name `ARCH-Q n` (architecture §15, questions 1–11), `SITE-D n` (sitemap "Open decisions" 1–12) or `ARCH-VAL §7-n` (the validation-flow review's five decisions for Ariel, 1–5). The ones that touch the most entries:
 
 | Decision | Entries | What a decision changes |
 |---|---|---|
@@ -171,6 +188,13 @@ Provisional entries name `ARCH-Q n` (architecture §15, questions 1–11) or `SI
 | SITE-D 4 (MFA required for which actions) | REQ-ACC-008, 009, 018 | the refusal matrix in the accounts scenarios (which actions need a factor at all; which actions need a per-action assertion is REQ-ACC-010 and is decided) |
 | SITE-D 6, 7 (which checks fail vs warn; what the public page shows) | REQ-VAL-005, 006, 007, 009, 015 | verdict expectations in the validation scenarios |
 | SITE-D 2 (private pack plans) | REQ-PAY-010, 011, REQ-AUDIT-003 | plan limits |
+| ARCH-VAL §7-1 (capabilities as an extracted, first-class model; runtime network forbidden unless declared and pinned; reopens ARCH-Q 9) | REQ-VAL-027..031, REQ-VAL-018 (the weekly dependency re-resolution), REQ-VAL-042 (the capability fields) | whether the capability, network and MCP-config scenarios exist; the REQ-SCOPE-017 carve-out for package-registry lookups |
+| ARCH-VAL §7-2 (the pack must load under cn, and every check ships firing and silent fixtures; reopens ARCH-Q 8) | REQ-VAL-010, REQ-VAL-032 | what the sandbox step asserts instead of "the pack's declared tests" |
+| ARCH-VAL §7-3 (revocation split: `revoked` with a security reason disables the executable surface in cn, every other status only reports; ARCH-Q 7) | REQ-DELIV-018, REQ-VAL-018 (who may revoke) | what the cn repo handle observes after a revocation |
+| ARCH-VAL §7-4 (tiers canon / community / third-party per version; uncertainty holds time out to third-party after 7 days; two independent screens; reopens ARCH-Q 10) | REQ-VAL-010 (which tier a missing fixture holds), 013, 036, 041, 042, REQ-SEARCH-019, REQ-DELIV-019 | tier fields in the index and views, the queue timeout, the cooldown table, default search exclusions |
+| ARCH-VAL §7-5 (serve a canonical re-pack instead of the uploaded bytes; attestation over both hashes; cn accepts canonical form only) | REQ-VAL-033, REQ-VAL-042 (the hashes shown), REQ-PUB-021, REQ-DELIV-001, REQ-DELIV-017 | which bytes and hashes the download, index and attestation scenarios assert |
+
+The ARCH-VAL items reopen four architecture questions the register already names (ARCH-Q 7, 8, 9, 10); an entry provisional on both keeps both in `decision:` so either landing is visible.
 
 ## Changing this document
 

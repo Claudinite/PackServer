@@ -30,12 +30,14 @@ suspend a publisher, revoke a verification; each action is audited with the acto
 - status: provisional
 - since: 2026-10
 - actor: admin
-- source: ARCH §6 step 5
+- source: ARCH §6 step 5; ARCH-VAL §6, §3.7
 - decision: ARCH-Q 3
 - coverage: scenario
 
 An admin can approve or reject a version waiting in the human review queue; approval resumes
-promotion.
+promotion. Each queue item shows the diff against the previous promoted version, the capability
+changes, and the findings with their quotes; the admin can approve, reject with a reason that
+reaches the publisher, or quarantine the publisher from the same item.
 
 ## REQ-ADMIN-004 Admins grant or revoke Verified Publisher
 

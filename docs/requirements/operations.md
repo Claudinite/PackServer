@@ -9,13 +9,13 @@ REQ-OPS-001..004 come from the security review of the test plan (2026-10-22) and
 - status: active
 - since: 2026-10
 - actor: anonymous visitor / agent / cn
-- source: SEC (security review, 2026-10-22); `docs/testing/README.md` §4.2; monitoring §10.1
+- source: SEC (security review, 2026-10-22); `docs/testing/README.md` §4.2; monitoring §10.1; ARCH-VAL §6
 - coverage: scenario
 
 A synthetic scope (`@probe` is one) is excluded from public search, browse, the public indexes,
 semantic search, ranking, exploration, sitemaps, telemetry rollups and billing; a synthetic
-publish skips the LLM step and the human queue; a synthetic version expires after 24 hours and
-its name may be reused.
+publish skips the LLM step and the human queue and never appears in the queue's counts; a
+synthetic version expires after 24 hours and its name may be reused.
 
 ## REQ-OPS-002 A probe credential cannot act outside its scope
 
