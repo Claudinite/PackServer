@@ -4,11 +4,10 @@ Area `COMM`, 14 requirements. Format and rules: [README.md](README.md).
 
 ## REQ-COMM-001 Star and unstar; anonymous clicks redirect to sign-in
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: member / visitor
-- source: ARCH §10; FLOW 3
-- decision: SITE-D 1
+- source: ARCH §10; FLOW 3; Ariel, 2026-10-22 (SITE-D 1, settled by sitemap decision 15: every signal stays)
 - coverage: scenario
 
 A signed-in member can star and unstar a pack; an anonymous click redirects to sign-in and back.
@@ -30,7 +29,7 @@ publicly.
 - since: 2026-10
 - actor: member
 - source: ARCH §10; FLOW 3
-- decision: SITE-D 1, SITE-D 8
+- decision: SITE-D 8
 - coverage: scenario
 
 A member can rate a pack 1–5 with an optional review, once per pack; a second submission edits

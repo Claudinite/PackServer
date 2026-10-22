@@ -35,11 +35,10 @@ member, UI: owner / maintainer) and remove members (step-up); a maintainer canno
 
 ## REQ-SCOPE-004 Domain proof by DNS TXT or .well-known
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: org owner
-- source: ARCH §4; FLOW 9
-- decision: SITE-D 12
+- source: ARCH §4; FLOW 9; SITE-D 12 (settled by the backend design, PR #4)
 - coverage: scenario
 
 An org owner can prove a domain by publishing a DNS TXT record or a `.well-known` file
@@ -81,11 +80,10 @@ whichever scope the TXT record now names keeps the proof and the other loses it.
 
 ## REQ-SCOPE-008 GitHub org proof by App install or org-admin sign-in
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: org owner
-- source: ARCH §4; FLOW 9
-- decision: SITE-D 12
+- source: ARCH §4; FLOW 9; SITE-D 12 (settled by the backend design, PR #4)
 - coverage: scenario
 
 An org owner can prove a GitHub organisation by installing the PackServer GitHub App on it (or
