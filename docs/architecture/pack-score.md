@@ -24,7 +24,7 @@ Every public pack is readable after publishing. Its files are listed and rendere
 
 ### Principles
 
-- **Measured, not judged.** Every input is a number or a yes/no that code extracts from the canonical tree, the provenance record or cn telemetry. No model contributes to the score, so it is reproducible: `cn pack lint` (cn adds this command) prints the same score before upload.
+- **Measured, not judged.** Every input is a number or a yes/no that code extracts from the canonical tree, the provenance record or the public adoption scan. No model contributes to the score, so it is reproducible: `cn pack lint` (cn adds this command) prints the same score before upload.
 - **Versioned.** The rules carry a version. A rule change recomputes the score for every latest version and shows "score rules v3".
 - **Quality, not safety.** Safety is the verdict, and who stands behind a pack is shown by the publisher verification facts (verified or not, and the verified domain or GitHub org). A pack can score low and be perfectly safe. The score feeds ranking but never hides a pack.
 - **Fixable.** Each lost point names the file and the fix, so the score works as a lint report for publishers.
@@ -37,7 +37,7 @@ A score from 0 to 100 in a ring, made of five parts. The page shows the ring and
 |---|---|---|
 | Context cost | 25 | Tokens the pack costs the agent: always-loaded text (`RULES.md` whole, which the rules index imports into every session, plus each skill's name and description) plus per-skill body size |
 | Skill structure | 25 | Anthropic's Agent Skills authoring guidance |
-| Checks | 20 | Declared checks vs coded ones, how often checks fire, and whether a check is blocking or advisory, with its grace |
+| Checks | 20 | Declared checks vs coded ones, and whether a check is blocking or advisory, with its grace |
 | Provenance | 15 | Source repo, commit binding, trusted publishing |
 | Footprint | 15 | Capabilities requested: guards, coded checks, tasks, env setup, declared GitHub actions |
 
@@ -61,7 +61,6 @@ Thresholds are starting points, to be tuned once we've measured real packs (the 
 
 **Checks (20)**
 - Prefer declared checks. A check in `declared-checks.json` scores fully. A coded Go check in `checks/*.go` scores less, because it needs compiling and people can't read it at a glance. A guard (a judge on PreToolUse that can deny a tool call) is listed as a capability. The part scores the share of declared checks, and a pack with no checks scores neutral, not zero.
-- Fire rate (once cn reports it; the source is the engine's usage fold, which counts check results per day): a check that fires in nearly every session, or never in 90 days, loses points. Neither is a useful check.
 
 **Provenance (15)**
 - Linked public source repo whose tree matches the pack path: 6.
@@ -86,7 +85,6 @@ As Socket does, some facts cap the score regardless of the rest: an open securit
 
 - The thresholds above need a pass over the canon packs before launch so that good packs we already trust score 80 or more.
 - "Anthropic guidelines" means the Agent Skills best practices for now. When Anthropic publishes guidance beyond skills, the matching rules are added under a new rules version.
-- Whether to show a score for packs with fewer than 30 days of cn telemetry (the fire-rate rule) or mark that rule "not enough data". Proposed: the latter.
 
 ## 3. The one model that remains
 
