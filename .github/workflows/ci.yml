@@ -184,12 +184,14 @@ jobs:
       - env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
           START: ${{ needs.changes.outputs.start }}
+          ATTEMPT: ${{ github.run_attempt }}
         run: |
           echo "job results: $RESULTS"
           if [ -n "$START" ]; then
             elapsed=$(( $(date +%s) - START ))
             echo "elapsed: ${elapsed}s (budget 120s)"
-            if [ "$elapsed" -gt 120 ]; then
+            # A re-run's start time is stale, so only the first attempt is judged.
+            if [ "$elapsed" -gt 120 ] && [ "$ATTEMPT" = 1 ]; then
               echo "::error::push CI took ${elapsed}s, over the 2-minute budget"
               exit 1
             fi

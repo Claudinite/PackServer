@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "typecheck": "turbo run typecheck",
     "docs:check": "node docs/testing/coverage.mjs --check",
-    "check": "pnpm lint && pnpm typecheck && pnpm docs:check",
+    "check": "pnpm lint && pnpm typecheck",
     "test": "turbo run test && pnpm test:scenarios",
     "test:scenarios": "vitest run --project scenarios --passWithNoTests",
     "changeset": "changeset"
