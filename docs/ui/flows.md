@@ -180,7 +180,7 @@ Failure / edge states:
 1. `publish` step 1 Source → "Upload archive" (`.tar.gz`/`.zip`, ≤ 3 MB). Browser uploads directly to R2 via a presigned URL (upload bucket, 24h TTL).
 2. Step 2 Validate → Worker enqueues validation job; UI streams progress; links to `validation`.
 3. On pass/warn → step 3 Listing details, pre-filled from `pack.json` (name, `pitch` as summary, category, repo URL if declared). Publisher confirms "No public repo" if none.
-4. Step 4 Visibility → Public or Private (add the GitHub orgs allowed to adopt it). A new pack uses one $1 credit either way (credits come in bundles of 5 for $5), waived for Verified Publishers.
+4. Step 4 Visibility → Public, Private Solo (add the GitHub accounts allowed to adopt it) or Private Team (add GitHub orgs; needs the Team plan, $7 per seat per month). A new pack uses one $1 credit (credits come in bundles of 5 for $5), waived for Verified Publishers.
 5. Step 5 Pay → Polar checkout (Polar is merchant of record). See flow 8.
 6. Step 6 Publish → confirm with passkey → Worker copies the archive from the upload bucket to the public (or private) packs bucket as `packs/<id>/<version>.tar.gz` (never overwritten), rewrites and signs `packs/<id>/index.json` (versions, sha256, size, publishedAt, revoked, minEngineVersion, requires, sourceCommit, serial), then rewrites and signs `packs/catalog.json` as the last write; invalidates cache, emits "published" event. The version is served from that moment.
 
@@ -414,13 +414,13 @@ Failure / edge states:
 
 ## 10. Private pack access
 
-**Goal**: let the repos of chosen GitHub orgs adopt a private pack, with no stored secret. Settled by the owner (2026-10-22): each private pack has an allowlist of GitHub orgs; `cn` proves its repo's org with the GitHub Actions OIDC token. The reader is a repo's scheduled update task or `cn adopt` running in Actions, never a session-time fetch.
+**Goal**: let the repos of chosen GitHub accounts or orgs adopt a private pack, with no stored secret. Settled by the owner (2026-10-22): a Solo private pack ($1 creation credit) has an allowlist of GitHub accounts; a Team private pack (Team plan, $7 per seat per month) has an allowlist of GitHub orgs. `cn` proves the repo owner with the GitHub Actions OIDC token. The reader is a repo's scheduled update task or `cn adopt` running in Actions, never a session-time fetch.
 
-1. `access` on the pack: the owner adds GitHub orgs to the allowlist (confirm with passkey). Each row shows the org, who added it, when, and the last fetch from one of its repos.
+1. `access` on the pack: the owner adds GitHub accounts (Solo) or orgs (Team) to the allowlist (confirm with passkey). Each row shows the name, who added it, when, and the last fetch from one of its repos.
 2. In a member repo's workflow, `cn` requests the GitHub Actions OIDC token (audience PackServer) and sends it with the fetch. Nothing is stored in CI secrets.
 3. The Worker verifies the token against GitHub's OIDC keys, reads `repository_owner` (and the repository id), and checks it against the pack's allowlist; then it streams the archive and the signed per-pack index from private R2.
-4. Removing an org takes effect on that org's next fetch. Repos that already vendor the pack keep what they hold.
-5. Signed-in people from an allowlisted org (proven by GitHub sign-in or the org link) can read the pack on the site; everyone else gets 404.
+4. Removing an account or org takes effect on its next fetch. Repos that already vendor the pack keep what they hold.
+5. Signed-in people who are an allowlisted account, or belong to an allowlisted org (proven by GitHub sign-in or the org link), can read the pack on the site; everyone else gets 404.
 6. Audit on `access`: fetches by org and repo, last seen, denied attempts.
 
 ```mermaid
@@ -433,7 +433,7 @@ sequenceDiagram
   GA-->>CN: signed token (repository_owner, repository)
   CN->>W: fetch @scope/pack version + OIDC token
   W->>W: verify token with GitHub keys
-  alt org on the pack's allowlist
+  alt repo owner on the pack's allowlist
     W->>R2: read archive and signed index
     R2-->>W: bytes
     W-->>CN: archive + index entry
@@ -446,7 +446,6 @@ Edge states:
 - Private packs are never listed in `browse` or `search_packs` for callers outside the allowlist; 404, not 403, so their existence does not leak.
 - A run outside GitHub Actions (a laptop) has no OIDC token: `cn adopt` there can only read public packs; private adoption happens in the repo's workflow.
 - A token for another audience, an expired token, or a fork's pull-request run → 404, logged as a denied attempt.
-- Pricing for private packs is not part of this decision.
 
 ---
 
@@ -462,7 +461,7 @@ Public:
 3. `get_pack("@google/gcp")` → summary, warnings, validation verdict, newest version, manifest of effects.
 4. The session proposes `cn adopt @google/gcp` (or the settings declaration, with an optional `version:` freeze); running it fetches the archive, checks it against the signed index, vendors it into `.claudinite/shared/packs/<id>/` and lands a PR for review. `fetch_pack` exists so a session (or a person) can read the archive before proposing; it is not the delivery path.
 
-Private packs: the MCP endpoint lists public packs only. A private pack is adopted by name; the fetch happens in the member repo's GitHub Actions workflow, authorized by its OIDC token against the pack's org allowlist (§10).
+Private packs: the MCP endpoint lists public packs only. A private pack is adopted by name; the fetch happens in the member repo's GitHub Actions workflow, authorized by its OIDC token against the pack's allowlist (§10).
 
 ```mermaid
 sequenceDiagram

@@ -751,7 +751,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
 
       <div>
         <h2>Authentication</h2>
-        <p class="small">None. The MCP endpoint lists public packs only. A private pack is fetched by <code>cn</code> in the member repo's GitHub Actions workflow, which proves the repo's org with the Actions OIDC token against the pack's org allowlist (see <a href="#access">private pack access</a>). No token is stored anywhere.</p>
+        <p class="small">None. The MCP endpoint lists public packs only. A private pack is fetched by <code>cn</code> in the member repo's GitHub Actions workflow, which proves the repo owner with the Actions OIDC token against the pack's org allowlist (see <a href="#access">private pack access</a>). No token is stored anywhere.</p>
       </div>
 
       <div>
@@ -1096,7 +1096,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
     <h2>4 · Visibility &amp; price</h2>
     <div class="choice" style="max-width:640px">
       <label><input type="radio" name="vis" id="vis-public" checked><span><b>Public</b> <span class="price" style="font-size:1rem">1 publish credit ($1.00)</span><br><span class="small muted">Listed in the directory, discoverable by every Claude Code session over MCP, adoptable by any repo, served from the CDN. One $1 publish credit per new pack (bundles of 5 for $5); new versions are free. The credit is an anti-spam measure.</span></span></label>
-      <label><input type="radio" name="vis" id="vis-private"><span><b>Private</b> <span class="price" style="font-size:1rem">1 publish credit ($1.00)</span><br><span class="small muted">Not listed. Only repos in the GitHub orgs you allow can see or fetch it; they prove their org with the GitHub Actions OIDC token. <a href="#access">How access works</a></span></span></label>
+      <label><input type="radio" name="vis" id="vis-private"><span><b>Private</b> <span class="price" style="font-size:1rem">1 publish credit ($1.00)</span><br><span class="small muted">Not listed. Only repos owned by the GitHub accounts you allow (Solo) or the GitHub orgs you allow (Team plan, $7 per seat per month) can fetch it; they prove it with the GitHub Actions OIDC token. <a href="#access">How access works</a></span></span></label>
     </div>
     <div class="note mt2" style="max-width:640px">You can change visibility later. Making a private pack public re-runs validation and charges the $1 listing fee; making a public pack private keeps already-served versions fetchable by repos that hold them for 30 days (their vendored copies stay as they are).</div>
   </div>
@@ -1358,7 +1358,7 @@ jobs:
     <div><h1>Who can access <span class="mono">internal-incident-runbooks</span>?</h1><p class="muted">Private pack · 1.61001.1 · not listed in the directory or in anonymous MCP results</p></div>
     <span class="pill warn" style="font-size:.85rem">Private</span>
   </div>
-  <div class="note warn mb2"><b>Superseded.</b> The owner chose (2026-10-22) an allowlist of GitHub orgs per private pack; <code>cn</code> proves its repo's org with the GitHub Actions OIDC token, so no read token is stored. The options below are kept as the earlier comparison; the calm prototype and <code>flows.md</code> §10 show the chosen model.</div>
+  <div class="note warn mb2"><b>Superseded.</b> The owner chose (2026-10-22) an allowlist per private pack: GitHub accounts on Solo (the $1 creation credit), GitHub orgs on Team ($7 per seat per month); <code>cn</code> proves the repo owner with the GitHub Actions OIDC token, so no read token is stored. The options below are kept as the earlier comparison; the calm prototype and <code>flows.md</code> §10 show the chosen model.</div>
   <div class="tabs" role="tablist" aria-label="Access model options">
     <button type="button" role="tab" aria-selected="true" data-tabgroup="acc" data-tab="a">Option A: Org members &amp; teams</button>
     <button type="button" role="tab" aria-selected="false" data-tabgroup="acc" data-tab="b">Option B: Named users</button>

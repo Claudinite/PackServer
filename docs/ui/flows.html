@@ -202,7 +202,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <li><code>publish</code> step 1 Source → &quot;Upload archive&quot; (<code>.tar.gz</code>/<code>.zip</code>, ≤ 3 MB). Browser uploads directly to R2 via a presigned URL (upload bucket, 24h TTL).</li>
 <li>Step 2 Validate → Worker enqueues validation job; UI streams progress; links to <code>validation</code>.</li>
 <li>On pass/warn → step 3 Listing details, pre-filled from <code>pack.json</code> (name, <code>pitch</code> as summary, category, repo URL if declared). Publisher confirms &quot;No public repo&quot; if none.</li>
-<li>Step 4 Visibility → Public or Private (add the GitHub orgs allowed to adopt it). A new pack uses one $1 credit either way (credits come in bundles of 5 for $5), waived for Verified Publishers.</li>
+<li>Step 4 Visibility → Public, Private Solo (add the GitHub accounts allowed to adopt it) or Private Team (add GitHub orgs; needs the Team plan, $7 per seat per month). A new pack uses one $1 credit (credits come in bundles of 5 for $5), waived for Verified Publishers.</li>
 <li>Step 5 Pay → Polar checkout (Polar is merchant of record). See flow 8.</li>
 <li>Step 6 Publish → confirm with passkey → Worker copies the archive from the upload bucket to the public (or private) packs bucket as <code>packs/&lt;id&gt;/&lt;version&gt;.tar.gz</code> (never overwritten), rewrites and signs <code>packs/&lt;id&gt;/index.json</code> (versions, sha256, size, publishedAt, revoked, minEngineVersion, requires, sourceCommit, serial), then rewrites and signs <code>packs/catalog.json</code> as the last write; invalidates cache, emits &quot;published&quot; event. The version is served from that moment.</li>
 </ol>
@@ -449,13 +449,13 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 </ul>
 <hr>
 <h2 id="f-10-private-pack-access">10. Private pack access</h2>
-<p><strong>Goal</strong>: let the repos of chosen GitHub orgs adopt a private pack, with no stored secret. Settled by the owner (2026-10-22): each private pack has an allowlist of GitHub orgs; <code>cn</code> proves its repo&#39;s org with the GitHub Actions OIDC token. The reader is a repo&#39;s scheduled update task or <code>cn adopt</code> running in Actions, never a session-time fetch.</p>
+<p><strong>Goal</strong>: let the repos of chosen GitHub accounts or orgs adopt a private pack, with no stored secret. Settled by the owner (2026-10-22): a Solo private pack ($1 creation credit) has an allowlist of GitHub accounts; a Team private pack (Team plan, $7 per seat per month) has an allowlist of GitHub orgs. <code>cn</code> proves the repo owner with the GitHub Actions OIDC token. The reader is a repo&#39;s scheduled update task or <code>cn adopt</code> running in Actions, never a session-time fetch.</p>
 <ol>
-<li><code>access</code> on the pack: the owner adds GitHub orgs to the allowlist (confirm with passkey). Each row shows the org, who added it, when, and the last fetch from one of its repos.</li>
+<li><code>access</code> on the pack: the owner adds GitHub accounts (Solo) or orgs (Team) to the allowlist (confirm with passkey). Each row shows the name, who added it, when, and the last fetch from one of its repos.</li>
 <li>In a member repo&#39;s workflow, <code>cn</code> requests the GitHub Actions OIDC token (audience PackServer) and sends it with the fetch. Nothing is stored in CI secrets.</li>
 <li>The Worker verifies the token against GitHub&#39;s OIDC keys, reads <code>repository_owner</code> (and the repository id), and checks it against the pack&#39;s allowlist; then it streams the archive and the signed per-pack index from private R2.</li>
-<li>Removing an org takes effect on that org&#39;s next fetch. Repos that already vendor the pack keep what they hold.</li>
-<li>Signed-in people from an allowlisted org (proven by GitHub sign-in or the org link) can read the pack on the site; everyone else gets 404.</li>
+<li>Removing an account or org takes effect on its next fetch. Repos that already vendor the pack keep what they hold.</li>
+<li>Signed-in people who are an allowlisted account, or belong to an allowlisted org (proven by GitHub sign-in or the org link), can read the pack on the site; everyone else gets 404.</li>
 <li>Audit on <code>access</code>: fetches by org and repo, last seen, denied attempts.</li>
 </ol>
 <div class="diagram"><pre class="mermaid">sequenceDiagram
@@ -467,7 +467,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
   GA--&gt;&gt;CN: signed token (repository_owner, repository)
   CN-&gt;&gt;W: fetch @scope/pack version + OIDC token
   W-&gt;&gt;W: verify token with GitHub keys
-  alt org on the pack's allowlist
+  alt repo owner on the pack's allowlist
     W-&gt;&gt;R2: read archive and signed index
     R2--&gt;&gt;W: bytes
     W--&gt;&gt;CN: archive + index entry
@@ -478,7 +478,6 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <li>Private packs are never listed in <code>browse</code> or <code>search_packs</code> for callers outside the allowlist; 404, not 403, so their existence does not leak.</li>
 <li>A run outside GitHub Actions (a laptop) has no OIDC token: <code>cn adopt</code> there can only read public packs; private adoption happens in the repo&#39;s workflow.</li>
 <li>A token for another audience, an expired token, or a fork&#39;s pull-request run → 404, logged as a denied attempt.</li>
-<li>Pricing for private packs is not part of this decision.</li>
 </ul>
 <hr>
 <h2 id="f-11-a-claude-code-session-discovering-a-pack-via-mcp">11. A Claude Code session discovering a pack via MCP</h2>
@@ -491,7 +490,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <li><code>get_pack(&quot;@google/gcp&quot;)</code> → summary, warnings, validation verdict, newest version, manifest of effects.</li>
 <li>The session proposes <code>cn adopt @google/gcp</code> (or the settings declaration, with an optional <code>version:</code> freeze); running it fetches the archive, checks it against the signed index, vendors it into <code>.claudinite/shared/packs/&lt;id&gt;/</code> and lands a PR for review. <code>fetch_pack</code> exists so a session (or a person) can read the archive before proposing; it is not the delivery path.</li>
 </ol>
-<p>Private packs: the MCP endpoint lists public packs only. A private pack is adopted by name; the fetch happens in the member repo&#39;s GitHub Actions workflow, authorized by its OIDC token against the pack&#39;s org allowlist (§10).</p>
+<p>Private packs: the MCP endpoint lists public packs only. A private pack is adopted by name; the fetch happens in the member repo&#39;s GitHub Actions workflow, authorized by its OIDC token against the pack&#39;s allowlist (§10).</p>
 <div class="diagram"><pre class="mermaid">sequenceDiagram
   participant Ag as Claude Code session
   participant M as MCP Worker
@@ -770,7 +769,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <td><code>/publish</code></td>
 <td>6-step wizard</td>
 <td>Publisher</td>
-<td>Stepper: 1 Source (GitHub repo + path, read from the repo (trusted publishing workflow running <code>cn vendor</code>, or the read-only GitHub App), or upload archive drag-drop with size limit; an upload is marked &quot;No public repo&quot;, decision 14) → 2 Validate (live log, links to <code>validation</code>) → 3 Listing details (name, slug, category, tags, summary, README preview, repo link / &quot;no public repo&quot; confirm, icon) → 4 Visibility (Public / Private with its GitHub org allowlist) → 5 Pay (uses one $1 credit; with none left, buy a bundle of 5 for $5 at Polar checkout; skipped for Verified Publishers; Polar is merchant of record) → 6 Publish (confirm with passkey)</td>
+<td>Stepper: 1 Source (GitHub repo + path, read from the repo (trusted publishing workflow running <code>cn vendor</code>, or the read-only GitHub App), or upload archive drag-drop with size limit; an upload is marked &quot;No public repo&quot;, decision 14) → 2 Validate (live log, links to <code>validation</code>) → 3 Listing details (name, slug, category, tags, summary, README preview, repo link / &quot;no public repo&quot; confirm, icon) → 4 Visibility (Public / Private Solo with GitHub accounts, or Private Team with GitHub orgs on the Team plan) → 5 Pay (uses one $1 credit; with none left, buy a bundle of 5 for $5 at Polar checkout; skipped for Verified Publishers; Polar is merchant of record) → 6 Publish (confirm with passkey)</td>
 <td>Next/back, save draft, cancel</td>
 </tr>
 <tr>
@@ -802,15 +801,15 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <td><code>/packs/{p}/{pack}/access</code></td>
 <td>Private pack access</td>
 <td>Publisher (owner/maintainer)</td>
-<td>Visibility chip; allowlist of GitHub orgs (org, added by, when, last fetch); audit of fetches by org and repo, and denied attempts</td>
-<td>Add / remove an org, change visibility (confirm with passkey)</td>
+<td>Visibility chip; allowlist of GitHub accounts (Solo) or GitHub orgs (Team): name, added by, when, last fetch; audit of fetches by owner and repo, and denied attempts</td>
+<td>Add / remove an account or org, change visibility (confirm with passkey)</td>
 </tr>
 <tr>
 <td><code>billing</code></td>
 <td><code>/billing</code></td>
 <td>Payments</td>
 <td>Publisher</td>
-<td>Plan (Publisher: one $1 credit per new pack, credits sold in bundles of 5 for $5 / Verified Publisher: $99 per year, no per-pack fee); credits left; payment methods and invoices via Polar (merchant of record; customer portal link); orders table (date, item, pack, amount, Polar invoice link); upcoming charges</td>
+<td>Plan (Publisher: one $1 credit per new pack, public or Solo private, credits sold in bundles of 5 for $5 / Team: $7 per seat per month for private packs shared by GitHub org / Verified Publisher: $99 per year, no per-pack fee); credits left; payment methods and invoices via Polar (merchant of record; customer portal link); orders table (date, item, pack, amount, Polar invoice link); upcoming charges</td>
 <td>Update card, download receipt, cancel plan</td>
 </tr>
 </tbody></table>
@@ -1050,11 +1049,11 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 </tbody></table>
 </div><p>Note: publishing a public pack is a one-way &quot;public forever&quot; promise for already-vendored versions: a public version can be revoked (never selected by an update) but the archive stays retrievable by exact version, since member repos already vendor it. Taking a pack private after being public only affects future versions.</p>
 <h2 id="s-private-pack-access">Private pack access</h2>
-<p>Settled by the owner (2026-10-22): each private pack has an <strong>allowlist of GitHub orgs</strong>. <code>cn</code>, running in a member repo&#39;s GitHub Actions workflow, proves the repo&#39;s org with the Actions OIDC token, so no read token is stored anywhere. The <code>access</code> page manages the allowlist (add or remove an org, each with a passkey tap) and shows fetches by org and repo. Callers outside the allowlist get 404. See <code>flows.md</code> §10.</p>
+<p>Settled by the owner (2026-10-22): each private pack has an <strong>allowlist</strong>. A <strong>Solo</strong> private pack costs only the $1 creation credit and its allowlist names <strong>GitHub accounts</strong>; a <strong>Team</strong> private pack is on the Team plan ($7 per seat per month) and its allowlist names <strong>GitHub orgs</strong>. <code>cn</code>, running in a consuming repo&#39;s GitHub Actions workflow, proves who owns the repo with the Actions OIDC token (<code>repository_owner</code>, an account or an org), so no read token is stored anywhere. The <code>access</code> page manages the allowlist (add or remove an account or org, each with a passkey tap) and shows fetches by owner and repo. Callers outside the allowlist get 404. See <code>flows.md</code> §10.</p>
 <h2 id="s-open-decisions">Open decisions</h2>
 <ol>
 <li><strong>Stars vs. rankings</strong>: proposal is stars (bookmark/popularity) + 1-5 rating with written review (VS Code Marketplace / Docker Hub pattern). Alternative: stars only (crates.io / npm) or thumbs-up/down. Input from the persona study: never rank by stars or installs; a score is accepted only from verifiable facts with a published formula. See decision 15.</li>
-<li><strong>Private pack access model</strong> (settled, owner 2026-10-22): an allowlist of GitHub orgs per private pack, proven by the GitHub Actions OIDC token; see Private pack access.</li>
+<li><strong>Private pack access and pricing</strong> (settled, owner 2026-10-22): Solo private packs cost the $1 creation credit and are shared with named GitHub accounts; the Team plan ($7 per seat per month) shares private packs with GitHub orgs. Either way <code>cn</code> proves the repo owner with the GitHub Actions OIDC token; see Private pack access.</li>
 <li><strong>Charge timing</strong> (settled, owner 2026-10-22): a credit is reserved after validation passes and consumed on publish; a failed run never costs anything (<code>flows.md</code> §8).</li>
 <li><strong>MFA scope</strong> (settled, owner 2026-10-22): required for publishers, optional for other signed-in users; an org owner can require it for every org member (npm &quot;enforce 2FA&quot; style).</li>
 <li><strong>Namespace model</strong>: scoped <code>@&lt;scope&gt;/&lt;pack&gt;</code>, matching the backend design. A scope belongs to a user or an org; its badge states what was proven (GitHub org, domain). Names are never recycled. Scoped names remove name-squatting disputes. See decision 13.</li>
@@ -1072,7 +1071,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <li><strong>Publish from a repo vs. upload</strong> (review D2; settled, owner 2026-10-22). Both stay open to every pack, public included. A pack without a public repo is marked down: a &quot;No public repo&quot; marker on cards and the pack page and a lower pack score once the score ships.</li>
 <li><strong>Reputation signals</strong> (review D3; settled, owner 2026-10-22). All stay: stars, 1-5 ratings with reviews, the &quot;Trending&quot; rail and fetch counts, beside the pack score (formula published with it) and section comments and votes in the reader.</li>
 <li><strong>Update timing</strong> (settled, owner 2026-10-22). Not a PackServer concern: PackServer serves a version once it passes validation and shows its publish time; how long a repo waits before taking it is a <code>cn</code> setting the repo owns.</li>
-<li><strong>Private access model</strong> (settled, owner 2026-10-22). An allowlist of GitHub orgs per private pack; <code>cn</code> proves its repo&#39;s org with the GitHub Actions OIDC token, so nothing is stored in CI secrets.</li>
+<li><strong>Private access model</strong> (settled, owner 2026-10-22). An allowlist per private pack: GitHub accounts on Solo, GitHub orgs on Team; <code>cn</code> proves the repo owner with the GitHub Actions OIDC token, so nothing is stored in CI secrets.</li>
 <li><strong>Version format.</strong> Settled: publishers choose their own scheme; PackServer accepts any semver <code>x.y.z</code> and orders by semver precedence (owner, 2026-10-22). Claudinite&#39;s own <code>1.YMMDD.n</code> is ordinary semver with a date as the minor and gets no special treatment.</li>
 <li><strong>Pre-install manifest</strong> (settled, owner 2026-10-22). Every pack page carries it above the README from v1: guards and the tool calls they judge, scheduled tasks and cadence, forced skills, GitHub actions requested. It renders as one bottom-line line with the full list one click away, and a version that widens it is flagged.</li>
 </ol>

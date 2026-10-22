@@ -318,8 +318,8 @@ public repo" on cards and the pack page, lower score); the pre-install manifest 
 above the README on every pack page as one bottom-line line, details one click away, with widening
 versions flagged; every reputation signal stays (star ratings, Trending, fetch counts, the pack score,
 comments and votes); the only trust tier is verified publisher or not, always shown with its source
-(claudinite.com packs are verified); private packs have an allowlist of GitHub orgs, proven by the GitHub Actions OIDC
-token with no stored secret; a new pack costs one $1 credit for every publisher (credits sold in bundles of 5 for $5), waived for Verified Publishers
+(claudinite.com packs are verified); private packs have an allowlist, GitHub accounts on Solo ($1 creation credit) or GitHub orgs on Team
+($7 per seat per month), proven by the GitHub Actions OIDC token with no stored secret; a new pack costs one $1 credit for every publisher (credits sold in bundles of 5 for $5), waived for Verified Publishers
 ($99/year); and a person is *signed in*, never a *member* (a
 Claudinite member is a repo; the prototype's internal persona value is still `member`).
 

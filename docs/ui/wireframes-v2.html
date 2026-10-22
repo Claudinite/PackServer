@@ -550,13 +550,14 @@ jobs:
     <h1>Who can use it?</h1>
     <div class="choice">
       <label><input type="radio" name="vis" id="vis-public" checked><span>Public <span class="muted">· listed, adoptable by any repo</span></span></label>
-      <label><input type="radio" name="vis" id="vis-private"><span>Private <span class="muted">· only repos in the GitHub orgs you allow</span></span></label>
+      <label><input type="radio" name="vis" id="vis-private"><span>Private <span class="muted">· only repos owned by the GitHub accounts or orgs you allow</span></span></label>
     </div>
     <p class="small" id="pay-line">New pack: no fee, included with Verified Publisher <button type="button" class="why" data-why="why-pay">Why?</button></p>
     <p class="why-text" hidden id="why-pay">Every new pack uses one $1 credit, open source included; credits come in bundles of 5 for $5, bought only after validation passes. New versions are free. Verified Publishers ($99 a year) pay no per-pack fee.</p>
     <details class="adv"><summary>Advanced</summary><div class="body"><div class="filters-list">
-      <div class="field"><label class="lbl" for="acc-orgs">GitHub orgs allowed to adopt it (private packs)</label><input type="text" id="acc-orgs" value="googlecloudplatform, google-partner-labs" class="mono"></div>
-      <p class="muted small">A repo in one of these orgs proves it with its GitHub Actions OIDC token when cn fetches the pack. Nothing to store in CI secrets.</p>
+      <div class="field"><label class="lbl" for="acc-orgs">Allowed to adopt it (private packs)</label><input type="text" id="acc-orgs" value="googlecloudplatform, google-partner-labs" class="mono"></div>
+      <p class="muted small">Solo: GitHub accounts, included in the $1 creation credit. Team: GitHub orgs, on the Team plan at $7 per seat per month.</p>
+      <p class="muted small">A repo owned by one of these proves it with its GitHub Actions OIDC token when cn fetches the pack. Nothing to store in CI secrets.</p>
     </div></div></details>
     <div class="step-nav"><button class="btn primary" type="button" data-step-go="5">Continue</button><button class="btn quiet" type="button" data-step-go="3">Back</button></div>
   </div>
