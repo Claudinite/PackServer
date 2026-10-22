@@ -1,7 +1,9 @@
 import type { Context, MiddlewareHandler } from "hono";
 import type { KV } from "@packserver/ports";
 import { BodyTooLarge, formFields, isFormRequest, readBoundedBody } from "./body";
+import { CSRF_FIELD } from "./csrf";
 import { refusal } from "./refusals";
+import { TURNSTILE_FIELD, TURNSTILE_UNAVAILABLE_FIELD } from "./turnstile";
 
 export const IDEMPOTENCY_HEADER = "Idempotency-Key";
 export const IDEMPOTENCY_FIELD = "idempotency-key";
@@ -29,10 +31,16 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return [...digest].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function canonicalFields(fields: Record<string, unknown>): string {
-  const entries = Object.entries(fields)
-    .map(([k, v]): [string, unknown] => [k, v instanceof File ? { name: v.name, size: v.size } : v])
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+const PER_ATTEMPT_FIELDS = new Set([IDEMPOTENCY_FIELD, CSRF_FIELD, TURNSTILE_FIELD, TURNSTILE_UNAVAILABLE_FIELD]);
+
+/** The request's identity: its fields minus the ones a retry legitimately changes, files by content. */
+async function canonicalFields(fields: Record<string, unknown>): Promise<string> {
+  const entries: Array<[string, unknown]> = [];
+  for (const [name, value] of Object.entries(fields)) {
+    if (PER_ATTEMPT_FIELDS.has(name)) continue;
+    entries.push([name, value instanceof File ? { sha256: await sha256Hex(new Uint8Array(await value.arrayBuffer())) } : value]);
+  }
+  entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   return JSON.stringify(entries);
 }
 
@@ -53,7 +61,7 @@ export function idempotency(options: IdempotencyOptions): MiddlewareHandler {
       const field = fields[IDEMPOTENCY_FIELD];
       key = c.req.header(IDEMPOTENCY_HEADER) ?? (typeof field === "string" ? field : undefined);
       // A form may already have been consumed by an earlier middleware, so it is hashed by its fields.
-      const content = isFormRequest(c) ? new TextEncoder().encode(canonicalFields(fields)) : await readBoundedBody(c);
+      const content = isFormRequest(c) ? new TextEncoder().encode(await canonicalFields(fields)) : await readBoundedBody(c);
       bodyHash = await sha256Hex(content);
     } catch (error) {
       if (error instanceof BodyTooLarge) return refusal("quota", { status: 413, message: "request body too large" });

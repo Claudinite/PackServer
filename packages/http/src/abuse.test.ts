@@ -147,6 +147,34 @@ describe("idempotency details", () => {
     expect(runs).toHaveLength(1);
   });
 
+  it("replays when only per-attempt fields differ", async () => {
+    const { send, runs } = app2();
+    await send(h(), "a=1&csrf=tok1&cf-turnstile-response=t1&turnstile-unavailable=0");
+    const retry = await send(h(), "a=1&csrf=tok2&cf-turnstile-response=t2&idempotency-key=key-0000000A");
+    expect(retry.headers.get("idempotent-replay")).toBe("true");
+    expect(runs).toHaveLength(1);
+  });
+
+  it("hashes an uploaded file by its content, not its name and size", async () => {
+    const { ports } = app2();
+    const app = new Hono();
+    const runs: number[] = [];
+    app.use(idempotency({ kv: ports.kv.sessions!, caller: () => "s1" }));
+    app.post("/up", (c) => {
+      runs.push(1);
+      return c.text("ok", 201);
+    });
+    const upload = (name: string, content: string) => {
+      const body = new FormData();
+      body.set("file", new File([content], name));
+      return app.request("/up", { method: "POST", headers: { "idempotency-key": "key-0000000U" }, body });
+    };
+    await upload("a.txt", "AAAA");
+    expect((await upload("renamed.txt", "AAAA")).headers.get("idempotent-replay")).toBe("true");
+    expect((await upload("a.txt", "BBBB")).status).toBe(409);
+    expect(runs).toHaveLength(1);
+  });
+
   it("refuses a body over 64 KiB before parsing", async () => {
     const { send, runs } = app2();
     const res = await send(h(), "a=" + "x".repeat(70_000));
