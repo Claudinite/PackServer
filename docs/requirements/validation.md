@@ -178,7 +178,7 @@ version. No earlier model output is passed to the screen.
 
 A version held by any rule waits in the human review queue and is not promoted until an admin
 approves it. The queue lists items ordered by the publisher's verified status, then the number of
-members holding the pack, then age. No hold resolves by timeout, whatever its cause; the hold
+public repositories declaring the pack (REQ-TELEM-007), then age. No hold resolves by timeout, whatever its cause; the hold
 volume is kept within the budget of about 10 a day only by changing thresholds in a new rules
 version (REQ-VAL-048).
 
@@ -240,7 +240,7 @@ A publisher whose runs fail 10 or more times in a day is soft-rate-limited on fu
 
 Every live latest version is rescanned with the static rules whenever a rule changes and with
 the prose screen whenever the screen model or its question changes; the URL domains found in
-its prose are re-resolved weekly; the thousand packs held by the most members get the full
+its prose are re-resolved weekly; the thousand packs declared by the most public repositories get the full
 pipeline weekly regardless. A rescan finding moves the version to `quarantined` with a reason
 (`domain-drift` when a domain no longer resolves as validated) in the signed index and in MCP
 status; quarantine is reversible, and only a human can move a version to `revoked`.

@@ -125,7 +125,7 @@ await workflow.publishes(pack, '1.61004.1')                                  // 
 workflow.oidcToken({ aud?, iss?, exp?, nbf?, alg?, kid?, ...claims })    // minted with overrides, for negative tests
 await workflow.upload(archive, { reuse?: upload })                       // the 15-minute upload credential; reuse replays it
 world.github.webhook(event, { signature?: 'wrong' | 'missing', installation? })  // a delivery the World can send
-await member.fetchIndex('acme');  await member.fetchRoot();  await member.download(pack, version);  await member.reportHolding(pack, version)
+await member.fetchIndex('acme');  await member.fetchRoot();  await member.download(pack, version)
 world.member({ allowPublishers?: 'verified' | { domains: string[] }, inActionsOf?: org })   // a policy over the verification facts (REQ-VAL-041); inActionsOf runs cn in a GitHub Actions repo of that org, presenting its OIDC token (REQ-PRIV-016)
 await member.signIn(user)                                                // device-code sign-in for cn on a laptop (REQ-PRIV-017)
 await member.adopt(pack, version)                                        // -> Vendored | a verification refusal (REQ-DELIV-017)
@@ -144,11 +144,12 @@ await admin.recovery.approve(user)
 // World-level
 await world.validation.completes(version)                                // runs the workflow to a verdict, gates auto-answered
 await world.validation.of(version)                                       // -> ValidationRun handle (verdict(), report(), findings())
-await world.cron.run('domain-rechecks' | 'stats-rollup' | 'staging-expiry' | 'rescan' | 'domain-drift' | 'billing-reconcile' | 'audit-head' | 'audit-verify' | 'activity-prune')
+await world.cron.run('domain-rechecks' | 'stats-rollup' | 'staging-expiry' | 'rescan' | 'domain-drift' | 'billing-reconcile' | 'adoption-scan' | 'audit-head' | 'audit-verify' | 'activity-prune')
                                             // 'domain-drift' re-resolves the URL domains of live versions (REQ-VAL-018)
 await world.clock.advance('31d')
 world.dns.publishTxt(name, value);  world.dns.remove(name)
 world.github.repo('acme/tool');  world.github.installApp({ org, installer })
+world.github.publicRepo('someone/app', { declares: [[pack, '2.3.0']] })   // a public repo whose Claudinite settings declare the pack; the weekly scan finds it (REQ-TELEM-007)
 world.github.org('acme');  org.addMember(user);  org.removeMember(user);  org.rename('acme-inc')   // a GitHub org with a stable numeric id (REQ-PRIV-016, 017)
 world.github.rotateJwks()                                                // the issuer publishes a new key and drops the old one
 world.polar.event('order.paid' | 'order.refunded' | 'subscription.revoked', { checkout })   // an event the World can deliver, incl. replay
@@ -345,7 +346,7 @@ export interface PreInstallManifest {
 
 export interface Member {
   fetchIndex(scope: string): Promise<ScopeIndex>;  fetchRoot(): Promise<RootIndex>;
-  download(p: Pack, version: string): Promise<Download>;  reportHolding(p: Pack, version: string): Promise<void>;
+  download(p: Pack, version: string): Promise<Download>;
   adopt(p: Pack, version: string): Promise<Vendored>;                 // refused for verification when the archive is not canonical (REQ-DELIV-017)
   updateCheck(p: Pack): Promise<{ proposed?: Version; capabilityDiff?: ReadonlyArray<PackCapability>;
                                   revoked?: ReadonlyArray<{ version: string; reason: string }> }>;   // one update run: never proposes a revoked version, reports held revoked ones (REQ-DELIV-018)

@@ -114,14 +114,13 @@ the bottom or excluded from ranking.
 
 ## REQ-COMM-011 Raw signals are exposed over MCP
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: agent
-- source: ARCH §10
-- decision: ARCH-Q 10 (ranking signals only cn has)
+- source: ARCH §10, §15 Q10 (PR #3 commit 359f3c6); Ariel, 2026-10-22 (cn sends no telemetry; a weekly public-repo scan instead)
 - coverage: scenario
 
-Raw signals (stars, works/fails, verified fetches, members holding the pack if cn reports it,
+Raw signals (stars, works/fails, verified fetches, the public repositories declaring the pack (REQ-TELEM-007),
 rating, validation, `verified`, `verified_domain`, `verified_github_org`, repo) are exposed over MCP so an agent can apply its own
 policy.
 

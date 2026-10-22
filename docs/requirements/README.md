@@ -59,11 +59,11 @@ One file per area, in the order a user meets them:
 | [admin.md](admin.md) | `REQ-ADMIN` | 9 | the admin application |
 | [audit.md](audit.md) | `REQ-AUDIT` | 7 | the audit record and its 90-day copy |
 | [abuse.md](abuse.md) | `REQ-ABUSE` | 9 | rate limits, CSRF, CSP, CORS |
-| [score.md](score.md) | `REQ-SCORE` | 10 | the code-only pack score, its caps and labels |
+| [score.md](score.md) | `REQ-SCORE` | 10 (1 retired) | the code-only pack score, its caps and labels |
 | [telemetry.md](telemetry.md) | `REQ-TELEM` | 7 | counters and the dashboard |
 | [operations.md](operations.md) | `REQ-OPS` | 12 | synthetic scopes, probes, the self-test contract, recorded-traffic redaction, the production configuration |
 
-283 entries: 197 derived from the design documents, 29 from the security review, 8 from the release plan (the self-test contract and the redaction rule), 31 from the validation-flow review (three of them from its prose-screen decision), 1 from the Claudinite alignment review, 5 from Ariel's decisions of 2026-10-22 (the GitHub org allowlist and Trending) 10 from the architecture thread's pack-score proposal and 2 from its Polar billing design. 243 are active, 33 provisional and 7 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. The totals were recounted from the files on 2026-10-22, after Ariel's decisions of that day were applied (PR #3 commits `99457a2`, `2ff18f5`, `5b1ac94`, `07b211d`, `6995682`, `1ca52e1` and `21f0105`).
+283 entries: 197 derived from the design documents, 29 from the security review, 8 from the release plan (the self-test contract and the redaction rule), 31 from the validation-flow review (three of them from its prose-screen decision), 1 from the Claudinite alignment review, 5 from Ariel's decisions of 2026-10-22 (the GitHub org allowlist and Trending) 10 from the architecture thread's pack-score proposal and 2 from its Polar billing design. 245 are active, 30 provisional and 8 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. The totals were recounted from the files on 2026-10-22, after Ariel's decisions of that day were applied (PR #3 commits `99457a2`, `2ff18f5`, `5b1ac94`, `07b211d`, `6995682`, `1ca52e1` and `21f0105`).
 
 ## Entry format
 
@@ -253,7 +253,7 @@ The ones that touch the most entries:
 | ARCH-SCORE (whether the LLM screens stay at all) | **resolved** with ARCH-SCREEN; the key now names only the pack score's tuning (REQ-SCORE-*) | — |
 | ARCH-SCREEN (which prose-screen model) | **resolved**: Jev on Workers AI; REQ-VAL-012, 034–037 and REQ-ADMIN-006 are active, two screens and the auto-reject are gone, REQ-VAL-047 to 049 are new | — |
 
-All five ARCH-VAL items, and with them ARCH-Q 4 and 6 to 9, were decided on 2026-10-22; ARCH-Q 10 (ranking signals only cn has) is the one architecture question still open.
+All five ARCH-VAL items, and with them ARCH-Q 4 and 6 to 9, were decided on 2026-10-22; ARCH-Q 10 (ranking signals only cn has) was decided the same day: cn sends no telemetry, and a weekly scan of public repositories counts the repos declaring each pack (REQ-TELEM-007; PR #3 commit `359f3c6`).
 
 ## Changing this document
 

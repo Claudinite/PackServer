@@ -1,6 +1,6 @@
 # Pack score
 
-Area `SCORE`, 10 requirements. Format and rules: [README.md](README.md).
+Area `SCORE`, 10 requirements (1 retired). Format and rules: [README.md](README.md).
 
 The pack score is the code-only measure Ariel asked for (`docs/architecture/pack-score.md`). These
 entries are the architecture thread's proposal (PR #3); they are provisional on `ARCH-SCORE`
@@ -15,8 +15,8 @@ because the weights, caps and thresholds are tuned on the canon packs before lau
 - decision: ARCH-SCORE (weights, caps and thresholds tuned on the canon packs)
 - coverage: scenario+unit (the scenario proves a promoted version gets a score with no model call recorded; the rules' arithmetic is unit-tested)
 
-Every promoted version gets a score from 0 to 100, computed only by code from the canonical tree,
-the provenance record and cn telemetry. No model contributes, and the same archive and rules
+Every promoted version gets a score from 0 to 100, computed only by code from the canonical tree
+and the provenance record. No model contributes, and the same archive and rules
 version always produce the same score.
 
 ## REQ-SCORE-002 The score is five weighted parts, each lost point recorded with its fix
@@ -118,12 +118,12 @@ that stay visible (REQ-SEARCH-013, REQ-COMM-014).
 
 ## REQ-SCORE-010 A telemetry rule contributes neutral points until 30 days of data
 
-- status: provisional
+- status: retired
 - since: 2026-10
 - actor: publisher
 - source: ARCH-SCORE (PR #3, the architecture thread's SCORE-010); Ariel, 2026-10-22 (a code-only score; the no-public-source cap)
-- decision: ARCH-SCORE (weights, caps and thresholds tuned on the canon packs)
-- coverage: scenario
+- retired: Ariel, 2026-10-22: cn sends no telemetry, so the check fire-rate rule is gone (PR #3 commit 359f3c6)
+- coverage: manual (never built; no scenario may name this ID)
 
 A rule that depends on cn telemetry (a check's fire rate) reports "not enough data" and
 contributes neutral points until the pack has 30 days of telemetry.

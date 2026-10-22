@@ -25,7 +25,7 @@ update task or MCP) without blocking the response.
 
 A download is counted once per (caller, version, day) toward the downloads metric.
 
-## REQ-TELEM-003 30-day fetches and members holding a pack roll up hourly
+## REQ-TELEM-003 30-day fetches roll up hourly
 
 - status: active
 - since: 2026-10
@@ -33,8 +33,8 @@ A download is counted once per (caller, version, day) toward the downloads metri
 - source: ARCH §3, §10; DATA
 - coverage: scenario
 
-30-day fetch counts and, where cn reports it (REQ-TELEM-007), the members holding the pack are
-rolled up at least hourly and shown on the pack page, browse cards and MCP cards.
+30-day fetch counts are rolled up at least hourly and shown on the pack page, browse cards and
+MCP cards.
 
 ## REQ-TELEM-004 Counts are approximate; tests assert monotonic behaviour
 
@@ -69,14 +69,19 @@ security reports).
 
 Raw IP addresses are never stored in telemetry; only hashes.
 
-## REQ-TELEM-007 cn repo-level signals are accepted over MCP
+## REQ-TELEM-007 A weekly scan of public repositories counts the repos declaring each pack
 
-- status: provisional
+- status: active
 - since: 2026-10
-- actor: cn engine
-- source: ARCH §15 Q11; TRUST Q7
-- decision: ARCH-Q 10
-- coverage: scenario
+- actor: system
+- source: ARCH §10, §15 Q10 (PR #3 commit 359f3c6); Ariel, 2026-10-22 (cn sends no telemetry; a weekly public-repo scan instead)
+- coverage: scenario+contract (the scenario drives the fake GitHub code search, the cursor and the timeout; the real query shapes against GitHub's code-search limits are the weekly contract suite)
 
-If cn reports repo-level signals (repos keeping a pack, check fire rate, drop rate), they are
-accepted over MCP and feed ranking.
+cn sends no telemetry and PackServer never reads a private repository. Once a week the github
+Worker searches public repositories through GitHub code search for Claudinite settings files and
+records, per pack, the number of repositories declaring it, the versions they pin and the
+declarations dropped since the previous scan. A run stops after 10 minutes and the next one resumes
+from its saved cursor; it uses a read-only public-repository token and splits its queries by pack
+id and repository creation date to stay within code-search limits. The counts feed Trending,
+ranking and the pack page.
+
