@@ -1,6 +1,6 @@
 # Validation pipeline
 
-Area `VAL`, 44 requirements. Format and rules: [README.md](README.md).
+Area `VAL`, 45 requirements. Format and rules: [README.md](README.md).
 
 Entries REQ-VAL-024 onwards, and the amended statements of REQ-VAL-002, 010, 011, 012, 013,
 014, 018, 021, 022 and 023, come from the architecture thread's validation-flow review
@@ -613,3 +613,17 @@ path; and a dry-run against a private pack answers outsiders as nonexistent (REQ
 Running the engine's offline lint on an archive reports the same static rule ids, with the same
 classes, files and lines, as a dry-run of that archive at the registry; a rule that exists in one
 and not the other is a defect.
+
+## REQ-VAL-045 A sandbox run is bounded in time, and a timeout is a verdict
+
+- status: active
+- since: 2026-10
+- actor: publisher
+- source: ARCH-VAL §6 (PR #3 commit cf69b20; replaces the 10-minute cap of ARCH §6 step 3)
+- coverage: scenario+contract (the in-process scenario proves the verdicts against the faked sandbox; the real limits are proven by the sandbox contract corpus)
+
+A sandbox run (validation steps 3 to 8) stops after 5 minutes of wall-clock time. Inside it,
+extraction stops after 60 seconds and each check or hook fixture after 30 seconds. A run, check
+or fixture that hits its limit fails the version with the reason `sandbox.timeout`, except an
+extraction timeout, which fails it with `archive.unsafe` and is final: no retry, no credit, no
+LLM review. A dry-run therefore answers within the promised 4 minutes or with a timeout verdict.

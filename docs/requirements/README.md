@@ -45,7 +45,7 @@ One file per area, in the order a user meets them:
 | [accounts.md](accounts.md) | `REQ-ACC` | 25 | accounts, MFA, sessions, recovery |
 | [scopes.md](scopes.md) | `REQ-SCOPE` | 17 | scopes, orgs, domain and GitHub proofs, Verified Publisher |
 | [publishing.md](publishing.md) | `REQ-PUB` | 34 (1 retired) | trusted publishing, tokens, web upload, lifecycle |
-| [validation.md](validation.md) | `REQ-VAL` | 44 | the validation pipeline |
+| [validation.md](validation.md) | `REQ-VAL` | 45 | the validation pipeline |
 | [delivery.md](delivery.md) | `REQ-DELIV` | 19 (1 retired) | downloads, the signed index, what cn does with a status |
 | [search-mcp.md](search-mcp.md) | `REQ-SEARCH` | 19 | search, browse, the MCP endpoint |
 | [private.md](private.md) | `REQ-PRIV` | 15 | private packs and access grants |
@@ -58,7 +58,7 @@ One file per area, in the order a user meets them:
 | [telemetry.md](telemetry.md) | `REQ-TELEM` | 7 | counters and the dashboard |
 | [operations.md](operations.md) | `REQ-OPS` | 11 | synthetic scopes, probes, the self-test contract, the production configuration |
 
-259 entries: 197 derived from the design documents (44 of them provisional, 2 retired), 29 from the security review (one provisional), 7 from the release plan's self-test contract and 26 from the validation-flow review (22 provisional). 190 are active, 67 provisional and 2 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. (The totals were recounted from the files on 2026-10-22 when the validation-flow entries were added; the earlier text understated the design-derived count by two.)
+260 entries: 197 derived from the design documents (44 of them provisional, 2 retired), 29 from the security review (one provisional), 7 from the release plan's self-test contract and 27 from the validation-flow review (22 provisional). 191 are active, 67 provisional and 2 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. (The totals were recounted from the files on 2026-10-22 when the validation-flow entries were added; the earlier text understated the design-derived count by two.)
 
 ## Entry format
 
@@ -147,7 +147,7 @@ REQ-OPS-005..011 restate the self-test contract of the release plan §5 (PR #8) 
 
 ## Entries from the validation-flow review
 
-The architecture thread reviewed the validation pipeline against the threat model for packs (PR #3, `docs/architecture/validation.md`, commit `a82d7fd`). Its §6 restates the pipeline as testable statements; they were folded in on 2026-10-22. Every one of them cites `ARCH-VAL §6`. The ones that depend on one of the review's five decisions for Ariel (§7) are provisional and name the item in `decision:`; the rest are active where they only sharpen a behaviour already promised, and provisional on an existing open decision (`ARCH-Q 3` for anything that needs the human queue to exist, `SITE-D 6`/`SITE-D 7` for verdict classes and the public view) otherwise.
+The architecture thread reviewed the validation pipeline against the threat model for packs (PR #3, `docs/architecture/validation.md`, commits `a82d7fd` and `cf69b20`, the latter adding the sandbox time limits of REQ-VAL-045). Its §6 restates the pipeline as testable statements; they were folded in on 2026-10-22. Every one of them cites `ARCH-VAL §6`. The ones that depend on one of the review's five decisions for Ariel (§7) are provisional and name the item in `decision:`; the rest are active where they only sharpen a behaviour already promised, and provisional on an existing open decision (`ARCH-Q 3` for anything that needs the human queue to exist, `SITE-D 6`/`SITE-D 7` for verdict classes and the public view) otherwise.
 
 | Area | IDs | Theme |
 |---|---|---|
