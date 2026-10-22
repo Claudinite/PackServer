@@ -116,31 +116,30 @@ the Verified Publisher badge stays for a 30-day grace period and is then removed
 new packs need credits again; packs already
 published stay published.
 
-## REQ-PAY-010 Private packs need an active subscription within plan limits
+## REQ-PAY-010 A Solo private pack costs one credit; Team is billed per seat
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH §9
-- decision: SITE-D 2
+- source: ARCH §9, §11 (PR #3 commit c3a045e); Ariel, 2026-10-22 (an allowlist of GitHub accounts; Solo at $1 a pack, Team at $7 a seat)
 - coverage: scenario
 
-Private packs require an active subscription (Solo: 10 private packs; Team: per seat,
-unlimited); a scope without one cannot create a private pack, and exceeding the Solo pack limit
-is refused.
+Solo has no subscription: creating a private pack consumes one credit, the same as a new public
+pack, and its owner grants access to individual GitHub accounts. Team is $7 per seat per month and
+adds scope teams, team grants and the audit log; granting an organisation's own account (so its
+repositories can read, REQ-PRIV-016) needs Team.
 
-## REQ-PAY-011 Agent read tokens hang off a seat
+## REQ-PAY-011 On Team, a seat is a GitHub account granted access
 
-- status: provisional
+- status: active
 - since: 2026-10
-- actor: org owner / agent
-- source: ARCH §9
-- decision: SITE-D 2
+- actor: org owner
+- source: ARCH §9, §11 (PR #3 commit c3a045e); Ariel, 2026-10-22 (an allowlist of GitHub accounts; Solo at $1 a pack, Team at $7 a seat)
 - coverage: scenario
 
-A seat is a human who can read private packs; an agent read token hangs off a seat and stops
-working when the seat is removed. A repository that reads through an allowlisted GitHub org
-(REQ-PRIV-016) uses no seat.
+On a Team plan a seat is a GitHub account granted access to the scope's private packs; granting an
+account adds a seat to the subscription and removing it frees the seat and ends that account's
+access at the next read.
 
 ## REQ-PAY-012 Billing is visible only to owners
 

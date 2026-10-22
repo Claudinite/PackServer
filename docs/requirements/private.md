@@ -3,7 +3,7 @@
 Area `PRIV`, 19 requirements. Format and rules: [README.md](README.md).
 
 Ariel decided private access on 2026-10-22 (`ARCH-Q 1`): each private pack has an allowlist of
-GitHub orgs (REQ-PRIV-016 to 019). Per-user grants and invite links, gated access, org teams and
+GitHub accounts, granted one at a time (REQ-PRIV-016 to 019). Per-user grants and invite links, gated access, org teams and
 domain access ship in the later phases of architecture §11; their entries name the phase in
 `source` and are active requirements of that phase.
 
@@ -167,33 +167,36 @@ A maintainer can manage a pack's access grants; a member cannot.
 Write actions on a private pack (star, review, vote, report, request access, invite accept) by a
 caller without access are answered as not found, the same as reads.
 
-## REQ-PRIV-016 A repository in an allowlisted GitHub org reads a private pack with its Actions OIDC token
+## REQ-PRIV-016 A repository owned by an allowlisted GitHub account reads a private pack with its Actions OIDC token
 
 - status: active
 - since: 2026-10
 - actor: cn engine (GitHub Actions)
-- source: ARCH §11 (PR #3 commit 2ff18f5); Ariel, 2026-10-22 (ARCH-Q 1)
+- source: ARCH §9, §11 (PR #3 commit c3a045e); Ariel, 2026-10-22 (an allowlist of GitHub accounts; Solo at $1 a pack, Team at $7 a seat)
 - coverage: scenario
 
-Each private pack has an allowlist of GitHub orgs. cn in GitHub Actions presents an Actions OIDC
-token with audience `registry.claudinite.com`; the registry verifies it against GitHub's keys and,
-when its numeric `repository_owner_id` is on the pack's allowlist, returns the per-caller index and
-short-lived download URLs. The repository stores no secret. The org id, not its login, is matched,
-so a renamed or re-registered org does not inherit access; a token from any other org, with
-another audience, or expired, is answered as for a nonexistent pack (REQ-PRIV-001).
+Each private pack has an allowlist of GitHub accounts, granted one account at a time. cn in GitHub
+Actions presents an Actions OIDC token with audience `registry.claudinite.com`; the registry
+verifies it against GitHub's keys and, when its numeric `repository_owner_id` (the account that
+owns the repository) is on the pack's allowlist, returns the per-caller index and short-lived
+download URLs. The repository stores no secret. The numeric id, not the login, is matched, so a
+renamed or re-registered account does not inherit access; a repository owned by an organisation
+reads only when the organisation's own account is granted (a Team-plan grant, REQ-PAY-010). A
+token from any other account, with another audience, or expired, is answered as for a nonexistent
+pack (REQ-PRIV-001).
 
-## REQ-PRIV-017 A person in an allowlisted org reads after GitHub sign-in, rechecked hourly
+## REQ-PRIV-017 A person whose GitHub account is allowlisted reads after GitHub sign-in
 
 - status: active
 - since: 2026-10
-- actor: member
-- source: ARCH §11 (PR #3 commit 2ff18f5); Ariel, 2026-10-22 (ARCH-Q 1)
+- actor: signed-in user
+- source: ARCH §9, §11 (PR #3 commit c3a045e); Ariel, 2026-10-22 (an allowlist of GitHub accounts; Solo at $1 a pack, Team at $7 a seat)
 - coverage: scenario
 
-A member who signs in with GitHub can read a private pack while they belong to one of its
-allowlisted orgs. Membership is checked at sign-in and again hourly while the session lasts, so a
-member removed from the org loses access within the hour. `cn adopt` on a laptop signs in the same
-way through a device-code flow and gets a token that expires with the session.
+A person who signs in with GitHub can read a private pack while their GitHub account id is on its
+allowlist; no organisation membership is looked up. Removing the account from the allowlist ends
+their access at the next read (REQ-PRIV-005). `cn adopt` on a laptop signs in the same way through
+a device-code flow and gets a token that expires with the session.
 
 ## REQ-PRIV-018 psr_ read tokens are only for CI outside GitHub Actions
 
@@ -207,13 +210,14 @@ A `psr_` read token, scoped to one pack or one scope, is the only stored secret 
 access and serves CI that is not GitHub Actions; GitHub Actions uses its OIDC token
 (REQ-PRIV-016).
 
-## REQ-PRIV-019 Changing a pack's org allowlist needs a passkey and is audited
+## REQ-PRIV-019 Changing a pack's account allowlist needs a passkey and is audited
 
 - status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH §11 (PR #3 commit 2ff18f5); Ariel, 2026-10-22 (ARCH-Q 1)
+- source: ARCH §9, §11 (PR #3 commit c3a045e); Ariel, 2026-10-22 (an allowlist of GitHub accounts; Solo at $1 a pack, Team at $7 a seat)
 - coverage: scenario
 
-Adding or removing an org on a private pack's allowlist requires a per-action passkey assertion
-and writes an audit entry; the change takes effect on the next read.
+Adding or removing a GitHub account on a private pack's allowlist requires a per-action passkey
+assertion and writes an audit entry; the change takes effect on the next read.
+

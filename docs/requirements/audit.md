@@ -33,14 +33,13 @@ covering at least the last 90 days.
 
 ## REQ-AUDIT-003 Org audit history is viewable and immutable
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: org owner
-- source: ARCH §9, §11 phase 3
-- decision: SITE-D 2
+- source: ARCH §9, §11 phase 3 (PR #3 commit c3a045e); Ariel, 2026-10-22 (the audit log is part of Team)
 - coverage: scenario
 
-An org on a plan with audit log can view the org's audit history (at least the last 90 days); a
+An org on the Team plan can view the org's audit history (at least the last 90 days); a
 maintainer cannot edit or delete entries, and no account action can edit or delete the record.
 
 ## REQ-AUDIT-004 Audit stores hashed IPs; secrets never in plain text
