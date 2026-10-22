@@ -60,7 +60,7 @@ Access patterns:
 - Private buckets: default; serve through a Worker (binding) that checks auth, or Access-protected custom domain (https://developers.cloudflare.com/r2/tutorials/cloudflare-access/).
 
 **Implications**
-- Two buckets: `packs-public` (custom domain e.g. `packs.claudinite.com`, Cache Everything rule, immutable versioned keys in the layout `cn` already reads: `packs/<id>/<version>.tar.gz` written once, plus `packs/<id>/index.json` with its signature and `packs/catalog.json`) and `packs-staging` (private; uploads land here, the validation pipeline promotes to public). Private paid packs live in a third private bucket served through an authenticated Worker, or via short-lived presigned GET URLs minted by the MCP/API after an entitlement check.
+- Two buckets: `packs-public` (custom domain e.g. `packs.claudinite.com`, Cache Everything rule, immutable versioned keys like `@scope/name/1.61021.1/pack.tar.zst` plus `.sha256`, and the signed scope indexes under `index/v1/`) and `packs-staging` (private; uploads land here, the validation pipeline promotes to public). Private paid packs live in a third private bucket served through an authenticated Worker, or via short-lived presigned GET URLs minted by the MCP/API after an entitlement check.
 - Egress-free delivery is a major cost advantage over S3/GCS for a registry.
 - 1 write/sec/key is irrelevant with immutable versioned keys; never overwrite `latest` pointers in R2, keep pointers in D1.
 

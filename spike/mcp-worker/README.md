@@ -22,7 +22,7 @@ Tools exposed at `POST /mcp`:
 `get_pack` returns metadata plus `download_url = PACKS_PUBLIC_BASE_URL + "/" + r2_key`,
 i.e. a path on the R2-served public host. The object does not need to exist for the spike.
 The real consumer of that URL is `cn` (through `cn adopt` or the scheduled update), which also
-needs the signed per-pack index (`packs/<id>/index.json` and its signature) beside the archive; an
+needs the signed scope index (`index/v1/<scope>.json`, listed in `index/v1/root.json`); an
 agent finds the pack here and then adopts it with `cn`, never downloading the archive itself.
 
 ## Run locally

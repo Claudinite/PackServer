@@ -10,7 +10,7 @@ Nothing in the pipeline is an agent. Nothing gets tools, a loop or the ability t
 |---|---|---|
 | Upload checks | Size ≤ 3 MB, hash, format, credit or Verified Publisher | Worker code |
 | Unpack | Bounded streaming extraction; a bomb or unsafe path fails immediately | Sandbox code, no network |
-| Read the pack | Manifest schema, real inventory, names, hidden characters, secrets, URLs, extracted capabilities | Sandbox code (the `core` rule module, also used by the dry-run) |
+| Read the pack | Manifest schema, real inventory, names, hidden characters, secrets, URLs, extracted capabilities | Sandbox code (the `core` rule module, also in `cn pack lint`) |
 | Run the pack | The pinned cn engine loads it, and every declared check, coded check and guard runs on its firing and silent fixtures; any network egress fails it | Sandbox, no internet |
 | Measure | The pack score (§2), from the same tree | Sandbox code |
 | Prose screen | Two single-shot Haiku classification calls over the text, with structured output and quotes verified against the files | One request each, no tools (optional, see §3) |
@@ -24,7 +24,7 @@ Every public pack is readable after publishing. Its files are listed and rendere
 
 ### Principles
 
-- **Measured, not judged.** Every input is a number or a yes/no that code extracts from the canonical tree, the provenance record or cn telemetry. No model contributes to the score, so it is reproducible: the dry-run prints the same score before upload (and so would a `cn pack lint` command, if the engine gains one; open, O6).
+- **Measured, not judged.** Every input is a number or a yes/no that code extracts from the canonical tree, the provenance record or cn telemetry. No model contributes to the score, so it is reproducible: `cn pack lint` (cn adds this command) prints the same score before upload.
 - **Versioned.** The rules carry a version. A rule change recomputes the score for every latest version and shows "score rules v3".
 - **Quality, not safety.** Safety is the verdict and the tier. A pack can score low and be perfectly safe. The score feeds ranking but never hides a pack.
 - **Fixable.** Each lost point names the file and the fix, so the score works as a lint report for publishers.
@@ -75,12 +75,12 @@ Thresholds are starting points, to be tuned once we've measured real packs (the 
 
 ### Caps
 
-As Socket does, some facts cap the score regardless of the rest: an open security report caps it at 40, a third-party tier at 60, and a warned check (missing fixture) at 80. The cap is shown as the reason ("capped: open security report").
+As Socket does, some facts cap the score regardless of the rest: an open security report caps it at 40, a third-party tier at 60, no linked public source repo at 70 (the pack page also shows a "no public source" label), and a warned check (missing fixture) at 80. Ranking takes the missing source in through the score, not as a separate penalty. The cap is shown as the reason ("capped: open security report").
 
 ### Where it lives
 
 - The score is computed in the sandbox step after load-and-prove and stored in `meta.json`, with each rule's points. It also goes into D1 as one integer for sorting and filtering.
-- It is shown on the pack page (ring), in search results (small number), over MCP (`score` plus the parts, so agents can apply their own thresholds), and in the dry-run report.
+- It is shown on the pack page (ring), in search results (small number), over MCP (`score` plus the parts, so agents can apply their own thresholds), and in `cn pack lint` and the dry-run report.
 - Ranking (ARCH §10) uses the score as its quality input in place of the "health" term.
 
 ### Open points

@@ -3,7 +3,7 @@
 Environment: node v22.22.0, npm 10.9.4, wrangler 4.151.3, agents 0.23.0,
 @modelcontextprotocol/server 2.0.0. All commands run from `spike/mcp-worker/`. The sample pack values in the
 outputs below (versions, content counts, repo URLs, R2 keys) were later updated to match the current
-`seed.sql`, which uses Claudinite pack versions (`1.YMMDD.n`) and contents; the shape of each response is as captured.
+`seed.sql`, which uses Claudinite pack versions (`1.YMMDD.n`, semver with a date as the minor) and contents; the shape of each response is as captured.
 
 ## 1. Install + typecheck
 
@@ -103,7 +103,7 @@ data: {"result":{"content":[{"type":"text","text":"[
   "features": { "rules": 1, "skills": 12, "declaredChecks": 4, "codedChecks": 2, "guards": 1, "tasks": 3 },
   "repo_url": "https://github.com/google/gcp-pack",
   "stars": 412, "visibility": "public", "created_at": "2026-10-21T15:25:41.608Z",
-  "download_url": "https://packs.example.dev/packs/gcp-basics/1.61021.1.tar.gz"
+  "download_url": "https://packs.example.dev/@google/gcp-basics/1.61021.1/pack.tar.zst"
 }
 ```
 

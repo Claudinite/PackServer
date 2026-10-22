@@ -166,6 +166,8 @@ Where the registry's own docs were fetched the facts below reflect the live page
 
 ### 4.4 Publishing flows
 
+Public packs may be published either from a GitHub repo (flows 1 and 2) or by direct upload (flow 3); both paths are open to everyone (decided by Ariel 2026-10-22). A pack without a linked public source repo has its pack score capped at 70 and shows a "no public source" label.
+
 1. **GitHub OIDC trusted publishing (primary path)**. Config per pack or per namespace: `repository_owner`, `repository`, `workflow` filename, optional `environment`, and **`path`** inside the repo (PackServer-specific since one repo may hold many packs). Verify the GitHub OIDC JWT (issuer `https://token.actions.githubusercontent.com`, audience `registry.claudinite.com`), match `repository`, `job_workflow_ref` and `environment`, reject `pull_request_target`/`workflow_run` event triggers (crates.io Jan 2026) and refs from forks, exchange for a 15-minute publish token. Support **pending publishers** so a pack can be created on first OIDC publish (PyPI), and a **"trusted publishing only"** switch per pack (crates.io). Add GitLab.com as a second provider later; the design should treat providers as pluggable OIDC issuers.
 2. **Auto-publish from repo+path (the "watch this repo" feature)**: implement as a GitHub App installation (Smithery / Anthropic directory pattern): the app proves repo access, receives push/release webhooks for the tracked branch or tag, pulls the pack at `path`, runs validation, and *stages* a release. This is operationally identical to trusted publishing except PackServer initiates the fetch, so reuse the same validation and staging pipeline.
 3. **Manual upload with token** (CLI `packserver publish` or web upload): allowed only as **stage**; promotion to live requires a human with step-up WebAuthn (npm staged publishing). The $1 anti-spam fee is charged at *namespace creation / first publish*, not per version, and waived for domain-verified orgs.
@@ -174,13 +176,13 @@ Where the registry's own docs were fetched the facts below reflect the live page
 
 ### 4.5 Signing and provenance
 
-- **Registry-side signing** of every accepted artifact (VS Marketplace model): Ed25519 key in Cloudflare (Workers Secrets / KMS-equivalent), signature + SHA-256 in the index; `cn` verifies the index signature and sha256 at adopt and update. (Whose key signs and which roots verify it is open, O1.)
+- **Registry-side signing** of every accepted artifact (VS Marketplace model): Ed25519 key in Cloudflare (Workers Secrets / KMS-equivalent), signature + SHA-256 in the index; `cn` embeds the registry's public key and verifies the index signature and sha256 at adopt and update.
 - **Publisher provenance via Sigstore** for OIDC publishes: record the Fulcio certificate identity (`repository`, `workflow`, `sha`) and Rekor inclusion proof alongside the version; display "Built from github.com/org/repo@sha by workflow X" with a link, and a prominent "no public source" icon when absent (the owner's requirement). Show a **"trusted publisher changed"** alert on the pack page when the OIDC identity differs from the previous version (PyPI's stated takeover signal).
 - Store attestations as in-toto/SLSA provenance statements so existing tooling (`cosign verify-attestation`) works; do not invent a format.
 
 ### 4.6 Namespace scheme
 
-- `@org/pack` with `[a-z0-9][a-z0-9-]{1,38}` segments, lowercase, no leading/trailing hyphen; reject homoglyphs and names within edit distance 1 of a top-500 pack or a verified org (typosquat guard). Versions are `1.YMMDD.n`, compared numerically; channels `staging`/`stable` replace dist-tags, and nothing resolves "latest" except a first `cn adopt`. `cn` itself uses bare pack ids, so how `@org/pack` maps onto them is open (O4).
+- `@org/pack` with `[a-z0-9][a-z0-9-]{1,38}` segments, lowercase, no leading/trailing hyphen; reject homoglyphs and names within edit distance 1 of a top-500 pack or a verified org (typosquat guard). Publishers choose their own versions: any semver `x.y.z`, ordered by semver precedence (Claudinite's own `1.YMMDD.n` is semver with a date as the minor), with no dist-tags, and nothing resolves "latest" except a first `cn adopt`. The scoped name `@org/pack` is the pack id; `cn` and its settings learn scoped ids as an engine follow-up.
 - Map external identities deterministically: GitHub org `foo` -> `@foo` (reserved for that GitHub org until claimed); domain `example.com` -> optional alias `@example.com` display or reverse-DNS `com.example` as the MCP Registry does. Recommend one canonical form (`@org`) with verified domain shown as a badge rather than two name spaces.
 - Store the pack's canonical source as `github.com/<owner>/<repo>/<path>` so the listing can deep-link to the exact directory.
 
@@ -188,14 +190,14 @@ Where the registry's own docs were fetched the facts below reflect the live page
 
 - **Objective, explainable sorts** (npm 2024): most adopted (30-day), most depended-upon / most used by agents (MCP pull counts), recently updated, highest rated. Avoid a single opaque "quality score"; instead show a **check scorecard** (validation passed, provenance present, public repo, verified publisher, 2FA-enforced org, license, last release age) as badges that both humans and the MCP endpoint can filter on.
 - **Exact-name boost** in search and category pages (crates.io lesson), plus **category / capability facets** (rules, skills, declared checks, coded checks, guards, tasks) since the primary consumer is an agent asking "what packs exist for GCP deployment".
-- **Stars/ratings only from authenticated, 2FA-enrolled users**, rate-limited, one per user per pack; show counts with a "new pack" marker for anything under 7 days old (RubyGems vetting-delay advice) and keep new versions on the `staging` channel for a soak before `stable`.
+- **Stars/ratings only from authenticated, 2FA-enrolled users**, rate-limited, one per user per pack; show counts with a "new pack" marker for anything under 7 days old (RubyGems vetting-delay advice) and expose each version's `published_at` so `cn` and repos can set their own minimum-age policy.
 - **Download counts** de-noised: count unique adopting identities per day, not raw fetches, and exclude the publisher's own CI.
 
 ### 4.8 Abuse and takedown controls
 
 - **Quarantine state** (PyPI): staff and automated rules can hide a pack from resolution and the MCP endpoint while keeping the record; owners locked out; reversible; visible to owners, staff and observers.
 - **Reporting**: "Report a concern" on every pack page (any authenticated user) and a researcher **Observer API** with a vetted role whose reports carry weight; auto-quarantine on 2 Observer reports or 1 Observer + 1 user report; SLA target one business day (VS Marketplace).
-- **Removed-packs page and revocation**: the `revoked` flag in each pack's signed index, which the scheduled update reads; `cn` never selects a revoked version and reports one a member still holds (VS Marketplace force-uninstall analogue, but report-only today; O5).
+- **Removed-packs page and revocation**: each version's status in the signed index, which `cn` reads at update and adopt time; `cn` never selects a revoked version, and under the proposed split a security revocation disables the pack's guards, checks, tasks and env setup in a member that still holds it, while other statuses only report (VS Marketplace force-uninstall analogue).
 - **Publisher-side alerts**: email on every publish, token creation, trusted-publisher change, new org member (CPAN/npm practice).
 - **Rate limits and spam**: $1 fee at namespace creation, per-org daily publish caps (Anthropic directory: 10 submissions/24h), Cloudflare Turnstile on signup, email domain reputation checks.
 
