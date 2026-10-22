@@ -61,7 +61,7 @@ One file per area, in the order a user meets them:
 
 ## Entry format
 
-Each entry is one `##` heading followed by a metadata list and the statement. The format is fixed because tooling parses it (the register loader in `tests/tooling/requirements.ts` and the Go checks in `.claudinite/`):
+Each entry is one `##` heading followed by a metadata list and the statement. The format is fixed because tooling parses it (the register loader in `tests/tooling/requirements.ts` and the Go checks drafted in [stability-checks.md §7](../testing/stability-checks.md)):
 
 ```markdown
 ## REQ-PAY-003 A credit is charged after validation and bound to the sha256

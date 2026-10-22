@@ -141,15 +141,16 @@ PackServer has one human. GitHub does not let a PR author approve their own PR, 
 - CODEOWNERS routes review and shows in the PR header; it covers the scenarios, the register, this directory, and the gate's own code:
 
 ```
-/tests/scenarios/                     @arielra
-/docs/requirements/                   @arielra
-/docs/testing/                        @arielra
-/.github/                             @arielra
-/tests/tooling/                       @tests/contracts/fixtures/   @arielra
-/eslint.config.mjs                    @arielra
-/.claudinite/                         @arielra
-/tests/scenarios/COVERAGE.watermark   @arielra
-/stryker.watermark.json               @arielra
+/tests/scenarios/                     @missingbulb
+/docs/requirements/                   @missingbulb
+/docs/testing/                        @missingbulb
+/.github/                             @missingbulb
+/tests/tooling/                       @missingbulb
+/tests/contracts/fixtures/            @missingbulb
+/eslint.config.mjs                    @missingbulb
+/.claudinite/                         @missingbulb
+/tests/scenarios/COVERAGE.watermark   @missingbulb
+/stryker.watermark.json               @missingbulb
 ```
 
 ### C9 agent guard (heuristic, in session)
