@@ -71,10 +71,10 @@ function ciContexts() {
   const yml = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
   const jobs = yml.split(/^jobs:\n/m)[1];
   const contexts = [];
-  for (const block of jobs.split(/^(?=  [A-Za-z0-9_-]+:\n)/m)) {
-    const key = /^  ([A-Za-z0-9_-]+):/.exec(block)?.[1];
+  for (const block of jobs.split(/^(?= {2}[A-Za-z0-9_-]+:\n)/m)) {
+    const key = /^ {2}([A-Za-z0-9_-]+):/.exec(block)?.[1];
     if (!key) continue;
-    const name = /^    name: (.+)$/m.exec(block)?.[1] ?? key;
+    const name = /^ {4}name: (.+)$/m.exec(block)?.[1] ?? key;
     const shards = /^\s+shard: \[([^\]]+)\]/m.exec(block)?.[1];
     if (shards) for (const v of shards.split(",")) contexts.push(`${name} (${v.trim()})`);
     else contexts.push(name);

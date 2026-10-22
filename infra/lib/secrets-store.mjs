@@ -28,7 +28,7 @@ async function call(fetchImpl, token, method, path, body) {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch (cause) {
-    throw Object.assign(new Error(`Cloudflare ${method} ${path}: network error (${cause?.message ?? cause})`), { retryable: true });
+    throw Object.assign(new Error(`Cloudflare ${method} ${path}: network error (${cause?.message ?? cause})`), { retryable: true, cause });
   }
   let json;
   try {
@@ -104,7 +104,7 @@ export function createSecretsStore({ fetch: fetchImpl, accountId, token, storeId
     try {
       await remove(name);
     } catch (e) {
-      throw new Error(`write probe ${name} was created but not deleted (${e.message}); delete it by hand`);
+      throw new Error(`write probe ${name} was created but not deleted (${e.message}); delete it by hand`, { cause: e });
     }
   }
 
