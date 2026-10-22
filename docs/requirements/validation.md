@@ -15,15 +15,15 @@ live and open the report.
 
 ## REQ-VAL-002 SHA-256 mismatch or oversize fails first
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH §6 step 1
-- conflict: CONFLICT-3
+- source: ARCH §6 step 1; Ariel 2026-10-22 (CONFLICT-3 resolved)
 - coverage: scenario
 
-A staged archive whose bytes do not match the declared SHA-256 or exceed the size cap (25 MB)
-fails before any other check.
+A staged archive whose bytes do not match the declared SHA-256 or exceed the size cap (3 MB
+compressed) fails before any other check. The cap is on the bytes actually stored, not on a
+size the client declared, and an upload over it is refused before validation starts.
 
 ## REQ-VAL-003 Unsafe archives hard-fail
 
@@ -33,8 +33,8 @@ fails before any other check.
 - source: ARCH §6 step 2; FLOW 7
 - coverage: scenario
 
-An archive with symlinks escaping the tree, path traversal entries, a zip-bomb ratio, or more
-than 5k files hard-fails.
+An archive with symlinks escaping the tree, path traversal entries, a decompression bomb (see
+REQ-VAL-022), or more than 5k files hard-fails.
 
 ## REQ-VAL-004 A missing, malformed or inconsistent manifest hard-fails
 
@@ -241,3 +241,39 @@ absolute decompressed-size cap independent of the ratio.
 
 Validation runs per publisher per day are capped regardless of outcome, re-runs count, and the
 LLM step has a per-version and a per-day token budget.
+
+## REQ-VAL-022 Decompression is bounded by the bytes it produces, not by what the archive claims
+
+- status: active
+- since: 2026-10
+- actor: publisher (security)
+- source: Ariel 2026-10-22; ARCH §6 step 2
+- coverage: scenario+contract (the in-process scenario proves the verdict, reason and credit plumbing against the faked sandbox; the real limits are proven by the bomb corpus run against the real sandbox image, see docs/testing/README.md §6)
+
+The validator never trusts sizes, counts or window parameters an archive declares about
+itself. It decompresses as a single stream and counts the bytes it actually produces, and it
+stops the moment any limit is crossed: 20 MB unpacked in total, 5 MB for any one file, 5k
+entries, a compression ratio above 100:1 for the archive or any entry, path depth above 32, or
+a compression window larger than 8 MB. Nothing is written past a limit and nothing extracted
+from a refused archive is kept. Decompression runs inside the validation sandbox with its own
+memory, CPU-time and wall-clock limits and no network, so a decompressor that misbehaves on a
+crafted input fails the run instead of exhausting the host, and that outcome is a hard fail,
+never a retry.
+
+## REQ-VAL-023 Every known decompression-bomb shape is refused cheaply
+
+- status: active
+- since: 2026-10
+- actor: publisher (security)
+- source: Ariel 2026-10-22; SEC (security review, 2026-10-22)
+- coverage: scenario+contract (the same bomb corpus runs in-process against the faked sandbox and against the real sandbox image)
+
+Each of these archives hard-fails with the reason `archive.bomb` (or `archive.unsafe` for the
+last two), within a bounded time and without the validator's memory or disk use exceeding the
+limits in REQ-VAL-022: a highly repetitive single file that inflates past 20 MB; many small
+files that together exceed 20 MB; a tar header that understates or overstates an entry's size;
+a compression frame declaring an oversized window; several concatenated compression frames
+whose sum exceeds the limit; a tiny archive declaring a huge number of entries; deeply nested
+directories; an archive nested inside the archive; and a self-referential or overlapping-entry
+archive (quine-style). The refusal costs no validation credit and no LLM review call.
+

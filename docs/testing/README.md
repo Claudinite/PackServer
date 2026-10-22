@@ -9,7 +9,7 @@ Status: proposal, 2026-10-22, revised the same day after a practice review, a se
 > - All seven Workers run as production bundles in one local `workerd`; D1, R2, KV, Durable Objects, Workflows and Queues are the real local implementations; everything else is faked at a port and an unfaked outbound call fails the test.
 > - Coverage = every active requirement in [../requirements/](../requirements/README.md) has at least one green scenario naming its ID. That is a traceability measure, not proof that the scenario proves the statement; review and the see-it-fail job are the defence.
 > - PR lane ~10 minutes wall-clock; ~$30–35/month of CI on a private repo. The tooling bet is proven by [a spike](../../spike/test-dsl/RESULTS.md): harness, MSW, DSL, http driver, Recorder and N/N-1 all ran.
-> - Decisions that block the first scenarios: the five remaining architecture/UI conflicts, a CI-only Cloudflare account, repo visibility, and confirming the 29 security-review requirements (§14).
+> - Decisions still open (§14): a CI-only Cloudflare account, repo visibility, and browser test scope. The architecture/UI conflicts and the security-review requirements are settled.
 
 Companion documents: [dsl.md](dsl.md) (the World DSL and example scenarios), [stability-checks.md](stability-checks.md) (the gate and the hatches), [../requirements/](../requirements/README.md) (the register), [research/tooling.md](research/tooling.md) and [research/dsl-patterns.md](research/dsl-patterns.md) (sources for every tool claim), [../../spike/test-dsl/](../../spike/test-dsl/README.md) (the runnable proof and its measured numbers). The sibling plans are cited by path until they merge; the agreements with them are restated here where they bind this plan.
 
@@ -225,7 +225,7 @@ Every fake is a plain object owned by the World, reset per scenario, with the Re
 | Sigstore Rekor | the public staging log (`rekor.sigstage.dev`), one head entry a night, verified by inclusion proof | nightly |
 | Mail, DNS proof, Access on the admin host | provider test mode; a real cheap test domain; the admin host with and without the probe token | nightly |
 | Workflows, CDN index TTL, Analytics Engine rollup, presigned R2 PUT/GET | the CI-only account's deployment | nightly (Workflows), weekly (the rest) |
-| Sandbox container | the real image on a Docker-capable runner; monthly against a deployed preview container. REQ-VAL-011 (no network, no secrets inside) is proven here, not in-process | weekly |
+| Sandbox container | the real image on a Docker-capable runner; monthly against a deployed preview container. REQ-VAL-011 (no network, no secrets inside) and the decompression limits of REQ-VAL-022/023 (every bomb fixture refused within the memory, disk and time limits) are proven here, not in-process | weekly, and on every PR that changes the validator image |
 
 The Claudinite `cloudflare-workers` pack's `wire-bindings-seam` rule says D1, R2 and Workflows cannot be exercised locally; that premise is out of date (only Vectorize and Workers AI lack a local simulation), and a one-paragraph amendment goes to the pack's maintainers through the fleet process. The rule's advice (one seam, one place to swap) still holds and this plan follows it.
 
@@ -331,8 +331,8 @@ The default day-to-day flow under agents: Ariel names the requirement ID (or ask
 
 ## 14. Open questions for Ariel
 
-1. **The five remaining conflicts** between the architecture and UI documents ([../requirements/README.md](../requirements/README.md#conflicts-between-the-architecture-and-the-ui-flows)). Each freezes a scenario value. (CONFLICT-1, the step-up window, is closed: there is no window.)
-2. **The 29 security-review requirements** ([../requirements/README.md](../requirements/README.md#entries-from-the-security-review)) are the only register entries not derived from the design documents. Confirm them (they become architecture work) or strike any you do not want promised.
+Decided on 2026-10-22: all six architecture/UI conflicts ([../requirements/README.md](../requirements/README.md#conflicts-between-the-architecture-and-the-ui-flows)); the 29 security-review requirements are confirmed.
+
 3. **CI-only Cloudflare account** ($5/month). This plan recommends it; say if the production account's preview environment must do instead.
 4. **Public or private repository?** It removes the Actions cost and changes nothing else.
 5. **Playwright scope.** `ui` scenarios only for flows that are about the page (passkey ceremonies, the wizard, step-up, Turnstile). Driving every flow in `docs/ui/flows.md` through a browser nightly grows the lane from ~6 to ~25 minutes.

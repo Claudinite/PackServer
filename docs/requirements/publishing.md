@@ -229,11 +229,10 @@ until an owner approves it with a passkey.
 
 ## REQ-PUB-020 Unpromoted staged objects expire after 14 days
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: system
-- source: ARCH §7; DATA
-- conflict: CONFLICT-6
+- source: ARCH §7; DATA; Ariel 2026-10-22 (CONFLICT-6 resolved)
 - coverage: scenario
 
 A staged object not promoted within the staging lifetime (14 days) is deleted and must be

@@ -44,7 +44,7 @@ One file per area, in the order a user meets them:
 | [accounts.md](accounts.md) | `REQ-ACC` | 25 | accounts, MFA, sessions, recovery |
 | [scopes.md](scopes.md) | `REQ-SCOPE` | 17 | scopes, orgs, domain and GitHub proofs, Verified Publisher |
 | [publishing.md](publishing.md) | `REQ-PUB` | 33 (1 retired) | trusted publishing, tokens, web upload, lifecycle |
-| [validation.md](validation.md) | `REQ-VAL` | 21 | the validation pipeline |
+| [validation.md](validation.md) | `REQ-VAL` | 23 | the validation pipeline |
 | [delivery.md](delivery.md) | `REQ-DELIV` | 16 (1 retired) | downloads, the signed index |
 | [search-mcp.md](search-mcp.md) | `REQ-SEARCH` | 18 | search, browse, the MCP endpoint |
 | [private.md](private.md) | `REQ-PRIV` | 15 | private packs and access grants |
@@ -124,7 +124,7 @@ An AI agent must not edit this directory or a scenario unless the owner asked, i
 
 ## Entries from the security review
 
-The security review of the test plan (2026-10-22) found 29 promises the architecture implies (cookie attributes in ARCH §4, webhook signatures in §5.1, OAuth hardening in §8, CSP in §13) but never states as observable behaviour, plus four operational ones that bind the probes and the self-test. They are the only entries not derived from the design documents, so they are listed here for Ariel to confirm or strike; each carries `SEC` in its `source`:
+The security review of the test plan (2026-10-22) found 29 promises the architecture implies (cookie attributes in ARCH §4, webhook signatures in §5.1, OAuth hardening in §8, CSP in §13) but never states as observable behaviour, plus four operational ones that bind the probes and the self-test. They are the only entries not derived from the design documents, so they were listed here for Ariel, who confirmed all of them on 2026-10-22; each carries `SEC` in its `source`:
 
 | Area | IDs | Theme |
 |---|---|---|
@@ -152,10 +152,10 @@ The research that produced this register found six places where `docs/architectu
 |---|---|---|---|---|---|
 | CONFLICT-1 | Step-up freshness window | **resolved 2026-10-22:** no window; a passkey assertion per action (ARCH §4) | 5 min (FLOW preamble, FLOW 2; now stale) | per-action assertion | REQ-ACC-010 (active, no `conflict` line) |
 | CONFLICT-2 | Session lifetime | **resolved 2026-10-22 by Ariel:** 12 h idle / 7 d absolute (ARCH §4) | 30 days (FLOW preamble) | 12 h / 7 d | REQ-ACC-013 |
-| CONFLICT-3 | Archive size cap | 25 MB (ARCH §3) | 50 MB (FLOW 5, FLOW 7) | 25 MB | REQ-VAL-002 |
+| CONFLICT-3 | Archive size cap | 25 MB (ARCH §3) | 50 MB (FLOW 5, FLOW 7) | **resolved 2026-10-22 by Ariel:** 3 MB compressed, 20 MB unpacked, bounded decompression (REQ-VAL-022, 023) | REQ-VAL-002 |
 | CONFLICT-4 | Token maximum lifetime | 90 days, default 7 (ARCH §5.2) | up to 1 year for agent read tokens (FLOW 10 C) | **resolved 2026-10-22 by Ariel:** 90 days for publish tokens, 1 year for read-only tokens | REQ-PUB-012 |
 | CONFLICT-5 | Does a Verified Publisher pay the $1? | waived (ARCH §9) | still pays (FLOW 8) | **resolved 2026-10-22 by Ariel:** $99/year Verified Publisher subscription, which covers new-pack credits | REQ-PAY-009 |
-| CONFLICT-6 | Staging object lifetime | 14 days (ARCH §7) | 24 h (FLOW 5) | 14 days | REQ-PUB-020 |
+| CONFLICT-6 | Staging object lifetime | 14 days (ARCH §7) | 24 h (FLOW 5) | **resolved 2026-10-22 by Ariel:** 14 days | REQ-PUB-020 |
 
 Three smaller disagreements were resolved without a conflict marker: MCP tool names (`get_download`, `report_outcome`, `star_pack` in ARCH §8 vs `download_pack`, `get_pack_manifest` in FLOW 11; the DSL hides the names, so no requirement depends on them), private pack pricing (ARCH §9 per-seat vs FLOW 8 "TBD, waitlist"; REQ-PAY-010 is provisional on SITE-D 2) and the auto-quarantine trigger (only FLOW 13 specifies it; REQ-MOD-009 uses it).
 
