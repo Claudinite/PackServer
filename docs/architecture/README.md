@@ -400,7 +400,7 @@ Later phases, in order:
 
 Still open from the [registry trust research](../registry-trust-research.md), and this design leaves room for any answer:
 
-6. **Remote revocation or report only?** When a pack is revoked, should cn disable it on members' repos, or only report it (`reportOnly`, the fleet's precedent)? The signed index carries the status either way. PackServer proposes a split ([validation.md](validation.md) §3.12): a security `revoked` disables the pack's executable surface by default, and every other status only reports. `cn` would need to check the index at update or adopt time, or at session start; that is an engine change cn makes if Ariel picks this.
+6. ~~Remote revocation or report only?~~ Decided: the split. A security `revoked` disables the version's guards, coded checks, tasks and env setup in cn by default, a repo can opt into `reportOnly`, and every other status only reports ([validation.md](validation.md) §3.12). cn adds the check at update or adopt time and at session start.
 7. **Must a pack pass our CI before listing (Homebrew-style), and must each check ship firing/silent fixtures?** The sandbox step can run both; the choice is whether failure blocks listing.
 8. **Should packs declare capabilities** (guards, coded checks, tasks and their cadence, env setup, the GitHub actions they need, forced skills), with an update that adds one held for review? `pack.json` already declares the GitHub actions. Closed for our own canon in the first security review; public submissions may justify reopening it.
 9. **Tiers** like Claude Code's: canon (curated by us), community (pinned, scanned, tested), third-party (unchecked, with a warning)? "Canon" already means the central pack set, so a tier named `canon` reads as "is on the shelf".
