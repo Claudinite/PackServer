@@ -1,0 +1,15 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "rangeStrategy": "pin",
+  "packageRules": [
+    {
+      "groupName": "Cloudflare",
+      "matchPackageNames": ["wrangler", "@cloudflare/**", "miniflare"]
+    },
+    {
+      "groupName": "MCP",
+      "matchPackageNames": ["@modelcontextprotocol/**", "agents"]
+    }
+  ]
+}

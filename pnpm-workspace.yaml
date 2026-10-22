@@ -1,0 +1,8 @@
+packages:
+  - packages/*
+  - workers/*
+  - sandbox/runner
+  - tools
+onlyBuiltDependencies:
+  - esbuild
+  - workerd
