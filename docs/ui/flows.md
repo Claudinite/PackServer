@@ -175,7 +175,7 @@ Failure / edge states:
 
 ## 5. Publish via upload
 
-**Goal**: publisher uploads an archive, it is validated, listed, paid for, and published to R2. Upload is open to every pack (`sitemap.md` decision 14); a pack without a public repo is marked down: "No public repo" on cards and the pack page, Partial trust, lower score.
+**Goal**: publisher uploads an archive, it is validated, listed, paid for, and published to R2. Upload is open to every pack (`sitemap.md` decision 14); a pack without a public repo is marked down: "No public repo" on cards and the pack page, lower score.
 
 1. `publish` step 1 Source → "Upload archive" (`.tar.gz`/`.zip`, ≤ 3 MB). Browser uploads directly to R2 via a presigned URL (upload bucket, 24h TTL).
 2. Step 2 Validate → Worker enqueues validation job; UI streams progress; links to `validation`.
@@ -454,11 +454,11 @@ Edge states:
 
 **Goal**: a Claude Code session asks what packs exist for a kind of work and suggests one to declare. The MCP endpoint is a discovery aid; delivery is `cn adopt <id>` (or a `packs.declared` entry), which vendors the pack and lands a PR. Nothing is fetched at session time. Documented on `claude-code`.
 
-Tools: `list_categories()`, `search_packs(query, category?, content_type?, verified_only?, limit)` where `content_type` is one of `rules`, `skills`, `checks`, `guards`, `tasks`; `get_pack(id, version?)` → metadata, manifest of effects, publish time, `minEngineVersion`, `requires`, publisher tier, adoption instructions; `get_pack_manifest(id, version)` → `pack.json`; `fetch_pack(id, version)` → the archive URL (`packs/<id>/<version>.tar.gz` on the public CDN) and the signed index entry (sha256, publishedAt, minEngineVersion, requires, revoked), for inspection.
+Tools: `list_categories()`, `search_packs(query, category?, content_type?, verified_only?, limit)` where `content_type` is one of `rules`, `skills`, `checks`, `guards`, `tasks`; `get_pack(id, version?)` → metadata, manifest of effects, publish time, `minEngineVersion`, `requires`, verified publisher (yes/no) and its verification source, adoption instructions; `get_pack_manifest(id, version)` → `pack.json`; `fetch_pack(id, version)` → the archive URL (`packs/<id>/<version>.tar.gz` on the public CDN) and the signed index entry (sha256, publishedAt, minEngineVersion, requires, revoked), for inspection.
 
 Public:
 1. The session connects to `https://mcp.packserver.dev` (Streamable HTTP MCP), no auth.
-2. `search_packs("deploy to GCP Cloud Run", category="cloud")` → ranked list of compact summaries: `pitch` (from `pack.json`), manifest of effects, publish time, `minEngineVersion`, `requires`, publisher tier. Full content stays behind `get_pack` so a search costs the session little context.
+2. `search_packs("deploy to GCP Cloud Run", category="cloud")` → ranked list of compact summaries: `pitch` (from `pack.json`), manifest of effects, publish time, `minEngineVersion`, `requires`, verified publisher and source. Full content stays behind `get_pack` so a search costs the session little context.
 3. `get_pack("@google/gcp")` → summary, warnings, validation verdict, newest version, manifest of effects.
 4. The session proposes `cn adopt @google/gcp` (or the settings declaration, with an optional `version:` freeze); running it fetches the archive, checks it against the signed index, vendors it into `.claudinite/shared/packs/<id>/` and lands a PR for review. `fetch_pack` exists so a session (or a person) can read the archive before proposing; it is not the delivery path.
 
@@ -473,7 +473,7 @@ sequenceDiagram
   Ag->>M: initialize (no auth)
   Ag->>M: search_packs "deploy to GCP"
   M->>D: query public index
-  M-->>Ag: results with pitch, effects, publisher tier
+  M-->>Ag: results with pitch, effects, verified and source
   Ag->>M: get_pack @google/gcp
   M-->>Ag: metadata, manifest of effects, adoption instructions
   Ag->>Repo: propose cn adopt @google/gcp

@@ -418,7 +418,6 @@ body[data-persona="anonymous"] .only-signed { display: none !important; }
     <input type="search" id="b-q" value="gcp" style="flex:1 1 240px">
   </form>
   <div class="frow" role="group" aria-label="Filters">
-    <button type="button" class="ftog" data-ftog aria-pressed="false">Trusted only</button>
     <button type="button" class="ftog" data-ftog aria-pressed="false">Verified publisher</button>
     <button type="button" class="ftog" data-ftog aria-pressed="false">Public repo</button>
     <label class="fsel"><span class="sr">Contains</span><select id="f-contains"><option>Any contents</option><option>Has rules</option><option>Has skills</option><option>Has checks</option><option>Has guards</option><option>Has tasks</option><option>Checks only (no tasks, no skills)</option></select></label>
@@ -429,7 +428,7 @@ body[data-persona="anonymous"] .only-signed { display: none !important; }
       <span class="muted">Sort</span>
       <button type="button" class="textbtn" data-sort aria-pressed="true">Relevance</button>
       <button type="button" class="textbtn" data-sort aria-pressed="false">Age</button>
-      <button type="button" class="textbtn" data-sort aria-pressed="false">Publisher tier</button>
+      <button type="button" class="textbtn" data-sort aria-pressed="false">Verified first</button>
     </span>
   </div>
   <div class="cards list" id="browse-cards" style="margin-top:20px"></div>
@@ -639,8 +638,8 @@ jobs:
       summary: 'Operate GCP projects: IAM audits, Cloud Run deploys, log triage and key rotation.',
       rating: 4.7, ratings: 236, dist: [72, 18, 7, 2, 1], fetches: '9.3k', delta: '+12% vs prior 7 d',
       pulse: [210, 240, 230, 260, 300, 280, 310, 330, 320, 350, 340, 360, 390, 380, 400, 420, 410, 440, 430, 460, 480, 470, 500, 520, 510, 540, 560, 550, 580, 600],
-      trust: 'trusted', trustWord: 'Trusted',
-      trustRows: [['y', 'Validation passed · 1 warning'], ['y', 'Publisher verified (google.com)'], ['y', 'Built from tag 1.61021.1 via GitHub Actions'], ['y', 'Signed (Sigstore)']],
+      trust: 'verified', trustWord: 'Verified publisher', verifiedBy: 'google.com',
+      trustRows: [['y', 'Verified publisher · google.com (DNS) and GitHub org googlecloudplatform'], ['y', 'Validation passed · 1 warning'], ['y', 'Built from tag 1.61021.1 via GitHub Actions'], ['y', 'Signed (Sigstore)']],
       repo: 'github.com/googlecloudplatform/claudinite-packs', sha: '9f1c7e02b4…e3a0', signed: 'Sigstore · OIDC identity publish.yml@refs/tags/1.61021.1', verifiedHow: 'DNS TXT on google.com · GitHub org googlecloudplatform · 2026-03-04', valId: 'val_01JB2K', valRun: 'gcp',
       contents: { rules: ['RULES.md'], skills: ['iam-audit', 'cloud-run-deploy', 'log-triage', 'gcs-lifecycle', 'vpc-review', 'billing-anomalies'], checks: ['no-public-buckets', 'sa-key-age', 'min-tls'], guards: ['pre-deploy-guard'], tasks: ['rotate-service-keys', 'quarterly-iam-review', 'cost-report', 'cleanup-stale-disks'] },
       effects: [
@@ -662,8 +661,8 @@ jobs:
       summary: 'Format, lint and explain SQL across Postgres, BigQuery and DuckDB.',
       rating: 3.9, ratings: 31, dist: [35, 36, 16, 10, 3], fetches: '640', delta: '+4% vs prior 7 d',
       pulse: [18, 22, 20, 25, 19, 24, 28, 26, 30, 27, 25, 29, 31, 28, 33, 30, 29, 34, 32, 36, 31, 35, 38, 34, 37, 40, 36, 39, 42, 41],
-      trust: 'partial', trustWord: 'Partial', trustReason: 'No public repo',
-      trustRows: [['y', 'Validation passed'], ['n', 'Publisher not verified'], ['n', 'No public repo'], ['y', 'Server-signed on upload']],
+      trust: 'unverified', trustWord: 'Not verified', trustReason: 'No public repo',
+      trustRows: [['n', 'Publisher not verified'], ['y', 'Validation passed'], ['n', 'No public repo'], ['y', 'Server-signed on upload']],
       repo: null, sha: '41b2c9d0e1…77cd', signed: 'Server-signed on upload', verifiedHow: 'GitHub account linked, no domain', valId: 'val_01J9ZQ', valRun: 'gcp',
       contents: { rules: ['RULES.md'], skills: ['sql-style'], checks: ['sql-format', 'no-select-star'], guards: [], tasks: [] },
       effects: [
@@ -683,11 +682,11 @@ jobs:
   function counts(p) { return p.counts || TYPES.map(function (t) { return p.contents[t].length; }); }
   var CARDS = [
     PACKS.pack,
-    { token: 'pack', name: '@pytest-dev/pytest-doctor', icon: 'PT', pub: 'pytest-dev', pubMark: 'org', pubId: 'other', summary: 'Diagnose flaky tests, fixture misuse and slow suites; proposes fixes as diffs.', rating: 4.8, ratings: 410, dist: [84, 11, 3, 1, 1], counts: [1, 5, 3, 1, 1], trust: 'trusted', trustWord: 'Trusted', trustRows: [['y', 'Validation passed'], ['y', 'Publisher verified (GitHub org)'], ['y', 'Built from tag 1.61015.1'], ['y', 'Signed (Sigstore)']], pulse: [50, 60, 55, 70, 80, 75, 90, 85, 100, 110, 105, 120, 115, 130, 140, 135, 150, 145, 160, 170, 165, 180, 175, 190, 200, 195, 210, 220, 215, 230] },
-    { token: 'pack', name: '@hashicorp/terraform-reviewer', icon: 'TF', pub: 'HashiCorp', pubMark: 'org', pubId: 'other', summary: 'Review Terraform plans for drift, blast radius and policy violations before apply.', rating: 4.6, ratings: 188, dist: [70, 20, 6, 3, 1], counts: [1, 3, 5, 2, 1], trust: 'trusted', trustWord: 'Trusted', trustRows: [['y', 'Validation passed'], ['y', 'Publisher verified (hashicorp.com)'], ['y', 'Built from tag 1.61012.1'], ['y', 'Signed (Sigstore)']], pulse: [120, 130, 125, 140, 135, 150, 145, 160, 155, 150, 165, 170, 160, 175, 180, 170, 185, 190, 180, 195, 200, 190, 205, 210, 200, 215, 220, 210, 225, 230] },
+    { token: 'pack', name: '@pytest-dev/pytest-doctor', icon: 'PT', pub: 'pytest-dev', pubMark: 'org', pubId: 'other', verifiedBy: 'pytest.org', summary: 'Diagnose flaky tests, fixture misuse and slow suites; proposes fixes as diffs.', rating: 4.8, ratings: 410, dist: [84, 11, 3, 1, 1], counts: [1, 5, 3, 1, 1], trust: 'verified', trustWord: 'Verified publisher', trustRows: [['y', 'Verified publisher'], ['y', 'Validation passed'], ['y', 'Built from tag 1.61015.1'], ['y', 'Signed (Sigstore)']], pulse: [50, 60, 55, 70, 80, 75, 90, 85, 100, 110, 105, 120, 115, 130, 140, 135, 150, 145, 160, 170, 165, 180, 175, 190, 200, 195, 210, 220, 215, 230] },
+    { token: 'pack', name: '@hashicorp/terraform-reviewer', icon: 'TF', pub: 'HashiCorp', pubMark: 'org', pubId: 'other', verifiedBy: 'hashicorp.com', summary: 'Review Terraform plans for drift, blast radius and policy violations before apply.', rating: 4.6, ratings: 188, dist: [70, 20, 6, 3, 1], counts: [1, 3, 5, 2, 1], trust: 'verified', trustWord: 'Verified publisher', trustRows: [['y', 'Verified publisher · hashicorp.com'], ['y', 'Validation passed'], ['y', 'Built from tag 1.61012.1'], ['y', 'Signed (Sigstore)']], pulse: [120, 130, 125, 140, 135, 150, 145, 160, 155, 150, 165, 170, 160, 175, 180, 170, 185, 190, 180, 195, 200, 190, 205, 210, 200, 215, 220, 210, 225, 230] },
     PACKS.pack2,
-    { token: 'pack', name: '@finops-collective/gcp-cost-cutter', icon: 'CC', pub: 'finops-collective', pubMark: 'individual', pubId: 'other', summary: 'Find idle resources and committed-use gaps across GCP billing exports.', rating: 4.1, ratings: 52, dist: [45, 32, 15, 5, 3], counts: [1, 2, 1, 0, 3], trust: 'partial', trustWord: 'Partial', trustRows: [['y', 'Validation passed'], ['y', 'Publisher verified (individual)'], ['y', 'Public repo'], ['n', 'Not signed']], pulse: [30, 28, 35, 33, 40, 38, 36, 42, 45, 41, 48, 46, 50, 47, 52, 55, 51, 58, 56, 60, 57, 62, 65, 61, 68, 66, 70, 67, 72, 75] },
-    { token: 'pack', name: '@google/gke-autopilot', icon: 'GK', pub: 'Google Cloud', pubMark: 'org', pubId: 'google', summary: 'Create, upgrade and troubleshoot GKE Autopilot clusters with safe defaults.', rating: 4.5, ratings: 97, dist: [62, 26, 8, 3, 1], counts: [1, 4, 2, 1, 2], trust: 'trusted', trustWord: 'Trusted', trustRows: [['y', 'Validation passed'], ['y', 'Publisher verified (google.com)'], ['y', 'Built from tag 1.61001.1'], ['y', 'Signed (Sigstore)']], pulse: [90, 100, 95, 110, 105, 120, 115, 130, 125, 140, 135, 150, 145, 160, 155, 170, 165, 180, 175, 190, 185, 200, 195, 210, 205, 220, 215, 230, 225, 240] }
+    { token: 'pack', name: '@finops-collective/gcp-cost-cutter', icon: 'CC', pub: 'finops-collective', pubMark: null, pubId: 'other', summary: 'Find idle resources and committed-use gaps across GCP billing exports.', rating: 4.1, ratings: 52, dist: [45, 32, 15, 5, 3], counts: [1, 2, 1, 0, 3], trust: 'unverified', trustWord: 'Not verified', trustRows: [['n', 'Publisher not verified'], ['y', 'Validation passed'], ['y', 'Public repo'], ['n', 'Not signed']], pulse: [30, 28, 35, 33, 40, 38, 36, 42, 45, 41, 48, 46, 50, 47, 52, 55, 51, 58, 56, 60, 57, 62, 65, 61, 68, 66, 70, 67, 72, 75] },
+    { token: 'pack', name: '@google/gke-autopilot', icon: 'GK', pub: 'Google Cloud', pubMark: 'org', pubId: 'google', verifiedBy: 'google.com', summary: 'Create, upgrade and troubleshoot GKE Autopilot clusters with safe defaults.', rating: 4.5, ratings: 97, dist: [62, 26, 8, 3, 1], counts: [1, 4, 2, 1, 2], trust: 'verified', trustWord: 'Verified publisher', trustRows: [['y', 'Verified publisher · google.com'], ['y', 'Validation passed'], ['y', 'Built from tag 1.61001.1'], ['y', 'Signed (Sigstore)']], pulse: [90, 100, 95, 110, 105, 120, 115, 130, 125, 140, 135, 150, 145, 160, 155, 170, 165, 180, 175, 190, 185, 200, 195, 210, 205, 220, 215, 230, 225, 240] }
   ];
 
   var DASH = [
@@ -701,18 +700,17 @@ jobs:
   var ACTIVITY = [['2 h ago', 'gcp-ops 1.61021.1 published from tag 1.61021.1'], ['40 min ago', 'vpc-review 1.61020.1 validated, awaiting approval; an Owner must approve'], ['now', 'gke-autopilot 1.61021.1 validation running'], ['yesterday', 'bq-migrate 1.61019.1 failed validation: secret in fixtures/'], ['yesterday', 'New high-severity report on gcp-ops: rotate-service-keys'], ['2 d ago', 'Receipt rcpt_01JB3 for gcp-ops'], ['3 d ago', 'New review on gcp-ops by devops_nina (4)'], ['6 d ago', 'Domain google.com re-checked; next 2026-10-27'], ['12 d ago', 'gcp-ops 1.61009.1 published from tag 1.61009.1'], ['14 d ago', 'mkhan joined Google Cloud as Maintainer']];
 
   var VAL = {
-    gcp: { crumb: '@google/gcp-ops 1.61021.1 · val_01JB2K · 2026-10-21 · 41 s', verdict: 'Passed with 1 warning', trust: 'trusted', word: 'Trusted', action: 'published', findings: [['medium', 'skills/log-triage/SKILL.md:48', '“ignore previous” inside a fenced example; likely documentation']], passes: 'Manifest pack.json · version 1.61021.1 · minEngineVersion 1.61006.1 · 14 items resolved · 0 secrets in 212 files · SDK-only imports · 6 / 6 tests · 180 KB · effects: 1 guard, 4 tasks, 1 forced skill' },
-    vpc: { crumb: '@google/vpc-review 1.61020.1 · val_01JB7F · awaiting approval 1 d ago · 38 s', verdict: 'Passed with 1 warning', trust: 'trusted', word: 'Trusted once approved', action: 'approve', findings: [['medium', 'skills/vpc-review/SKILL.md:31', '“ignore previous” inside a fenced example; likely documentation']], passes: 'Manifest pack.json · version 1.61020.1 · 9 items resolved · 0 secrets in 64 files · SDK-only imports · 4 / 4 tests · 52 KB · effects: 0 guards, 1 task, 0 forced skills' },
+    gcp: { crumb: '@google/gcp-ops 1.61021.1 · val_01JB2K · 2026-10-21 · 41 s', verdict: 'Passed with 1 warning', trust: 'trusted', word: 'Served', action: 'published', findings: [['medium', 'skills/log-triage/SKILL.md:48', '“ignore previous” inside a fenced example; likely documentation']], passes: 'Manifest pack.json · version 1.61021.1 · minEngineVersion 1.61006.1 · 14 items resolved · 0 secrets in 212 files · SDK-only imports · 6 / 6 tests · 180 KB · effects: 1 guard, 4 tasks, 1 forced skill' },
+    vpc: { crumb: '@google/vpc-review 1.61020.1 · val_01JB7F · awaiting approval 1 d ago · 38 s', verdict: 'Passed with 1 warning', trust: 'trusted', word: 'Served once approved', action: 'approve', findings: [['medium', 'skills/vpc-review/SKILL.md:31', '“ignore previous” inside a fenced example; likely documentation']], passes: 'Manifest pack.json · version 1.61020.1 · 9 items resolved · 0 secrets in 64 files · SDK-only imports · 4 / 4 tests · 52 KB · effects: 0 guards, 1 task, 0 forced skills' },
     bq: { crumb: '@google/bq-migrate 1.61019.1 · val_01JA9C · yesterday · 12 s', verdict: 'Failed: secret found in fixtures/sa-key.json', trust: 'failed', word: 'Not served', action: 'fix', findings: [['high', 'fixtures/sa-key.json', 'GCP service-account private key (detector gcp-sa-key)'], ['low', 'README.md', 'Missing license line']], passes: 'Manifest pack.json · version 1.61019.1 · 11 items resolved · SDK-only imports · tests skipped after failure' }
   };
 
   /* ---------- helpers ---------- */
   function esc(s) { return String(s).replace(/[&<>"]/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; }); }
   function trustSvg(state) {
-    var c = state === 'trusted' ? 'var(--ok)' : state === 'partial' ? 'var(--warn)' : state === 'failed' ? 'var(--fail)' : 'var(--muted)';
+    var c = (state === 'verified' || state === 'trusted') ? 'var(--ok)' : state === 'failed' ? 'var(--fail)' : 'var(--muted)';
     var s = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="' + c + '" stroke-width="1.6"/>';
-    if (state === 'trusted') s += '<circle cx="8" cy="8" r="6.5" fill="' + c + '"/>';
-    if (state === 'partial') s += '<path d="M8 1.5A6.5 6.5 0 0 1 8 14.5Z" fill="' + c + '"/>';
+    if (state === 'verified' || state === 'trusted') s += '<circle cx="8" cy="8" r="6.5" fill="' + c + '"/>';
     return s + '</svg>';
   }
   function pubSvg(kind) {
@@ -744,8 +742,9 @@ jobs:
     return '<ul>' + p.trustRows.map(function (r) { return '<li class="' + r[0] + '"><span class="t">' + (r[0] === 'y' ? '✓' : '–') + '</span><span>' + esc(r[1]) + '</span></li>'; }).join('') + '</ul>';
   }
   function trustMark(p, withWord) {
-    var inner = '<span class="mark' + (withWord ? ' word' : '') + '">' + trustSvg(p.trust) + (withWord ? '<span>' + esc(p.trustWord) + '</span>' : '') + '</span>';
-    return hc(inner, trustPop(p), 'trust:' + p.token, 'Trust: ' + p.trustWord);
+    var word = p.trustWord + (p.verifiedBy ? ' · ' + p.verifiedBy : '');
+    var inner = '<span class="mark' + (withWord ? ' word' : '') + '">' + trustSvg(p.trust) + (withWord ? '<span>' + esc(word) + '</span>' : '') + '</span>';
+    return hc(inner, trustPop(p), 'trust:' + p.token, word);
   }
   function inventoryLine(c) {
     return c.map(function (n, i) { if (!n) return ''; var t = TYPES[i]; if (t === 'rules') return 'RULES.md'; return n + ' ' + (n === 1 ? t.replace(/s$/, '') : t); }).filter(Boolean).join(' · ');
@@ -775,10 +774,11 @@ jobs:
     var pop = '<span class="dist">' + p.dist.map(function (v, i) { return '<span>' + (5 - i) + '</span><i><b style="width:' + v + '%"></b></i><span>' + v + '%</span>'; }).join('') + '</span>';
     return hc('<span class="rating"><b>' + p.rating.toFixed(1) + '</b> <span class="n">· ' + p.ratings + '</span></span>', pop, 'reviews:' + p.token, 'Rating ' + p.rating.toFixed(1) + ' from ' + p.ratings);
   }
-  function pubMark(p) {
+  function pubMark(p, noSrc) {
     if (!p.pubMark) return esc(p.pub);
-    var pop = p.pubMark === 'org' ? (p.pubId === 'google' ? 'Verified via google.com (DNS) · GitHub org googlecloudplatform · 14 packs' : 'Verified organization · GitHub org · domain on file') : 'Verified individual via GitHub · 3 packs';
-    return esc(p.pub) + hc('<span class="pubmark">' + pubSvg(p.pubMark) + '</span>', pop, 'publisher:' + p.pubId, 'Publisher ' + p.pub + ', verified ' + (p.pubMark === 'org' ? 'organization' : 'individual'));
+    var src = p.verifiedBy || 'domain on file';
+    var pop = p.pubId === 'google' ? 'Verified publisher via google.com (DNS) · GitHub org googlecloudplatform · 14 packs' : 'Verified publisher via ' + src;
+    return esc(p.pub) + hc('<span class="pubmark">' + pubSvg('org') + '</span>', pop, 'publisher:' + p.pubId, 'Publisher ' + p.pub + ', verified via ' + src) + (noSrc ? '' : ' <span class="faint">' + esc(src) + '</span>');
   }
   function pulseMark(arr, total, delta, tail) {
     return hc(sparkSvg(arr) + (tail ? '<span class="muted">' + esc(tail) + '</span>' : ''), '30 d: fetched by ' + esc(total) + ' repos<br>' + esc(delta) + '<span class="hint">One fetch per cn adopt or update PR</span>', 'pulse', 'Fetches by member repos, 30 days: ' + total);
@@ -794,7 +794,7 @@ jobs:
       '<a class="name" href="#' + p.token + '">' + esc(p.name) + '</a>' +
       '<div class="by">' + pubMark(p) + '</div>' +
       '<p class="sum">' + esc(p.summary) + '</p>' +
-      '<div class="marks">' + trustMark(p, false) + (p.repo === null ? '<span class="muted small">No public repo</span>' : '') + shapeMark(p, false) + ratingMark(p) + (p.pulse ? '<span class="only-publisher">' + pulseMark(p.pulse, p.fetches || '—', p.delta || '', '') + '</span>' : '') + '</div>' +
+      '<div class="marks">' + (p.repo === null ? '<span class="muted small">No public repo</span>' : '') + shapeMark(p, false) + ratingMark(p) + (p.pulse ? '<span class="only-publisher">' + pulseMark(p.pulse, p.fetches || '—', p.delta || '', '') + '</span>' : '') + '</div>' +
       '</article>';
   }
   function renderCards(id, list) { var el = document.getElementById(id); if (el) el.innerHTML = list.map(cardHtml).join(''); }
@@ -823,7 +823,7 @@ jobs:
     var reportLabel = p.repo ? 'Report on GitHub ↗' : 'Report a bug';
     return '' +
       '<div class="pack-head"><span class="pack-icon">' + esc(p.icon) + '</span>' +
-        '<div><h1>' + esc(p.name) + '</h1><div class="muted" style="margin-top:2px">' + pubMark(p) + '</div></div>' +
+        '<div><h1>' + esc(p.name) + '</h1><div class="muted" style="margin-top:2px">' + pubMark(p, true) + '</div></div>' +
         '<div class="tools"><button type="button" class="btn icon" aria-label="Star" data-auth="star" data-star aria-pressed="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8l1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.6l-3.8 2 .7-4.3-3.1-3 4.3-.6Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></button>' +
           '<button type="button" class="btn icon" aria-label="More" data-menu="pack-menu"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.5" fill="currentColor"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/><circle cx="13" cy="8" r="1.5" fill="currentColor"/></svg></button>' +
           '<div class="menu" id="pack-menu" hidden><button type="button" data-auth="report" data-toast="' + (p.repo ? 'Opens a pre-filled issue on GitHub; you submit it' : 'Report sent to the publisher') + '">' + reportLabel + '</button><button type="button" data-auth="follow" data-toast="Following ' + esc(p.name) + '">Follow</button><button type="button" data-auth="review" data-toast="Review form would open here">Write a review</button></div></div>' +
@@ -1153,7 +1153,7 @@ jobs:
   }
   function kv(rows) { return '<table class="ctable">' + rows.map(function (r) { return '<tr><td>' + r[0] + '</td><td class="' + (r[2] || '') + '">' + r[1] + '</td></tr>'; }).join('') + '</table>'; }
   function trustDrawer(p) {
-    return '<p class="row" style="gap:10px;margin-bottom:16px"><span class="mark word">' + trustSvg(p.trust) + '<span>' + esc(p.trustWord) + '</span></span>' + (p.trustReason ? '<span class="muted">· ' + esc(p.trustReason) + '</span>' : '') + '</p>' +
+    return '<p class="row" style="gap:10px;margin-bottom:16px"><span class="mark word">' + trustSvg(p.trust) + '<span>' + esc(p.trustWord + (p.verifiedBy ? ' · ' + p.verifiedBy : '')) + '</span></span>' + (p.trustReason ? '<span class="muted">· ' + esc(p.trustReason) + '</span>' : '') + '</p>' +
       '<ul class="rows" style="margin-bottom:20px;display:grid;gap:4px">' + p.trustRows.map(function (r) { return '<li style="display:flex;gap:8px"><span class="mono" style="color:var(--' + (r[0] === 'y' ? 'ok' : 'muted') + ')">' + (r[0] === 'y' ? '✓' : '–') + '</span><span>' + esc(r[1]) + '</span></li>'; }).join('') + '</ul>' +
       kv([['Validation', esc(p.valId) + ' · passed' + (p.trustRows[0][1].indexOf('warning') > -1 ? ' · 1 warning' : '') + ' · <a href="#validation" data-val="' + p.valRun + '">Full report</a>'], ['Published', esc(p.versions[0][1]) + ' · signed index', 'mono small'], ['SHA-256', esc(p.sha), 'mono small'], ['Signature', esc(p.signed), 'small'], ['Source', p.repo ? '<a href="#' + p.token + '">' + esc(p.repo) + '</a> · built from tag ' + esc(p.version) : 'No public repo. Uploaded as an archive; every file is readable in Contents.', 'small'], ['Publisher', esc(p.verifiedHow), 'small']]) +
       '<p class="muted small" style="margin-top:20px">What this does not prove: that the pack is safe for your environment. Validation checks structure, secrets, known-bad patterns and the pack\'s own tests.</p>' +
@@ -1201,7 +1201,7 @@ jobs:
     else if (dlgAfter === 'approve-vpc') {
       DASH.forEach(function (d) { if (d.id === 'vpc') { d.status = 'live'; d.latest = '1.61020.1'; d.line = 'Live · 1.61020.1 approved just now'; } });
       ACTIVITY.unshift(['now', 'vpc-review 1.61020.1 approved and published']);
-      VAL.vpc.action = 'published'; VAL.vpc.word = 'Trusted';
+      VAL.vpc.action = 'published'; VAL.vpc.word = 'Served';
       renderDash(); closeDrawer(); if (valRun === 'vpc') renderVal(); toast('vpc-review 1.61020.1 is live');
     } else toast(dlgToast || 'Confirmed');
     dlgAfter = null;

@@ -12,15 +12,15 @@ none of it is a *verdict*. v2 inverts that: show the verdict, keep the evidence 
 1. **Verdict first, evidence second.** Every object (pack, version, publisher, review, validation run) gets one
    bottom-line signal. Facts that feed it are never shown by default; they are the hover/click layer.
 2. **Three things per view.** A screen's default state leads with at most three primary elements
-   (e.g. pack page: name+summary, Trust mark, the manifest of what adopting the pack adds, then the Adopt
+   (e.g. pack page: name+summary, Verified mark, the manifest of what adopting the pack adds, then the Adopt
    block). Everything else is secondary type, behind a disclosure, or gone.
 3. **Color means something or is absent.** Budget: one accent (interactive only) + a three-step semantic scale
    that appears *only* inside the Trust and Status marks. No colored pills, no colored boxes, no tinted panels.
    ~95% of pixels neutral (Things 3 rule).
 4. **One alert per screen, and only if the viewer must act.** No alert strips, no counters-as-badges, no
    "receipt available" notices. Informational events live in the activity log, which is a plain list.
-5. **Card budget: name, publisher mark, one line of summary, Trust mark, shape glyph, rating number.** Six
-   atoms, two of them graphic. Nothing else on a card.
+5. **Card budget: name, publisher mark with its verification source, one line of summary, shape glyph, rating
+   number.** Five atoms, two of them graphic, plus "No public repo" when it applies. Nothing else on a card.
 6. **Hover tells, click opens.** Hover = a tooltip-sized breakdown (≤5 lines, no actions). Click = a drawer or
    sheet with the full record and actions. Never a navigation to a page just to see a breakdown.
 7. **Structure felt, not seen** (Linear). Group with spacing and one weight of hairline; no nested boxes,
@@ -33,18 +33,20 @@ none of it is a *verdict*. v2 inverts that: show the verdict, keep the evidence 
 Each signal: what it encodes, states, hover, click. All marks are 16–20 px monochrome SVG line glyphs;
 only the three-state marks carry semantic color.
 
-### 2.1 Trust mark (pack / version)
+### 2.1 Verified mark (pack / version)
 
-- **Encodes:** validation result × publisher proof × source origin × signing, collapsed into one verdict.
-- **States (3):**
-  - `●` **Trusted** (green-neutral): validation passed, publisher verified (domain or GitHub org), public repo
-    built from a tag via trusted publishing (OIDC), artifact signed.
-  - `◐` **Partial** (amber-neutral): validation passed but one or more of {verified publisher, public repo,
-    trusted publishing, signature} missing; or validation passed with warnings.
-  - `○` **Unverified / failing** (gray outline; red only if validation failed or version revoked).
-- **Default render:** mark + one word ("Trusted", "Partial", "Unverified", "Revoked"). On cards: mark only.
-- **Hover:** four-row checklist, each row a tick/dash and ≤6 words: `✓ Validation passed · 1 warning`,
-  `✓ Publisher verified (google.com)`, `✓ Built from tag 1.61021.1 via GitHub Actions`, `– Not signed`.
+- **Encodes:** one fact, settled by the owner (2026-10-22): is the publisher verified, and by what. There is no
+  other trust tier. A verified publisher proves a domain (DNS) and a GitHub org; the source is always shown so
+  the reader, or the agent adopting for them, can apply its own policy ("google.com is trusted, evil.com is
+  not, even if verified"). Packs published by claudinite.com are verified like any other.
+- **States (2):** `●` **Verified publisher · google.com** (filled, the `ok` tone); `○` **Not verified** (gray
+  outline). A failed validation never reaches a pack page; a revoked version is marked on its own row.
+- **Default render:** on the pack page, mark + "Verified publisher · <source>" or "Not verified". On cards the
+  verified seal and its source sit after the publisher name (§2.4) and no separate mark is drawn.
+- **Hover:** the facts behind the page, each a tick or dash: `✓ Verified publisher · google.com (DNS) and
+  GitHub org googlecloudplatform`, `✓ Validation passed · 1 warning`, `✓ Built from tag 1.61021.1`,
+  `– No public repo`. Only the first is the tier; the rest are facts, and the missing public repo lowers the
+  pack score.
 - **Click:** drawer "Trust" with the full validation report, SHA-256, signature, repo link, verification
   method and date, "what this does not prove". Replaces v1's Trust panel, Verification panel, Trust-signals
   panel, Validation report page content (the page remains as a deep link).
@@ -65,7 +67,7 @@ only the three-state marks carry semantic color.
 - **Encodes:** what adopting this pack *does to a repo*, derived by validation, not by the publisher: guards
   added and the tool calls they judge, scheduled tasks and their cadence, skills forced before matching edits,
   checks and whether they block after grace, and the GitHub actions the pack asks for.
-- **Default render:** one quiet line of secondary type directly under the Trust mark, no box, no color:
+- **Default render:** one quiet line of secondary type directly under the Verified mark, no box, no color:
   `Adds 1 guard · 4 scheduled tasks · 3 checks · 6 skills · GitHub actions ›`. A version that widens the
   manifest (adds a guard, a task, a forced skill or a GitHub permission) ends the line with
   `· widened in 1.61021.1` in the warn tone, the one colored word on the page.
@@ -83,8 +85,8 @@ only the three-state marks carry semantic color.
 ### 2.4 Publisher mark
 
 - **Encodes:** who stands behind this, and whether identity is proven.
-- **States:** verified organization (filled seal), verified individual (outline seal), unverified (no mark).
-  Name is always shown; the mark is placed after it.
+- **States:** verified publisher (seal, then the verification source in faint type, e.g. "Google Cloud ✓
+  google.com"), not verified (name only). There is no separate individual tier.
 - **Hover:** `Verified via google.com (DNS) · GitHub org googlecloudplatform · 14 packs`.
 - **Click:** publisher page.
 
@@ -138,10 +140,10 @@ Format: **Visible** (default) · **Hover** · **Click** · **Removed**.
 ### Browse / search
 
 - Visible: query, result count, result list (cards per §1 budget). One sort control (Relevance / Age /
-  Publisher tier) as text; freshness is a risk signal, age and stability are the wanted ones, so there is no
+  Verified first) as text; freshness is a risk signal, age and stability are the wanted ones, so there is no
   "Updated" or "Stars" sort.
 - Hover: the three marks.
-- Visible: one quiet row of filter toggles under the query (Trusted only, Verified publisher, Public repo,
+- Visible: one quiet row of filter toggles under the query (Verified publisher, Public repo,
   Contains… with the five pack types and "Checks only (no tasks, no skills)"). Outline
   pills, filled only when on; no counts, no sidebar.
   (Ariel, 2026-10-22: hiding filters in a sheet went too far; search filters stay on the page.)
@@ -150,7 +152,7 @@ Format: **Visible** (default) · **Hover** · **Click** · **Removed**.
 
 ### Pack page
 
-- Visible, above the fold, in this order: `@scope/name` with publisher mark; one-line summary; Trust mark with its word; the manifest of effects (§2.2b: guards and what they
+- Visible, above the fold, in this order: `@scope/name` with publisher mark; one-line summary; Verified mark with its source; the manifest of effects (§2.2b: guards and what they
   judge, tasks and cadence, forced skills, GitHub actions); Adopt block (`cn adopt <id>` with a copy button,
   and a second copyable snippet with the Claudinite settings declaration and an optional `version:`
   freeze, under one muted line "Lands as a pull request; updates arrive the same way"); then rating number,
@@ -206,7 +208,7 @@ Format: **Visible** (default) · **Hover** · **Click** · **Removed**.
 ### Validation result
 
 - Visible: one sentence verdict: "Passed with 1 warning" / "Failed: secret found in `fixtures/sa-key.json`",
-  Trust mark state it produces, and one primary action (Approve with passkey / Fix and re-run).
+  verdict it produces (served or not), and one primary action (Approve with passkey / Fix and re-run).
 - Hover: none.
 - Click: "Show report" disclosure: findings as a plain list grouped by severity (§2.8 glyph, file path,
   one line). "What this does not prove" becomes a one-line muted sentence with a link, not a section.
@@ -250,7 +252,7 @@ Format: **Visible** (default) · **Hover** · **Click** · **Removed**.
 **Palette.** Neutral scale: paper `#FAFAF9`/ink `#17181A` (light), `#121314`/`#E8E6E1` (dark); five grays
 between, warm-leaning but low chroma (Linear's note: warm, not muddy). One accent for interactive elements only:
 a deep teal `#0F6E6B` (light) / `#5FC2BE` (dark). Semantic trio used *only* inside Trust/Status marks and the
-severity glyph: `#2E7D4F` (trusted), `#B7791F` (partial / needs you), `#B3261E` (failed / revoked). The
+severity glyph: `#2E7D4F` (verified, passed), `#B7791F` (needs you, widening), `#B3261E` (failed / revoked). The
 accent is never used for status; status colors are never used for links or buttons.
 
 **Typography.** One humanist sans with real tabular figures and a usable 500 weight — Source Sans 3 or
@@ -279,7 +281,7 @@ to approve vpc-review 1.61020.1 · Approve").
 | v1 element | v2 treatment |
 |---|---|
 | Card: content counts (`3 skills · 2 checks …`, with commands / agents / MCP) | Shape glyph over the five pack types (rules, skills, checks, guards, tasks); counts on hover |
-| Card: `validated` + `public repo` / `no public repo` pills | One Trust mark; rows on hover |
+| Card: `validated` + `public repo` / `no public repo` pills | Verified seal with its source; "No public repo" in text |
 | Card: star row + number + ☆ count | Number only (`4.6 · 212`); distribution on hover |
 | Card: version `v2.4.1` | Removed from cards; dated version (`1.61021.1`) in the muted line on the pack page |
 | Home stat-row (packs / publishers / fetches per day) | Removed |
@@ -311,10 +313,11 @@ Settled: the site is called **Claudinite Packs**; pack ids are `@scope/name`; ve
 `x.y.z` the publisher chooses, ordered by semver precedence; a version is served once it passes
 validation, and how long a repo waits before taking it is a `cn` setting the repo owns; publishing
 from a repo or by upload is open to every pack, and a pack without a public repo is marked down ("No
-public repo" on cards and the pack page, Partial trust, lower score); the pre-install manifest (§2.2b) sits
+public repo" on cards and the pack page, lower score); the pre-install manifest (§2.2b) sits
 above the README on every pack page as one bottom-line line, details one click away, with widening
 versions flagged; every reputation signal stays (star ratings, Trending, fetch counts, the pack score,
-comments and votes); private packs have an allowlist of GitHub orgs, proven by the GitHub Actions OIDC
+comments and votes); the only trust tier is verified publisher or not, always shown with its source
+(claudinite.com packs are verified); private packs have an allowlist of GitHub orgs, proven by the GitHub Actions OIDC
 token with no stored secret; a new pack costs one $1 credit for every publisher (credits sold in bundles of 5 for $5), waived for Verified Publishers
 ($99/year); and a person is *signed in*, never a *member* (a
 Claudinite member is a repo; the prototype's internal persona value is still `member`).

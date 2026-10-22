@@ -197,7 +197,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 </ul>
 <hr>
 <h2 id="f-5-publish-via-upload">5. Publish via upload</h2>
-<p><strong>Goal</strong>: publisher uploads an archive, it is validated, listed, paid for, and published to R2. Upload is open to every pack (<code>sitemap.md</code> decision 14); a pack without a public repo is marked down: &quot;No public repo&quot; on cards and the pack page, Partial trust, lower score.</p>
+<p><strong>Goal</strong>: publisher uploads an archive, it is validated, listed, paid for, and published to R2. Upload is open to every pack (<code>sitemap.md</code> decision 14); a pack without a public repo is marked down: &quot;No public repo&quot; on cards and the pack page, lower score.</p>
 <ol>
 <li><code>publish</code> step 1 Source → &quot;Upload archive&quot; (<code>.tar.gz</code>/<code>.zip</code>, ≤ 3 MB). Browser uploads directly to R2 via a presigned URL (upload bucket, 24h TTL).</li>
 <li>Step 2 Validate → Worker enqueues validation job; UI streams progress; links to <code>validation</code>.</li>
@@ -483,11 +483,11 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <hr>
 <h2 id="f-11-a-claude-code-session-discovering-a-pack-via-mcp">11. A Claude Code session discovering a pack via MCP</h2>
 <p><strong>Goal</strong>: a Claude Code session asks what packs exist for a kind of work and suggests one to declare. The MCP endpoint is a discovery aid; delivery is <code>cn adopt &lt;id&gt;</code> (or a <code>packs.declared</code> entry), which vendors the pack and lands a PR. Nothing is fetched at session time. Documented on <code>claude-code</code>.</p>
-<p>Tools: <code>list_categories()</code>, <code>search_packs(query, category?, content_type?, verified_only?, limit)</code> where <code>content_type</code> is one of <code>rules</code>, <code>skills</code>, <code>checks</code>, <code>guards</code>, <code>tasks</code>; <code>get_pack(id, version?)</code> → metadata, manifest of effects, publish time, <code>minEngineVersion</code>, <code>requires</code>, publisher tier, adoption instructions; <code>get_pack_manifest(id, version)</code> → <code>pack.json</code>; <code>fetch_pack(id, version)</code> → the archive URL (<code>packs/&lt;id&gt;/&lt;version&gt;.tar.gz</code> on the public CDN) and the signed index entry (sha256, publishedAt, minEngineVersion, requires, revoked), for inspection.</p>
+<p>Tools: <code>list_categories()</code>, <code>search_packs(query, category?, content_type?, verified_only?, limit)</code> where <code>content_type</code> is one of <code>rules</code>, <code>skills</code>, <code>checks</code>, <code>guards</code>, <code>tasks</code>; <code>get_pack(id, version?)</code> → metadata, manifest of effects, publish time, <code>minEngineVersion</code>, <code>requires</code>, verified publisher (yes/no) and its verification source, adoption instructions; <code>get_pack_manifest(id, version)</code> → <code>pack.json</code>; <code>fetch_pack(id, version)</code> → the archive URL (<code>packs/&lt;id&gt;/&lt;version&gt;.tar.gz</code> on the public CDN) and the signed index entry (sha256, publishedAt, minEngineVersion, requires, revoked), for inspection.</p>
 <p>Public:</p>
 <ol>
 <li>The session connects to <code>https://mcp.packserver.dev</code> (Streamable HTTP MCP), no auth.</li>
-<li><code>search_packs(&quot;deploy to GCP Cloud Run&quot;, category=&quot;cloud&quot;)</code> → ranked list of compact summaries: <code>pitch</code> (from <code>pack.json</code>), manifest of effects, publish time, <code>minEngineVersion</code>, <code>requires</code>, publisher tier. Full content stays behind <code>get_pack</code> so a search costs the session little context.</li>
+<li><code>search_packs(&quot;deploy to GCP Cloud Run&quot;, category=&quot;cloud&quot;)</code> → ranked list of compact summaries: <code>pitch</code> (from <code>pack.json</code>), manifest of effects, publish time, <code>minEngineVersion</code>, <code>requires</code>, verified publisher and source. Full content stays behind <code>get_pack</code> so a search costs the session little context.</li>
 <li><code>get_pack(&quot;@google/gcp&quot;)</code> → summary, warnings, validation verdict, newest version, manifest of effects.</li>
 <li>The session proposes <code>cn adopt @google/gcp</code> (or the settings declaration, with an optional <code>version:</code> freeze); running it fetches the archive, checks it against the signed index, vendors it into <code>.claudinite/shared/packs/&lt;id&gt;/</code> and lands a PR for review. <code>fetch_pack</code> exists so a session (or a person) can read the archive before proposing; it is not the delivery path.</li>
 </ol>
@@ -500,7 +500,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
   Ag-&gt;&gt;M: initialize (no auth)
   Ag-&gt;&gt;M: search_packs "deploy to GCP"
   M-&gt;&gt;D: query public index
-  M--&gt;&gt;Ag: results with pitch, effects, publisher tier
+  M--&gt;&gt;Ag: results with pitch, effects, verified and source
   Ag-&gt;&gt;M: get_pack @google/gcp
   M--&gt;&gt;Ag: metadata, manifest of effects, adoption instructions
   Ag-&gt;&gt;Repo: propose cn adopt @google/gcp
@@ -690,7 +690,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <td><code>/browse?q=&amp;category=&amp;feature=&amp;verified=&amp;repo=&amp;sort=</code></td>
 <td>Search results</td>
 <td>Anon+</td>
-<td>Left filter rail: category (multi), contains pack content type (rules / skills / checks / guards / tasks), &quot;checks only (no tasks, no skills)&quot;, verified publisher toggle, has public repo toggle; sort: relevance / age / publisher tier; result cards (name, publisher + badge, one-liner, manifest line &quot;4 checks · 1 guard · 4 tasks (monthly) · 6 skills&quot;, publisher tier, updated); pagination</td>
+<td>Left filter rail: category (multi), contains pack content type (rules / skills / checks / guards / tasks), &quot;checks only (no tasks, no skills)&quot;, verified publisher toggle, has public repo toggle; sort: relevance / age / verified first; result cards (name, publisher + verified seal with its source (e.g. google.com), one-liner, manifest line &quot;4 checks · 1 guard · 4 tasks (monthly) · 6 skills&quot;, updated); pagination</td>
 <td>Filter, sort, open pack. URL is the state (crates.io / npm pattern)</td>
 </tr>
 <tr>
@@ -1069,7 +1069,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <p>Raised by the Claudinite alignment review (<code>/mnt/project-files/claudinite/reviews/ui.md</code>). PackServer replaces the engine&#39;s current repo-and-R2 pack serving, so the engine&#39;s layout, channels and <code>packs.sources</code> are prior art, not constraints; <code>cn adopt</code> will adapt to PackServer&#39;s ids.</p>
 <ol start="13">
 <li><strong>Pack ids</strong> (review D1). Settled: scoped <code>@scope/name</code> (owner, 2026-10-22); <code>cn adopt</code> takes PackServer&#39;s ids.</li>
-<li><strong>Publish from a repo vs. upload</strong> (review D2; settled, owner 2026-10-22). Both stay open to every pack, public included. A pack without a public repo is marked down: a &quot;No public repo&quot; marker on cards and the pack page, a Partial trust mark, and a lower pack score once the score ships.</li>
+<li><strong>Publish from a repo vs. upload</strong> (review D2; settled, owner 2026-10-22). Both stay open to every pack, public included. A pack without a public repo is marked down: a &quot;No public repo&quot; marker on cards and the pack page and a lower pack score once the score ships.</li>
 <li><strong>Reputation signals</strong> (review D3; settled, owner 2026-10-22). All stay: stars, 1-5 ratings with reviews, the &quot;Trending&quot; rail and fetch counts, beside the pack score (formula published with it) and section comments and votes in the reader.</li>
 <li><strong>Update timing</strong> (settled, owner 2026-10-22). Not a PackServer concern: PackServer serves a version once it passes validation and shows its publish time; how long a repo waits before taking it is a <code>cn</code> setting the repo owns.</li>
 <li><strong>Private access model</strong> (settled, owner 2026-10-22). An allowlist of GitHub orgs per private pack; <code>cn</code> proves its repo&#39;s org with the GitHub Actions OIDC token, so nothing is stored in CI secrets.</li>
@@ -1077,6 +1077,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <li><strong>Pre-install manifest</strong> (settled, owner 2026-10-22). Every pack page carries it above the README from v1: guards and the tool calls they judge, scheduled tasks and cadence, forced skills, GitHub actions requested. It renders as one bottom-line line with the full list one click away, and a version that widens it is flagged.</li>
 </ol>
 <p>Fees (settled, owner 2026-10-22): $1 per new pack for every publisher, open source included, waived for Verified Publishers ($99/year); new versions are free. Credits are sold through Polar in bundles, the smallest 5 for $5, since a single $1 sale loses money to Polar&#39;s fee.</p>
+<p>Trust tier (settled, owner 2026-10-22): verified publisher or not, nothing finer. A verified pack always shows where its verification comes from (e.g. google.com) so a reader or an agent can apply its own policy; claudinite.com packs are verified.</p>
 <p>Settled: the site is called <strong>Claudinite Packs</strong> (review D4); a person is <em>signed in</em>, never a <em>member</em>, since a Claudinite member is a repo (review D7).</p>
 </article></main>
 </div></div>
