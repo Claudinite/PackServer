@@ -10,6 +10,8 @@ export const LIMITS = {
   files: 5_000,
   /** File content bytes over stored bytes for the archive as a whole. */
   ratio: 100,
+  /** zstd frames in one archive; parallel encoders emit a few hundred, a flood of empty ones is an attack. */
+  frames: 4_096,
   pathDepth: 32,
   pathBytes: 4_096,
   componentBytes: 255,

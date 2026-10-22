@@ -4,7 +4,7 @@ import { ArchiveRefusal, bomb, unsafe } from "./errors.ts";
 import { CANONICAL_ARCHIVE_BYTES, LIMITS } from "./limits.ts";
 import { collisionKey, isArchiveContent, isArchiveName, normalisePath } from "./paths.ts";
 import { TarReader, type TarEntry, type TarSink } from "./tar-reader.ts";
-import { tarOf } from "./tar-writer.ts";
+import { canonicalEntryBytes } from "./tar-writer.ts";
 import { buildTree, type Tree, type TreeFile } from "./tree.ts";
 import { inspectFrames } from "./zstd-frames.ts";
 
@@ -22,12 +22,14 @@ class Collector implements TarSink {
   readonly files: Omit<TreeFile, "sha256" | "size">[] = [];
   readonly dirs: string[] = [];
   contentBytes = 0;
+  /** Size of the canonical tar of what has been seen so far: its two end blocks, and each entry as it will be written. */
+  private canonicalBytes = 1024;
   private current: { path: string; executable: boolean; chunks: Uint8Array[]; head: Uint8Array; seen: number } | null = null;
 
   entry(entry: TarEntry): void {
     const path = normalisePath(entry.path, entry.kind === "dir");
     if (path === "") return;
-    this.register(path, entry.kind);
+    this.register(path, entry.kind, entry.size);
     if (entry.kind === "dir") {
       this.dirs.push(path);
       return;
@@ -63,7 +65,7 @@ class Collector implements TarSink {
     this.files.push({ path: cur.path, executable: cur.executable, content });
   }
 
-  private register(path: string, kind: "file" | "dir"): void {
+  private register(path: string, kind: "file" | "dir", size: number): void {
     const parts = path.split("/");
     for (let i = 1; i <= parts.length; i++) {
       const prefix = parts.slice(0, i).join("/");
@@ -72,6 +74,9 @@ class Collector implements TarSink {
       const existing = this.nodes.get(key);
       if (!existing) {
         this.nodes.set(key, { spelling: prefix, kind: last ? kind : "dir", explicit: last });
+        this.canonicalBytes += canonicalEntryBytes(prefix, !last || kind === "dir", last ? size : 0);
+        // Refused at the first crossing so a small upload never makes us build its enormous canonical form.
+        if (this.canonicalBytes > LIMITS.totalUnpackedBytes) throw bomb("unpacked-size", "canonical form");
         continue;
       }
       if (existing.spelling !== prefix) throw unsafe("path-collision");
@@ -101,38 +106,36 @@ export async function extractArchive(archive: Uint8Array, opts: { canonical?: bo
   const maxContent = archive.length * LIMITS.ratio;
 
   let produced = 0;
-  let start = 0;
-  for (const end of frames) {
-    // A fresh decoder per frame: node's zstd stream drops the bytes that follow a frame's end within one write.
-    const decoder = createZstdDecompress({ params: { [constants.ZSTD_d_windowLogMax]: Math.log2(LIMITS.windowBytes) } });
-    const source = Readable.from(slicesOf(archive.subarray(start, end)), { objectMode: false });
-    source.on("error", () => {});
-    try {
-      source.pipe(decoder);
-      for await (const chunk of decoder as AsyncIterable<Uint8Array>) {
-        produced += chunk.length;
-        if (produced > LIMITS.totalUnpackedBytes) throw bomb("unpacked-size");
-        tar.push(chunk);
-        if (collector.contentBytes > maxContent) throw bomb("ratio");
-      }
-    } catch (e) {
-      if (e instanceof ArchiveRefusal) throw e;
-      throw unsafe("zstd-corrupt");
-    } finally {
-      source.destroy();
-      decoder.destroy();
+  // One decoder, written one frame at a time: node's zstd stream drops what follows a frame's end within one write.
+  const decoder = createZstdDecompress({ params: { [constants.ZSTD_d_windowLogMax]: Math.log2(LIMITS.windowBytes) } });
+  const source = Readable.from(slicesOf(archive, frames), { objectMode: false });
+  source.on("error", () => {});
+  try {
+    source.pipe(decoder);
+    for await (const chunk of decoder as AsyncIterable<Uint8Array>) {
+      produced += chunk.length;
+      if (produced > LIMITS.totalUnpackedBytes) throw bomb("unpacked-size");
+      tar.push(chunk);
+      if (collector.contentBytes > maxContent) throw bomb("ratio");
     }
-    start = end;
+  } catch (e) {
+    if (e instanceof ArchiveRefusal) throw e;
+    throw unsafe("zstd-corrupt");
+  } finally {
+    source.destroy();
+    decoder.destroy();
   }
   if (produced === 0) throw unsafe("tar-empty");
   tar.finish();
 
   const tree = buildTree(collector.files, collector.dirs);
-  // What is accepted must re-pack and re-extract: the canonical tar obeys the same unpacked cap.
-  if (tarOf(tree).length > LIMITS.totalUnpackedBytes) throw bomb("unpacked-size", "canonical form");
   return tree;
 }
 
-function* slicesOf(bytes: Uint8Array): Generator<Uint8Array> {
-  for (let i = 0; i < bytes.length; i += SLICE) yield bytes.subarray(i, i + SLICE);
+function* slicesOf(bytes: Uint8Array, frameEnds: number[]): Generator<Uint8Array> {
+  let start = 0;
+  for (const end of frameEnds) {
+    for (let i = start; i < end; i += SLICE) yield bytes.subarray(i, Math.min(i + SLICE, end));
+    start = end;
+  }
 }

@@ -55,6 +55,16 @@ function splitPath(path: Uint8Array): { prefix: Uint8Array; name: Uint8Array } |
   return null;
 }
 
+const padded = (n: number) => Math.ceil(n / BLOCK) * BLOCK;
+
+/** Bytes one entry occupies in the canonical tar, without building it. */
+export function canonicalEntryBytes(path: string, isDir: boolean, size: number): number {
+  const full = encoder.encode(isDir ? `${path}/` : path);
+  if (splitPath(full)) return BLOCK + padded(size);
+  const record = paxRecord("path", full.subarray(0, isDir ? full.length - 1 : full.length));
+  return BLOCK + padded(record.length) + BLOCK + padded(size);
+}
+
 function* entryBlocks(path: string, isDir: boolean, mode: number, content: Uint8Array): Generator<Uint8Array> {
   const full = encoder.encode(isDir ? `${path}/` : path);
   const split = splitPath(full);

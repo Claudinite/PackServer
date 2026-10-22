@@ -74,6 +74,7 @@ export function inspectFrames(bytes: Uint8Array): number[] {
       pos += 4;
     }
     ends.push(pos);
+    if (ends.length > LIMITS.frames) throw unsafe("zstd-frame-count");
   }
   return ends;
 }

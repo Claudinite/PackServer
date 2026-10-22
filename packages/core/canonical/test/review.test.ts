@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { buildTree, canonicaliseArchive, extractArchive, isCanonical, tarOf, treeHash, LIMITS } from "../index.ts";
+import { buildTree, canonicalEntryBytes, canonicaliseArchive, extractArchive, isCanonical, tarOf, treeHash, LIMITS } from "../index.ts";
 import { pax, rawTar, sparseNoise, zstd, type RawEntry } from "../fixtures.ts";
 import { expectRefused } from "./helpers.ts";
 
@@ -118,5 +118,50 @@ describe("decoding grammar", () => {
   });
   it("accepts a tar of end blocks only as an empty tree", async () => {
     expect((await extractArchive(zstd(new Uint8Array(1024)))).files).toEqual([]);
+  });
+});
+
+describe("hostile inputs stay cheap (REQ-VAL-023)", () => {
+  it("refuses an 8 KB upload whose canonical form would be huge, without building it", async () => {
+    const entries: RawEntry[] = [];
+    for (let i = 0; i < 3500; i++) {
+      const comps = Array.from({ length: 31 }, (_, d) => (d === 0 ? `t${i}-` : `l${d}-`).padEnd(125, "a"));
+      entries.push({ name: "p", type: "x", content: pax({ path: [...comps, "f"].join("/") }) }, file("ignored", ""));
+    }
+    const up = zstd(rawTar(entries), 19);
+    expect(up.length).toBeLessThan(40_000);
+    if (global.gc) global.gc();
+    const before = process.memoryUsage().rss;
+    const started = performance.now();
+    await expectRefused(up, "archive.bomb", "unpacked-size");
+    expect(performance.now() - started).toBeLessThan(3_000);
+    expect(process.memoryUsage().rss - before).toBeLessThan(200 * 1024 * 1024);
+  });
+
+  it("keeps the running canonical size equal to the size of the tar it predicts", () => {
+    const tree = buildTree([
+      ...["a", "b/c", "d".repeat(120) + "/e", Array.from({ length: 10 }, () => "x".repeat(60)).join("/") + "/f"].map((path, i) => ({ path, executable: false, content: text("y".repeat(i * 400)) })),
+    ], ["empty/dir", "q".repeat(130)]);
+    const sum = 1024 + [...tree.dirs.map((p) => canonicalEntryBytes(p, true, 0)), ...tree.files.map((f) => canonicalEntryBytes(f.path, false, f.size))].reduce((a, b) => a + b, 0);
+    expect(sum).toBe(tarOf(tree).length);
+  });
+
+  it("refuses a flood of empty frames cheaply instead of decoding each", async () => {
+    const empty = zstd(new Uint8Array(0));
+    const n = Math.floor((LIMITS.archiveBytes - 2000) / empty.length);
+    const flood = new Uint8Array(n * empty.length);
+    for (let i = 0; i < n; i++) flood.set(empty, i * empty.length);
+    const up = join(flood, zstd(rawTar([file("a")])));
+    const started = performance.now();
+    await expectRefused(up, "archive.unsafe", "zstd-frame-count");
+    expect(performance.now() - started).toBeLessThan(1_000);
+  });
+
+  it("still reads many ordinary frames in one decoder", async () => {
+    const big = rawTar(Array.from({ length: 40 }, (_, i) => ({ name: `f${i}`, content: sparseNoise(900, i + 5) })));
+    const frames: Uint8Array[] = [];
+    for (let i = 0; i < big.length; i += 700) frames.push(zstd(big.subarray(i, i + 700)));
+    expect(frames.length).toBeGreaterThan(50);
+    expect((await extractArchive(join(...frames))).files).toHaveLength(40);
   });
 });
