@@ -135,16 +135,17 @@ the expected file, shown on the publisher's dashboard and in the email, never on
 
 ## REQ-PUB-012 Mint scoped, restricted, time-limited API tokens
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH §5.2; FLOW 2; FLOW 10 C
-- conflict: CONFLICT-4
+- source: ARCH §5.2; FLOW 2; FLOW 10 C; Ariel 2026-10-22 (CONFLICT-4 resolved)
 - coverage: scenario
 
 A publisher can mint an API token (step-up, browser only) with granular scopes (`publish:new`,
-`publish:update`, `yank`, `manage`, read), restricted to a pack or scope, default 7-day and
-maximum 90-day lifetime, optional CIDR allowlist; the token is shown once.
+`publish:update`, `yank`, `manage`, read), restricted to a pack or scope, default 7-day lifetime, optional CIDR allowlist; the token is
+shown once. A token with any publish, yank or manage scope (`pks_`) lives at most 90 days; a
+read-only token (`psr_`, for agents reading private packs) lives at most 1 year. A longer
+lifetime is refused at minting.
 
 ## REQ-PUB-013 A token is honoured only within its scopes, restriction and CIDR
 
