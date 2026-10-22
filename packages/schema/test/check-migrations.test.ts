@@ -78,28 +78,28 @@ describe("check-migrations", () => {
     ["RENAME", "ALTER TABLE packs RENAME TO packs2;"],
     ["NOT NULL", "ALTER TABLE packs ADD COLUMN extra text NOT NULL;"],
   ])("rejects %s without a contract marker", (_label, sql) => {
-    const r = run({ ...base, "20260102000000_tokens_change.sql": sql });
+    const r = run({ ...base, "20260102000000_foundation_change.sql": sql });
     expect(r.ok).toBe(false);
     expect(r.out).toMatch(/contract-of/);
   });
 
   it("accepts a NOT NULL column that has a default", () => {
-    expect(run({ ...base, "20260102000000_tokens_change.sql": "ALTER TABLE packs ADD COLUMN extra text NOT NULL DEFAULT 'x';" }).ok).toBe(true);
+    expect(run({ ...base, "20260102000000_foundation_change.sql": "ALTER TABLE packs ADD COLUMN extra text NOT NULL DEFAULT 'x';" }).ok).toBe(true);
   });
 
   it("accepts a contract naming an earlier expand and rejects one naming a missing file", () => {
-    const expand = { "20260102000000_packs_expand.sql": "ALTER TABLE packs ADD COLUMN slug text;" };
-    expect(run({ ...base, ...expand, "20260103000000_packs_contract.sql": `-- contract-of: 20260102000000_packs_expand.sql\nALTER TABLE packs DROP COLUMN id;` }).ok).toBe(true);
-    expect(run({ ...base, ...expand, "20260103000000_packs_contract.sql": `-- contract-of: 20260101999999_packs_expand.sql\nALTER TABLE packs DROP COLUMN id;` }).ok).toBe(false);
+    const expand = { "20260102000000_foundation_expand.sql": "ALTER TABLE packs ADD COLUMN slug text;" };
+    expect(run({ ...base, ...expand, "20260103000000_foundation_contract.sql": `-- contract-of: 20260102000000_foundation_expand.sql\nALTER TABLE packs DROP COLUMN id;` }).ok).toBe(true);
+    expect(run({ ...base, ...expand, "20260103000000_foundation_contract.sql": `-- contract-of: 20260101999999_foundation_expand.sql\nALTER TABLE packs DROP COLUMN id;` }).ok).toBe(false);
   });
 
   it("rejects a contract marker on a migration that is safe", () => {
-    const r = run({ ...base, "20260102000000_packs_expand.sql": "-- contract-of: 20260101000000_foundation_tables.sql\nALTER TABLE packs ADD COLUMN slug text;" });
+    const r = run({ ...base, "20260102000000_foundation_expand.sql": "-- contract-of: 20260101000000_foundation_tables.sql\nALTER TABLE packs ADD COLUMN slug text;" });
     expect(r.ok).toBe(false);
   });
 
   it("accepts the NOT NULL DEFAULT order Drizzle writes", () => {
-    expect(run({ ...base, "20260102000000_packs_change.sql": "ALTER TABLE `packs` ADD `n` integer DEFAULT 0 NOT NULL;" }).ok).toBe(true);
+    expect(run({ ...base, "20260102000000_foundation_change.sql": "ALTER TABLE `packs` ADD `n` integer DEFAULT 0 NOT NULL;" }).ok).toBe(true);
   });
 
   it("counts a trigger as a reference", () => {
@@ -110,6 +110,33 @@ describe("check-migrations", () => {
     });
     expect(r.ok).toBe(false);
     expect(r.out).toMatch(/cross-area/);
+  });
+
+  it.each([
+    ["AFTER UPDATE ON", "CREATE TRIGGER t AFTER UPDATE ON tokens BEGIN SELECT 1; END;"],
+    ["AFTER UPDATE OF col ON", "CREATE TRIGGER t AFTER UPDATE OF n ON tokens BEGIN SELECT 1; END;"],
+  ])("does not read trigger keywords as tables: %s", (_label, trigger) => {
+    const r = run({ ...base, "20260102000000_tokens_create.sql": "CREATE TABLE tokens (id text, n text);", "20260103000000_tokens_trigger.sql": trigger });
+    expect(r).toEqual({ ok: true, out: "" });
+  });
+
+  it("rejects a non-foundation migration that alters a foundation table, and lets a later foundation file alter it", () => {
+    const alter = "ALTER TABLE packs ADD COLUMN extra text;";
+    expect(run({ ...base, "20260102000000_tokens_change.sql": alter }).out).toMatch(/foundation tables are altered only by foundation/);
+    expect(run({ ...base, "20260102000000_foundation_more.sql": alter }).ok).toBe(true);
+  });
+
+  it("requires the contract's expand to have touched the same table", () => {
+    const files = {
+      ...base,
+      "20260102000000_foundation_expand.sql": "ALTER TABLE packs ADD COLUMN slug text;",
+      "20260103000000_foundation_other.sql": "ALTER TABLE users ADD COLUMN nick text;",
+    };
+    const contract = (target: string) => `-- contract-of: ${target}\nALTER TABLE packs DROP COLUMN slug;`;
+    expect(run({ ...files, "20260104000000_foundation_contract.sql": contract("20260102000000_foundation_expand.sql") }).ok).toBe(true);
+    const r = run({ ...files, "20260104000000_foundation_contract.sql": contract("20260103000000_foundation_other.sql") });
+    expect(r.ok).toBe(false);
+    expect(r.out).toMatch(/did not touch packs/);
   });
 
   it("allows cross-area references only to users, scopes, packs and pack_versions", () => {
@@ -126,12 +153,12 @@ describe("check-migrations", () => {
     expect(r.out).toMatch(/first foundation/);
   });
 
-  it("names an earlier non-foundation, non-contract expand as the contract target", () => {
-    const expand = { "20260102000000_packs_expand.sql": "ALTER TABLE packs ADD COLUMN slug text;" };
+  it("names an earlier expand, not the table-creating foundation file or a contract as the contract target", () => {
+    const expand = { "20260102000000_foundation_expand.sql": "ALTER TABLE packs ADD COLUMN slug text;" };
     const contract = (target: string) => `-- contract-of: ${target}\nALTER TABLE packs DROP COLUMN id;`;
-    expect(run({ ...base, ...expand, "20260103000000_packs_contract.sql": contract(FOUNDATION) }).ok).toBe(false);
-    const files = { ...base, ...expand, "20260103000000_packs_contract.sql": contract("20260102000000_packs_expand.sql") };
-    expect(run({ ...files, "20260104000000_packs_again.sql": contract("20260103000000_packs_contract.sql") }).ok).toBe(false);
+    expect(run({ ...base, ...expand, "20260103000000_foundation_contract.sql": contract(FOUNDATION) }).ok).toBe(false);
+    const files = { ...base, ...expand, "20260103000000_foundation_contract.sql": contract("20260102000000_foundation_expand.sql") };
+    expect(run({ ...files, "20260104000000_foundation_again.sql": contract("20260103000000_foundation_contract.sql") }).ok).toBe(false);
   });
 
   describe("Drizzle table rebuilds", () => {

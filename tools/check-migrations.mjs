@@ -9,6 +9,8 @@ const FOUNDATION = "foundation";
 // The only tables another area's migration may reference.
 const CROSS_AREA_TARGETS = ["users", "scopes", "packs", "pack_versions"];
 const NAME = /^(\d{14})_([a-z][a-z0-9-]*)_([a-z0-9_]+)\.sql$/;
+// Keywords the loose from/into/update patterns pick up, e.g. `AFTER UPDATE ON t`, `UPDATE OF c ON t`.
+const SQL_WORDS = ["set", "select", "on", "of"];
 const INTERNAL = /^(sqlite_|_cf_|d1_migrations$|__new_)/;
 const problems = [];
 
@@ -22,6 +24,8 @@ const REFERENCE_PATTERNS = [
   new RegExp(`\\b(?:from|join|into|update)\\s+${ident}`, "gi"),
 ];
 const CREATED = new RegExp(`\\bcreate\\s+(?:virtual\\s+)?table\\s+(?:if\\s+not\\s+exists\\s+)?${ident}`, "gi");
+const ALTERED = new RegExp(`\\balter\\s+table\\s+${ident}`, "gi");
+const DROPPED = new RegExp(`\\bdrop\\s+table\\s+(?:if\\s+exists\\s+)?${ident}`, "gi");
 const RENAMED_TO = new RegExp(`\\brename\\s+to\\s+${ident}`, "gi");
 const close = "[`\"\\]]?";
 const REBUILD_RENAME = new RegExp(`^\\s*alter\\s+table\\s+${ident}${close}\\s+rename\\s+to\\s+${ident}${close}\\s*$`, "i");
@@ -70,13 +74,14 @@ function rebuildStatements(sql, files, index) {
     const rename = REBUILD_RENAME.exec(s);
     return !(rename && /^__new_/i.test(rename[1]));
   });
-  return { rest, dropped };
+  return { rest, dropped, rebuilt };
 }
 
 const files = migrationFiles(dir);
 const seenPrefix = new Map();
 const created = new Map(); // table -> area
 const isContract = new Map();
+const touched = new Map(); // file -> tables it creates or references
 let firstFoundation = null;
 
 files.forEach((file, index) => {
@@ -102,17 +107,22 @@ files.forEach((file, index) => {
   const referenced = new Set();
   for (const re of REFERENCE_PATTERNS) for (const t of matches(re, sql)) referenced.add(t);
   for (const t of referenced) {
-    if (own.has(t) || INTERNAL.test(t) || t === "set" || t === "select") continue;
+    if (own.has(t) || INTERNAL.test(t) || SQL_WORDS.includes(t)) continue;
     const owner = created.get(t);
     if (owner === undefined) problems.push(`${file}: references table ${t}, which no earlier migration created`);
     else if (owner !== area && !(owner === FOUNDATION && CROSS_AREA_TARGETS.includes(t)))
       problems.push(`${file}: references ${t} from area ${owner}; cross-area references point only at ${CROSS_AREA_TARGETS.join(", ")}`);
   }
 
+  touched.set(file, new Set([...own, ...referenced]));
+  for (const t of matches(ALTERED, sql)) {
+    if (area !== FOUNDATION && created.get(t) === FOUNDATION)
+      problems.push(`${file}: alters foundation table ${t}; foundation tables are altered only by ${FOUNDATION} migrations`);
+  }
   for (const t of own) if (!created.has(t)) created.set(t, area);
   for (const t of matches(RENAMED_TO, sql)) if (!created.has(t)) created.set(t, area);
 
-  const { rest, dropped } = rebuildStatements(sql, files, index);
+  const { rest, dropped, rebuilt } = rebuildStatements(sql, files, index);
   const unsafe = dropped.map((c) => `DROP COLUMN ${c} (table rebuild)`);
   for (const [re, label, applies] of UNSAFE)
     if (rest.some((stmt) => re.test(stmt) && (applies?.(stmt) ?? true))) unsafe.push(label);
@@ -123,10 +133,14 @@ files.forEach((file, index) => {
     if (!marker) problems.push(`${file}: ${unsafe.join(", ")} breaks the running Worker; make it a contract migration with "-- contract-of: <earlier expand>.sql"`);
     else {
       const target = marker[1];
-      const targetArea = NAME.exec(target)?.[2];
       if (!files.slice(0, index).includes(target)) problems.push(`${file}: contract-of ${target} is not an earlier migration`);
-      else if (targetArea === FOUNDATION) problems.push(`${file}: contract-of ${target} is a foundation migration, not an expand`);
+      else if (target === firstFoundation) problems.push(`${file}: contract-of ${target} creates the foundation tables, it is not an expand`);
       else if (isContract.get(target)) problems.push(`${file}: contract-of ${target} is itself a contract`);
+      else {
+        const changed = [...matches(ALTERED, sql), ...matches(DROPPED, sql), ...rebuilt].filter((t) => !INTERNAL.test(t));
+        if (!changed.some((t) => touched.get(target)?.has(t)))
+          problems.push(`${file}: contract-of ${target}, which did not touch ${[...new Set(changed)].join(", ")}`);
+      }
     }
   } else if (marker) {
     problems.push(`${file}: marked contract-of but contains nothing a running Worker cannot survive`);
