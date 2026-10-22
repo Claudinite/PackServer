@@ -100,10 +100,12 @@ function openBrowser(url) {
   execFile(cmd, args, () => {});
 }
 
+// Resolves null when stdin closes before an answer; throws when there is no terminal to ask.
 const defaultPrompt = async (question) => {
+  if (!process.stdin.isTTY) throw new Error("stdin is not a terminal");
   const rl = createInterface({ input: process.stdin, output: process.stderr });
   try {
-    return await rl.question(question);
+    return await Promise.race([rl.question(question), new Promise((resolve) => rl.once("close", () => resolve(null)))]);
   } finally {
     rl.close();
   }
@@ -124,15 +126,24 @@ async function storeAll({ store, items, comment, out, err, prompt, appUrl, appId
       }
     }
     if (!failed.length) return [];
-    const answer = (await prompt(`${failed.length} secret(s) not stored (${failed.map((f) => f.name).join(", ")}). Press Enter to retry, or type abort: `)).trim().toLowerCase();
-    if (answer === "abort") {
+    let answer;
+    try {
+      answer = await prompt(`${failed.length} secret(s) not stored (${failed.map((f) => f.name).join(", ")}). Press Enter to retry, or type abort: `);
+    } catch {
+      answer = null;
+    }
+    // No terminal or a closed stdin cannot retry, so it ends like an abort.
+    if (answer === null || answer === undefined || answer.trim().toLowerCase() === "abort") {
       err(
         `GitHub will not show these again, but they can be regenerated: open ${appUrl} and generate a new client secret, private key and webhook secret, then store ${failed.map((f) => f.name).join(", ")} yourself. ` +
           `The App ID (${appId}) and client ID (${clientId}) are public and were not lost.`,
       );
       return failed.map((f) => f.name);
     }
-    pending = failed;
+    // A write whose reply was lost may have landed; do not retry what is already stored.
+    const stored = await store.listNames();
+    pending = failed.filter((f) => !stored.has(f.name));
+    if (!pending.length) return [];
   }
 }
 

@@ -87,6 +87,9 @@ export function createSecretsStore({ fetch: fetchImpl, accountId, token, storeId
       } catch (e) {
         if (!isRetryable(e) || attempt >= retryDelaysMs.length) throw e;
         await sleep(retryDelaysMs[attempt]);
+        // The failed attempt may have been applied with its reply lost; a retry would then
+        // be refused as a duplicate and reported as a failure.
+        if ((await listNames()).has(name)) return;
       }
     }
   }

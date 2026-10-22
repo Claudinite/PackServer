@@ -3,18 +3,19 @@ import { buildManifest, main, renderForm } from "./github-app-manifest.mjs";
 
 const ENV = { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" };
 
-function fakes({ existing = [], accounts = [{ id: "acct" }], failWrites = 0, failProbe = false, slug = "claudinite-packs" } = {}) {
+function fakes({ existing = [], accounts = [{ id: "acct" }], failWrites = 0, failProbe = false, loseReplyOn, slug = "claudinite-packs" } = {}) {
   const created = [];
   const deleted = [];
   const calls = [];
   let writeFailuresLeft = failWrites;
+  let replyLost = false;
   const fetch = async (url, init = {}) => {
     calls.push(`${init.method ?? "GET"} ${url}`);
     const json = (status, body) => ({ ok: status < 400, status, json: async () => body });
     if (url.endsWith("/client/v4/accounts")) return json(200, { success: true, result: accounts });
     if (url.endsWith("/secrets_store/stores")) return json(200, { success: true, result: [{ id: "s" }] });
     if (url.includes("/secrets?page=")) {
-      const names = [...existing, ...created.filter((c) => c.name.startsWith("PACKSERVER_WRITE_PROBE_") && !deleted.includes(c.name)).map((c) => c.name)];
+      const names = [...existing, ...created.filter((c) => !deleted.includes(c.name)).map((c) => c.name)];
       return json(200, { success: true, result: names.map((name) => ({ name, id: `id-${name}` })), result_info: { total_pages: 1 } });
     }
     if (init.method === "DELETE") {
@@ -30,6 +31,10 @@ function fakes({ existing = [], accounts = [{ id: "acct" }], failWrites = 0, fai
         return json(503, { success: false, errors: [{ code: 1, message: "unavailable" }] });
       }
       created.push(item);
+      if (item.name === loseReplyOn && !replyLost) {
+        replyLost = true;
+        throw new Error("connection reset after the write");
+      }
       return json(200, { success: true, result: [] });
     }
     if (url.includes("/app-manifests/") && url.endsWith("/conversions")) {
@@ -211,5 +216,36 @@ describe("github-app-manifest.mjs", () => {
     expect(status).toBe(421);
     await globalThis.fetch(`${base}/callback?code=c1&state=state123`);
     expect(await d.done).toBe(0);
+  });
+
+  it("does not recreate or report as failed a write whose reply was lost", async () => {
+    const f = fakes({ loseReplyOn: "GITHUB_APP_CLIENT_SECRET" });
+    const d = await drive(["--env", "production"], { fetch: f.fetch, prompt: async () => { throw new Error("unexpected prompt"); } });
+    const base = (await waitFor(() => d.getOpened())).replace(/\/$/, "");
+    await globalThis.fetch(`${base}/callback?code=c1&state=state123`);
+    expect(await d.done).toBe(0);
+    expect(f.created.filter((c) => c.name === "GITHUB_APP_CLIENT_SECRET")).toHaveLength(1);
+  });
+
+  it("drops names that already exist before a prompted retry round", async () => {
+    const f = fakes({ failWrites: 4, loseReplyOn: "GITHUB_APP_ID" });
+    const prompts = [];
+    const d = await drive(["--env", "production"], { fetch: f.fetch, prompt: async (q) => (prompts.push(q), "") });
+    const base = (await waitFor(() => d.getOpened())).replace(/\/$/, "");
+    await globalThis.fetch(`${base}/callback?code=c1&state=state123`);
+    expect(await d.done).toBe(0);
+    expect(f.created.filter((c) => c.name === "GITHUB_APP_ID").length).toBe(1);
+  });
+
+  it("ends with the regeneration guidance when stdin is closed or not a terminal", async () => {
+    for (const prompt of [async () => { throw new Error("stdin is not a terminal"); }, async () => null]) {
+      const f = fakes({ failWrites: 1000 });
+      const d = await drive(["--env", "production"], { fetch: f.fetch, prompt });
+      const base = (await waitFor(() => d.getOpened())).replace(/\/$/, "");
+      await globalThis.fetch(`${base}/callback?code=c1&state=state123`);
+      expect(await d.done).toBe(1);
+      expect(d.err.join("\n")).toContain("regenerate");
+      expect(d.err.join("\n")).not.toContain("failed: ");
+    }
   });
 });
