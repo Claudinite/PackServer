@@ -94,17 +94,18 @@ after that it is refunded automatically.
 A chargeback yanks the version, flags the publisher, and further publishes by that account
 require manual review.
 
-## REQ-PAY-009 Verified Publishers publish without credits
+## REQ-PAY-009 Verified Publisher status costs $99 a year and covers publishing
 
-- status: provisional
+- status: active
 - since: 2026-10
-- actor: publisher
-- source: ARCH §9
-- decision: ARCH-Q 2
-- conflict: CONFLICT-5
+- actor: publisher / org owner
+- source: Ariel 2026-10-22 (CONFLICT-5 resolved); ARCH §9 (to be updated)
 - coverage: scenario
 
-Verified Publishers publish new public packs without consuming credits.
+Verified Publisher status is an annual $99 USD subscription. While it is paid up, the scope
+publishes new public packs without consuming per-pack credits. When the subscription lapses,
+the Verified Publisher badge is removed and new packs need credits again; packs already
+published stay published.
 
 ## REQ-PAY-010 Private packs need an active subscription within plan limits
 
