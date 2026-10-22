@@ -149,7 +149,7 @@ verdict. Results are written by the registry, never by the sandbox.
 - since: 2026-10
 - actor: system
 - source: ARCH §6 step 4; ARCH-VAL §6
-- decision: ARCH-Q 3
+- decision: ARCH-Q 3; ARCH-SCORE (whether the LLM screens stay at all)
 - coverage: scenario
 
 An LLM review runs only after every cheaper step has passed and a credit has been reserved (or the
@@ -462,7 +462,7 @@ produce byte-identical canonical archives offline with the engine's canonicalise
 - since: 2026-10
 - actor: publisher
 - source: ARCH-VAL §6, §3.6
-- decision: ARCH-Q 3
+- decision: ARCH-Q 3; ARCH-SCORE (whether the LLM screens stay at all)
 - coverage: scenario
 
 Every LLM finding carries a rule id, severity, file, line and a quote from the archive; the
@@ -477,7 +477,7 @@ admins can see in the report.
 - since: 2026-10
 - actor: publisher (security)
 - source: ARCH-VAL §6, §3.6, §1 T13
-- decision: ARCH-Q 3
+- decision: ARCH-Q 3; ARCH-SCORE (whether the LLM screens stay at all)
 - coverage: scenario+contract (the scenario proves the hold and the separation of calls through the LLM port's recorded requests; the delimiter contract is a contract test on the port)
 
 Pack content is passed to the reviewer inside delimiters carrying a per-run random nonce and
@@ -491,7 +491,7 @@ reviewing this") holds the version by itself, and that hold never resolves by ti
 - since: 2026-10
 - actor: system
 - source: ARCH-VAL §6, §3.6
-- decision: ARCH-Q 3; ARCH-VAL §7-4 (the accepted spend for two screens)
+- decision: ARCH-Q 3; ARCH-VAL §7-4 (the accepted spend for two screens); ARCH-SCORE (whether the LLM screens stay at all)
 - coverage: scenario
 
 Two independent screening reviews with different framings run on every version that reaches the
@@ -505,7 +505,7 @@ never partially reviewed.
 - since: 2026-10
 - actor: publisher
 - source: ARCH-VAL §6, §3.7, §4 step 11
-- decision: ARCH-Q 3
+- decision: ARCH-Q 3; ARCH-SCORE (whether the LLM screens stay at all)
 - coverage: scenario
 
 When the deep review finds the version malicious with high confidence and every quoted piece of
@@ -532,7 +532,7 @@ setting.
 - since: 2026-10
 - actor: publisher
 - source: ARCH-VAL §6, §4 steps 9 and 14; ARCH §9
-- decision: SITE-D 3 (the same decision as REQ-PAY-003)
+- decision: SITE-D 3 (the same decision as REQ-PAY-003); ARCH-SCORE (whether the LLM screens stay at all)
 - coverage: scenario
 
 For a new public pack a credit is reserved, not consumed, before the LLM step runs, and consumed

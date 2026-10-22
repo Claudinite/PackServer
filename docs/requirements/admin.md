@@ -62,10 +62,11 @@ previous holder is renamed and notified.
 
 ## REQ-ADMIN-006 Admins see full validation reports and LLM reviews
 
-- status: active
+- status: provisional
 - since: 2026-10
 - actor: admin
 - source: ARCH §7 (validation-reports)
+- decision: ARCH-SCORE (whether the LLM screens stay at all)
 - coverage: scenario
 
 An admin can view the full validation report and LLM review of any version.

@@ -16,6 +16,7 @@ The entries were derived on 2026-10-22 from the v0 design documents. They are no
 | release plan §n | `docs/release/README.md`, section n; §5 is the self-test contract behind REQ-OPS-005..011 | PR #8, unmerged |
 | SEC | the security review of the test plan, 2026-10-22; see "Entries from the security review" below | the one source that is not a design document |
 | ARCH-VAL §n | `docs/architecture/validation.md`, section n: the architecture thread's review of the validation flow (2026-10-22). §6 is its list of testable statements; §7 its five open decisions, cited as `ARCH-VAL §7-1`..`§7-5`; see "Entries from the validation-flow review" below | PR #3 (architecture), commit `a82d7fd`, unmerged |
+| ARCH-SCORE | `docs/architecture/pack-score.md`: the code-only pack score (0–100) and Ariel's "no agentic scans" direction (2026-10-22); whether the two single-shot LLM screens stay is an open decision | PR #3 (architecture), commit `b69215b`, unmerged |
 
 Until those PRs merge the citations are to documents this branch cannot link; the links are left as plain text on purpose so the reference-integrity check does not flag them.
 
@@ -58,7 +59,7 @@ One file per area, in the order a user meets them:
 | [telemetry.md](telemetry.md) | `REQ-TELEM` | 7 | counters and the dashboard |
 | [operations.md](operations.md) | `REQ-OPS` | 11 | synthetic scopes, probes, the self-test contract, the production configuration |
 
-260 entries: 197 derived from the design documents (44 of them provisional, 2 retired), 29 from the security review (one provisional), 7 from the release plan's self-test contract and 27 from the validation-flow review (22 provisional). 191 are active, 67 provisional and 2 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. (The totals were recounted from the files on 2026-10-22 when the validation-flow entries were added; the earlier text understated the design-derived count by two.)
+260 entries: 197 derived from the design documents (44 of them provisional, 2 retired), 29 from the security review (one provisional), 7 from the release plan's self-test contract and 27 from the validation-flow review (22 provisional). 190 are active, 68 provisional and 2 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. (The totals were recounted from the files on 2026-10-22 when the validation-flow entries were added; the earlier text understated the design-derived count by two.)
 
 ## Entry format
 
@@ -193,6 +194,7 @@ Provisional entries name `ARCH-Q n` (architecture §15, questions 1–11), `SITE
 | ARCH-VAL §7-3 (revocation split: `revoked` with a security reason disables the executable surface in cn, every other status only reports; ARCH-Q 7) | REQ-DELIV-018, REQ-VAL-018 (who may revoke) | what the cn repo handle observes after a revocation |
 | ARCH-VAL §7-4 (tiers canon / community / third-party per version; uncertainty holds time out to third-party after 7 days; two independent screens; reopens ARCH-Q 10) | REQ-VAL-010 (which tier a missing fixture holds), 013, 036, 041, 042, REQ-SEARCH-019, REQ-DELIV-019 | tier fields in the index and views, the queue timeout, the cooldown table, default search exclusions |
 | ARCH-VAL §7-5 (serve a canonical re-pack instead of the uploaded bytes; attestation over both hashes; cn accepts canonical form only) | REQ-VAL-033, REQ-VAL-042 (the hashes shown), REQ-PUB-021, REQ-DELIV-001, REQ-DELIV-017 | which bytes and hashes the download, index and attestation scenarios assert |
+| ARCH-SCORE (whether the LLM screens stay at all, after Ariel asked for no agentic scans and a code-only pack score) | REQ-VAL-012, 034, 035, 036, 037, 039, REQ-ADMIN-006 | whether any scenario scripts the LLM fake; the pack-score requirements arrive from the architecture thread once Ariel decides |
 
 The ARCH-VAL items reopen four architecture questions the register already names (ARCH-Q 7, 8, 9, 10); an entry provisional on both keeps both in `decision:` so either landing is visible.
 
