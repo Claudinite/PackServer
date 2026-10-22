@@ -1,0 +1,14 @@
+{
+  "version": "2026.10.1",
+  "parts": {
+    "context_cost": 25,
+    "skill_structure": 25,
+    "checks": 20,
+    "source": 15,
+    "footprint": 15
+  },
+  "caps": {
+    "published_advisory": 40,
+    "no_public_repo": 70
+  }
+}
