@@ -220,6 +220,8 @@ The full design, threat model and rationale are in [validation.md](validation.md
 
 Steps 2–8 are also a free **dry-run** endpoint and a GitHub Action, and run offline in `cn pack lint`, using the same `core` rule module, so CI and the registry never disagree. Steps 1–8 cost nothing and fail in minutes, so almost every rejected upload never reaches a model. LLM review is about $0.006 per version for the two screens plus $0.07 for the ~10% that get a deep review: roughly $520 a month at 40k versions. Human moderation of holds is not priced.
 
+No step is agentic: model calls are single requests with no tools and a fixed JSON answer, and code makes every decision. The **pack score** (0–100, computed by code from the same tree, no model) is defined in [pack-score.md](pack-score.md).
+
 **Cooldown for agents:** MCP search and cn update checks default to versions older than 24 hours (Verified Publishers) or 72 hours (others); third-party-tier versions are never proposed automatically.
 
 ## 7. Delivery from R2

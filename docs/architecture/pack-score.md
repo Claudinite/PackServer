@@ -1,0 +1,97 @@
+# Pack score and validation without agentic scans (2026-10-22)
+
+Ariel asked two things: how validation works end to end, with no agentic scans, and for a "pack score" computed from our measurements and Anthropic's guidelines. This doc answers both. The pipeline itself is in [validation.md](validation.md) §4 and ARCH §6.
+
+## 1. Validation, end to end
+
+Nothing in the pipeline is an agent. Nothing gets tools, a loop or the ability to fetch, run or decide what to look at next. Each step is either deterministic code or a single model call that returns a fixed JSON shape.
+
+| Stage | What it does | How |
+|---|---|---|
+| Upload checks | Size ≤ 3 MB, hash, format, credit or Verified Publisher | Worker code |
+| Unpack | Bounded streaming extraction; a bomb or unsafe path fails immediately | Sandbox code, no network |
+| Read the pack | Manifest schema, real inventory, names, hidden characters, secrets, URLs, extracted capabilities, MCP pins | Sandbox code (the `core` rule module, also in `cn pack lint`) |
+| Run the pack | The pinned cn engine loads it, and every check runs on its firing and silent fixtures; any network egress not declared fails it | Sandbox, no internet |
+| Measure | The pack score (§2), from the same tree | Sandbox code |
+| Prose screen | Two single-shot Haiku classification calls over the text, with structured output and quotes verified against the files | One request each, no tools (optional, see §3) |
+| Verdict | Fail, hold or warn, by rule class; tier | Worker code |
+| Human | Only holds; about 10 a day | Admin app |
+| Publish | Passkey approval if staged, then the canonical re-pack is served | Worker |
+
+Every public pack is readable after publishing. Its files are listed and rendered on the pack page next to the validation report, the capabilities and the score. Section comments and voting are being designed in the UI thread.
+
+## 2. Pack score
+
+### Principles
+
+- **Measured, not judged.** Every input is a number or a yes/no that code extracts from the canonical tree, the provenance record or cn telemetry. No model contributes to the score, so it is reproducible: `cn pack lint` prints the same score before upload.
+- **Versioned.** The rules carry a version. A rule change recomputes the score for every latest version and shows "score rules v3".
+- **Quality, not safety.** Safety is the verdict and the tier. A pack can score low and be perfectly safe. The score feeds ranking but never hides a pack.
+- **Fixable.** Each lost point names the file and the fix, so the score works as a lint report for publishers.
+
+### Shape
+
+A score from 0 to 100 in a ring, made of five parts. The page shows the ring and the single biggest improvement. The breakdown opens on hover or click.
+
+| Part | Weight | What it measures |
+|---|---|---|
+| Context cost | 25 | Tokens the pack costs the agent: always-loaded text (every skill's name and description, agent and command frontmatter) plus per-skill body size |
+| Skill structure | 25 | Anthropic's Agent Skills authoring guidance |
+| Checks | 20 | Declarative checks vs coded ones, fixtures, and how often checks fire |
+| Provenance | 15 | Source repo, commit binding, trusted publishing |
+| Footprint | 15 | Capabilities requested, pinned dependencies, network domains |
+
+### Rules, first version
+
+Thresholds are starting points, to be tuned once we've measured real packs (the canon packs first).
+
+**Context cost (25)**
+- Always-loaded tokens per pack: full marks up to 1,000 tokens, zero at 5,000. Every skill's description sits in the agent's context in every session, so this is the cost every user pays.
+- Skill body (SKILL.md without frontmatter): up to 500 lines gets full marks, per Anthropic's guidance. Points drop to zero at 1,000 lines, and the worst skill counts.
+- Total body tokens per skill above 5,000: lose points unless the excess has moved to reference files that load on demand.
+- Duplicate text across skills (the same paragraph in several SKILL.md files) loses points.
+
+**Skill structure (25)**, from Anthropic's Agent Skills best practices:
+- `name` is lowercase letters, digits and hyphens, at most 64 characters, and contains no reserved words.
+- `description` is present, at most 1,024 characters, written in the third person, and says both what the skill does and when to use it (the "Use when…" clause the agent relies on to load the skill by itself).
+- Reference files are linked directly from SKILL.md (one level deep, not chains), and any reference file over 100 lines starts with a table of contents.
+- No Windows-style paths, and no time-sensitive wording ("after August 2025").
+- Self-loading: every skill can be reached without the user naming it. Either its description has a trigger clause, or a command or agent in the pack references it. A pack with many skills and none reachable loses most of this part.
+- Scripts the skill runs are in the pack, executable, and referenced by relative path.
+
+**Checks (20)**
+- Prefer declared checks. A check declared in `hooks.json` with a pattern, path rule or matcher scores fully. A check that runs a script scores less, because people can't read it at a glance and it needs the `exec:check` capability. The part scores the share of declared checks, and a pack with no checks scores neutral, not zero.
+- Fixtures: every check ships a firing and a silent fixture, and both pass in the sandbox.
+- Fire rate (once cn reports it): a check that fires in nearly every session, or never in 90 days, loses points. Neither is a useful guard.
+
+**Provenance (15)**
+- Linked public source repo whose tree matches the pack path: 6.
+- Version bound to a commit SHA that cn or the page can show: 5.
+- Published through GitHub trusted publishing (OIDC) rather than a manual upload: 4.
+
+**Footprint (15)**
+- Starts at 15 and loses points per capability beyond prose: `exec:*`, `mcp:local-process`, `network:*` and `env:reads-secrets` cost the most.
+- Every MCP package must be exact-pinned with an integrity hash. Anything less is a validation failure, so it never reaches the score.
+- Each declared network domain costs a little, so a pack declaring 10 domains scores lower than one declaring 1.
+
+### Caps
+
+As Socket does, some facts cap the score regardless of the rest: an open security report caps it at 40, a third-party tier at 60, and a warned check (missing fixture) at 80. The cap is shown as the reason ("capped: open security report").
+
+### Where it lives
+
+- The score is computed in the sandbox step after load-and-prove and stored in `meta.json`, with each rule's points. It also goes into D1 as one integer for sorting and filtering.
+- It is shown on the pack page (ring), in search results (small number), over MCP (`score` plus the parts, so agents can apply their own thresholds), and in `cn pack lint` and the dry-run report.
+- Ranking (ARCH §10) uses the score as its quality input in place of the "health" term.
+
+### Open points
+
+- The thresholds above need a pass over the canon packs before launch so that good packs we already trust score 80 or more.
+- "Anthropic guidelines" means the Agent Skills best practices for now. When Anthropic publishes guidance for plugins, hooks or agents, the matching rules are added under a new rules version.
+- Whether to show a score for packs with fewer than 30 days of cn telemetry (the fire-rate rule) or mark that rule "not enough data". Proposed: the latter.
+
+## 3. The one model call that remains
+
+The prose screen in §1 is the only place a model sees pack content. It is not agentic: one request, the pack text as delimited data, no tools, a fixed JSON answer, and code decides the verdict. Its job is the threat the deterministic rules handle worst: plain-language instructions that steer the agent (exfiltrate secrets, disable checks, address the reviewer). Without it those packs are caught only by the URL, secret and capability rules, by community reports, and by human review of holds.
+
+If Ariel wants no model at all, the pipeline still works. The two screens and the Sonnet step are removed, and in their place every first publish of a pack with any capability beyond prose is held for a human, and prose-only packs publish at the third-party tier until they gain reports-free age (proposed 14 days) or a human review. That saves about $520 a month at 40k versions and adds an estimated 5 to 15 holds a day for one operator.
