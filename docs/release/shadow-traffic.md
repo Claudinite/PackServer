@@ -427,6 +427,8 @@ Classification is done by a **classifier agent** on every release, over every si
 
 `gate.shadow` for the release is **pass** when all of the following hold, **inconclusive** when the only unmet conditions are coverage (2) or duration (6) at the end of the 7-day maximum window or on an explicit "evaluate now" request, and **fail** otherwise (the release plan treats `inconclusive` as `fail` for a normal release and lets the approver waive it for a hotfix, release plan §4.2); the result is written to Analytics Engine (`shadow_gate {release_id, result, blocking_reason}`) and to `shadow_releases.status`, which the release plan reads before the first live percentage:
 
+While `shadow.blocking` is off (advisory mode, §9) the gate is still computed and reported, but the release plan does not wait for it.
+
 1. `wet_leak == 0` and `shadow_misroute == 0` for the release.
 2. Every write route is `covered` (missing mass ≤ 1% and N ≥ 300, §7.5) or `waived` (with a name and reason).
 3. No signature with classification `prohibitive` observed in this release's pairs.
@@ -493,7 +495,9 @@ Expand/contract means the RC may read a column the live version does not (`SELEC
 | **v2: triage UI and semantic matching** | Admin page with side-by-side view, semantic D1 matching, `dry-live` per route, overlay for same-request reads, probe-tenant coverage of no-traffic routes. | ~2 weeks |
 | **v3: async coverage (deferred by Ariel 2026-10-22: HTTP endpoints only for now)** | Replay recorded queue messages into staging, consumer-vs-consumer comparison, cron result diffs. Only if v1/v2 catch enough to justify it. | ~2 weeks |
 
-v0 is useful on its own and is the recommended first step even if the rest is deferred: the normalizer and baseline tell us how deterministic the system is, which also improves the integration tests.
+**Decided by Ariel 2026-10-22: v0 and v1 are built before launch.** Classification is agentic (§7.6), so v1's CLI classify step is replaced by the classifier agent run, and v2's triage UI becomes a read-only report view with override.
+
+**Advisory until traffic exists.** At launch there is too little traffic for the gate to mean anything, so `gate.shadow` starts in **advisory** mode: every release still shadows, records, compares, runs the classifier agent and publishes the report, but the release plan does not wait for or block on the result. The flag `shadow.blocking` in `feature_flags` (release plan §6.7) switches it to **blocking**. Recommended trigger: the first release whose shadow window reaches coverage (§7.5) on every write route from real traffic alone. The compare Workflow reports that condition on each release's report, so the switch is a one-line decision when it happens. In advisory mode a `prohibitive` verdict still notifies, it just does not halt.
 
 ## 10. Cost
 
@@ -531,4 +535,4 @@ A release that shadows for 48 h at the recommended profile costs about **$0.30**
 6. ~~Billing route sampling.~~ Decided: billing is shadowed like every other route; the pipeline is uniform and redaction is classification-based everywhere (§5.1).
 7. ~~Async coverage.~~ Decided: HTTP endpoints only for now; v3 (queue/Workflow replay) is deferred, consumers and Workflows rely on integration tests and staging.
 8. ~~Retention.~~ Decided: 14 days raw, 90 days reports (§5.2).
-9. **Build order.** v0 (record + baseline, ~2 weeks) first, with the RC shadow in v1 (~3 weeks), or everything before the first production release?
+9. ~~Build order.~~ Decided: v0 and v1 before launch, gate advisory until real traffic reaches coverage (§9).
