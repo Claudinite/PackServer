@@ -11,7 +11,7 @@ Writing this out changed six decisions in the [architecture](README.md). They're
 3. **Bulky per-version JSON moves from D1 to R2.** The extracted inventory, provenance and validation report become a `meta.json` next to each archive. D1 keeps only the columns that are filtered, sorted or shown in lists (counts, context tokens, repo, commit). This protects D1's 10 GB cap: inventory JSON at a few KB per version over 2M versions would have used most of it.
 4. **The audit log is a write-once log, not a database.** It's append-only, almost never queried, grows without bound, and above all must not be editable, by a bug or by an attacker holding a Worker's bindings. A database row can be updated or deleted by anything that can write to the database. The record goes to a bucket-locked R2 bucket in the same Cloudflare account (Ariel ruled out a second account, 2026-10-22), reachable only through a narrowly scoped token, with a hash chain whose daily head is published externally, so tampering is detected even though R2 locks can be removed by anyone with bucket-settings permission (decided 2026-10-22; see [audit-log record](#audit-log-record)). The two screens that show activity (a user's security page, an org's audit view) read a 90-day `recent_activity` table in the registry D1, which is a convenience copy, not the record.
 5. **Write-on-read hot spots are removed.** `tokens.last_used_at` is updated at most once an hour per token, and a session's last-seen time in KV at most once every 15 minutes (enough for the 12-hour idle timeout), instead of on every call. The hourly stats rollup only rewrites packs whose numbers changed. Without these, every authenticated read would also be a D1 write.
-6. **PackServer never writes to GitHub.** An earlier draft mirrored packs to a GitHub repo for web sessions that can't reach us, and posted Check Runs on publishers' commits. Both are gone. GitHub is only read: repo links, OIDC claims, webhooks, and the source commit recorded in each signed attestation. Web-session reachability is solved on the client side (network allowlist, or update checks from GitHub Actions).
+6. **PackServer never writes to GitHub.** An earlier draft mirrored packs to a GitHub repo for web sessions that can't reach us, and posted Check Runs on publishers' commits. Both are gone. GitHub is only read: repo links, OIDC claims, webhooks, and the source commit recorded in each signed attestation. Web-session reachability is solved on the client side: sessions never fetch packs, and the scheduled update already runs in GitHub Actions. The engine's own fallback for `cn adopt` on a limited-egress VM, the `vendored` branch of the public packs repo, still exists and is written by the ClaudinitePacks release workflow, not by PackServer. Who keeps it fed once PackServer publishes is open (O2).
 
 ## The stores at a glance
 
@@ -21,12 +21,12 @@ Writing this out changed six decisions in the [architecture](README.md). They're
 | R2 `audit-log` (bucket-locked, write-only token) | Audit events as NDJSON batches | Append-only, via a Queue, batched | Rare: incident review, compliance export | Yes |
 | D1 `registry.recent_activity` | Last 90 days of audit events per user and scope | One row per sensitive action, pruned daily | Security page, org audit view | No (copy of the R2 log) |
 | R2 `packs-staging` | Uploaded archives awaiting validation | Once per upload, by the uploader through a presigned URL | Once or twice, by the validator | No (deleted after 14 days) |
-| R2 `packs-public` | Validated public archives, `meta.json`, attestations, rendered READMEs, scope indexes | Once per version (immutable); indexes rewritten per publish | Very high, almost all CDN cache hits | Yes, for bytes |
+| R2 `packs-public` | Validated public archives, `meta.json`, attestations, rendered READMEs, per-pack signed indexes and the catalog | Once per version (immutable); a pack's index and the catalog rewritten per publish | Very high, almost all CDN cache hits | Yes, for bytes |
 | R2 `packs-private` | Validated private archives and their `meta.json` | Once per version | Through a Worker after an access check | Yes, for bytes |
 | R2 `validation-reports` | Full validation and review logs | Once per validation run | Rare: publisher dashboard, moderators | Yes |
 | Vectorize `packs` | One embedding per pack (latest stable version) | Upsert per promote, delete per removal | Every semantic search | No (rebuildable from D1 + R2) |
 | Download counts: Logpush `http_requests` in R2 (public) + Analytics Engine `downloads` (private) | Download and index-fetch records | Public: written by Cloudflare's log push, no code of ours; private: one point per Worker-served download | Hourly rollup | No (approximate by design) |
-| Durable Object `ScopeCoordinator` | Per-scope publish lock, daily quotas, index rebuild debounce | Per publish or quota check in that scope | Same calls | Yes, for quotas |
+| Durable Object `ScopeCoordinator` | Per-scope publish lock, daily quotas, index and catalog rebuild debounce | Per publish or quota check in that scope | Same calls | Yes, for quotas |
 | Workflows (platform-managed) | Validation run state, step results | Per step | By the workflow itself and the dashboard status | No (D1 is updated at each milestone) |
 | Queues | Notifications, re-index jobs | Per event | Consumed once | No |
 | KV `sessions` / `oauth` / `cache` | Web sessions, OAuth grants and tokens (library-owned), OAuth state, JWKS cache | Per login/logout, last-seen at most every 15 min, per OAuth flow | Every signed-in request, every MCP request with a token | Sessions and OAuth grants |
@@ -81,13 +81,13 @@ Considered and not chosen: S3 Object Lock in Compliance mode, which would preven
 
 ### R2 `packs-public`: the bytes everyone downloads
 
-**Writes.** On promote, the validator writes `@scope/name/1.2.3/pack.tar.zst`, `.sha256`, `.attestation.json`, `meta.json` and the rendered README. These are written once and never changed. The scope index `index/v1/<scope>.json` and `index/v1/root.json` are rewritten when something in the scope changes.
+**Writes.** On promote, the validator writes `packs/<id>/<version>.tar.gz` (the format cn reads today, O3 open), with `meta.json`, the attestation and the rendered README beside it. These are written once and never changed. The per-pack index `packs/<id>/index.json` and its signature `index.sig.json` are rewritten when that pack changes, and `packs/catalog.json` is rewritten as the last write of each release. This is the layout `cn` already reads; how registry names map onto bare pack ids is open (O4).
 
 **Reads.** Every update check (about 6.2M a month) and every download, almost all served from the CDN cache. Versioned objects are cached as immutable; indexes get a short TTL (about 60 seconds).
 
 **Why it fits.** Write once, read very often, from everywhere, with free egress: this is the case R2 behind a CDN is built for. Immutable keys mean caches never serve stale bytes.
 
-**Limit we design around.** R2 allows about one write per second to the same key. A scope publishing many packs at once could hit that on its index, so index rebuilds go through the `ScopeCoordinator`, which coalesces bursts into one rewrite every few seconds. The root index is rebuilt the same way.
+**Limit we design around.** R2 allows about one write per second to the same key. The engine's index is per pack, so a burst of versions of one pack is rare; the limit falls on `packs/catalog.json`, which every release rewrites last. Index and catalog rebuilds go through the `ScopeCoordinator`, which coalesces bursts into one rewrite every few seconds.
 
 ### R2 `packs-private`: private bytes
 
@@ -111,14 +111,14 @@ Considered and not chosen: S3 Object Lock in Compliance mode, which would preven
 
 **Reads.** Each MCP or site search phrased as a task ("deploy to GCP"), filtered by metadata (category, visibility, verified).
 
-**Why it fits.** It's purpose-built for nearest-neighbour search with metadata filters, and cheap at this size (about $0.05 a month at 100k packs). A new vector takes seconds to a couple of minutes to become searchable, which is fine because new versions are held back from agents for 24 hours anyway. It's a derived index: if it's lost or the embedding model changes, a job rebuilds it from D1 and R2.
+**Why it fits.** It's purpose-built for nearest-neighbour search with metadata filters, and cheap at this size (about $0.05 a month at 100k packs). A new vector takes seconds to a couple of minutes to become searchable, which is fine because new versions sit on the `staging` channel first. It's a derived index: if it's lost or the embedding model changes, a job rebuilds it from D1 and R2.
 
 ### Download counts: Cloudflare's request logs for public packs, Analytics Engine for private
 
 **The catch.** `cdn.packserver.dev` is an R2 custom domain with no Worker in front, so public downloads and index fetches never run our code and can't write anything themselves. (Putting a Worker in front just to count would add a request charge to every update check for no other benefit.)
 
 **Writes.**
-- *Public packs:* nothing we write. The zone's Logpush job (set up by the monitoring plan) already delivers every `http_requests` record to an R2 archive with IPs truncated, with CDN cache hits sampled at 10%. Each record has the path (`@scope/name/1.2.3/pack.tar.zst` or `index/v1/<scope>.json`), status and a client hash.
+- *Public packs:* nothing we write. The zone's Logpush job (set up by the monitoring plan) already delivers every `http_requests` record to an R2 archive with IPs truncated, with CDN cache hits sampled at 10%. Each record has the path (`packs/<id>/<version>.tar.gz`, `packs/<id>/index.json` or `packs/catalog.json`), status and a client hash.
 - *Private packs:* these go through the `web`/`mcp` Worker after the access check, so that Worker writes one Analytics Engine `downloads` point (pack, version, hashed caller, client) per download, fire and forget.
 
 **Reads.** An hourly rollup job reads the new Logpush files from R2 and the `downloads` points, scales sampled rows back up, counts downloads and distinct callers per pack over 30 days, and writes `pack_stats` in D1 for the packs whose numbers changed.
@@ -127,7 +127,7 @@ Considered and not chosen: S3 Object Lock in Compliance mode, which would preven
 
 ### Durable Object `ScopeCoordinator`: one per scope
 
-**Writes and reads.** Each publish in the scope takes the lock, checks and decrements the daily new-pack quota, spends the credit and inserts the version in one D1 batch, then schedules an index rebuild. Each new-pack attempt also checks the quota.
+**Writes and reads.** Each publish in the scope takes the lock, checks and decrements the daily new-pack quota, spends the credit and inserts the version in one D1 batch, then schedules a rebuild of the pack's index and the catalog. Each new-pack attempt also checks the quota.
 
 **Why it fits.** A Durable Object processes one request at a time, with strongly consistent storage, which gives exact quotas and a race-free publish without needing interactive transactions in D1. One object per scope spreads the load, and a single scope never publishes fast enough to saturate one object.
 
@@ -161,7 +161,7 @@ Scratch space for unpacking and running a pack during validation. Nothing is per
 
 ### Secrets Store
 
-Stripe keys, the GitHub App private key, the index and attestation signing key, and the AI Gateway token. They're written by people when keys rotate and read by Workers at startup, so rotating a key doesn't need a redeploy of every Worker.
+Stripe keys, the GitHub App private key, the packs index key (certified by the roots embedded in `cn`; whether PackServer holds one is open, O1) and the attestation key, and the AI Gateway token. They're written by people when keys rotate and read by Workers at startup, so rotating a key doesn't need a redeploy of every Worker.
 
 ### Outside Cloudflare
 

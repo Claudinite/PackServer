@@ -32,6 +32,7 @@ function toPack(row: PackRow, env: Env) {
     summary: row.summary,
     description: row.description,
     keywords: row.keywords.split(/\s+/).filter(Boolean),
+    // Counts of pack contents: rules, skills, declaredChecks, codedChecks, guards, tasks.
     features: JSON.parse(row.features) as Record<string, number>,
     repo_url: row.repo_url, // null => "no public repo" badge on the site
     stars: row.stars,

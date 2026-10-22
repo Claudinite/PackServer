@@ -1,6 +1,6 @@
 # PackServer architecture (v0, 2026-10-21)
 
-PackServer is the registry for Claude and Ant packs. Publishers upload packs (bundles of skills, commands, hooks/checks, tasks, agents and MCP server configs), every upload is validated in a sandbox before anything is served, validated packs are delivered from Cloudflare R2, people browse and rate packs on a website, and agents discover packs through a remote MCP endpoint.
+PackServer is the registry for Claudinite packs. Publishers upload packs (rules, skills, declared and coded checks, hook guards and scheduled tasks, with a `pack.json` manifest), every upload is validated in a sandbox before anything is served, validated packs are delivered from Cloudflare R2, people browse and rate packs on a website, agents find packs to declare through a remote MCP endpoint, and `cn` fetches them.
 
 This document is the technical plan. It is built almost entirely on Cloudflare's serverless platform and every component below maps to a product that is generally available today, except where flagged. Supporting research, with source links for every limit and price quoted here:
 
@@ -70,20 +70,24 @@ All Workers live in one repository and share a `core` package (domain logic as p
 A **pack** is a named, versioned bundle. A **pack version** is immutable once published: same name and version always means the same bytes (SHA-256 recorded).
 
 ```
-pack archive (tar.zst, ≤ 3 MB compressed; see §6 for decompression limits)
-├── pack.json                 manifest: name, version, summary (≤ 1024 chars), categories,
-│                             license, repository, compatibility (claude-code ≥ x, ant ≥ y),
-│                             contents inventory (declared)
-├── skills/<name>/SKILL.md    Agent Skills format
-├── commands/*.md
-├── agents/*.md
-├── hooks/hooks.json          checks / guards
-├── tasks/*.md
-├── mcp/servers.json          MCP server configs
-└── README.md
+pack archive (tar.gz, the format cn reads today (O3 open), ≤ 3 MB compressed; see §6 for decompression limits)
+├── pack.json                 manifest cn reads: version (1.YMMDD.n), minEngineVersion, requires,
+│                             pitch, relevanceDetector, ruleRoutingGuidance, the GitHub actions
+│                             the pack needs; registry metadata (summary ≤ 1024 chars, categories,
+│                             license, repository) is layered on it without changing what cn reads
+├── RULES.md                  prose read whole by every session
+├── skills/<name>/SKILL.md    loaded on demand; some force-loaded before matching edits
+├── declared-checks.json      deterministic data checks, run natively by cn
+├── checks/*.go               coded checks and hook judges (guards), tagged with their event,
+│                             Go against the public check SDK
+├── tasks/<name>/task.json    scheduled work, with an optional worker.mjs
+├── README.md
+└── provenance/               the rules' decision log (stripped by cn vendor, with test/ and docs/)
 ```
 
-The validator does not trust the declared inventory: it extracts the real one (counts, names, token size per skill = "context cost") and that extracted inventory is what the site and MCP show.
+Pack versions are date-based, `1.YMMDD.n` (for example `1.61004.1`), compared numerically. There is no semver, no version range and no dist-tag, and `minEngineVersion` is a minimum only. An unknown key in `pack.json` must not break `cn`, so registry metadata either lives in keys `cn` ignores or beside the manifest in `meta.json`.
+
+The validator does not trust the declared inventory: it extracts the real one and that extracted inventory is what the site and MCP show. It records counts and names, the rules size (`RULES.md` is read whole by every session, so it is the main always-loaded cost), the token size of each skill ("context cost"), declared versus coded checks, guards, tasks with their cadence, and forced skills.
 
 ### Core tables (D1)
 
@@ -102,8 +106,11 @@ domain_challenges(scope_id, domain, token, method[dns_txt|well_known], verified_
 packs(id, scope_id, name, visibility[public|private], status[active|deprecated|quarantined|removed],
       repo_url, trusted_publishing_only, staged_publishing, created_at)          -- names never recycled
 pack_versions(id, pack_id, version, sha256, size, r2_key, state, repo_commit, inventory counts,
-              context_tokens, risk_score, validation_report_key, published_at, yanked_at)
-                                    -- full inventory, provenance, report live in R2 meta.json
+              context_tokens, risk_score, validation_report_key, published_at, yanked_at,
+              min_engine_version, requires, channel, revoked, source_commit)
+                                    -- the last five are the fields the signed per-pack index
+                                    -- is rendered from; full inventory, provenance, report
+                                    -- live in R2 meta.json
 trusted_publishers(pack_id | pending_name, provider='github', repository_owner_id, repository, workflow,
                    environment, path)
 grants(resource_type[pack|scope], resource_id, principal_type[user|team|scope|token|domain],
@@ -114,11 +121,11 @@ tokens(id, owner_user_id, prefix, hash, scopes, restrict_pack_id, restrict_scope
 
 stars(user_id, pack_id, created_at)
 reviews(user_id, pack_id, rating 1-5, body, verified_fetch, publisher_reply, status)
-outcomes(user_id, pack_version_id, client, client_version, result[works|fails], verified_install)
+outcomes(user_id, pack_version_id, engine_version, result[works|fails], verified_adoption)
 reports(id, pack_id, version, reporter_id, kind[bug|security|abuse], github_issue_url, status, private)
 downloads → public: counted from the zone's Logpush http_requests archive in R2 (CDN has no Worker);
             private: Analytics Engine points from the serving Worker; both rolled up hourly into pack_stats
-pack_stats(pack_id, installs_30d, stars, works, fails, score_directory, score_mcp, updated_at)
+pack_stats(pack_id, adoptions_30d, stars, works, fails, score_directory, score_mcp, updated_at)
 
 credit_ledger(id, owner_type, owner_id, delta, reason, stripe_event_id UNIQUE, pack_id, created_at)
 subscriptions(scope_id, stripe_customer_id, stripe_subscription_id, plan, seats, status)
@@ -147,7 +154,7 @@ Publishers are the attack surface that matters (the 2025–2026 npm, crates.io a
 
 ### Scopes (namespaces) and proving "this is really Google"
 
-Packs are named `@<scope>/<pack>`. A scope belongs to a user or an organisation, and its badge states exactly what has been proven:
+Packs are named `@<scope>/<pack>` on the site. `cn` knows only bare pack ids (`basics`, `git-github`) in `packs.declared`, in check ids and in the R2 path `packs/<id>/`, where `@` has no meaning, so the registry name has to map onto a bare id. How it maps is open (O4). A scope belongs to a user or an organisation, and its badge states exactly what has been proven:
 
 | Proof | How | Badge |
 |---|---|---|
@@ -169,7 +176,7 @@ Modelled on PyPI/npm/crates.io trusted publishing, so no long-lived secret ever 
 2. A small GitHub Action (`packserver/publish-action`) requests a GitHub OIDC token with audience `packserver.dev`, packs the configured path, and calls `POST /api/oidc/exchange`.
 3. The `publish` Worker verifies the JWT against GitHub's JWKS (cached in KV), matches `repository_owner_id`, `repository`, `job_workflow_ref` and `environment` exactly, rejects tokens from forks and from `pull_request_target` / `workflow_run` events, and returns a 15-minute upload token scoped to that one pack.
 4. The Action uploads to a presigned R2 URL and calls `POST /api/publish/{pack}/{version}` with the SHA-256. Provenance (repo, commit SHA, ref, workflow run URL) comes from the OIDC claims, not from the client.
-5. Validation starts. If the pack has **staged publishing** on (default for verified publishers and for packs above an install threshold), the validated version waits for an owner to approve it with a passkey (npm staged publishing, May 2026).
+5. Validation starts. If the pack has **staged publishing** on (default for verified publishers and for packs above an adoption threshold), the validated version waits for an owner to approve it with a passkey (npm staged publishing, May 2026).
 
 A per-pack **trusted-publishing-only** switch disables every other publish path for that pack. Adding or changing a trusted publisher requires step-up MFA and emails every owner, since PyPI treats a changed trusted publisher as a takeover signal. Attestations are signed with a PackServer key (Ed25519, in Secrets Store) over `{sha256, pack, version, provenance}` and stored next to the archive in R2; Sigstore/in-toto compatible bundles are a phase-2 upgrade.
 
@@ -185,26 +192,31 @@ The new-pack wizard (Source, Metadata, Validation, Visibility, Pay) uploads stra
 
 ### 5.4 Lifecycle
 
-`deprecated` (maintainer signal, still installable) → `yanked` (hidden from search and "latest", still fetchable by exact version) → `quarantined` (admin: hidden and frozen) → `removed` (name reserved forever; MCP still answers `status: removed` so agents can de-index). Owners can hard-delete only within 72 hours of publishing and only if no installs were recorded.
+`deprecated` (maintainer signal, still adoptable) → `yanked` (hidden from search, still fetchable by exact version) → `quarantined` (admin: hidden and frozen) → `removed` (name reserved forever; MCP still answers `status: removed` so agents can de-index). Owners can hard-delete only within 72 hours of publishing and only if no adoptions were recorded.
+
+The engine reads less than this. The signed per-pack index carries one `revoked` boolean and a `channel` per version, so yanked, quarantined and removed versions are written as `revoked: true`, the soak is the `staging` channel, and `deprecated` is a note in the catalog. `Select` never picks a revoked version, and `cn` never removes a version a member already holds: it reports it on every update run (`reportOnly`). Whether that should change is open (O5).
 
 ## 6. Validation pipeline
 
-The full design, threat model and rationale are in [validation.md](validation.md). In short, PackServer uses two things a library registry doesn't have: a known pack format that cn loads, so the pack can actually be run, and a previous version to diff against.
+The full design, threat model and rationale are in [validation.md](validation.md). In short, PackServer uses two things a library registry doesn't have: a known pack format that cn loads, so the pack can actually be run, and a previous version to diff against. Coded checks are Go compiled against the public check SDK and tasks may carry a `worker.mjs`, so the sandbox image needs Go 1.24+ and Node 22+ beside the pinned `cn`.
 
 ```
  1  admission        credit or Verified Publisher, daily caps, publisher not quarantined     Worker
- 2  integrity        ≤ 3 MB compressed, streaming sha256, zstd magic; no decompression      Worker
+ 2  integrity        ≤ 3 MB compressed, streaming sha256, gzip magic; no decompression      Worker
  3  bounded extract  one streaming pass counting produced bytes (20 MB total, 5 MB/file,     Sandbox,
-                     5k entries, 8 MB zstd window, path caps); bomb = hard fail, no retry,   no network
-                     no credit, no LLM
- 4  manifest         schema, declared inventory ⊆ real, ASCII names, typosquat/confusable    Sandbox
- 5  text hygiene     secrets, bidi/zero-width/tag chars, URL inventory, install-from-URL     Sandbox
- 6  capabilities     extracted set (exec:hook|check|task|env, mcp, network:<domains>, ...);  Sandbox
-                     declared ⊇ extracted; MCP packages exact-pinned with integrity hash;
-                     new capability vs previous version = hold
- 7  load and prove   pinned cn loads the pack; every check/hook passes firing + silent       Sandbox
-                     fixtures; undeclared egress during the run = fail
- 8  canonical repack deterministic tar.zst from the validated tree, round-trip checked        Sandbox
+                     5k entries, path caps); bomb = hard fail, no retry, no credit, no LLM   no network
+ 4  manifest         schema, version 1.YMMDD.n, declared inventory ⊆ real, ASCII names,     Sandbox
+                     typosquat/confusable
+ 5  text hygiene     secrets, bidi/zero-width/tag chars, URL inventory, fetch-from-URL       Sandbox
+ 6  capabilities     extracted set (guards, coded checks, tasks with cadence, PR-opening    Sandbox
+                     and agentic phase, env setup, forced skills, GitHub actions in
+                     pack.json); declared ⊇ extracted; new capability vs previous = hold
+ 7  load and prove   pinned cn loads the pack; declared checks run natively, coded checks   Sandbox
+                     compile and run by tag, guards are judged on a PreToolUse fixture,
+                     all on firing + silent fixtures; worker.mjs runs in Node with a
+                     scrubbed environment; undeclared egress during the run = fail
+ 8  canonical repack deterministic tar.gz from the validated tree, round-trip checked; only   Sandbox
+                     compatible if it matches what cn vendor emits (O3 open)
  9  reserve credit   before any model call                                                    Worker
 10  LLM screens      two independent Haiku screens, structured output, quotes verified,      AI Gateway
                      diff mode for n+1, reviewer-addressed text = hold
@@ -214,15 +226,16 @@ The full design, threat model and rationale are in [validation.md](validation.md
 14  payment          consume reserved credit, bound to canonical sha256                      Worker
 15  staged approval  passkey, showing diff and capability changes                            publisher
 16  promote          canonical archive + attestation {upload & canonical sha256, provenance,  Worker
-                     rules version, kid}, meta.json, signed index, FTS, Vectorize
-17  after promote    tier-aware cooldown, rescans, weekly dependency re-resolution           Cron
+                     rules version, kid}, meta.json, signed per-pack index and catalog, FTS,
+                     Vectorize
+17  after promote    staging → stable promotion after the soak, rescans                      Cron
 ```
 
-Steps 2–8 are also a free **dry-run** endpoint and a GitHub Action, and run offline in `cn pack lint`, using the same `core` rule module, so CI and the registry never disagree. Steps 1–8 cost nothing and fail in minutes, so almost every rejected upload never reaches a model. LLM review is about $0.006 per version for the two screens plus $0.07 for the ~10% that get a deep review: roughly $520 a month at 40k versions. Human moderation of holds is not priced.
+Steps 2–8 are also a free **dry-run** endpoint and a GitHub Action, using the same `core` rule module, so CI and the registry never disagree. Running them offline would need a new `cn` command such as `cn pack lint`, which is an engine change; the alternative is to reuse the pack tests ClaudinitePacks already runs against the pinned engine (open, O6). Steps 1–8 cost nothing and fail in minutes, so almost every rejected upload never reaches a model. LLM review is about $0.006 per version for the two screens plus $0.07 for the ~10% that get a deep review: roughly $520 a month at 40k versions. Human moderation of holds is not priced.
 
 No step is agentic: model calls are single requests with no tools and a fixed JSON answer, and code makes every decision. The **pack score** (0–100, computed by code from the same tree, no model) is defined in [pack-score.md](pack-score.md).
 
-**Cooldown for agents:** MCP search and cn update checks default to versions older than 24 hours (Verified Publishers) or 72 hours (others); third-party-tier versions are never proposed automatically.
+**Soak before stable:** a new version is published to the `staging` channel and promoted to `stable` after a soak (24 hours for Verified Publishers, 72 hours for others); third-party-tier versions stay on `staging`. `cn` already selects by the member's channel, so no separate age rule is needed in `cn`. Who promotes is open (O7).
 
 ## 7. Delivery from R2
 
@@ -233,19 +246,22 @@ No step is agentic: model calls are single requests with no tools and a fixed JS
 | `packs-private` | validated private versions | never public; the `mcp`/`web` Worker checks `effective_access` then streams the object or mints a 5-minute presigned GET |
 | `validation-reports` | full validation and LLM review logs | private; read by the publisher dashboard and moderators |
 
-Keys are immutable and versioned, so R2's one-write-per-second-per-key limit never matters, and "latest" pointers live in D1, never in R2. A published version never changes: the same name and version always resolve to the same SHA-256. Every download response carries the SHA-256 and the attestation URL, and the client verifies both.
+Keys are immutable and versioned, so R2's one-write-per-second-per-key limit never matters, and "latest" pointers live in D1, never in R2. A published version never changes: the same name and version always resolve to the same SHA-256. `cn` verifies the index signature and each archive's sha256 against its index entry; the attestation is extra provenance that the site shows.
 
 ### 7.1 Signed index for update checks
 
-The cn engine is the main consumer, not agents. Packs are committed to the member repo (`commitToRepo`, today's model), so a repo only talks to PackServer when it checks for updates (about 6 checks per repo per month at the default weekly setting). Each check fetches one small index and then only the packs whose version changed:
+The cn engine is the main consumer, not agents. `cn adopt` and the scheduled update fetch each pack, verify it against the signed index and vendor it unchanged into `.claudinite/shared/packs/<id>/` (`commitToRepo`, today's model), and every change reaches the member as an update PR. Sessions and CI read the repo's own tree, so a repo only talks to PackServer when it checks for updates (about 6 checks per repo per month at the default weekly setting). Each check fetches the small per-pack indexes and then only the archives whose version changed. The layout is the one `cn` already reads:
 
-- `cdn.packserver.dev/index/v1/<scope>.json` per scope plus a top-level `index/v1/root.json` listing each scope index's hash: `{pack, latest, sha256, published_at, status[active|deprecated|yanked|quarantined|revoked]}`. Signed with the registry Ed25519 key, regenerated by the validator on every promote or status change, served with a short cache TTL; version objects stay immutable and long-cached.
+- `packs/<id>/<version>.tar.gz`, written once and long-cached.
+- `packs/<id>/index.json` plus `index.sig.json` per pack, listing every version with sha256, size, channel, revoked, minEngineVersion, requires, sourceCommit and serial. A per-scope index with a single `latest` pointer could not drive `cn`'s version selection, which needs every version and its `minEngineVersion`.
+- `packs/catalog.json`, the signed directory of packs.
+- Today the index and catalog are signed by a packs key that the roots embedded in `cn` certify, and that key lives only in the ClaudinitePacks release workflow. Whether PackServer holds a packs key under the same roots or `cn` learns a second root is open (O1), as is how PackServer relates to that release workflow (O2). The validator rewrites and signs the affected index and the catalog on every promote or status change, served with a short cache TTL.
 - Private packs get a per-caller index from the `web` Worker after an access check, never on the CDN.
 - At 1M repos this is about 19M requests and 0.6 TB a month, roughly $10–20 on top of the $5 plan because R2 egress is free (cost estimate in [hosting-cost-estimate.md](../hosting-cost-estimate.md)). `fetchOnEveryRun` (Engine #187, still open) would multiply fetches about 24× and requests about 50×; the bill stays small on Cloudflare but every session start would depend on PackServer being up, so the design keeps `commitToRepo` as the default.
 
 ### 7.2 Networks that can't reach us
 
-Claude Code web VMs on the default Trusted network could not reach our hosts during the licensing work (2026-09-30), so `cdn.packserver.dev` may be unreachable from web sessions. That is a client-side network question, not something PackServer works around by copying packs elsewhere: either our host is added to the web environment's network allowlist, or cn runs update checks from a GitHub Actions workflow in the member repo (which can reach us) and opens a pull request with new versions. Packs are committed to the repo, so web sessions then never need PackServer at all.
+Claude Code web VMs on the default Trusted network could not reach our hosts during the licensing work (2026-09-30), so `cdn.packserver.dev` may be unreachable from web sessions. The engine already handles this. Sessions never fetch packs, and the scheduled update already runs in GitHub Actions in the member repo, which can reach us, and opens a pull request with new versions. Only `cn adopt` in a session reads the registry, and on a limited-egress VM it falls back to the `vendored` branch of the public packs repo. PackServer only needs that branch to stay fed; who feeds it once PackServer is the writer is open (O2).
 
 ## 8. MCP endpoint for agents
 
@@ -259,12 +275,12 @@ Proven by the spike in `spike/mcp-worker` (stateless `createMcpHandler`, D1 FTS5
 
 | Tool | Auth | Returns |
 |---|---|---|
-| `search_packs(query, category?, client?, include_fresh?, limit?)` | none | ranked compact cards: name, summary (≤ 1024 chars), inventory counts, context cost, trust signals (validated, verified flag, has repo, works-for-me %, rating), latest stable version |
+| `search_packs(query, category?, include_staging?, limit?)` | none | ranked compact cards: name, summary (≤ 1024 chars), inventory counts, context cost, trust signals (validated, verified flag, has repo, works-for-me %, rating), newest `stable` version, its `minEngineVersion` and channel |
 | `list_categories()` | none | category tree with counts |
-| `get_pack(name, version?)` | none / read | manifest, extracted inventory, README excerpt, versions, status, provenance |
+| `get_pack(name, version?)` | none / read | manifest, extracted inventory, the pre-install manifest (guards, tasks and cadence, forced skills, GitHub actions), README excerpt, versions, status, provenance, and the `cn adopt <id>` / `packs.declared` snippet |
 | `get_download(name, version)` | none / read | URL (CDN or 5-min presigned for private), sha256, attestation URL |
 | `list_my_packs()` | read | private and shared packs for the caller |
-| `report_outcome(name, version, result, client)` | write | records works / fails (counts as verified only after an install by the same principal) |
+| `report_outcome(name, version, result, engine_version)` | write | records works / fails (counts as verified only when the version is vendored in a member the principal's token belongs to) |
 | `star_pack(name)` | write | |
 
 - **Search:** D1 FTS5 (BM25 with column weights) for lexical matching plus Vectorize semantic search over an embedding of each version's summary, categories and skill descriptions (`bge-m3` via Workers AI, about $0.05/month at 100k packs). Results are merged and re-ranked by the MCP score in §10. Private packs are filtered server-side via Vectorize metadata and `effective_access`. Cloudflare AI Search is 75× more expensive per query and stays off this hot path.
@@ -280,10 +296,10 @@ Proven by the spike in `spike/mcp-worker` (stateless `createMcpHandler`, D1 FTS5
 ## 10. Community signals and ranking
 
 - **Stars** (one click, login required, counted publicly after 24 h account age).
-- **Works for me / Didn't work** per version and client version. This is the signal agents actually need, and it's weighted 1.0 when the voter has a recorded install of that pack and 0.25 otherwise.
+- **Works for me / Didn't work** per version and engine version. This is the signal agents actually need, and it's weighted 1.0 when the voter has a recorded adoption of that pack (a fetch by `cn adopt` or the update) and 0.25 otherwise.
 - **Ratings and reviews:** 1–5 rating with an optional review, one per user per pack, one publisher reply per review (VS Code model). Reviews from accounts that actually fetched the pack carry a "verified fetch" marker and full weight in ranking. Reviews need moderation tooling from day one, so they go through the same admin queue as reports.
 - **Bug reports:** when a public repo is linked, "Report a bug" opens a pre-filled GitHub issue and we read its status back through the GitHub App's issue webhooks; otherwise an in-site inbox for the publisher. Security reports are always private.
-- **Ranking:** directory score mixes a Wilson lower bound on works/fails and on ratings, normalised verified installs, stars, health (validation passed, public repo, verified publisher, recently updated) and freshness. MCP score is text relevance × quality × category match × client compatibility. Open security reports, failed latest validation or an abuse hold zero or heavily demote a pack. One result in ten in browse is an "exploration" slot for new packs. Raw signals are exposed over MCP so agents can apply their own policy.
+- **Ranking:** directory score mixes a Wilson lower bound on works/fails and on ratings, normalised verified adoptions, stars, health (validation passed, public repo, verified publisher, recently updated) and freshness. MCP score is text relevance × quality × category match × engine compatibility (`minEngineVersion`). Open security reports, failed latest validation or an abuse hold zero or heavily demote a pack. One result in ten in browse is an "exploration" slot for new packs. Raw signals are exposed over MCP so agents can apply their own policy.
 - **Abuse:** Turnstile on all forms, per-scope daily caps on new packs, Rate Limiting binding as the first line, Durable Object counters for exact daily limits, star-velocity anomaly holds, self-stars from the owning scope ignored, card fingerprint limits on credit purchases.
 
 ## 11. Private packs and access control
@@ -309,7 +325,7 @@ The permission model is JFrog-style rows of (resource, principal, action) in `gr
 | No Anthropic models on Workers AI | LLM evaluation must leave Cloudflare | AI Gateway with our key, spend caps, run only after cheap checks pass |
 | MCP SDK churn (McpAgent deprecated within ~18 months; DCR being deprecated in spec); `agents@0.23.0` pins `@modelcontextprotocol/server@2.0.0`, which has open high-severity advisories | Upgrade work; must not ship with known vulns | Pin versions, track the advisories, upgrade before public launch |
 | Lock-in concentrated in Workflows, Durable Objects, Vectorize | Hard to move later | Business logic in plain functions; R2 is S3-compatible; SQL is portable; sandbox images are OCI |
-| Claude Code web VMs may not reach custom hosts | Web sessions can't fetch packs or check updates | Allowlist our host, or run update checks from GitHub Actions (§7.2) |
+| Claude Code web VMs may not reach custom hosts | Only `cn adopt` in a web session reads the registry | The engine falls back to the `vendored` branch of the public packs repo; updates already run in GitHub Actions (§7.2, O2) |
 | D1 primary location / jurisdiction chosen at creation | Data residency choice is effectively permanent | Decide (likely default or `eu`) before creating the production database |
 
 ## 13. Security summary
@@ -317,7 +333,7 @@ The permission model is JFrog-style rows of (resource, principal, action) in `gr
 - Phishing-resistant MFA required for publishers; step-up for sensitive actions; no long-lived publish secrets in CI (OIDC).
 - Separation of duties across Workers: only the validator can write public buckets; the MCP Worker has no payment or GitHub secrets; admin is behind Cloudflare Access with IdP-enforced MFA.
 - All secrets in Secrets Store; tokens stored as hashes; prefixed tokens for leak detection.
-- Immutable versions, SHA-256 everywhere, signed attestations, a 24 h agent cooldown and a fast quarantine kill switch that MCP propagates.
+- Immutable versions, SHA-256 everywhere, signed attestations, a soak on `staging` before `stable`, and a fast quarantine that MCP shows and the signed index carries as `revoked`.
 - Untrusted pack content only ever executes inside a per-job microVM with internet off.
 - Rendered READMEs are sanitised, links `rel="nofollow ugc"`, strict CSP on the site.
 - Policies on day one: takedown, name disputes, unpublish rules, appeals, a monitored `security@` inbox (Email Routing into a Worker) and public incident reports.
@@ -327,7 +343,7 @@ The permission model is JFrog-style rows of (resource, principal, action) in `gr
 | Phase | Scope |
 |---|---|
 | 0. Foundations | Monorepo (pnpm, TypeScript, Hono, Drizzle), D1 schema + migrations, R2 buckets, CI deploy with Wrangler, staging environment |
-| 1. Read path | Public directory and pack pages, FTS5 search, MCP endpoint (anonymous), CDN delivery; seed with first-party packs |
+| 1. Read path | Public directory and pack pages, FTS5 search, MCP endpoint (anonymous), CDN delivery; seed with the canon shelf (Claudinite/PublicPacks) |
 | 2. Identity | Email bootstrap, passkeys, TOTP, recovery codes, GitHub login, sessions, scopes with GitHub org and DNS proof |
 | 3. Publish path | Web upload + presigned R2, ValidatePackWorkflow with static checks and Sandbox run, GitHub trusted publishing Action, lifecycle states, attestations |
 | 4. Payments | Stripe Checkout credits, webhooks, ledger; private pack subscriptions |
@@ -346,8 +362,19 @@ The permission model is JFrog-style rows of (resource, principal, action) in `gr
 
 Still open from the [registry trust research](../registry-trust-research.md), and this design leaves room for any answer:
 
-7. **Remote revocation or report only?** When a pack is revoked, should cn disable it on members' repos, or only report it (`reportOnly`, the fleet's precedent)? The signed index carries the status either way.
+7. **Remote revocation or report only?** When a pack is revoked, should cn disable it on members' repos, or only report it (`reportOnly`, the fleet's precedent)? The signed index carries the status either way. Disabling it "at session start" would need sessions to read the registry, which the engine design rules out (see O5).
 8. **Must a pack pass our CI before listing (Homebrew-style), and must each check ship firing/silent fixtures?** The sandbox step can run both; the choice is whether failure blocks listing.
-9. **Should packs declare capabilities** (runs code in Actions, env steps at session start, hooks, network), with an update that adds one held for review? Closed for our own canon in the first security review; public submissions may justify reopening it.
-10. **Tiers** like Claude Code's: canon (curated by us), community (pinned, scanned, tested), third-party (unchecked, with a warning)?
+9. **Should packs declare capabilities** (guards, coded checks, tasks and their cadence, env setup, the GitHub actions they need, forced skills), with an update that adds one held for review? `pack.json` already declares the GitHub actions. Closed for our own canon in the first security review; public submissions may justify reopening it.
+10. **Tiers** like Claude Code's: canon (curated by us), community (pinned, scanned, tested), third-party (unchecked, with a warning)? "Canon" already means the central pack set, so a tier named `canon` reads as "is on the shelf".
 11. **Ranking signals** only cn has: how many repos keep a pack, how often its checks fire, how often members drop it. These would replace most of the star/rating weight in §10 if cn reports them.
+
+Raised by the Claudinite review of this design and now with Ariel; the parts of the design they touch say "open" and point here:
+
+12. **O1. Index signing key and roots.** Today the per-pack index and catalog are signed by a packs key that the roots embedded in `cn` certify, held only by the ClaudinitePacks release workflow. Does PackServer's promote step hold a packs key under the same roots, or does `cn` learn a second trust root?
+13. **O2. ClaudinitePacks release workflow and the `vendored` branch.** Does PackServer replace or wrap the packs repo's release workflow (for example with the packs repo as a trusted publisher and `cn vendor` as the canonicaliser), and who keeps the `vendored` branch fed, given that PackServer never writes to GitHub?
+14. **O3. Archive format and canonical form.** `cn` reads `.tar.gz` today. Does PackServer canonicalise to the `.tar.gz` that `cn vendor` emits, or does the engine's fetch and extractor change to accept another format such as `tar.zst`?
+15. **O4. Bare ids or `@scope/pack`.** `cn` uses bare pack ids everywhere. How does a registry name map onto a bare id, decided before the D1 schema and R2 keys are fixed?
+16. **O5. Revocation semantics.** Keep the engine's model (revoked stops selection, a held version is reported on each update run, a fleet may block it), extend it with removal in the update PR, or request a session-time disable?
+17. **O6. New `cn` surface.** `cn pack lint`, `cn pack canonicalize`, a `minTier` setting, a `tier` index field and a `revocation` setting do not exist. Should each become an engine request, or be replaced by what exists (channels, `minEngineVersion`, the packs repo's pack tests)?
+18. **O7. Channels and who promotes.** Which channel does PackServer publish to, and is promotion from `staging` to `stable` PackServer's after-promote step, with third-party versions left on `staging`?
+19. **O8. Pre-install manifest.** Does PackServer extract the pre-install manifest alone, or does the engine gain a `cn pack describe` that both the pack page and the update PR body use?

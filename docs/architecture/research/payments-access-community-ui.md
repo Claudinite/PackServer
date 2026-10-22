@@ -36,7 +36,7 @@ Add Stripe Tax PAYG **0.5%** of volume where we are registered (Checkout/no-code
 **Recommendation — "credits, charged in bundles, first one cheap":**
 1. Price publishing in **publish credits**. 1 credit = one *new public pack*. Keep a $1 price point for the "I just want to publish one thing" case (we eat the 33% fee as an acquisition cost), and nudge toward bundles: 5 for $5, 12 for $10, 25 for $20. Credits never expire; non-refundable once consumed by a successful publish.
 2. **Charge per new pack, not per version.** Versions of an existing pack are free (rate-limited: e.g. 20 versions/pack/day). Charging per version punishes maintenance and pushes people to publish less often — the opposite of what we want. Spam is "many packs", not "many versions". Exception: a pack that has been *unpublished or renamed* and re-created costs a new credit.
-3. **Waive the fee** for publishers who have a verified org (domain-verified), or who have ≥1 pack with ≥N verified installs and no abuse flags, after a 30-day account age. Lets "Google publishes GCP pack" happen without the toll gate while still charging drive-by uploads.
+3. **Waive the fee** for publishers who have a verified org (domain-verified), or who have ≥1 pack with ≥N verified adoptions and no abuse flags, after a 30-day account age. Lets "Google publishes GCP pack" happen without the toll gate while still charging drive-by uploads.
 4. **Alternative gate that costs us nothing:** instead of money, require *proof of work* equivalents for the free tier — verified GitHub account older than 90 days + passkey/MFA enrolled + Turnstile. Keep the $1 as an *optional fast lane* for new accounts. (This is what PyPI and npm do: they don't charge, they require 2FA and, increasingly, trusted publishing via OIDC. Sources: [PyPI 2FA required for all](https://blog.pypi.org/posts/2024-01-01-2fa-enforced/), [npm trusted publishing GA](https://github.blog/changelog/2025-07-31-npm-trusted-publishing-with-oidc-is-generally-available/).)
 5. Implement credits as a ledger table in D1 (`credit_ledger(user_or_org_id, delta, reason, stripe_event_id UNIQUE)`); grant on `checkout.session.completed`, consume atomically with the publish transaction. Stripe also has a "billing credits / credit grants" product but our volumes don't justify it over a 20-line ledger.
 6. Merchant-of-record alternatives (Paddle, Lemon Squeezy) charge **5% + $0.50** — worse at $1, but they handle global VAT/sales tax filing. Only attractive if private-pack subscriptions become the main revenue and we don't want to run tax registrations. Source: [Paddle vs Lemon Squeezy fees](https://dodopayments.com/blogs/paddle-vs-lemon-squeezy/).
@@ -104,15 +104,15 @@ Per the MCP authorization spec (2025-11-25 revision):
 |---|---|---|---|
 | **Star** (bookmark-like, GitHub/npm style) | 1 click | medium (bot accounts) | popularity/intent |
 | **1–5 rating + optional review** | 10s | high (review bombing, self-rating) | sentiment, but small-n averages are noisy |
-| **"Works for me / Didn't work"** on a *specific version* with the client (Claude Code x.y, Ant z) | 1 click, contextual | medium | *compatibility* — the thing agents actually need |
-| **Verified install / use** (MCP `install` tool call or CLI fetch by an authenticated principal, deduped per principal per 30 days) | 0 | low if authenticated | adoption; the only signal agents generate on their own |
+| **"Works for me / Didn't work"** on a *specific version* with the client (cn x.y, Claude Code z) | 1 click, contextual | medium | *compatibility* — the thing agents actually need |
+| **Verified adoption** (a fetch by `cn adopt` or the scheduled update under the principal's token, deduped per principal per 30 days) | 0 | low if authenticated | adoption; the only signal agents generate on their own |
 | **Bug report** | minutes | low | quality, maintainer responsiveness |
 
-**Recommendation:** Stars + per-version "works / doesn't work" + verified installs. Skip 1–5 star reviews at launch (every registry that has them — VS Code Marketplace, Chrome store — spends disproportionate effort moderating them, and agents can't interpret a 3.8 vs 4.1). Weight signals from accounts with verified installs of that pack ("verified-usage weighting": a 'works for me' from someone who installed it counts 1.0, from someone who didn't 0.25).
+**Recommendation:** Stars + per-version "works / doesn't work" + verified adoptions. Skip 1–5 star reviews at launch (every registry that has them — VS Code Marketplace, Chrome store — spends disproportionate effort moderating them, and agents can't interpret a 3.8 vs 4.1). Weight signals from accounts with verified adoptions of that pack ("verified-usage weighting": a 'works for me' from someone whose member vendors it counts 1.0, from someone who doesn't 0.25).
 
 ### C.2 Bug reports
 
-- If the pack has a **linked public repo**: default to **"Report on GitHub"** — pre-filled issue template URL (`/issues/new?template=pack-bug.yml&title=...&body=...` with pack version, client version, redacted environment). We store only a lightweight record `(pack_id, version, reporter, github_issue_url, status)` and mirror status via the GitHub App's `issues` webhook. This keeps triage where maintainers already work.
+- If the pack has a **linked public repo**: default to **"Report on GitHub"** — pre-filled issue template URL (`/issues/new?template=pack-bug.yml&title=...&body=...` with pack version, engine version, redacted environment). We store only a lightweight record `(pack_id, version, reporter, github_issue_url, status)` and mirror status via the GitHub App's `issues` webhook. This keeps triage where maintainers already work.
 - If **no public repo**: in-site report → publisher's dashboard inbox, email notification, states Open/Acknowledged/Fixed-in-vX/Won't fix. Counts are public ("3 open reports") to inform users.
 - Publishers can toggle "accept in-site reports even with a repo" and set a security contact (`SECURITY.md`-style) for private disclosure; security reports are never public.
 
@@ -129,7 +129,7 @@ Two surfaces: directory browse (recency matters) and MCP search (relevance + rel
 
 ```
 quality  = wilson_lower_bound(works, works+fails, z=1.96)        # 0..1, pessimistic for small n
-adoption = log10(1 + verified_installs_30d) / log10(1 + P95_installs_30d)   # 0..1 normalised
+adoption = log10(1 + verified_adoptions_30d) / log10(1 + P95_adoptions_30d)   # 0..1 normalised
 stars_n  = log10(1 + stars) / log10(1 + P95_stars)
 health   = 0.5*validation_pass + 0.2*has_public_repo + 0.2*verified_publisher + 0.1*updated_within_90d
 freshness= 1 / (1 + age_days_of_latest_version/180)              # browse only
@@ -137,10 +137,10 @@ freshness= 1 / (1 + age_days_of_latest_version/180)              # browse only
 directory_score = 0.35*quality + 0.25*adoption + 0.15*stars_n + 0.15*health + 0.10*freshness
 mcp_score       = bm25_text_relevance * (0.4 + 0.6*(0.45*quality + 0.25*adoption + 0.30*health))
                   * category_match(1.0 exact / 0.6 parent / 0.2 none)
-                  * client_compat(1.0 if works-for-me exists for caller's client major version, else 0.8)
+                  * engine_compat(1.0 if the caller's engine meets minEngineVersion and works-for-me exists for it, else 0.8)
 penalties: open_security_report → 0.0; failed latest validation → 0.1; abuse_hold → 0.2; deprecated → 0.3
 ```
-"Trending" uses a Hacker News-style decay `points / (age_hours + 2)^1.8` over 7-day star+install deltas. Source for HN formula: [How Hacker News ranking really works](https://www.righto.com/2013/11/how-hacker-news-ranking-really-works.html). New packs get an "exploration" slot (1 of every 10 results in browse) so the cold-start problem doesn't lock out newcomers.
+"Trending" uses a Hacker News-style decay `points / (age_hours + 2)^1.8` over 7-day star+adoption deltas. Source for HN formula: [How Hacker News ranking really works](https://www.righto.com/2013/11/how-hacker-news-ranking-really-works.html). New packs get an "exploration" slot (1 of every 10 results in browse) so the cold-start problem doesn't lock out newcomers.
 
 ---
 
@@ -156,7 +156,7 @@ penalties: open_security_report → 0.0; failed latest validation → 0.1; abuse
 /p/<owner>/<pack>/v/<ver>  Version pin
 /u/<handle> | /o/<org>     Public profiles (packs, verification badge)
 /search?q=                 Search results (same component as /packs)
-/docs/install, /docs/mcp   Install & MCP connection docs
+/docs/adopt, /docs/mcp     Adopting a pack & MCP connection docs
 /login  /signup  /mfa      Auth (passkey-first), /account/security (factors, sessions, tokens)
 /dashboard                 Publisher: my packs, validation queue, reports inbox, analytics
 /dashboard/new             New pack wizard (manual upload or GitHub)
@@ -172,14 +172,14 @@ penalties: open_security_report → 0.0; failed latest validation → 0.1; abuse
 ### D.2 Key screens (summary)
 
 - **Home/directory:** hero search; "Connect your agent" one-liner (`claude mcp add packserver https://mcp.packserver.dev/mcp`); rows: Trending, New & validated, Categories grid with counts, Verified publishers.
-- **Category page:** description, sub-categories, filter rail (features: skills/commands/hooks/tasks/MCP configs; client compatibility; verified only; has public repo), sort (Recommended/Most installed/Newest/Recently updated), card grid.
+- **Category page:** description, sub-categories, filter rail (contents: rules, skills, declared checks, coded checks, guards, tasks; engine compatibility; verified only; has public repo), sort (Recommended/Most adopted/Newest/Recently updated), card grid.
 - **Pack detail:** see wireframe 1.
-- **Search:** typeahead with category chips, result cards show the feature-summary icons, validation badge, repo badge, install count, works-for-me %.
+- **Search:** typeahead with category chips, result cards show the feature-summary icons, validation badge, repo badge, adoption count, works-for-me %.
 - **Login/MFA:** passkey-first ("Sign in with a passkey" primary; email code fallback; GitHub OAuth as linked identity, never as sole factor for publishers), MFA enrollment interstitial on first publish.
 - **Publisher dashboard:** see wireframe 3.
 - **New pack wizard:** see wireframe 4.
 - **GitHub connect:** install App → pick repos → add mappings `repo + path → pack name` → choose trigger (tag `v*`, release, push to main) → dry-run validation → enable.
-- **Validation results:** per-version checklist: manifest schema, file-size/type limits, secret scan, prompt-injection heuristics, link checks, license present, hooks sandbox smoke test, MCP config syntax; each line pass/warn/fail with log excerpt; "Re-run" and "Request manual review".
+- **Validation results:** per-version checklist: manifest schema, file-size/type limits, secret scan, prompt-injection heuristics, link checks, license present, guards judged on fixtures, coded checks compiled and run; each line pass/warn/fail with log excerpt; "Re-run" and "Request manual review".
 - **Org verification:** add domain → show TXT record `_packserver-verify.<domain>` → "Check" → verified badge; plus GitHub org link (install App as org owner) as second proof; require org-level MFA for all admins.
 - **Billing:** credits balance, "Buy credits" (opens Stripe Checkout), current plan, seats used/paid, "Manage in Stripe" portal, invoices.
 - **Admin/moderation:** queue tabs: Flagged packs, Star anomalies, Reports marked abusive, Verification requests, DMCA/takedown; each row: evidence, actions (hold from ranking, unpublish, ban, dismiss), with audit trail.
@@ -189,58 +189,60 @@ penalties: open_security_report → 0.0; failed latest validation → 0.1; abuse
 **1. Pack detail page**
 ```
 +------------------------------------------------------------------------------------+
-| PackServer   [Search packs________________]   Browse  Categories  Docs   [Sign in]  |
+| PackServer   [Search packs________________]   Browse  Categories  Docs   [Sign in] |
 +------------------------------------------------------------------------------------+
-| acme / gcp-deploy                                   v2.3.1  * 1,204   [ Star ]      |
-| Deploy and operate workloads on GCP with Claude Code                                |
-| by [Acme Corp ✓ verified org]   Category: Cloud > GCP   License: Apache-2.0         |
+| acme / gcp-deploy                                1.61021.1  * 1,204   [ Star ]     |
+| Deploy and operate workloads on GCP with Claude Code                               |
+| by [Acme Corp ✓ verified org]   Category: Cloud > GCP   License: Apache-2.0        |
 |                                                                                    |
-| [✔ Validation passed 2h ago]  [⚙ 4 skills] [⌘ 3 commands] [⚡ 2 hooks] [☐ 5 tasks] |
-| [🔌 1 MCP config]  Works for me: 92% (n=310, Claude Code 2.x)                       |
+| [✔ Validation passed 2h ago]  [rules] [4 skills] [6 checks: 4 declared, 2 coded]   |
+| [1 guard] [2 tasks: daily, weekly]   Works for me: 92% (n=310, cn 1.61021.1)       |
 |                                                                                    |
 | +--------------------------------------+  +--------------------------------------+ |
-| | Install                              |  |  ◉ Public repo                       | |
-| |  claude pack add acme/gcp-deploy     |  |  github.com/acme/claude-packs/gcp    | |
-| |  [copy]  MCP: ask your agent to      |  |  commit a1b2c3d · tag v2.3.1 ✓       | |
-| |  "install pack acme/gcp-deploy"      |  |  ---- or when absent ----            | |
+| | Adopt                                |  |  ◉ Public repo                       | |
+| |  cn adopt acme/gcp-deploy            |  |  github.com/acme/packs/gcp           | |
+| |  [copy]  or ask your agent to        |  |  commit a1b2c3d · 1.61021.1 ✓        | |
+| |  "adopt the acme/gcp-deploy pack"    |  |  ---- or when absent ----            | |
 | +--------------------------------------+  |  ⚠  NO PUBLIC REPO                   | |
 |                                           |  Source not published by the author  | |
 | Overview | Contents | Versions | Validation | Reports (3 open)                     | |
 | ---------------------------------------------------------------------------------- |
 | README rendered here ...                                                           |
 |                                                                                    |
-| Contents summary                                                                   |
+| Before you adopt (pre-install manifest)                                            |
+|  Rules: RULES.md (1.8k tokens, read by every session)                              |
 |  Skills (4): gcp-iam, gke-debug, cloud-run-deploy, bq-cost-review                  |
-|  Commands (3): /gcp:deploy /gcp:logs /gcp:cost                                     |
-|  Hooks (2): PreToolUse(gcloud) guard, PostToolUse(cost warn)   [view source]       |
-|  Tasks (5): nightly-cost-report ...     MCP configs (1): gcloud-mcp (stdio)        |
+|  Checks (6): 4 declared, 2 coded (Go)                          [view source]       |
+|  Guards (1): denies `gcloud projects delete`                                       |
+|  Tasks (2): nightly-cost-report (daily, opens a PR), quota-review (weekly)         |
 |                                                                                    |
-| [👍 Works for me] [👎 Didn't work]   [Report a bug ↗ GitHub]   [Share]              |
+| [👍 Works for me] [👎 Didn't work]   [Report a bug ↗ GitHub]   [Share]               |
 +------------------------------------------------------------------------------------+
 ```
 
 **2. Home / directory**
 ```
 +------------------------------------------------------------------------------------+
-| PackServer                                     Browse  Categories  Publish  [Sign in]|
+| PackServer                                  Browse  Categories  Publish  [Sign in] |
 |                                                                                    |
-|            Packs that teach Claude and Ant new skills                               |
+|            Claudinite packs: checks, rules, skills and tasks                       |
 |            [ Search 4,812 packs...                                 🔍 ]             |
-|            Connect your agent:  claude mcp add packserver https://mcp.packserver.dev|
+|         Connect your agent:  claude mcp add packserver https://mcp.packserver.dev  |
 |                                                                                    |
 | Trending this week                                            [see all]            |
 | +----------------+ +----------------+ +----------------+ +----------------+        |
 | | acme/gcp-deploy| | jane/rust-tdd  | | k8s/helm-ops   | | sec/secret-scan|        |
-| | ✓ ✓repo ⚙4 ⌘3  | | ✓ ✓repo ⚙2 ⚡1 | | ✓ ⚠norepo ⚙6  | | ✓ ✓repo ⚡3    |        |
-| | ★1.2k  92%👍   | | ★640   88%👍   | | ★410   79%👍   | | ★380   95%👍   |        |
+| | ✓ ✓repo chk6 g1| | ✓ ✓repo chk3 g1| | ✓ ⚠norepo sk6  | | ✓ ✓repo chk5   |        |
+| | ★1.2k  92%👍   | | ★640   88%👍   | | ★410   79%👍   | | ★380   95%👍   |            |
 | +----------------+ +----------------+ +----------------+ +----------------+        |
+| chk = checks, g = guards, sk = skills                                              |
 |                                                                                    |
 | Categories                                                                         |
 | [Cloud 312] [Languages 540] [Testing 221] [Security 143] [Data 198] [DevOps 377]   |
-| [Docs 96] [Frontend 288] [Mobile 71] [Productivity 150] [Agents & MCP 204] ...     |
+| [Docs 96] [Frontend 288] [Mobile 71] [Productivity 150] [Code review 204] ...      |
 |                                                                                    |
 | New & validated          Verified publishers                                       |
-| • foo/bar v1.0 (2h)      [Google ✓] [Cloudflare ✓] [Acme ✓] [Stripe ✓]             |
+| • foo/bar 1.61022.1 (2h) [Google ✓] [Cloudflare ✓] [Acme ✓] [Stripe ✓]             |
 | • ...                                                                              |
 +------------------------------------------------------------------------------------+
 ```
@@ -248,23 +250,23 @@ penalties: open_security_report → 0.0; failed latest validation → 0.1; abuse
 **3. Publisher dashboard**
 ```
 +------------------------------------------------------------------------------------+
-| Dashboard  Packs  GitHub  Org  Billing  Tokens                   acme ▾  [+ New pack]|
+| Dashboard  Packs  GitHub  Org  Billing  Tokens               acme ▾  [+ New pack]  |
 +------------------------------------------------------------------------------------+
 | Credits: 7   Plan: Team (12/15 seats)   [Buy credits] [Manage billing]             |
 |                                                                                    |
 | Needs attention (2)                                                                |
-|  ✖ acme/bq-tools v1.4.0  validation FAILED: secret detected in skills/x.md  [view]  |
-|  ● acme/gcp-deploy       3 open bug reports, oldest 6d                      [inbox] |
+|  ✖ acme/bq-tools 1.61020.1  validation FAILED: secret detected in skills/x  [view] |
+|  ● acme/gcp-deploy       3 open bug reports, oldest 6d                     [inbox] |
 |                                                                                    |
-| Your packs                         Visibility  Latest   Validation  30d installs 👍 |
-|  acme/gcp-deploy                   public      2.3.1    ✔ passed    4,120     92%  |
-|  acme/bq-tools                     public      1.3.2    ✖ 1.4.0 fail  980     85%  |
-|  acme/internal-runbooks            private 🔒  0.9.0    ✔ passed      210     n/a  |
-|     access: team platform-eng (GitHub) · 3 tokens · 2 invites pending     [manage]  |
+| Your packs                Visibility  Stable      Validation      30d adopt.   👍   |
+|  acme/gcp-deploy          public      1.61021.1   ✔ passed            4,120   92%  |
+|  acme/bq-tools            public      1.60911.2   ✖ 1.61020.1 fail      980   85%  |
+|  acme/internal-runbooks   private 🔒  1.60830.1   ✔ passed              210   n/a   |
+|     access: team platform-eng (GitHub) · 3 tokens · 2 invites pending   [manage]   |
 |                                                                                    |
 | GitHub auto-publish                                                                |
-|  acme/claude-packs  path packs/gcp  → acme/gcp-deploy   on tag v*   last run ✔ 2h  |
-|  acme/claude-packs  path packs/bq   → acme/bq-tools     on tag v*   last run ✖ 1d  |
+|  acme/packs  path packs/gcp  → acme/gcp-deploy   on tag v*   last run ✔ 2h         |
+|  acme/packs  path packs/bq   → acme/bq-tools     on tag v*   last run ✖ 1d         |
 |  [+ Add mapping]                                                                   |
 +------------------------------------------------------------------------------------+
 ```
@@ -272,23 +274,23 @@ penalties: open_security_report → 0.0; failed latest validation → 0.1; abuse
 **4. New pack wizard (step 3 of 5: validation)**
 ```
 +------------------------------------------------------------------------------------+
-| New pack      (1) Source ✔  (2) Metadata ✔  (3) Validation ●  (4) Visibility  (5) Pay|
+| New pack   (1) Source ✔  (2) Metadata ✔  (3) Validation ●  (4) Visibility  (5) Pay |
 +------------------------------------------------------------------------------------+
-| Validating acme/gcp-deploy @ 2.3.1 (uploaded 1.2 MB, 23 files)                     |
+| Validating acme/gcp-deploy @ 1.61021.1 (uploaded 1.2 MB, 23 files)                 |
 |                                                                                    |
-|  ✔ pack.json schema valid                     ✔ License file present (Apache-2.0)  |
-|  ✔ File types & size within limits            ✔ Links resolve (14/14)              |
-|  ✔ No secrets detected                        ⚠ 1 skill > 8k tokens (perf warning) |
-|  ✔ Prompt-injection heuristics: no findings   ✔ Hooks sandbox smoke test (2/2)     |
-|  ✔ MCP config syntax (1/1)                    ● Feature summary extracted:          |
-|                                                  4 skills · 3 commands · 2 hooks ·  |
-|                                                  5 tasks · 1 MCP config             |
+|  ✔ pack.json schema valid                  ✔ License file present (Apache-2.0)     |
+|  ✔ File types & size within limits         ✔ Links resolve (14/14)                 |
+|  ✔ No secrets detected                     ⚠ 1 skill > 8k tokens (perf warning)    |
+|  ✔ Prompt-injection heuristics: none       ✔ Guards judged on fixtures (1/1)       |
+|  ✔ Coded checks compiled and run (2/2)     ● Contents extracted:                   |
+|                                               RULES.md · 4 skills · 6 checks ·     |
+|                                               1 guard · 2 tasks                    |
 |                                                                                    |
 |  Detected category: Cloud > GCP  [change]                                          |
 |                                                                                    |
 |  Logs ▸  Re-run ▸                                                                  |
 |                                                                                    |
-|                                           [◀ Back]   [Continue to visibility ▶]     |
+|                                           [◀ Back]   [Continue to visibility ▶]    |
 +------------------------------------------------------------------------------------+
 ```
 
@@ -298,22 +300,22 @@ penalties: open_security_report → 0.0; failed latest validation → 0.1; abuse
 1. `/signup`: email → 6-digit code (Turnstile on submit). 2. Choose handle. 3. "Protect your account" — Create passkey (WebAuthn `create()`, RP id `packserver.dev`, resident key preferred, user verification required); fallback "Use an authenticator app" (TOTP). 4. Show 8 recovery codes, require acknowledgement. 5. Optional: link GitHub (OAuth) for publisher trust signals. 6. Land on `/packs` with "Connect your agent" toast. Publishing is blocked until step 3 is done.
 
 **Publish manually**
-1. Dashboard → New pack → Source: "Upload archive" (zip/tar ≤ 25MB) or "Point at a repo" (next flow). 2. Metadata: name (scoped under handle/org), summary, category (suggested from contents), license, public repo URL (optional; if given, we fetch and compare a file hash to show "matches repo at tag" badge). 3. Validation runs (Worker → Queue → validator; status streamed). 4. Visibility: Public (1 credit) or Private (needs plan). 5. Pay: if no credit → Stripe Checkout ($1 single or bundle) → webhook `checkout.session.completed` grants credit → returns to wizard → "Publish" consumes credit and copies the object from staging R2 prefix to `packs/<owner>/<name>/<ver>/` with immutable metadata; D1 version row created; search index updated; MCP cache purged.
+1. Dashboard → New pack → Source: "Upload archive" (tar.gz ≤ 3 MB, the format cn reads today; O3 open) or "Point at a repo" (next flow). 2. Metadata: name (scoped under handle/org), summary, category (suggested from contents), license, public repo URL (optional; if given, we fetch and compare a file hash to show "matches repo at tag" badge). 3. Validation runs (Worker → Queue → validator; status streamed). 4. Visibility: Public (1 credit) or Private (needs plan). 5. Pay: if no credit → Stripe Checkout ($1 single or bundle) → webhook `checkout.session.completed` grants credit → returns to wizard → "Publish" consumes credit and copies the object from staging R2 prefix to `packs/<id>/<version>.tar.gz` with immutable metadata and rewrites the signed `packs/<id>/index.json` and `packs/catalog.json`; D1 version row created; search index updated; MCP cache purged.
 
 **Set up GitHub auto-publish**
-1. Dashboard → GitHub → "Install PackServer app" (GitHub App; permissions: Contents read, Metadata read; optional Members read for access sync). 2. Select repos. 3. Add mapping: repo, path (`packs/gcp`), target pack (existing or new), trigger (tag matching `v*` | release published | push to branch). 4. "Dry run": we fetch the tree at HEAD via installation token, run validation, show results. 5. Enable. On webhook `push`/`release` (signature verified with `X-Hub-Signature-256`), we fetch tarball → validate → publish version (no credit needed for versions; new pack creation via GitHub still needs a credit or waiver). 6. Provenance: record repo, commit SHA, tag, workflow run id; display "Built from github.com/acme/claude-packs@a1b2c3d". 7. Failure → email + dashboard "Needs attention"; a GitHub Check Run is posted on the commit.
+1. Dashboard → GitHub → "Install PackServer app" (GitHub App; permissions: Contents read, Metadata read; optional Members read for access sync). 2. Select repos. 3. Add mapping: repo, path (`packs/gcp`), target pack (existing or new), trigger (tag matching `v*` | release published | push to branch). 4. "Dry run": we fetch the tree at HEAD via installation token, run validation, show results. 5. Enable. On webhook `push`/`release` (signature verified with `X-Hub-Signature-256`), we fetch tarball → validate → publish version (no credit needed for versions; new pack creation via GitHub still needs a credit or waiver). 6. Provenance: record repo, commit SHA, tag, workflow run id; display "Built from github.com/acme/packs@a1b2c3d". 7. Failure → email + dashboard "Needs attention".
 
 **Report a bug**
-1. Pack page → "Report a bug". 2. If signed-out → login. 3. If pack has repo: modal "This will open a pre-filled issue on GitHub" → new tab with template; on return we ask to paste/auto-detect issue URL (optional) so it shows under Reports. 4. If no repo: form (version, client + version, what happened, steps, "contains sensitive info → send privately to publisher"). 5. Publisher notified; status lifecycle shown publicly except private reports.
+1. Pack page → "Report a bug". 2. If signed-out → login. 3. If pack has repo: modal "This will open a pre-filled issue on GitHub" → new tab with template; on return we ask to paste/auto-detect issue URL (optional) so it shows under Reports. 4. If no repo: form (version, engine version, what happened, steps, "contains sensitive info → send privately to publisher"). 5. Publisher notified; status lifecycle shown publicly except private reports.
 
 **Star / rate**
-1. Click Star (login required; account ≥24h for the count to be public — otherwise stored as pending). 2. "Works for me / Didn't work" prompts for client + version (prefilled from last MCP install if any); one vote per user per pack-version, changeable. 3. Votes from principals with a verified install carry full weight. 4. Agents can submit "works for me" via MCP tool `report_pack_outcome` only on behalf of an authenticated user and only after an install event.
+1. Click Star (login required; account ≥24h for the count to be public — otherwise stored as pending). 2. "Works for me / Didn't work" prompts for the engine version (prefilled from the last recorded adoption if any); one vote per user per pack-version, changeable. 3. Votes from principals with a verified adoption carry full weight. 4. Agents can submit "works for me" via MCP tool `report_pack_outcome` only on behalf of an authenticated user and only after an adoption was recorded.
 
 **Grant access to a private pack**
 1. Dashboard → pack → Access. 2. Tabs: People (add by handle/email → invite email), Teams (org teams), GitHub teams (if App installed on org: pick `org/team` → sync), Domains (org must have verified domain; toggle "anyone with verified @acme.com"), Tokens (name, scope `packs:read`, restrict to this pack/org, expiry default 90d; show once), Invite links (expiry, max uses, optional domain restriction). 3. Every change writes an audit row and rebuilds `effective_access` for the pack. 4. Readers see the pack under "Shared with me" and via MCP after re-auth or token use.
 
-**Agent discovers & installs a pack via MCP**
-1. User: `claude mcp add packserver https://mcp.packserver.dev/mcp` (Streamable HTTP). 2. Agent calls `search_packs({query:"deploy to GCP", category:"cloud/gcp", client:"claude-code@2"})` anonymously → ranked public results with feature summaries, validation status, works-for-me %, install snippet. 3. `get_pack({id, version?})` → manifest + R2 signed URL (public packs: plain CDN URL; private: 5-min signed URL). 4. `install_pack` returns the archive URL and a checksum; the client downloads from R2 and records an install event (authenticated only). 5. If the user asks for a private pack: server returns `401` + `WWW-Authenticate: Bearer resource_metadata=..., scope="packs:read"`; client discovers AS metadata, registers via CIMD or DCR, runs PKCE auth-code flow in the browser (passkey login + consent page listing scopes and orgs), receives an audience-bound token, retries. 6. Later `report_pack_outcome({pack, version, outcome:"works"})` feeds the ranking.
+**Agent finds a pack via MCP and the member adopts it**
+1. User: `claude mcp add packserver https://mcp.packserver.dev/mcp` (Streamable HTTP). 2. Agent calls `search_packs({query:"deploy to GCP", category:"cloud/gcp"})` anonymously → ranked public results with content summaries, validation status, works-for-me %, `minEngineVersion` and channel. 3. `get_pack({id, version?})` returns the manifest, the pre-install manifest (guards, tasks and cadence, forced skills, GitHub actions) and the `cn adopt` / `packs.declared` snippet. 4. The agent runs `cn adopt <id>` (or adds the pack to `.claudinite/settings.yaml`); `cn` fetches the archive, verifies it against the signed index and vendors it into the repo, and an adoption is recorded from that fetch. The agent never downloads the archive itself. 5. If the user asks for a private pack: server returns `401` + `WWW-Authenticate: Bearer resource_metadata=..., scope="packs:read"`; client discovers AS metadata, registers via CIMD or DCR, runs PKCE auth-code flow in the browser (passkey login + consent page listing scopes and orgs), receives an audience-bound token, retries. 6. Later `report_pack_outcome({pack, version, outcome:"works"})` feeds the ranking.
 
 ---
 

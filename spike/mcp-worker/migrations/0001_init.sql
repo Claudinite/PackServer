@@ -1,15 +1,15 @@
 -- Packs registry core table (spike-sized).
 CREATE TABLE packs (
   id          INTEGER PRIMARY KEY,
-  name        TEXT NOT NULL UNIQUE,          -- e.g. @google/gcp-basics
-  version     TEXT NOT NULL,
+  name        TEXT NOT NULL UNIQUE,          -- e.g. @google/gcp-basics (mapping to cn's bare id is open, O4)
+  version     TEXT NOT NULL,                 -- 1.YMMDD.n, e.g. 1.61021.1
   category    TEXT NOT NULL,                 -- e.g. cloud, devops, data
   summary     TEXT NOT NULL,
   description TEXT NOT NULL,
   keywords    TEXT NOT NULL DEFAULT '',      -- space separated
-  features    TEXT NOT NULL DEFAULT '{}',    -- JSON: counts of skills/prompts/checks/tasks
+  features    TEXT NOT NULL DEFAULT '{}',    -- JSON: counts of rules/skills/declaredChecks/codedChecks/guards/tasks
   repo_url    TEXT,                          -- NULL => no public repo
-  r2_key      TEXT NOT NULL,                 -- object key in the PACKS bucket
+  r2_key      TEXT NOT NULL,                 -- object key in the PACKS bucket, e.g. packs/<id>/<version>.tar.gz
   stars       INTEGER NOT NULL DEFAULT 0,
   visibility  TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public','private')),
   created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))

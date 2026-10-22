@@ -1,7 +1,9 @@
 # Spike results (2026-10-21, local `wrangler dev`)
 
 Environment: node v22.22.0, npm 10.9.4, wrangler 4.151.3, agents 0.23.0,
-@modelcontextprotocol/server 2.0.0. All commands run from `spike/mcp-worker/`.
+@modelcontextprotocol/server 2.0.0. All commands run from `spike/mcp-worker/`. The sample pack values in the
+outputs below (versions, content counts, repo URLs, R2 keys) were later updated to match the current
+`seed.sql`, which uses Claudinite pack versions (`1.YMMDD.n`) and contents; the shape of each response is as captured.
 
 ## 1. Install + typecheck
 
@@ -77,7 +79,7 @@ data: {"result":{"tools":[
 
 ```
 data: {"result":{"content":[{"type":"text","text":"[
-  { \"name\": \"@google/gcp-basics\", \"version\": \"1.2.0\", \"category\": \"cloud\",
+  { \"name\": \"@google/gcp-basics\", \"version\": \"1.61021.1\", \"category\": \"cloud\",
     \"summary\": \"Work with Google Cloud: projects, IAM, Cloud Run, GKE and BigQuery.\",
     \"stars\": 412, \"rank\": -2.8500607296107665 } ]"}]},"jsonrpc":"2.0","id":3}
 ```
@@ -85,7 +87,7 @@ data: {"result":{"content":[{"type":"text","text":"[
 ### tools/call search_packs {"query":"cloud","category":"serverless"}
 
 ```
-[ { "name": "@cloudflare/workers-kit", "version": "2.0.3", "category": "serverless",
+[ { "name": "@cloudflare/workers-kit", "version": "1.61002.3", "category": "serverless",
     "summary": "Build and ship Cloudflare Workers with D1, R2, KV, Queues and Durable Objects.",
     "stars": 289, "rank": -0.00000205524861878453 } ]
 ```
@@ -94,14 +96,14 @@ data: {"result":{"content":[{"type":"text","text":"[
 
 ```
 {
-  "name": "@google/gcp-basics", "version": "1.2.0", "category": "cloud",
+  "name": "@google/gcp-basics", "version": "1.61021.1", "category": "cloud",
   "summary": "Work with Google Cloud: projects, IAM, Cloud Run, GKE and BigQuery.",
-  "description": "Skills and checks for provisioning and operating GCP resources with gcloud and Terraform, with guardrails for IAM least privilege.",
+  "description": "Skills and checks for provisioning and operating GCP resources with gcloud and Terraform, with checks for IAM least privilege.",
   "keywords": ["gcp","google","cloud","gcloud","iam","cloud-run","gke","bigquery","terraform"],
-  "features": { "skills": 12, "prompts": 4, "checks": 6, "tasks": 3 },
-  "repo_url": "https://github.com/google/claude-gcp-pack",
+  "features": { "rules": 1, "skills": 12, "declaredChecks": 4, "codedChecks": 2, "guards": 1, "tasks": 3 },
+  "repo_url": "https://github.com/google/gcp-pack",
   "stars": 412, "visibility": "public", "created_at": "2026-10-21T15:25:41.608Z",
-  "download_url": "https://packs.example.dev/packs/@google/gcp-basics/1.2.0.tar.zst"
+  "download_url": "https://packs.example.dev/packs/gcp-basics/1.61021.1.tar.gz"
 }
 ```
 
