@@ -61,7 +61,7 @@ Writing this out changed six decisions in the [architecture](README.md). They're
 
 Volume is about 1.5 GB a month, so cost is negligible.
 
-**Tamper evidence.** R2 bucket locks have no compliance mode: anyone with R2 admin permission in the account (in this design, only the owner) can remove the lock, and lock changes don't appear in R2's audit log. So the design detects tampering rather than relying on the lock alone. Once a day the consumer signs the latest chain-head hash and records it in the public Sigstore Rekor transparency log (append-only, run by a third party, free), and also serves it at `packserver.dev/.well-known/audit-heads`. Rekor is used instead of a GitHub commit because PackServer never writes to GitHub. A nightly verifier in the main account re-reads the R2 batches, recomputes the chain and compares it with the published heads; any gap or mismatch pages the operators.
+**Tamper evidence.** R2 bucket locks have no compliance mode: anyone with R2 admin permission in the account (in this design, only the owner) can remove the lock, and lock changes don't appear in R2's audit log. So the design detects tampering rather than relying on the lock alone. Once a day the consumer signs the latest chain-head hash and records it in the public Sigstore Rekor transparency log (append-only, run by a third party, free), and also serves it at `registry.claudinite.com/.well-known/audit-heads`. Rekor is used instead of a GitHub commit because PackServer never writes to GitHub. A nightly verifier in the main account re-reads the R2 batches, recomputes the chain and compares it with the published heads; any gap or mismatch pages the operators.
 
 Considered and not chosen: S3 Object Lock in Compliance mode, which would prevent deletion outright but adds an AWS account. Comparison: `/mnt/project-files/architecture/audit-log-options.md`.
 
@@ -115,7 +115,7 @@ Considered and not chosen: S3 Object Lock in Compliance mode, which would preven
 
 ### Download counts: Cloudflare's request logs for public packs, Analytics Engine for private
 
-**The catch.** `cdn.packserver.dev` is an R2 custom domain with no Worker in front, so public downloads and index fetches never run our code and can't write anything themselves. (Putting a Worker in front just to count would add a request charge to every update check for no other benefit.)
+**The catch.** `packs.claudinite.com` is an R2 custom domain with no Worker in front, so public downloads and index fetches never run our code and can't write anything themselves. (Putting a Worker in front just to count would add a request charge to every update check for no other benefit.)
 
 **Writes.**
 - *Public packs:* nothing we write. The zone's Logpush job (set up by the monitoring plan) already delivers every `http_requests` record to an R2 archive with IPs truncated, with CDN cache hits sampled at 10%. Each record has the path (`packs/<id>/<version>.tar.gz`, `packs/<id>/index.json` or `packs/catalog.json`), status and a client hash.

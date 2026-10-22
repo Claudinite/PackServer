@@ -46,7 +46,7 @@ Indicative running cost at launch scale is about $30/month (Workers Paid $5, a P
                          └──▶ Workflows: ValidatePackWorkflow ──▶ Sandbox (Container microVM)     │
                                         │          │                    └─egress allowlist─▶ AI Gateway ─▶ Anthropic
                                         ▼          ▼                                              │
-                                 R2 packs-staging  R2 packs-public ──▶ cdn.packserver.dev (cache) │
+                                 R2 packs-staging  R2 packs-public ──▶ packs.claudinite.com (cache) │
                                                    R2 packs-private ─▶ served via mcp/web Worker  │
                          Durable Objects: quotas, per-publisher locks   Queues: indexing, notify   │
                          Analytics Engine: private download counts    Access: /admin              │
@@ -55,15 +55,21 @@ Indicative running cost at launch scale is about $30/month (Workers Paid $5, a P
 
 All Workers live in one repository and share a `core` package (domain logic as plain functions, see §12 on lock-in). They are split by trust boundary, not by feature: the MCP Worker never holds Stripe or GitHub App secrets, and only the publish/validation side can write to `packs-public`.
 
+**Hostnames** (all in the existing `claudinite.com` zone, one level deep so Universal SSL covers them):
+
+- `registry.claudinite.com`: the site, the API and the MCP endpoint at `/mcp`. It is also the passkey RP id and the GitHub OIDC audience, so a later move would invalidate every passkey; decide it before launch.
+- `packs.claudinite.com`: R2 archives and signed indexes. It is the host `cn` already reads, so PackServer writing it is part of O2.
+- `registry-admin.claudinite.com`: the admin app, behind Cloudflare Access.
+
 | Worker | Routes | Bindings it gets |
 |---|---|---|
-| `web` | `packserver.dev/*`, `/api/*` (browse, auth, stars, reports, dashboard) | D1, KV, R2 (read: public/private), Turnstile secret, Workflows (start), rate limiter |
-| `mcp` | `mcp.packserver.dev/mcp`, `/.well-known/oauth-*`, `/oauth/*` | D1 (read mostly), KV (OAuth), Vectorize, Workers AI, R2 private (read), rate limiter |
+| `web` | `registry.claudinite.com/*`, `/api/*` (browse, auth, stars, reports, dashboard) | D1, KV, R2 (read: public/private), Turnstile secret, Workflows (start), rate limiter |
+| `mcp` | `registry.claudinite.com/mcp`, `/.well-known/oauth-*`, `/oauth/*` | D1 (read mostly), KV (OAuth), Vectorize, Workers AI, R2 private (read), rate limiter |
 | `publish` | `/api/publish/*`, `/api/oidc/*` | D1, R2 staging (write), Workflows, DO quotas |
 | `github` | `/hooks/github` | GitHub App key (Secrets Store), D1, Workflows |
 | `billing` | `/hooks/stripe`, `/api/billing/*` | Stripe keys, D1 (ledger), Workflows (send events) |
 | `validator` | internal (Workflow + Sandbox DO) | R2 staging (read), R2 public/private (write), D1, Vectorize, AI Gateway token |
-| `admin` | `admin.packserver.dev` behind Cloudflare Access | D1, R2, Workflows |
+| `admin` | `registry-admin.claudinite.com` behind Cloudflare Access | D1, R2, Workflows |
 
 ## 3. Domain model
 
@@ -173,7 +179,7 @@ There are three ways in, all ending in the same validation workflow. Uploads alw
 Modelled on PyPI/npm/crates.io trusted publishing, so no long-lived secret ever lives in the publisher's repo.
 
 1. In the dashboard, the publisher registers a trusted publisher for a pack: GitHub repository (stored with the immutable `repository_owner_id` to survive renames), workflow file, optional environment, and the **path** inside the repo that holds the pack. For a pack that does not exist yet this is a "pending publisher" that reserves the name.
-2. A small GitHub Action (`packserver/publish-action`) requests a GitHub OIDC token with audience `packserver.dev`, packs the configured path, and calls `POST /api/oidc/exchange`.
+2. A small GitHub Action (`packserver/publish-action`) requests a GitHub OIDC token with audience `registry.claudinite.com`, packs the configured path, and calls `POST /api/oidc/exchange`.
 3. The `publish` Worker verifies the JWT against GitHub's JWKS (cached in KV), matches `repository_owner_id`, `repository`, `job_workflow_ref` and `environment` exactly, rejects tokens from forks and from `pull_request_target` / `workflow_run` events, and returns a 15-minute upload token scoped to that one pack.
 4. The Action uploads to a presigned R2 URL and calls `POST /api/publish/{pack}/{version}` with the SHA-256. Provenance (repo, commit SHA, ref, workflow run URL) comes from the OIDC claims, not from the client.
 5. Validation starts. If the pack has **staged publishing** on (default for verified publishers and for packs above an adoption threshold), the validated version waits for an owner to approve it with a passkey (npm staged publishing, May 2026).
@@ -243,7 +249,7 @@ No step is agentic: model calls are single requests with no tools and a fixed JS
 | Bucket | Contents | Access |
 |---|---|---|
 | `packs-staging` | uploads awaiting validation | private; written via presigned PUT, read by the validator; lifecycle rule deletes after 14 days |
-| `packs-public` | validated public versions, attestations, rendered READMEs | custom domain `cdn.packserver.dev`, Cache Everything, `immutable` cache headers; free egress |
+| `packs-public` | validated public versions, attestations, rendered READMEs | custom domain `packs.claudinite.com`, Cache Everything, `immutable` cache headers; free egress |
 | `packs-private` | validated private versions | never public; the `mcp`/`web` Worker checks `effective_access` then streams the object or mints a 5-minute presigned GET |
 | `validation-reports` | full validation and LLM review logs | private; read by the publisher dashboard and moderators |
 
@@ -262,13 +268,13 @@ The cn engine is the main consumer, not agents. `cn adopt` and the scheduled upd
 
 ### 7.2 Networks that can't reach us
 
-Claude Code web VMs on the default Trusted network could not reach our hosts during the licensing work (2026-09-30), so `cdn.packserver.dev` may be unreachable from web sessions. The engine already handles this. Sessions never fetch packs, and the scheduled update already runs in GitHub Actions in the member repo, which can reach us, and opens a pull request with new versions. Only `cn adopt` in a session reads the registry, and on a limited-egress VM it falls back to the `vendored` branch of the public packs repo. PackServer only needs that branch to stay fed; who feeds it once PackServer is the writer is open (O2).
+Claude Code web VMs on the default Trusted network could not reach our hosts during the licensing work (2026-09-30), so `packs.claudinite.com` may be unreachable from web sessions. The engine already handles this. Sessions never fetch packs, and the scheduled update already runs in GitHub Actions in the member repo, which can reach us, and opens a pull request with new versions. Only `cn adopt` in a session reads the registry, and on a limited-egress VM it falls back to the `vendored` branch of the public packs repo. PackServer only needs that branch to stay fed; who feeds it once PackServer is the writer is open (O2).
 
 ## 8. MCP endpoint for agents
 
 Proven by the spike in `spike/mcp-worker` (stateless `createMcpHandler`, D1 FTS5 search, R2 download URLs, ~15 ms per call locally).
 
-- **Transport:** Streamable HTTP at `https://mcp.packserver.dev/mcp`, stateless, one `McpServer` per request, no Durable Object. (`McpAgent` is deprecated; Cloudflare's own quick-start templates still use it, so we start from the handler API.)
+- **Transport:** Streamable HTTP at `https://registry.claudinite.com/mcp`, stateless, one `McpServer` per request, no Durable Object. (`McpAgent` is deprecated; Cloudflare's own quick-start templates still use it, so we start from the handler API.)
 - **Anonymous access** for public packs, protected by the Rate Limiting binding keyed on IP and client id, with a Durable Object daily quota for heavy anonymous callers.
 - **Authenticated access** for private packs and write actions: the endpoint is an OAuth 2.1 resource server per the MCP authorization spec. It serves RFC 9728 Protected Resource Metadata, answers `401` with `WWW-Authenticate: Bearer resource_metadata=…, scope="packs:read"`, and the co-hosted authorization server (`workers-oauth-provider`) supports PKCE S256, RFC 8707 audience binding, Client ID Metadata Documents and Dynamic Client Registration as fallback. Login on the consent page is our normal passkey/GitHub login. Headless agents and CI use `psr_` read tokens on the same endpoint. Third-party tokens are never accepted.
 - **Private packs are invisible:** an unauthorised caller gets `404`, never `403`, on the site, API and MCP. Gated packs (§11) are the exception: their listing is visible, their contents return `404` until access is granted.

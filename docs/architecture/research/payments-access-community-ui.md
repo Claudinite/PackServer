@@ -81,7 +81,7 @@ Sources: [GitHub App permissions page](https://docs.github.com/en/enterprise-ser
 
 Per the MCP authorization spec (2025-11-25 revision):
 - PackServer's MCP endpoint is an **OAuth 2.1 resource server**. It MUST serve **Protected Resource Metadata (RFC 9728)** at `/.well-known/oauth-protected-resource/mcp` and return `401` with `WWW-Authenticate: Bearer resource_metadata="...", scope="packs:read"`.
-- The **authorization server** can be our own (co-hosted). It MUST publish RFC 8414 metadata, support **PKCE S256** (`code_challenge_methods_supported` required or clients refuse), honor the **`resource` parameter (RFC 8707)** and bind tokens to the audience `https://mcp.packserver.dev/mcp`.
+- The **authorization server** can be our own (co-hosted). It MUST publish RFC 8414 metadata, support **PKCE S256** (`code_challenge_methods_supported` required or clients refuse), honor the **`resource` parameter (RFC 8707)** and bind tokens to the audience `https://registry.claudinite.com/mcp`.
 - Client registration: spec now prefers **Client ID Metadata Documents (CIMD)** (client_id is an HTTPS URL to a JSON doc), with **Dynamic Client Registration (RFC 7591)** as fallback. Support both; clients like Claude Code/Desktop and Cursor will pick whichever the AS advertises.
 - Anonymous access: the MCP server serves *public* pack search without a token; a `401` with scope guidance is returned only when a client asks for private content or the user calls `login`. Step-up via `403 insufficient_scope`.
 - Headless agents/CI: no browser, so the OAuth flow fails. Provide **scoped read tokens** usable as `Authorization: Bearer psr_...` on the same endpoint (the resource server accepts both its own OAuth access tokens and PAT-style tokens; both are audience-restricted to the MCP endpoint — never accept GitHub or other third-party tokens, token passthrough is explicitly forbidden).
@@ -171,7 +171,7 @@ penalties: open_security_report → 0.0; failed latest validation → 0.1; abuse
 
 ### D.2 Key screens (summary)
 
-- **Home/directory:** hero search; "Connect your agent" one-liner (`claude mcp add packserver https://mcp.packserver.dev/mcp`); rows: Trending, New & validated, Categories grid with counts, Verified publishers.
+- **Home/directory:** hero search; "Connect your agent" one-liner (`claude mcp add packserver https://registry.claudinite.com/mcp`); rows: Trending, New & validated, Categories grid with counts, Verified publishers.
 - **Category page:** description, sub-categories, filter rail (contents: rules, skills, declared checks, coded checks, guards, tasks; engine compatibility; verified only; has public repo), sort (Recommended/Most adopted/Newest/Recently updated), card grid.
 - **Pack detail:** see wireframe 1.
 - **Search:** typeahead with category chips, result cards show the feature-summary icons, validation badge, repo badge, adoption count, works-for-me %.
@@ -227,7 +227,7 @@ penalties: open_security_report → 0.0; failed latest validation → 0.1; abuse
 |                                                                                    |
 |            Claudinite packs: checks, rules, skills and tasks                       |
 |            [ Search 4,812 packs...                                 🔍 ]             |
-|         Connect your agent:  claude mcp add packserver https://mcp.packserver.dev  |
+|         Connect your agent:  claude mcp add packserver https://registry.claudinite.com/mcp  |
 |                                                                                    |
 | Trending this week                                            [see all]            |
 | +----------------+ +----------------+ +----------------+ +----------------+        |
@@ -297,7 +297,7 @@ penalties: open_security_report → 0.0; failed latest validation → 0.1; abuse
 ### D.4 Step-by-step flows
 
 **Sign up + enroll passkey**
-1. `/signup`: email → 6-digit code (Turnstile on submit). 2. Choose handle. 3. "Protect your account" — Create passkey (WebAuthn `create()`, RP id `packserver.dev`, resident key preferred, user verification required); fallback "Use an authenticator app" (TOTP). 4. Show 8 recovery codes, require acknowledgement. 5. Optional: link GitHub (OAuth) for publisher trust signals. 6. Land on `/packs` with "Connect your agent" toast. Publishing is blocked until step 3 is done.
+1. `/signup`: email → 6-digit code (Turnstile on submit). 2. Choose handle. 3. "Protect your account" — Create passkey (WebAuthn `create()`, RP id `registry.claudinite.com`, resident key preferred, user verification required); fallback "Use an authenticator app" (TOTP). 4. Show 8 recovery codes, require acknowledgement. 5. Optional: link GitHub (OAuth) for publisher trust signals. 6. Land on `/packs` with "Connect your agent" toast. Publishing is blocked until step 3 is done.
 
 **Publish manually**
 1. Dashboard → New pack → Source: "Upload archive" (tar.gz ≤ 3 MB, the format cn reads today; O3 open) or "Point at a repo" (next flow). 2. Metadata: name (scoped under handle/org), summary, category (suggested from contents), license, public repo URL (optional; if given, we fetch and compare a file hash to show "matches repo at tag" badge). 3. Validation runs (Worker → Queue → validator; status streamed). 4. Visibility: Public (1 credit) or Private (needs plan). 5. Pay: if no credit → Stripe Checkout ($1 single or bundle) → webhook `checkout.session.completed` grants credit → returns to wizard → "Publish" consumes credit and copies the object from staging R2 prefix to `packs/<id>/<version>.tar.gz` with immutable metadata and rewrites the signed `packs/<id>/index.json` and `packs/catalog.json`; D1 version row created; search index updated; MCP cache purged.
@@ -315,7 +315,7 @@ penalties: open_security_report → 0.0; failed latest validation → 0.1; abuse
 1. Dashboard → pack → Access. 2. Tabs: People (add by handle/email → invite email), Teams (org teams), GitHub teams (if App installed on org: pick `org/team` → sync), Domains (org must have verified domain; toggle "anyone with verified @acme.com"), Tokens (name, scope `packs:read`, restrict to this pack/org, expiry default 90d; show once), Invite links (expiry, max uses, optional domain restriction). 3. Every change writes an audit row and rebuilds `effective_access` for the pack. 4. Readers see the pack under "Shared with me" and via MCP after re-auth or token use.
 
 **Agent finds a pack via MCP and the member adopts it**
-1. User: `claude mcp add packserver https://mcp.packserver.dev/mcp` (Streamable HTTP). 2. Agent calls `search_packs({query:"deploy to GCP", category:"cloud/gcp"})` anonymously → ranked public results with content summaries, validation status, works-for-me %, `minEngineVersion` and channel. 3. `get_pack({id, version?})` returns the manifest, the pre-install manifest (guards, tasks and cadence, forced skills, GitHub actions) and the `cn adopt` / `packs.declared` snippet. 4. The agent runs `cn adopt <id>` (or adds the pack to `packs.declared` in the member's Claudinite settings); `cn` fetches the archive, verifies it against the signed index and vendors it into the repo, and an adoption is recorded from that fetch. The agent never downloads the archive itself. 5. If the user asks for a private pack: server returns `401` + `WWW-Authenticate: Bearer resource_metadata=..., scope="packs:read"`; client discovers AS metadata, registers via CIMD or DCR, runs PKCE auth-code flow in the browser (passkey login + consent page listing scopes and orgs), receives an audience-bound token, retries. 6. Later `report_pack_outcome({pack, version, outcome:"works"})` feeds the ranking.
+1. User: `claude mcp add packserver https://registry.claudinite.com/mcp` (Streamable HTTP). 2. Agent calls `search_packs({query:"deploy to GCP", category:"cloud/gcp"})` anonymously → ranked public results with content summaries, validation status, works-for-me %, `minEngineVersion` and channel. 3. `get_pack({id, version?})` returns the manifest, the pre-install manifest (guards, tasks and cadence, forced skills, GitHub actions) and the `cn adopt` / `packs.declared` snippet. 4. The agent runs `cn adopt <id>` (or adds the pack to `packs.declared` in the member's Claudinite settings); `cn` fetches the archive, verifies it against the signed index and vendors it into the repo, and an adoption is recorded from that fetch. The agent never downloads the archive itself. 5. If the user asks for a private pack: server returns `401` + `WWW-Authenticate: Bearer resource_metadata=..., scope="packs:read"`; client discovers AS metadata, registers via CIMD or DCR, runs PKCE auth-code flow in the browser (passkey login + consent page listing scopes and orgs), receives an audience-bound token, retries. 6. Later `report_pack_outcome({pack, version, outcome:"works"})` feeds the ranking.
 
 ---
 
