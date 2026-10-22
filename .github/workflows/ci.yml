@@ -1,0 +1,48 @@
+# The CI a repo with none of its own is given; it is the repo's from then
+# on. A task's delivery dispatches it on the pull request it opens.
+name: ci
+
+on:
+  # A draft is work in progress: its checks start once it is marked ready.
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # Claudinite's checks; the engine update keeps these steps current.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/claudinite
+            ~/.npm/_cacache
+          key: cn-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.claudinite/settings.yaml') }}
+          restore-keys: cn-${{ runner.os }}-${{ runner.arch }}-
+      - name: install the engine settings.yaml pins
+        run: npx --yes --prefer-offline @claudinite/setup@1.0.1
+      - name: name the Claudinite checks build
+        id: claudinite-checks
+        continue-on-error: true
+        run: .claudinite/bin/cn check key >> "$GITHUB_OUTPUT"
+      - if: steps.claudinite-checks.outputs.key != ''
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.claudinite-checks.outputs.dir }}
+          key: claudinite-checks-${{ runner.os }}-${{ runner.arch }}-${{ steps.claudinite-checks.outputs.key }}
+      - name: cn check work-and-world
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: .claudinite/bin/cn check work-and-world
