@@ -1,0 +1,14 @@
+{
+  "name": "@packserver/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./canonical": "./canonical/index.ts",
+    "./canonical/fixtures": "./canonical/fixtures.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  }
+}

@@ -1,0 +1,5 @@
+export { ArchiveRefusal, type ArchiveReason } from "./errors.ts";
+export { LIMITS, ZSTD } from "./limits.ts";
+export { extractArchive } from "./extract.ts";
+export { canonicalise, canonicaliseArchive, canonicalArchive, isCanonical, tarOf, compress, type Canonical } from "./pack.ts";
+export { buildTree, readFile, sha256Hex, treeHash, type Tree, type TreeFile } from "./tree.ts";
