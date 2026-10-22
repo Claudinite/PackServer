@@ -8,7 +8,7 @@ Status: proposal, 2026-10-22, revised the same day after a practice review, a se
 > - One invariant: **what a scenario asserts changes only when its requirement changes.** Everything else (DSL, drivers, fakes, production code) changes freely. [stability-checks.md](stability-checks.md) enforces it in CI, from the base branch, so a PR cannot switch the gate off.
 > - All seven Workers run as production bundles in one local `workerd`; D1, R2, KV, Durable Objects, Workflows and Queues are the real local implementations; everything else is faked at a port and an unfaked outbound call fails the test.
 > - Coverage = every active requirement in [../requirements/](../requirements/README.md) has at least one green scenario naming its ID. That is a traceability measure, not proof that the scenario proves the statement; review and the see-it-fail job are the defence.
-> - PR lane under 10 minutes wall-clock; CI fits inside the free Actions minutes of a private repo (~$0–3/month, §11). The tooling bet is proven by [a spike](../../spike/test-dsl/RESULTS.md): harness, MSW, DSL, http driver, Recorder and N/N-1 all ran.
+> - PR lane under 10 minutes wall-clock; CI fits inside the free Actions minutes of a private repo (~$0–2/month, §11). The tooling bet is proven by [a spike](../../spike/test-dsl/RESULTS.md): harness, MSW, DSL, http driver, Recorder and N/N-1 all ran.
 > - Every open question is decided (§14).
 
 Companion documents: [dsl.md](dsl.md) (the World DSL and example scenarios), [stability-checks.md](stability-checks.md) (the gate and the hatches), [../requirements/](../requirements/README.md) (the register), [research/tooling.md](research/tooling.md) and [research/dsl-patterns.md](research/dsl-patterns.md) (sources for every tool claim), [../../spike/test-dsl/](../../spike/test-dsl/README.md) (the runnable proof and its measured numbers). The sibling plans are cited by path until they merge; the agreements with them are restated here where they bind this plan.
@@ -268,7 +268,7 @@ Conditional jobs, only when their trigger holds: see-it-fail (a new scenario fil
 
 Rules that keep minutes down: `paths-ignore` for docs-only changes (`docs/**`, `*.md`); `concurrency` with `cancel-in-progress`, so a newer push to the same PR cancels the older run; dependency and build caches; draft PRs run nothing until marked ready. The suite is sharded (`--shard=i/n`) only if step 4 alone passes 10 minutes for a week.
 
-Target: ~7–8 billable minutes per PR run, under 10 minutes wall-clock. On `main` after a merge the release plan's compat stage (§4.5) and the self-test scenarios (REQ-OPS-005..011: full and shallow on every Worker through `world.operator.selfTest()`; a shallow run must make no outbound or service-binding call, asserted through the Recorder) add ~13 minutes.
+Target: ~7–8 billable minutes per PR run, under 10 minutes wall-clock. The release plan's compat stage (§4.5) runs only when a release candidate is cut and on PRs that touch a service-binding contract (`core/contracts/`, the `X-PackServer-*` headers, queue message schemas); the self-test scenarios (REQ-OPS-005..011: full and shallow on every Worker through `world.operator.selfTest()`; a shallow run must make no outbound or service-binding call, asserted through the Recorder) run in the release pipeline against the 0% candidate (release plan §3.3–3.4), not on every merge.
 
 Scheduled runs, each skipped when `main` has not changed since the last successful run:
 
@@ -296,14 +296,14 @@ Assumptions: a private repository on an organisation plan with 2,000 (Free) or 3
 |---|---|---|
 | PR runs: ~7.5 min × 150 | ~1,100 | one runner, no shards (§9) |
 | Conditional PR jobs | ~150 | see-it-fail, browser, incremental mutation, only when triggered |
-| `main` merges: compat + self-test, ~13 min × 40 | ~520 | the release plan's line; listed so the total is honest |
+| Compat runs: release candidates and contract-touching PRs, ~13 min × ~6 | ~80 | the release plan's line (§3.3–3.4); listed so the total is honest |
 | Nightly: ~10 min × ~20 changed days | ~200 | |
 | Weekly: ~55 min × 4 | ~220 | |
-| **GitHub Actions total** | **~2,200** | **$0** on Team (3,000 included); about **$1** a month over on Free; $0 on a public repo |
+| **GitHub Actions total** | **~1,750** | **$0** on Free (2,000 included) or Team (3,000); $0 on a public repo |
 
 Other costs: Cloudflare traffic to `staging` is cents inside the Paid plan's quota (no second account); Anthropic via AI Gateway in the weekly suite is capped at $1; Stripe Sandbox, the GitHub test org and mail test mode are free; the DNS test domain is about $1 a month.
 
-**Total: about $0–3 a month.** If the budget guard (§9) fires, the first levers are moving the compat stage from every merge to release candidates only (−~500 min, the release plan's call) and running the PR scenarios only when code under `apps/`, `packages/` or `tests/` changed.
+**Total: about $0–2 a month** (the DNS test domain and capped AI spend). If the budget guard (§9) fires, the first lever is running the PR scenarios only when code under `apps/`, `packages/` or `tests/` changed.
 
 An earlier draft of this plan estimated ~$25–35 a month. That came from pessimistic assumptions, not the tooling: 300 runs a month, three shards per run, and a 60-minute nightly that included mutation testing and the real-backend suites every night.
 
