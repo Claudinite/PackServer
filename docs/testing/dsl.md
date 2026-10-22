@@ -78,7 +78,7 @@ await user.tokens.mint({ read: pack, assertion: 'replay' })             // the p
 
 // Publisher (a User with more)
 await publisher.orgs.create('acme')
-await publisher.credits.buy(5)                                           // drives fake Stripe Checkout + webhook
+await publisher.credits.buy(5)                                           // drives the fake Polar checkout + webhook
 await publisher.credits.beginPurchase(5)                                 // -> Checkout handle; the webhook is delivered by the scenario
 await publisher.publish(archive).as('@acme/gcp@1.61004.1', { visibility?: 'private', staged?: true })  // web upload path
 await publisher.dryRun(archive, { llm?: true })                         // -> Report; no version, no credit (REQ-VAL-043); as a publisher only
@@ -151,8 +151,8 @@ world.dns.publishTxt(name, value);  world.dns.remove(name)
 world.github.repo('acme/tool');  world.github.installApp({ org, installer })
 world.github.org('acme');  org.addMember(user);  org.removeMember(user);  org.rename('acme-inc')   // a GitHub org with a stable numeric id (REQ-PRIV-016, 017)
 world.github.rotateJwks()                                                // the issuer publishes a new key and drops the old one
-world.stripe.event('checkout.session.completed', { session })           // an event the World can deliver, incl. replay
-await world.stripe.deliver(event, { signature?: 'wrong' })               // sends it to the webhook endpoint
+world.polar.event('order.paid', { checkout })                           // an event the World can deliver, incl. replay
+await world.polar.deliver(event, { signature?: 'wrong' })               // sends it to the webhook endpoint
 world.llm.script({ screen: 'first' | 'second' | 'deep', findings: [{ rule, severity, file, line, quote }], addressesReviewer?: true })
                                             // what the faked reviewer answers; a quote absent from the tree is the hallucination negative (REQ-VAL-034)
 world.llm.script({ screen: 'deep', verdict: 'malicious' | 'benign' | 'uncertain', findings })        // the deep review (REQ-VAL-037)
@@ -273,7 +273,7 @@ export interface World {
   delivery: { serveInstead(v: Version, a: Archive): void };          // in-process only
   cron: { run(job: CronJob): Promise<void> };
   clock: Clock;
-  github: FakeGitHub;   stripe: FakeStripe;   llm: FakeLlm;   sandbox: FakeSandbox;
+  github: FakeGitHub;   polar: FakePolar;   llm: FakeLlm;   sandbox: FakeSandbox;
   mail: FakeMail;       dns: FakeDns;         turnstile: FakeTurnstile;   rekor: FakeRekor;
   audit: { for(subject: User | Org): Promise<AuditEntry[]>; batches(): Promise<AuditBatch[]>; heads(): Promise<AuditHead[]>;
            verify(): Promise<AuditVerdict>; tamper(b: AuditBatch, how: { drop: true } | { alter: true }): void };
@@ -491,7 +491,7 @@ scenario('REQ-PAY-003 a failed validation consumes no credit', async (world) => 
 
   expect(await run.verdict()).toBe('fail');
   expect(await publisher.credits.balance()).toBe(1);
-  await expect(world.stripe).not.toHaveBeenAsked();
+  await expect(world.polar).not.toHaveBeenAsked();
   const finding = (await run.findings()).find(f => f.rule === 'secret');
   expect(finding).toMatchObject({ file: 'skills/deploy/SKILL.md', line: 12 });
   expect(finding).not.toHaveProperty('value');
@@ -677,10 +677,10 @@ scenario('REQ-PUB-027 two concurrent publishes of one version produce one versio
 scenario('REQ-PAY-004 a replayed payment event grants a credit once', async (world) => {
   const publisher = await world.publishers.create();
   const checkout = await publisher.credits.beginPurchase(5);
-  const paid = world.stripe.event('checkout.session.completed', { session: checkout });
+  const paid = world.polar.event('order.paid', { checkout });
 
-  await world.stripe.deliver(paid);
-  await world.stripe.deliver(paid);                                  // Stripe retries with the same event id
+  await world.polar.deliver(paid);
+  await world.polar.deliver(paid);                                  // Polar retries with the same webhook-id
 
   expect(await publisher.credits.balance()).toBe(5);
 });
@@ -688,11 +688,11 @@ scenario('REQ-PAY-004 a replayed payment event grants a credit once', async (wor
 scenario('REQ-PAY-005 a payment event with a bad signature or a stale timestamp has no effect', async (world) => {
   const publisher = await world.publishers.create();
   const checkout = await publisher.credits.beginPurchase(5);
-  const paid = world.stripe.event('checkout.session.completed', { session: checkout });
+  const paid = world.polar.event('order.paid', { checkout });
 
-  await expect(world.stripe.deliver(paid, { signature: 'wrong' })).toBeRefused('signature');
+  await expect(world.polar.deliver(paid, { signature: 'wrong' })).toBeRefused('signature');
   await world.clock.advance('301s');
-  await expect(world.stripe.deliver(paid)).toBeRefused('signature');
+  await expect(world.polar.deliver(paid)).toBeRefused('signature');
   expect(await publisher.credits.balance()).toBe(0);
 });
 ```
@@ -793,14 +793,14 @@ The self-test scenarios run under the `inprocess` driver, where `world.operator`
 // tests/scenarios/operations/recorder.scenario.ts
 scenario('REQ-OPS-012 a recorded invocation carries placeholders where a person or a secret was', async (world) => {
   const publisher = await world.publishers.create();
-  await publisher.credits.buy(1);                                                      // fake Stripe sees the publisher's email
+  await publisher.credits.buy(1);                                                      // fake Polar sees the publisher's email
 
-  const [checkout] = await world.recorder.invocations({ kind: 'http', target: 'api.stripe.com' });
+  const [checkout] = await world.recorder.invocations({ kind: 'http', target: 'api.polar.sh' });
   expect(checkout.request).toMatchObject({ customer_email: expect.redacted('personal') });
   expect(checkout.headers).toMatchObject({ authorization: expect.redacted('secret') });
   expect(JSON.stringify(checkout)).not.toContain(publisher.email);
 
-  const [raw] = await world.recorder.invocations({ kind: 'http', target: 'api.stripe.com', raw: true });   // in-process only
+  const [raw] = await world.recorder.invocations({ kind: 'http', target: 'api.polar.sh', raw: true });   // in-process only
   expect(raw.request).toMatchObject({ customer_email: publisher.email });
 });
 ```

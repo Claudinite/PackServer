@@ -2,16 +2,21 @@
 
 Area `PAY`, 13 requirements. Format and rules: [README.md](README.md).
 
+Billing runs on Polar as merchant of record (Ariel, 2026-10-22): Polar sells to the buyer and
+handles tax, receipts and card data, and the registry learns of payments only through Polar's
+signed webhooks. `POLAR-1` is what Polar exposes to a merchant about disputes and payment
+methods, which REQ-PAY-008 and 013 depend on.
+
 ## REQ-PAY-001 Buy publish credits through hosted checkout
 
 - status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH §9; Ariel, 2026-10-22 (ARCH-Q 2: per new pack, for everyone)
+- source: ARCH §9; Ariel, 2026-10-22 (ARCH-Q 2: per new pack, for everyone); Ariel, 2026-10-22 (Polar)
 - coverage: scenario
 
 A publisher can buy publish credits in bundles (1/$1, 5/$5, 12/$10, 25/$20) through hosted
-checkout; no card data passes through the registry.
+checkout on Polar, the merchant of record; no card data passes through the registry.
 
 ## REQ-PAY-002 One credit per new public pack; versions are free
 
@@ -42,10 +47,10 @@ a different archive cannot reuse it, and a failed validation consumes no credit.
 - status: active
 - since: 2026-10
 - actor: system
-- source: ARCH §9; DATA
+- source: ARCH §9; DATA; Ariel, 2026-10-22 (Polar)
 - coverage: scenario
 
-A replayed or duplicate payment event is applied once (idempotent on the provider's event id); a
+A replayed or duplicate payment event is applied once (idempotent on the event's `webhook-id`); a
 credit is never granted twice.
 
 ## REQ-PAY-005 Bad signatures and stale events are rejected
@@ -53,11 +58,12 @@ credit is never granted twice.
 - status: active
 - since: 2026-10
 - actor: system (security)
-- source: ARCH §9
+- source: ARCH §9; Ariel, 2026-10-22 (Polar)
 - coverage: scenario
 
-A payment event with an invalid signature or outside the 300 s tolerance is rejected and has no
-effect.
+A payment event whose Standard Webhooks signature (`webhook-id`, `webhook-timestamp`,
+`webhook-signature`) does not verify, or whose timestamp is outside the 5-minute tolerance, is
+rejected and has no effect.
 
 ## REQ-PAY-006 Delayed confirmation keeps the draft and alerts
 
@@ -84,10 +90,11 @@ after that it is refunded automatically.
 
 ## REQ-PAY-008 A chargeback yanks and flags
 
-- status: active
+- status: provisional
 - since: 2026-10
 - actor: system / admin
-- source: FLOW 8
+- source: FLOW 8; Ariel, 2026-10-22 (Polar as merchant of record)
+- decision: POLAR-1 (whether Polar notifies the merchant of a dispute, and how)
 - coverage: scenario
 
 A chargeback yanks the version, flags the publisher, and further publishes by that account
@@ -145,10 +152,11 @@ personal publisher or the org owner, not a maintainer.
 
 ## REQ-PAY-013 Credit purchases are limited per card fingerprint
 
-- status: active
+- status: provisional
 - since: 2026-10
 - actor: system
-- source: ARCH §10
+- source: ARCH §10; Ariel, 2026-10-22 (Polar as merchant of record)
+- decision: POLAR-1 (whether Polar exposes a payment-method fingerprint, or which other key the purchase limit uses)
 - coverage: scenario
 
 Credit purchases are limited per card fingerprint to deter bulk spam.

@@ -53,7 +53,7 @@ One file per area, in the order a user meets them:
 | [delivery.md](delivery.md) | `REQ-DELIV` | 20 (3 retired) | downloads, the signed index, what cn does with a status |
 | [search-mcp.md](search-mcp.md) | `REQ-SEARCH` | 19 | search, browse, the MCP endpoint |
 | [private.md](private.md) | `REQ-PRIV` | 19 | private packs, the GitHub org allowlist, access grants |
-| [payments.md](payments.md) | `REQ-PAY` | 13 | credits, subscriptions, Stripe events |
+| [payments.md](payments.md) | `REQ-PAY` | 13 | credits, subscriptions, Polar events |
 | [community.md](community.md) | `REQ-COMM` | 14 | stars, reviews, outcomes, Trending, ranking |
 | [moderation.md](moderation.md) | `REQ-MOD` | 17 | bug and security reports, abuse, yank |
 | [admin.md](admin.md) | `REQ-ADMIN` | 9 | the admin application |
@@ -63,7 +63,7 @@ One file per area, in the order a user meets them:
 | [telemetry.md](telemetry.md) | `REQ-TELEM` | 7 | counters and the dashboard |
 | [operations.md](operations.md) | `REQ-OPS` | 12 | synthetic scopes, probes, the self-test contract, recorded-traffic redaction, the production configuration |
 
-278 entries: 197 derived from the design documents, 29 from the security review, 8 from the release plan (the self-test contract and the redaction rule), 28 from the validation-flow review, 1 from the Claudinite alignment review, 5 from Ariel's decisions of 2026-10-22 (the GitHub org allowlist and Trending) and 10 from the architecture thread's pack-score proposal. 215 are active, 58 provisional and 5 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. The totals were recounted from the files on 2026-10-22, after Ariel's decisions of that day were applied (PR #3 commits `99457a2` and `2ff18f5`).
+278 entries: 197 derived from the design documents, 29 from the security review, 8 from the release plan (the self-test contract and the redaction rule), 28 from the validation-flow review, 1 from the Claudinite alignment review, 5 from Ariel's decisions of 2026-10-22 (the GitHub org allowlist and Trending) and 10 from the architecture thread's pack-score proposal. 213 are active, 60 provisional and 5 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. The totals were recounted from the files on 2026-10-22, after Ariel's decisions of that day were applied (PR #3 commits `99457a2` and `2ff18f5`).
 
 ## Entry format
 
@@ -90,7 +90,7 @@ sha256; a different archive cannot reuse it, and a failed validation consumes no
 | `since` | the month the entry was added, `YYYY-MM` |
 | `actor` | who observes the behaviour; the scenario's first line usually creates this actor |
 | `source` | where the requirement comes from, using the abbreviations above |
-| `decision` | present when `status: provisional`: the open decision (`ARCH-Q n`, `SITE-D n`, `ARCH-VAL §7-n`, `O n`, `CLN-REV n`, `ARCH-SCORE`, `ARCH-SCREEN`) the entry depends on |
+| `decision` | present when `status: provisional`: the open decision (`POLAR-1`, `ARCH-Q n`, `SITE-D n`, `ARCH-VAL §7-n`, `O n`, `CLN-REV n`, `ARCH-SCORE`, `ARCH-SCREEN`) the entry depends on |
 | `conflict` | present when the two design documents disagree about the value; names a row of the conflicts table below |
 | `coverage` | how the requirement is verified: `scenario` (the default; at least one integration scenario names it), `scenario+unit`, `scenario+contract`, `scenario+http`, `scenario+ui` (the scenario runs in the browser driver and counts from the nightly run), `scenario+manual`, `unit-only` or `manual`. Anything other than `scenario` carries a reason in parentheses. The coverage check only demands a scenario for the kinds that start with `scenario`. |
 | `retired` | present when `status: retired`: the PR or commit that retired it and the one-line reason |
@@ -238,6 +238,7 @@ The ones that touch the most entries:
 
 | Decision | Entries | What a decision changes |
 |---|---|---|
+| POLAR-1 (with Polar as merchant of record: whether Polar tells the merchant about a dispute, and whether it exposes a payment-method fingerprint) | REQ-PAY-008, 013 | whether the chargeback and per-card limit scenarios exist, or what replaces their trigger and key |
 | ARCH-Q 1 (who decides private access) | **resolved** (Ariel, 2026-10-22): an allowlist of GitHub orgs per private pack, proven by the Actions OIDC token (REQ-PRIV-016 to 019); the other access entries are active, named by their architecture §11 phase | — |
 | ARCH-Q 2 (fee per pack or per version) | **resolved** (Ariel, 2026-10-22): $1 per new pack for everyone, open-source included, waived for Verified Publishers; REQ-PAY-001 and 002 are active | — |
 | ARCH-Q 3 (review depth at launch; now only which model screens pack prose) | static checks, the sandboxed load and the human review of holds are settled, so the entries that waited only on the queue are active; the screen model is cited as ARCH-SCREEN | — |
