@@ -2,15 +2,10 @@
 
 Area `DELIV`, 20 requirements (1 retired). Format and rules: [README.md](README.md).
 
-REQ-DELIV-003, 004 and 005 describe a per-scope index with a `latest` pointer and a five-value
-status; the pinned `cn` today reads `packs/<id>/index.json` and `packs/catalog.json` with
-`channel`, `revoked`, `minEngineVersion`, `requires` and a serial per version. Which layout
-PackServer serves is `CLN-REV 1`, so those entries are provisional and keep their original
-statements until Ariel decides. REQ-DELIV-020 is the channel entry the Claudinite alignment
-review found missing; the architecture thread's alignment (PR #3 commits `7a01329` and
-`c410590`) made channels the model for REQ-DELIV-019 and 020 too, leaving who promotes
-`staging` → `stable` open as `O7`, and replaced the revocation split of REQ-DELIV-018 with the
-engine's report-only model (`O5`).
+PackServer replaces the existing repository-and-R2 pack serving, so the engine's current layout is
+prior art rather than a constraint: cn adapts to the per-scope and root indexes below (Ariel,
+2026-10-22). Channels are the architecture's model (PR #3 commit `7a01329`), with who promotes
+`staging` → `stable` open as `O7`.
 
 ## REQ-DELIV-001 Public versions download from write-once URLs that cn verifies against the signed index
 
@@ -18,11 +13,11 @@ engine's report-only model (`O5`).
 - since: 2026-10
 - actor: anonymous visitor / cn engine
 - source: ARCH §7; ARCH-VAL §6, §3.16 (PR #3 commit 7a01329)
-- decision: ARCH-VAL §7-5 (without the canonical re-pack a download carries one sha256, as before); O1 (which roots certify the index key); O3 (the archive format); O4 (how a registry name maps onto the bare pack id in the path)
+- decision: ARCH-VAL §7-5 (without the canonical re-pack a download carries one sha256, as before); O1 (which roots certify the index key); O3 (the archive format)
 - coverage: scenario
 
-A public pack version is downloadable at `packs/<id>/<version>.tar.gz`, written once and never
-changed. cn verifies the per-pack index signature and the archive's sha256 from that index; the
+A public pack version is downloadable at an immutable, versioned URL, written once and never
+changed. cn verifies the signed index and the archive's sha256 from that index; the
 attestation, which covers the upload and canonical sha256, is extra provenance shown on the
 site, not something cn needs to adopt the version.
 
@@ -39,11 +34,10 @@ SHA-256.
 
 ## REQ-DELIV-003 Signed per-scope and root indexes
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: cn engine
 - source: ARCH §7.1
-- decision: CLN-REV 1 (index layout and status model: the engine's per-pack `index.json` + `catalog.json`, or this per-scope layout with an engine change)
 - coverage: scenario
 
 A per-scope index and a root index listing each scope index's hash are published and signed with
@@ -52,11 +46,10 @@ deprecated / yanked / quarantined / revoked).
 
 ## REQ-DELIV-004 Status changes reach the indexes within the TTL, signed
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: cn engine
 - source: ARCH §7.1; DATA
-- decision: CLN-REV 1 (which indexes exist, and how yank, deprecate and quarantine map onto the engine's `revoked` flag)
 - coverage: scenario
 
 A promote, yank, deprecate, quarantine or revoke is reflected in the scope index and root index
@@ -64,11 +57,10 @@ shortly after (bounded by the short index TTL), with a valid signature.
 
 ## REQ-DELIV-005 latest never points at a yanked, quarantined or removed version
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: cn engine
 - source: ARCH §5.4; FLOW 12
-- decision: CLN-REV 1 (the engine's index has no `latest` pointer; selection is the newest non-revoked version on the member's channel)
 - coverage: scenario
 
 An index entry's `latest` never points at a yanked, quarantined or removed version.
@@ -221,7 +213,7 @@ extractor would accept, is refused with a verification error and nothing is vend
 - decision: O5 (whether a security revocation goes further than reporting: removal in the update PR, or a session-time disable, both engine changes)
 - coverage: scenario
 
-A revoked version is marked `revoked: true` in the signed per-pack index. cn never selects it,
+A revoked version is marked `revoked` in the signed index. cn never selects it,
 and a member that holds it sees it reported on every update run. Nothing happens at session
 start: sessions never read the registry. `yanked`, `deprecated` and `quarantined` likewise only
 report.
@@ -246,7 +238,7 @@ carries the capability diff in its description.
 - status: provisional
 - since: 2026-10
 - actor: cn engine
-- source: CLN-REV (the primer's "Serving layout today": channels `staging` and `stable`; engine selection is on the member's channel); ARCH-VAL §6, §3.11 (PR #3 commit 7a01329)
+- source: ARCH-VAL §6, §3.11 (PR #3 commit 7a01329)
 - decision: O7 (who promotes `staging` → `stable`; the soak lengths are REQ-DELIV-019)
 - coverage: scenario
 

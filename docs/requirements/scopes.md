@@ -8,7 +8,7 @@ Area `SCOPE`, 17 requirements. Format and rules: [README.md](README.md).
 - since: 2026-10
 - actor: publisher
 - source: ARCH §4
-- decision: ARCH-Q 5, SITE-D 5; CLN-REV 2 and O4 (Claudinite ids are bare lowercase, vendored under the member's shared packs directory as `<id>/`, with `local/`, `fleet/` and `temp` reserved; how a scoped registry name maps to a declared id, a vendored directory and the `packs/<id>/` serving path)
+- decision: ARCH-Q 5, SITE-D 5; CLN-REV 2 and O4 (Claudinite ids are bare lowercase, vendored under the member's shared packs directory as `<id>/`, with `local/`, `fleet/` and `temp` reserved; how a scoped registry name maps to a declared id and a vendored directory)
 - coverage: scenario
 
 Every pack is named `@<scope>/<pack>`; a scope belongs to exactly one user or organisation.
