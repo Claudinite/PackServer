@@ -4,14 +4,17 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./index": "./index/index.ts"
+    "./index": "./index/index.ts",
+    "./mail": "./mail/index.ts",
+    "./mail/testing": "./mail/testing.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
   "dependencies": {
     "@noble/ed25519": "catalog:",
+    "@packserver/ports": "workspace:*",
     "@packserver/schema": "workspace:*",
     "zod": "catalog:"
   }

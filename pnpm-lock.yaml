@@ -59,6 +59,9 @@ importers:
       '@noble/ed25519':
         specifier: 'catalog:'
         version: 3.2.0
+      '@packserver/ports':
+        specifier: workspace:*
+        version: link:../ports
       '@packserver/schema':
         specifier: workspace:*
         version: link:../schema
