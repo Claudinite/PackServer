@@ -43,7 +43,8 @@ the same way and every method returns `schema_version`.
 
 - **`ScopeCoordinator`**, one per scope, hosted in `publish`: takes the publish lock, inserts the
   version in one D1 batch (promotion's commit point), rebuilds and writes the scope's
-  content-addressed index, signs the scope's private entries, and hands the new hash and serial to
+  content-addressed index, has the validator sign it and the scope's private entries through the
+  validator's signing entrypoint (the coordinator never holds the key), and hands the new hash and serial to
   `RootCoordinator`. Its RPC surface is small and data-only (lock, insert, rebuild) and its state
   lives in DO storage, not memory, so a version reassignment during a deploy drops nothing
   (ARCH-REV M13). Exposes `ping()` for the self-test.

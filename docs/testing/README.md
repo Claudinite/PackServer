@@ -108,9 +108,9 @@ production adapters from `env` and hands `core` a set of ports (`Clock`, `Rng`, 
 interface with no write method, so "PackServer never writes to GitHub" is a type), `OidcVerifier`,
 `VectorIndex`, `Embedder`, `Sandbox`, `ProseScreen`, `Mail`, `Dns`, `Turnstile`, `AccessIdentity`,
 `Stats`, `Cache`, `Uploads`, `AuditSink`, `Transparency`, and thin wrappers around the bindings).
-There is no billing port: nothing is charged in v1. Vectorize, Workers AI and the Sandbox are reached
-through a service binding to a tiny internal Worker rather than the native binding, because the
-harness overrides service bindings and nothing else. Everything behind the seam is plain modules with
+There is no billing port: nothing is charged in v1. Vectorize, Workers AI and the Sandbox sit behind
+each Worker's `bindings.ts`, which the test environment swaps for fake Workers, because the harness
+overrides service bindings and nothing else. Everything behind the seam is plain modules with
 unit tests; everything in front of it is what the integration tests see. Every port call passes
 through one `Recorder` (modes `off` and `wet` in v1; the dry modes belong to the deferred
 shadow-traffic design in [../operations/release.md](../operations/release.md)); a test reads it as

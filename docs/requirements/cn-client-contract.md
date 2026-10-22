@@ -385,7 +385,8 @@ decision: PackServer carries the facts and applies no policy (REQ-VAL-041).
 
 `cn lint` reports the registry's static rules with the same ids, classes, files and lines and the
 same pack score (REQ-VAL-044, REQ-SCORE-008); `cn pack canonicalise` produces the byte-identical
-canonical archive the registry would promote (REQ-VAL-033).
+canonical archive the registry would promote (REQ-VAL-033). Both are Go re-implementations proven against a
+shared fixture corpus with expected outputs (D55).
 
 ## REQ-CN-012 What cn sends with a fetch
 
