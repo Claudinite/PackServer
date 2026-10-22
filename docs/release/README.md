@@ -380,7 +380,7 @@ Not included: a separate Cloudflare account for staging (+$5–30, rejected in �
 1. ~~Approval model.~~ Decided: Ariel is the only approver; non-reversible changes add an agent review, a 30-minute wait timer and a passkey sign-in instead of a second person (§9.1).
 2. ~~Auto-rollback authority.~~ Decided: CI rolls back automatically as proposed, including at 50% (§4.3).
 3. ~~Low-traffic mode first exposure.~~ Decided: 25% then 100% (§4.3).
-4. **KV fail-open for MCP public reads** during a KV outage (§7.2). The alternative is fail-closed for all authenticated MCP calls. Public packs are public either way; the question is whether a caller with a possibly-revoked token should still get public results.
+4. ~~KV fail-open for MCP public reads.~~ Decided: fail open for public reads, closed for writes (§7.2).
 5. ~~Release throughput.~~ Decided: no shorter window; instead, routes whose code fingerprint is unchanged are not shadowed at all, and a release that changes no route skips the shadow stage (shadow-traffic.md §7.5).
 6. **Hostname for internal self-tests** (`internal.packserver.dev/<worker>/__selftest` for `validator` and `admin`, §5) versus giving each internal Worker its own `*.packserver.dev` subdomain. Either works; the first adds fewer DNS names to certificate transparency.
 7. **Response header `X-PackServer-Version` on every response** (§4.1) is needed so the probe-safe harness can assert it reached the candidate. It exposes the Cloudflare version id publicly (harmless: it is a UUID, not a secret, and anyone can already guess that a 0% candidate exists). Confirm, or restrict it to requests carrying the Access/HMAC auth.
