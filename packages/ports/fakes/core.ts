@@ -4,6 +4,7 @@ import {
   type AuditEntry,
   type AuditSink,
   type Cache,
+  type CacheEntry,
   type Clock,
   type D1,
   type D1Result,
@@ -206,11 +207,11 @@ export class FakeStats implements Stats {
 }
 
 export class FakeCache implements Cache {
-  readonly entries = new Map<string, { status: number; headers: Record<string, string>; body: Uint8Array }>();
+  readonly entries = new Map<string, CacheEntry>();
   async get(url: string) {
     return this.entries.get(url) ?? null;
   }
-  async put(url: string, entry: { status: number; headers: Record<string, string>; body: Uint8Array }) {
+  async put(url: string, entry: CacheEntry) {
     this.entries.set(url, entry);
   }
   async purge(url: string) {

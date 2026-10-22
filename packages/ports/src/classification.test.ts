@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { BASE_RULES, classOf, redact } from "./classification";
 
 describe("classOf", () => {
-  it("lets a named final segment beat a trailing wildcard, and a longer literal path beat a shorter", () => {
-    const rules = { "a.**": "operational", "**.email": "personal", "a.b.email": "public" } as const;
-    expect(classOf(rules, "a.b.email")).toBe("public");
+  it("lets a named final segment beat a trailing wildcard, a longer literal path beat a shorter, and any deny beat any grant", () => {
+    const rules = { "a.**": "operational", "**.email": "personal", "a.b.email": "public", "x.y": "public", "x.*": "operational" } as const;
+    expect(classOf(rules, "a.b.email")).toBe("personal");
+    expect(classOf(rules, "x.y")).toBe("public");
     expect(classOf(rules, "a.c.email")).toBe("personal");
     expect(classOf(rules, "a.c.name")).toBe("operational");
     expect(classOf(rules, "z.name")).toBeUndefined();

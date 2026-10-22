@@ -24,17 +24,23 @@ const matchSegments = (pattern: readonly string[], path: readonly string[]): boo
 const specificity = (pattern: readonly string[]): number =>
   (pattern[pattern.length - 1] === "**" ? 0 : 1000) + pattern.reduce((n, s) => n + (s === "**" ? 0 : s === "*" ? 1 : 3), 0);
 
-/** The most specific matching rule wins; ties go to the rule listed first. */
+/**
+ * A deny class (secret, personal, customer-content) always beats a grant, however specific the
+ * grant is; among denies the strictest wins, among grants the most specific.
+ */
 export function classOf(rules: ClassRules, path: string): DataClass | undefined {
   const segments = path.split(".");
-  let best: { class: DataClass; score: number } | undefined;
+  let deny: DataClass | undefined;
+  let grant: { class: DataClass; score: number } | undefined;
   for (const [pattern, cls] of Object.entries(rules)) {
     const parts = pattern.split(".");
     if (!matchSegments(parts, segments)) continue;
-    const score = specificity(parts);
-    if (!best || score > best.score) best = { class: cls, score };
+    if (cls === "public" || cls === "operational") {
+      const score = specificity(parts);
+      if (!grant || score > grant.score) grant = { class: cls, score };
+    } else deny = stricter(deny, cls);
   }
-  return best?.class;
+  return deny ?? grant?.class;
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { Finding, InvocationKind } from "@packserver/schema";
+import { RESPONSE_HEADER_ALLOWLIST, type Finding, type InvocationKind } from "@packserver/schema";
 import { assertNoCatchAllGrant, type ClassRules, type DataClass } from "./classification";
 import type { BindingPorts, DoArgs, DoMethod, DoNamespace, DoResult, Ports, SinglePorts } from "./ports";
 import type { InvokeSpec, Recorder } from "./recorder";
@@ -21,7 +21,7 @@ type Tree<T> = unknown extends T
       ? Blanket | { "*": ClassTree<U> }
       : [T] extends [object]
         ? [string] extends [keyof T]
-          ? Blanket | { "*": ClassTree<T[string & keyof T]> }
+          ? Blanket
           : Blanket | { [K in keyof Required<T>]: ClassTree<Required<T>[K]> }
         : DataClass;
 export type ArgsTree<A extends unknown[]> = { [I in keyof A]-?: ClassTree<A[I]> };
@@ -123,6 +123,10 @@ const findings = {
   "*": { rule: op, class: op, file: content, line: op, quote: content, hint: content },
 } satisfies ClassTree<Finding[]>;
 
+const cacheHeaders = Object.fromEntries(RESPONSE_HEADER_ALLOWLIST.map((h) => [h, op])) as {
+  [H in (typeof RESPONSE_HEADER_ALLOWLIST)[number]]: "operational";
+};
+
 export const PORT_SPECS: { [K in Exclude<keyof SinglePorts, "durableObjects">]: PortSpec<SinglePorts[K]> } = {
   clock: { kind: "clock", target: "clock", methods: { now: { effect: "read", args: [], result: op } } },
   rng: {
@@ -199,7 +203,7 @@ export const PORT_SPECS: { [K in Exclude<keyof SinglePorts, "durableObjects">]: 
       screen: {
         effect: "read",
         args: [{ nonce: op, chunks: { "*": { id: op, text: content } } }],
-        result: { implementation: op, model_version: op, chunks: { "*": { id: op, probabilities: { "*": op } } } },
+        result: { implementation: op, model_version: op, chunks: { "*": { id: op, probabilities: content } } },
       },
     },
   },
@@ -230,8 +234,8 @@ export const PORT_SPECS: { [K in Exclude<keyof SinglePorts, "durableObjects">]: 
     kind: "http",
     target: "cache",
     methods: {
-      get: { effect: "read", args: [op], result: { status: op, headers: { "*": op }, body: content } },
-      put: { effect: "write", args: [op, { status: op, headers: { "*": op }, body: content }] },
+      get: { effect: "read", args: [op], result: { status: op, headers: cacheHeaders, body: content } },
+      put: { effect: "write", args: [op, { status: op, headers: cacheHeaders, body: content }] },
       purge: { effect: "write", args: [op], result: op },
     },
   },

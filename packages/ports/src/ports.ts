@@ -1,4 +1,4 @@
-import type { Finding, QuotaRpc, RootCoordinatorRpc, ScopeCoordinatorRpc } from "@packserver/schema";
+import type { Finding, RESPONSE_HEADER_ALLOWLIST, QuotaRpc, RootCoordinatorRpc, ScopeCoordinatorRpc } from "@packserver/schema";
 
 export class PortError extends Error {
   constructor(
@@ -153,9 +153,16 @@ export interface Stats {
   write(point: StatsPoint): void;
 }
 
+/** A cached response keeps only the allowlisted response headers. */
+export type CacheHeaders = { [H in (typeof RESPONSE_HEADER_ALLOWLIST)[number]]?: string };
+export interface CacheEntry {
+  status: number;
+  headers: CacheHeaders;
+  body: Uint8Array;
+}
 export interface Cache {
-  get(url: string): Promise<{ status: number; headers: Record<string, string>; body: Uint8Array } | null>;
-  put(url: string, entry: { status: number; headers: Record<string, string>; body: Uint8Array }): Promise<void>;
+  get(url: string): Promise<CacheEntry | null>;
+  put(url: string, entry: CacheEntry): Promise<void>;
   purge(url: string): Promise<boolean>;
 }
 

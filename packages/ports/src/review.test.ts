@@ -258,3 +258,46 @@ describe("location header", () => {
     expect(JSON.stringify(e)).not.toMatch(/SECRETCODE|state=S"/);
   });
 });
+
+describe("deny classes beat grants", () => {
+  it("keeps set-cookie, authorization and email out of a map granted operational", async () => {
+    const value = { headers: { "set-cookie": "s=SECRETCOOKIE", authorization: "Bearer SECRETTOKEN", email: "a@b.example", etag: "e1" } };
+    const r = await redact(value, "r", { ...BASE_RULES, "r.headers.*": "operational" }, "k");
+    const text = JSON.stringify(r.value);
+    expect(text).not.toMatch(/SECRETCOOKIE|SECRETTOKEN|a@b\.example/);
+    expect((r.value as typeof value).headers.etag).toBe("e1");
+  });
+
+  it("keeps them out of a cached response recorded through the port", async () => {
+    const ports = createFakePorts();
+    ports.cache.entries.set("https://x/y", {
+      status: 200,
+      headers: { etag: "e1", "set-cookie": "s=SECRETCOOKIE", authorization: "Bearer SECRETTOKEN", email: "a@b.example" } as never,
+      body: new Uint8Array([1]),
+    });
+    const rec = wet(ports.clock);
+    await instrumentAll(ports, rec).cache.get("https://x/y");
+    const text = JSON.stringify(await rec.finish(fin()));
+    expect(text).not.toMatch(/SECRETCOOKIE|SECRETTOKEN|a@b\.example/);
+    expect(text).toContain("e1");
+  });
+
+  it("makes the type refuse a wildcard grant on a string-keyed map", () => {
+    const ok: ClassTree<Record<string, string>> = "customer-content";
+    // @ts-expect-error a map's keys cannot be named, so only a blanket sensitive class is allowed
+    const bad: ClassTree<Record<string, string>> = { "*": "operational" };
+    expect([ok, bad]).toHaveLength(2);
+  });
+});
+
+describe("ordering", () => {
+  it("numbers uuids by call order even when calls overlap", async () => {
+    const ports = createFakePorts();
+    const rec = wet(ports.clock);
+    const p = instrumentAll(ports, rec);
+    const ids = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"];
+    await Promise.all(ids.map((id) => p.kv["sessions"]!.get(id)));
+    const e = (await rec.finish(fin()))!;
+    expect(e.invocations.map((i) => (i.request as { args: string[] }).args[0])).toEqual(["<uuid:1>", "<uuid:2>"]);
+  });
+});

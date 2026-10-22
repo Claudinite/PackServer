@@ -134,7 +134,7 @@ export function createRecorder(options: RecorderOptions): Recorder {
   const redactions = new Set<string>();
   const unclassified = new Set<string>();
   const invocations: Invocation[] = [];
-  const pending: Array<Promise<void>> = [];
+  let queue: Promise<void> = Promise.resolve();
   const nowDeltas: number[] = [];
   const randoms: number[] = [];
   let seq = 0;
@@ -212,11 +212,6 @@ export function createRecorder(options: RecorderOptions): Recorder {
       stub: null,
     };
     invocations.push(entry);
-    if (spec.kind === "clock" && typeof outcome.result === "number") {
-      nowDeltas.push(outcome.result - lastNow);
-      lastNow = outcome.result;
-    }
-    if (spec.kind === "random" && typeof outcome.result === "number") randoms.push(outcome.result);
   };
 
   const body = async (path: string, parsed: unknown, raw: Uint8Array | string | undefined) => {
@@ -239,12 +234,17 @@ export function createRecorder(options: RecorderOptions): Recorder {
       const t0 = options.clock.now();
       const settle = (result: unknown, error: Error | null) => {
         const ms = Math.max(0, options.clock.now() - t0);
+        // Pins are taken here, in call order; the async record below finishes in any order.
+        if (!error && spec.kind === "clock" && typeof result === "number") {
+          nowDeltas.push(result - lastNow);
+          lastNow = result;
+        }
+        if (!error && spec.kind === "random" && typeof result === "number") randoms.push(result);
         const logged = mapResult && !error ? mapResult(result as Awaited<T>) : result;
-        pending.push(
-          record(spec, index, { result: logged, error }, ms).catch((e: unknown) => {
-            recordFailure ??= e;
-          }),
-        );
+        // Records run one after another so `<uuid:n>` numbering follows call order.
+        queue = queue.then(() => record(spec, index, { result: logged, error }, ms)).catch((e: unknown) => {
+          recordFailure ??= e;
+        });
       };
       const asError = (e: unknown) => (e instanceof Error ? e : new Error(String(e)));
       let out: T;
@@ -271,7 +271,7 @@ export function createRecorder(options: RecorderOptions): Recorder {
     },
 
     async finish(input) {
-      await Promise.all(pending);
+      await queue;
       if (recordFailure !== undefined) throw recordFailure;
       invocations.sort((a, b) => a.seq - b.seq);
       const req = input.request;
