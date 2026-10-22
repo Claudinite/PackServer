@@ -617,7 +617,7 @@ Blind spots that remain, and what the plan does about each:
 
 | Severity | Channel | Response expectation | Examples |
 |---|---|---|---|
-| Page | Pushover with the critical sound (or PagerDuty Free), 24x7 | within 15 minutes during support hours, best effort outside; the system must have already taken the safe action (§11.1) | read-path SLO burn, hash mismatch, index signature failure or key change, audit chain broken, rollback failed, the witness sees the site down, an account or admin change nobody made, credential stuffing the automatic block did not stop |
+| Page | Pushover with the critical sound, 24x7 | within 15 minutes during support hours, best effort outside; the system must have already taken the safe action (§11.1) | read-path SLO burn, hash mismatch, index signature failure or key change, audit chain broken, rollback failed, the witness sees the site down, an account or admin change nobody made, credential stuffing the automatic block did not stop |
 | Support-hours page | ticket at once; Pushover at the start of the next support window if unresolved | within 15 minutes of the support window opening | publish pipeline stalled, security takedown auto-held and awaiting review, monitoring dead |
 | Ticket | GitHub issue in the ops repository with labels, plus email | next working day | component thresholds in §6.2, abuse patterns, verdict drift, moderator queue age, quota at 80%, Logpush job error, LLM budget line reached (the validator has already paused the Sonnet step), webhooks failing (the provider retries), JWKS unreachable, email failed over, abuse flood with the kill switch already on, a canary auto-rollback that succeeded |
 | Controller | `gate.evaluated` fail read by the rollout controller at its next poll; recorded as `monitoring.alert_sent` with `channel = controller` | the controller rolls back or halts within 2 minutes; a page follows only per §11.1.2 | a burn-rate or journey alert whose bad events belong only to the candidate of a rollout in progress |
@@ -798,7 +798,7 @@ The brief records: whether every signal in §8 that the shipped phases should em
 
 ## 17. Open questions for Ariel
 
-1. Paging channel: Pushover ($4.99 one-time, simplest, no schedules) or PagerDuty Free (schedules and escalation for a possible second person later)? The plan assumes Pushover.
+1. Paging channel: answered. Ariel is the only person on the project, so there is no rotation, no second responder and no escalation chain, and Pushover ($4.99 one-time) is the channel. Every "escalation" in this plan raises severity for the same person; it never hands off. PagerDuty Free is reconsidered only if a second person joins.
 2. Is the Pro zone confirmed? It carries the 10 Health Checks and WAF rate rules; without it the witness and the prober are the only external probes.
 3. Dependence on beta products: accept the gate judge as the single evaluator with Monitors as backup for three pages and Issues for grouping (this plan), or enable Grafana Cloud free as an OTLP destination from day one for a second console and IRM paging?
 4. Retention of request records in R2: 90 days with truncated IPs (proposed) or shorter? Any EU residency requirement that should also apply to future third-party destinations?
