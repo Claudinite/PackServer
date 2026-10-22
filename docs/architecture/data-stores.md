@@ -11,7 +11,7 @@ Writing this out changed six decisions in the [architecture](README.md). They're
 3. **Bulky per-version JSON moves from D1 to R2.** The extracted inventory, provenance and validation report become a `meta.json` next to each archive. D1 keeps only the columns that are filtered, sorted or shown in lists (counts, context tokens, repo, commit). This protects D1's 10 GB cap: inventory JSON at a few KB per version over 2M versions would have used most of it.
 4. **The audit log is a write-once log, not a database.** It's append-only, almost never queried, grows without bound, and above all must not be editable, by a bug or by an attacker holding a Worker's bindings. A database row can be updated or deleted by anything that can write to the database. The record goes to S3 with Object Lock in Compliance mode, in a separate AWS account, because R2 bucket locks can be removed by anyone with bucket-settings permission (pending Ariel's decision; see [audit-log options](#audit-log-record)). The two screens that show activity (a user's security page, an org's audit view) read a 90-day `recent_activity` table in the registry D1, which is a convenience copy, not the record.
 5. **Write-on-read hot spots are removed.** `tokens.last_used_at` is updated at most once an hour per token, and `sessions.last_seen_at` at most once every 15 minutes per session (enough for the 12-hour idle timeout), instead of on every call. The hourly stats rollup only rewrites packs whose numbers changed. Without these, every authenticated read would also be a D1 write.
-6. **The GitHub mirror no longer commits archives to a git repo.** At 40k versions of about 25 KB each, the repo would grow about 1 GB a month, passing GitHub's 1 GB ideal size in the first month and its strongly recommended 5 GB limit within half a year, and git history can't be pruned without rewriting it. The preferred fix is to run update checks from GitHub Actions in the member repo, which can reach our hosts, so web sessions never need to. If a mirror is still needed, it stores archives as GitHub Release assets and keeps only the indexes as files in the repo.
+6. **PackServer never writes to GitHub.** An earlier draft mirrored packs to a GitHub repo for web sessions that can't reach us, and posted Check Runs on publishers' commits. Both are gone. GitHub is only read: repo links, OIDC claims, webhooks, and the source commit recorded in each signed attestation. Web-session reachability is solved on the client side (network allowlist, or update checks from GitHub Actions).
 
 ## The stores at a glance
 
@@ -28,11 +28,11 @@ Writing this out changed six decisions in the [architecture](README.md). They're
 | Analytics Engine `downloads` | Download and index-fetch events | One event per fetch, fire and forget | Hourly rollup query | No (approximate by design) |
 | Durable Object `ScopeCoordinator` | Per-scope publish lock, daily quotas, index rebuild debounce | Per publish or quota check in that scope | Same calls | Yes, for quotas |
 | Workflows (platform-managed) | Validation run state, step results | Per step | By the workflow itself and the dashboard status | No (D1 is updated at each milestone) |
-| Queues | Notifications, re-index jobs, mirror jobs | Per event | Consumed once | No |
+| Queues | Notifications, re-index jobs | Per event | Consumed once | No |
 | KV `oauth` / `cache` | OAuth grants and tokens (library-owned), OAuth state, JWKS cache | Per OAuth flow, per key rotation | Per MCP request with a token | OAuth grants only |
 | Sandbox disk | Unpacked pack during validation | During one run | During one run | No (destroyed) |
 | Secrets Store | Stripe, GitHub App, signing and AI Gateway keys | By people, at rotation | At Worker start | Yes |
-| Outside Cloudflare | Stripe (payments), GitHub (mirror, issues, check runs), email provider | Per event | Per event | Stripe is the record for money |
+| Outside Cloudflare | Stripe (payments), email provider; GitHub is read-only | Per event | Per event | Stripe is the record for money |
 
 ## Each store in detail
 
@@ -130,7 +130,7 @@ Anonymous rate limiting stays on the Workers Rate Limiting binding, which is app
 
 ### Queues: side effects
 
-**Writes.** One message per side effect after a promote or status change: notify the publisher, rebuild the Vectorize entry, push to the mirror, post the GitHub Check Run, send email.
+**Writes.** One message per side effect after a promote or status change: notify the publisher, rebuild the Vectorize entry, send email.
 
 **Why it fits.** At-least-once delivery with retries for work that can lag a few seconds and must not block the publish. Consumers are idempotent (keyed on version id and event type).
 
@@ -153,7 +153,7 @@ Stripe keys, the GitHub App private key, the index and attestation signing key, 
 ### Outside Cloudflare
 
 - **Stripe** is the record for money. Our `credit_ledger` mirrors it, keyed on the Stripe event id so a replayed webhook can't credit twice.
-- **GitHub** receives issues (bug reports), Check Runs and, if kept, the mirror (decision 6).
+- **GitHub** is never written to (decision 6). Bug reports open a pre-filled issue that the user files themselves.
 - **Email provider** sends sign-in codes and alerts. Nothing is stored there that we'd need back.
 
 ## What stays out of every store

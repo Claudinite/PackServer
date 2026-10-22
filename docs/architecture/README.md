@@ -170,7 +170,7 @@ Modelled on PyPI/npm/crates.io trusted publishing, so no long-lived secret ever 
 
 A per-pack **trusted-publishing-only** switch disables every other publish path for that pack. Adding or changing a trusted publisher requires step-up MFA and emails every owner, since PyPI treats a changed trusted publisher as a takeover signal. Attestations are signed with a PackServer key (Ed25519, in Secrets Store) over `{sha256, pack, version, provenance}` and stored next to the archive in R2; Sigstore/in-toto compatible bundles are a phase-2 upgrade.
 
-A GitHub App mode is also offered for publishers who prefer "publish when a tag matching `v*` is pushed under `packs/gcp`" without writing a workflow: the `github` Worker receives the signed webhook (`X-Hub-Signature-256`), fetches the tarball of that path at that commit with a short-lived installation token, and starts the same workflow. Results are reported back as a GitHub Check Run on the commit.
+A GitHub App mode is also offered for publishers who prefer "publish when a tag matching `v*` is pushed under `packs/gcp`" without writing a workflow: the `github` Worker receives the signed webhook (`X-Hub-Signature-256`), fetches the tarball of that path at that commit with a short-lived installation token, and starts the same workflow. The App only reads repositories; results go to the publisher's dashboard and email. PackServer never writes to GitHub.
 
 ### 5.2 CLI / API with tokens
 
@@ -207,7 +207,7 @@ upload ─▶ pack_versions.state=uploaded ─▶ ValidatePackWorkflow(version_i
   step 7  staged-publish approval if enabled (step.waitForEvent "approve", passkey in the dashboard)
   step 8  promote: copy to packs-public (or packs-private) at immutable key
           @scope/name/1.2.3/pack.tar.zst + .sha256 + .attestation.json; write version row,
-          FTS row, Vectorize embedding; purge cache; notify publisher; post GitHub Check Run
+          FTS row, Vectorize embedding; purge cache; notify publisher
 ```
 
 Why this shape: Workflows give durable steps with retries, unlimited wall-clock per step and `waitForEvent` for the human and payment gates, with observability for free. Containers/Sandbox give a real VM with its own kernel per job, internet disabled by default, and a Worker-side egress handler that allowlists destinations and injects the AI Gateway credential so no secret ever enters the sandbox. A 2-minute basic run costs a fraction of a cent. The LLM review is the real cost driver: at the [hosting cost estimate](../hosting-cost-estimate.md)'s 40k versions a month (1M repos), Haiku on everything plus Sonnet on flagged packs is about $400/month, against about $2,900 for Sonnet on everything and about $7,000 for a one-off Sonnet rescan of a 100k-pack corpus. Static scanners alone are not enough: ClawHub found 341 malicious skills out of 2,857 that used plain-language instructions no virus signature catches (see [registry trust research](../registry-trust-research.md)). Human moderation of flagged packs is not priced and will dominate. Dynamic Workers (open beta) can run sub-second pre-checks at upload time later.
@@ -235,13 +235,9 @@ The cn engine is the main consumer, not agents. Packs are committed to the membe
 - Private packs get a per-caller index from the `web` Worker after an access check, never on the CDN.
 - At 1M repos this is about 19M requests and 0.6 TB a month, roughly $10–20 on top of the $5 plan because R2 egress is free (cost estimate in [hosting-cost-estimate.md](../hosting-cost-estimate.md)). `fetchOnEveryRun` (Engine #187, still open) would multiply fetches about 24× and requests about 50×; the bill stays small on Cloudflare but every session start would depend on PackServer being up, so the design keeps `commitToRepo` as the default.
 
-### 7.2 GitHub mirror for networks that can't reach us
+### 7.2 Networks that can't reach us
 
-Claude Code web VMs on the default Trusted network could not reach our hosts during the licensing work (2026-09-30), so `cdn.packserver.dev` may be unreachable from web sessions.
-
-Preferred: run update checks from a GitHub Actions workflow in the member repo, which can reach our hosts, and have it open a pull request with the new pack versions. Packs are committed to the repo, so web sessions then never need PackServer at all.
-
-Fallback, only if checks must run inside web sessions: the validator publishes each public version's archive, `.sha256` and attestation as GitHub Release assets on a mirror repository (e.g. `Claudinite/packs-mirror`), and commits only the small scope indexes as files. Committing archives to git would add about 1 GB a month at 40k versions, past GitHub's recommended repository size within months, and git history can't be pruned without rewriting it. cn tries PackServer first and falls back to the mirror; signatures and hashes are identical, so the mirror needs no extra trust. Private packs have no mirror; web sessions would need the network allowlist to include our host.
+Claude Code web VMs on the default Trusted network could not reach our hosts during the licensing work (2026-09-30), so `cdn.packserver.dev` may be unreachable from web sessions. That is a client-side network question, not something PackServer works around by copying packs elsewhere: either our host is added to the web environment's network allowlist, or cn runs update checks from a GitHub Actions workflow in the member repo (which can reach us) and opens a pull request with new versions. Packs are committed to the repo, so web sessions then never need PackServer at all.
 
 ## 8. MCP endpoint for agents
 
@@ -277,7 +273,7 @@ Proven by the spike in `spike/mcp-worker` (stateless `createMcpHandler`, D1 FTS5
 - **Stars** (one click, login required, counted publicly after 24 h account age).
 - **Works for me / Didn't work** per version and client version. This is the signal agents actually need, and it's weighted 1.0 when the voter has a recorded install of that pack and 0.25 otherwise.
 - **Ratings and reviews:** 1–5 rating with an optional review, one per user per pack, one publisher reply per review (VS Code model). Reviews from accounts that actually fetched the pack carry a "verified fetch" marker and full weight in ranking. Reviews need moderation tooling from day one, so they go through the same admin queue as reports.
-- **Bug reports:** when a public repo is linked, "Report a bug" opens a pre-filled GitHub issue and we mirror its status through the GitHub App; otherwise an in-site inbox for the publisher. Security reports are always private.
+- **Bug reports:** when a public repo is linked, "Report a bug" opens a pre-filled GitHub issue and we read its status back through the GitHub App's issue webhooks; otherwise an in-site inbox for the publisher. Security reports are always private.
 - **Ranking:** directory score mixes a Wilson lower bound on works/fails and on ratings, normalised verified installs, stars, health (validation passed, public repo, verified publisher, recently updated) and freshness. MCP score is text relevance × quality × category match × client compatibility. Open security reports, failed latest validation or an abuse hold zero or heavily demote a pack. One result in ten in browse is an "exploration" slot for new packs. Raw signals are exposed over MCP so agents can apply their own policy.
 - **Abuse:** Turnstile on all forms, per-scope daily caps on new packs, Rate Limiting binding as the first line, Durable Object counters for exact daily limits, star-velocity anomaly holds, self-stars from the owning scope ignored, card fingerprint limits on credit purchases.
 
@@ -304,7 +300,7 @@ The permission model is JFrog-style rows of (resource, principal, action) in `gr
 | No Anthropic models on Workers AI | LLM evaluation must leave Cloudflare | AI Gateway with our key, spend caps, run only after cheap checks pass |
 | MCP SDK churn (McpAgent deprecated within ~18 months; DCR being deprecated in spec); `agents@0.23.0` pins `@modelcontextprotocol/server@2.0.0`, which has open high-severity advisories | Upgrade work; must not ship with known vulns | Pin versions, track the advisories, upgrade before public launch |
 | Lock-in concentrated in Workflows, Durable Objects, Vectorize | Hard to move later | Business logic in plain functions; R2 is S3-compatible; SQL is portable; sandbox images are OCI |
-| Claude Code web VMs may not reach custom hosts | Web sessions can't fetch packs or check updates | Run update checks from GitHub Actions; Release-asset mirror only as fallback (§7.2); ask for the host to be allowlisted |
+| Claude Code web VMs may not reach custom hosts | Web sessions can't fetch packs or check updates | Allowlist our host, or run update checks from GitHub Actions (§7.2) |
 | D1 primary location / jurisdiction chosen at creation | Data residency choice is effectively permanent | Decide (likely default or `eu`) before creating the production database |
 
 ## 13. Security summary
