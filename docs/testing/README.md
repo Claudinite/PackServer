@@ -8,8 +8,8 @@ Status: proposal, 2026-10-22, revised the same day after a practice review, a se
 > - One invariant: **what a scenario asserts changes only when its requirement changes.** Everything else (DSL, drivers, fakes, production code) changes freely. [stability-checks.md](stability-checks.md) enforces it in CI, from the base branch, so a PR cannot switch the gate off.
 > - All seven Workers run as production bundles in one local `workerd`; D1, R2, KV, Durable Objects, Workflows and Queues are the real local implementations; everything else is faked at a port and an unfaked outbound call fails the test.
 > - Coverage = every active requirement in [../requirements/](../requirements/README.md) has at least one green scenario naming its ID. That is a traceability measure, not proof that the scenario proves the statement; review and the see-it-fail job are the defence.
-> - PR lane ~10 minutes wall-clock; ~$30–35/month of CI on a private repo. The tooling bet is proven by [a spike](../../spike/test-dsl/RESULTS.md): harness, MSW, DSL, http driver, Recorder and N/N-1 all ran.
-> - Decisions still open (§14): a CI-only Cloudflare account, repo visibility, and browser test scope. The architecture/UI conflicts and the security-review requirements are settled.
+> - PR lane ~10 minutes wall-clock; ~$25–30/month of CI on a private repo. The tooling bet is proven by [a spike](../../spike/test-dsl/RESULTS.md): harness, MSW, DSL, http driver, Recorder and N/N-1 all ran.
+> - Decisions still open (§14): repo visibility and browser test scope. The architecture/UI conflicts and the security-review requirements are settled.
 
 Companion documents: [dsl.md](dsl.md) (the World DSL and example scenarios), [stability-checks.md](stability-checks.md) (the gate and the hatches), [../requirements/](../requirements/README.md) (the register), [research/tooling.md](research/tooling.md) and [research/dsl-patterns.md](research/dsl-patterns.md) (sources for every tool claim), [../../spike/test-dsl/](../../spike/test-dsl/README.md) (the runnable proof and its measured numbers). The sibling plans are cited by path until they merge; the agreements with them are restated here where they bind this plan.
 
@@ -214,17 +214,19 @@ In production the Recorder redacts before it stores and keeps envelopes 14 days 
 
 Every fake is a plain object owned by the World, reset per scenario, with the Recorder behind it so a scenario can assert what the system asked of the outside.
 
-**Keeping the fakes honest.** Contract suites use the "same suite, two backends" pattern: one file per port, parametrised over `{ fake, real }`; `fake` on every PR, `real` on the schedule below with credentials from the `nightly` GitHub Environment, run in the CI-only Cloudflare account (never a preview that shares production data stores). Recorded real responses pass through `tests/contracts/redact.ts` before they are written (tokens by prefix `ghs_|ghp_|sk_|whsec_|pks_|psr_|eyJ`, `client_secret`, `email`, `Authorization` → `<redacted>`); the job fails if secret scanning finds anything in the diff; the drift PR is never auto-merged and `tests/contracts/fixtures/` is CODEOWNED. Pact is not used: Stripe, GitHub and Anthropic will not run our verification ([research/tooling.md §5.5](research/tooling.md)).
+**Keeping the fakes honest.** Contract suites use the "same suite, two backends" pattern: one file per port, parametrised over `{ fake, real }`; `fake` on every PR, `real` on the schedule below with credentials from the `nightly` GitHub Environment, run against the release plan's `staging` environment (never anything that shares production data stores).
+
+**Cloudflare access without a second account** (Ariel, 2026-10-22). PackServer stays in one Cloudflare account. `staging` is a Wrangler environment with its own Workers, D1 databases, R2 buckets, KV namespaces, Vectorize index and Queues (all `*-staging`), deployed by the release pipeline, which already holds the deploy token in its protected GitHub Environment. The test jobs hold **no Cloudflare API token at all**: Cloudflare API token permissions for Workers, D1, Vectorize and Workers AI apply to the whole account (only R2 tokens can be limited to named buckets, as far as the token model allows today), so any token able to touch staging could also touch production. Instead, nightly suites reach staging the way users do, through the `http` driver, authenticated by an Access service token whose Access application covers only the staging hostnames. A leaked nightly secret therefore reaches staging and nothing else. The cost of this choice is that real Vectorize and Workers AI behaviour is observed through domain verbs (an agent's search results, a review verdict) rather than by calling the bindings directly, and there are no test-only routes in any deployed Worker (security review S5). Recorded real responses pass through `tests/contracts/redact.ts` before they are written (tokens by prefix `ghs_|ghp_|sk_|whsec_|pks_|psr_|eyJ`, `client_secret`, `email`, `Authorization` → `<redacted>`); the job fails if secret scanning finds anything in the diff; the drift PR is never auto-merged and `tests/contracts/fixtures/` is CODEOWNED. Pact is not used: Stripe, GitHub and Anthropic will not run our verification ([research/tooling.md §5.5](research/tooling.md)).
 
 | Real-backend suite | Against | Schedule |
 |---|---|---|
-| Vectorize, Workers AI | `remote: true` bindings in the CI-only account | nightly |
+| Vectorize, Workers AI | search and review scenarios through the `http` driver against `staging` | nightly |
 | AI Gateway → Anthropic | the real gateway, $1 spend cap, Haiku | nightly |
 | Stripe | a Stripe Sandbox via Stripe CLI `trigger` | nightly |
-| GitHub OIDC, App, webhooks, OAuth login | a throwaway org and repo with a real App installed with read permissions only; OIDC exchange against the CI-only account's deployment; the suite asserts the App's token requests no write permission | nightly |
+| GitHub OIDC, App, webhooks, OAuth login | a throwaway org and repo with a real App installed with read permissions only; OIDC exchange against `staging`; the suite asserts the App's token requests no write permission | nightly |
 | Sigstore Rekor | the public staging log (`rekor.sigstage.dev`), one head entry a night, verified by inclusion proof | nightly |
 | Mail, DNS proof, Access on the admin host | provider test mode; a real cheap test domain; the admin host with and without the probe token | nightly |
-| Workflows, CDN index TTL, Analytics Engine rollup, presigned R2 PUT/GET | the CI-only account's deployment | nightly (Workflows), weekly (the rest) |
+| Workflows, CDN index TTL, Analytics Engine rollup, presigned R2 PUT/GET | `staging`, through the `http` driver | nightly (Workflows), weekly (the rest) |
 | Sandbox container | the real image on a Docker-capable runner; monthly against a deployed preview container. REQ-VAL-011 (no network, no secrets inside) and the decompression limits of REQ-VAL-022/023 (every bomb fixture refused within the memory, disk and time limits) are proven here, not in-process | weekly, and on every PR that changes the validator image |
 
 The Claudinite `cloudflare-workers` pack's `wire-bindings-seam` rule says D1, R2 and Workflows cannot be exercised locally; that premise is out of date (only Vectorize and Workers AI lack a local simulation), and a one-paragraph amendment goes to the pack's maintainers through the fleet process. The rule's advice (one seam, one place to swap) still holds and this plan follows it.
@@ -265,7 +267,7 @@ Per pull request (GitHub Actions, hosted Linux 2-core; stage 4 is extrapolated f
 
 Wall-clock target under 10 minutes; roughly 15–20 billable minutes per run. On `main` after a merge the release plan's compat stage (§4.5) and the self-test scenarios (REQ-OPS-005..011: full and shallow on every Worker through `world.operator.selfTest()`; a shallow run must make no outbound or service-binding call, asserted through the Recorder) add ~13 minutes.
 
-Nightly, one scheduled workflow with `workflow_dispatch` for reruns: the real-backend suites (§6, ~20 min), `http` probes against the CI-only account's deployment (~3 min), every `ui` scenario (~6 min), the `slow` lane (~10 min), the full StrykerJS run over `packages/core` unit tests with the ratcheting watermark (~20 min), and the fixture-drift PR (~1 min).
+Nightly, one scheduled workflow with `workflow_dispatch` for reruns: the real-backend suites (§6, ~20 min), `http` probes against `staging` (~3 min), every `ui` scenario (~6 min), the `slow` lane (~10 min), the full StrykerJS run over `packages/core` unit tests with the ratcheting watermark (~20 min), and the fixture-drift PR (~1 min).
 
 **Workflow hardening.** The `nightly` environment restricts deployments to `main`, so a `workflow_dispatch` from another ref gets no secrets. Fork PRs run lint, unit and in-process scenarios with no secrets; nightly, browser-with-Turnstile-keys and compat never run on forks. Every workflow sets `permissions: { contents: read }` at the top and widens per job (`pull-requests: write` for the matrix comment; `contents: write, pull-requests: write` for the drift PR via a scoped GitHub App token, never a PAT). Nightly jobs run with an egress allowlist (`step-security/harden-runner` or equivalent) naming the Stripe, GitHub, Cloudflare, mail and Anthropic hosts, since MSW does not stop a dependency that uses `net` directly. No job on `pull_request_target` checks out or runs head code (stability-checks.md §4).
 
@@ -289,12 +291,11 @@ Assumptions: a private repo with 3,000 included Actions minutes a month; hosted 
 | Weekly Docker sandbox + monthly preview run | ~50 | <$1 | |
 | Compat stage on `main` | ~500 | $3 | release plan's line; listed so the total is honest |
 | **GitHub Actions total** | **~7,150** | **~$25** | on a Free plan add ~$6; on Enterprise Cloud $0; on a public repo $0 |
-| Cloudflare: nightly `remote: true` Vectorize + Workers AI | — | cents | inside or near the Paid plan's included quota |
-| Cloudflare: CI-only account | — | $5 | a second Workers Paid subscription so no CI token has production reach; recommended on security grounds (a `remote: true` token in the production account is a production credential) |
+| Cloudflare: nightly traffic to `staging` (Vectorize, Workers AI, D1, R2) | — | cents | inside the Paid plan's included quota; no second account |
 | Anthropic via AI Gateway, nightly | — | ≤ $1 | spend cap on the gateway |
 | Stripe Sandbox, GitHub throwaway org, mail test mode | — | $0 | |
 | DNS test domain | — | ~$1 | a real cheap domain; `.test` does not resolve |
-| **Total** | | **~$30–35/month** | against the product's ~$30/month hosting estimate |
+| **Total** | | **~$25–30/month** | against the product's ~$30/month hosting estimate |
 
 Not in the table: a few hours a month of driver maintenance while the harness and `miniflare 5.x-beta` settle. Workers Builds (no Docker, one concurrent build on Free) does not suit the sharded suite.
 
@@ -320,7 +321,7 @@ The remaining known upstream issues (DO RPC teardown noise, plugin snapshot size
 |---|---|---|
 | M1 register and gates | `docs/requirements/**`, the register loader, the `requirements:matrix` script, the ESLint scenario override, the `scenario-gate` job on `pull_request_target`, the ruleset and CODEOWNERS, the bot identity for agent commits | a PR that changes a scenario's assertions without a register change is blocked; the matrix lists every ID with zero scenarios; the watermark starts at 0 |
 | M2 harness and World skeleton | the in-process driver booting whichever Workers exist, MSW fail-closed, the Clock/Rng ports and fake-clock Worker, the Recorder interface, `world.users`, `world.visitor()`, `world.agents.anonymous()`, `world.telemetry`, the first matchers, the production-seam grep | the first ten scenarios (REQ-SEARCH-001..007, REQ-PRIV-001, REQ-DELIV-001, REQ-TELEM-001) green and each seen red on base |
-| M3 http driver and probe-safe | the `http` driver with the env-var contract and the version assertion, JUnit output, `probe-safe` lint, a first probe set, `world.operator` and the self-test scenarios (REQ-OPS-005..011), REQ-OPS-* | the release plan's pre-traffic stage runs it against the CI-only account's deployment; monitoring runs it against production |
+| M3 http driver and probe-safe | the `http` driver with the env-var contract and the version assertion, JUnit output, `probe-safe` lint, a first probe set, `world.operator` and the self-test scenarios (REQ-OPS-005..011), REQ-OPS-* | the release plan's pre-traffic stage runs it against the RC and `staging`; monitoring runs it against production |
 | M4 identity | the fake GitHub login, the virtual authenticator in the World (used by every sensitive verb for its per-action assertion), TOTP, mail inbox, the `browser` driver, REQ-ACC-* incl. the session, revocation-bound and per-action-assertion negatives (ACC-010, 012, 021..025) | accounts area at 100%; passkey `ui` scenarios green twice |
 | M5 publish path | fake GitHub (OIDC, App, signed webhooks, read-only with a write-attempt recorder), fake Sandbox, Workflow introspection, the `Uploads` port, REQ-PUB-*, REQ-VAL-*, REQ-DELIV-*, REQ-SCOPE-016/017 | publishing, validation, delivery areas at 100%; the weekly Docker sandbox job exists |
 | M6 payments and access | fake Stripe with signed webhooks, the billing contract suite, REQ-PAY-*, REQ-PRIV-* | payments and private areas at 100% |
@@ -331,11 +332,10 @@ The default day-to-day flow under agents: Ariel names the requirement ID (or ask
 
 ## 14. Open questions for Ariel
 
-Decided on 2026-10-22: all six architecture/UI conflicts ([../requirements/README.md](../requirements/README.md#conflicts-between-the-architecture-and-the-ui-flows)); the 29 security-review requirements are confirmed.
+Decided on 2026-10-22: all six architecture/UI conflicts ([../requirements/README.md](../requirements/README.md#conflicts-between-the-architecture-and-the-ui-flows)); the 29 security-review requirements are confirmed; Cloudflare stays one account, with tests reaching `staging` only through an Access token scoped to its hostnames (§6).
 
-1. **CI-only Cloudflare account** ($5/month). This plan recommends it; say if the production account's preview environment must do instead.
-2. **Public or private repository?** It removes the Actions cost and changes nothing else.
-3. **Playwright scope.** `ui` scenarios only for flows that are about the page (passkey ceremonies, the wizard, step-up, Turnstile). Driving every flow in `docs/ui/flows.md` through a browser nightly grows the lane from ~6 to ~25 minutes.
+1. **Public or private repository?** It removes the Actions cost and changes nothing else.
+2. **Playwright scope.** `ui` scenarios only for flows that are about the page (passkey ceremonies, the wizard, step-up, Turnstile). Driving every flow in `docs/ui/flows.md` through a browser nightly grows the lane from ~6 to ~25 minutes.
 
 ## 15. Sources
 
