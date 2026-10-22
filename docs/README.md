@@ -18,7 +18,7 @@ plans live in issues and PRs, not here.
 8. [operations/release.md](operations/release.md), [operations/monitoring.md](operations/monitoring.md),
    [operations/cost.md](operations/cost.md).
 9. [decisions.md](decisions.md): every decision with its date and rationale, the defaults taken,
-   and the one question still open.
+   and the review findings declined.
 
 ## Layout
 
@@ -26,19 +26,19 @@ plans live in issues and PRs, not here.
 |---|---|
 | `product/` | Overview, scope and non-goals, personas, glossary |
 | `requirements/` | Functional requirements by area, one id per promise |
-| `architecture/` | System overview, Workers and trust boundaries, data stores, APIs, signing and the index, the validation pipeline |
+| `architecture/` | System overview, Workers and trust boundaries, data stores, APIs, signing and the index, the validation pipeline, the repository layout |
 | `security/` | Threat model and the controls that answer it |
 | `ui/` | Design principles, sitemap, flows |
-| `operations/` | Release and shadow traffic, monitoring, cost |
-| `decisions.md` | Decision log and defaults |
+| `operations/` | Release, monitoring, cost |
+| `decisions.md` | Decision log, defaults and declined findings |
 
 ## Conventions
 
 - Each fact lives in one place; other pages link to it rather than restate it.
 - A requirement is one or two testable sentences under its id. Ids are never reused or
   renumbered; a retired id stays listed as retired.
-- "Pending decision A6" marks the one spot where the spec uses a recommended answer Ariel has not
-  yet confirmed (the pack score formula).
+- No pending markers: every decision the spec rests on is recorded in [decisions.md](decisions.md)
+  as decided. A requirement for a later phase carries `(phase: <name>)` in its title.
 - Vocabulary follows [product/glossary.md](product/glossary.md): a *member* is a repository running
   Claudinite; a person is *signed in*; a pack is *declared*, *adopted* and *vendored*, never
   installed.

@@ -17,22 +17,25 @@ and GitHub only, because Claudinite is.
   what the pack adds to the repository. Nothing is fetched at session time.
 - **A publisher** publishes from a GitHub repository with no stored secret (trusted publishing),
   or by upload, and gets a deterministic validation report with file and line for every finding.
-  A new pack costs $1; versions are free; Verified Publishers pay $99 a year and nothing per pack.
+  Everything is free through 2026; the prices it will carry afterwards (~~$1~~ a new pack, ~~$99 a
+  year~~ for Verified Publisher) are shown struck through from day one.
 - **A Claude Code session** discovers packs over MCP at `registry.claudinite.com/mcp`, reads the
   manifest, score and raw signals, and proposes `cn adopt <id>`, which lands as a pull request.
-- **The operator** runs it on one Cloudflare account for about $10 a month at launch, with gates
+- **The operator** runs it on one Cloudflare account for about $5 a month at launch, with gates
   rather than people deciding releases.
 
 ## What PackServer promises
 
 1. **Immutability.** A version's bytes never change; its name and number are never reused.
 2. **Verification before trust.** Every version passes a deterministic pipeline (archive safety,
-   manifest, secrets, hidden Unicode, capabilities, load under the pinned engine, canonical
-   re-pack) and a prose screen whose only power is to hold a version for a human.
+   manifest, secrets, hidden Unicode, capabilities, load under the pinned engine in a sandbox that
+   cannot change what is served, canonical re-pack) and a prose screen whose only power is to hold
+   a version for a human; the screen is static heuristics at launch and gains a model when one is
+   confirmed and calibrated.
 3. **Facts, not tiers.** Each version carries who stands behind it (`verified`, `verified_domain`,
    `verified_github_org`), what it does (the pre-install manifest), how it was built (provenance,
-   upload and canonical hashes) and how good it is (a code-only pack score with a published
-   formula). The caller applies its own policy.
+   whether the source tree was verified, upload and canonical hashes) and how good it is (a
+   code-only pack score with a published formula). The caller applies its own policy.
 4. **Privacy of private packs.** A private pack is indistinguishable from one that does not exist
    to anyone outside its allowlist of GitHub accounts, which member repositories prove with their
    Actions OIDC token.
@@ -44,9 +47,10 @@ and GitHub only, because Claudinite is.
 ## Names
 
 The site and all user-facing copy say "Claudinite Packs". "PackServer" is the repository and
-appears only where a technical name is needed: `X-PackServer-Version`, the token prefixes
-`pks_`/`psr_`, the DNS challenge `_packserver-challenge`, `/.well-known/packserver-auth`, and the
+appears only where a technical name is needed: `X-PackServer-Version`, the read-token prefix
+`psr_`, the DNS challenge `_packserver-challenge`, `/.well-known/packserver-auth`, and the
 moderation prefix "Removed by PackServer".
 
 Hosts: `registry.claudinite.com` (site, API, MCP), `packs.claudinite.com` (archives and indexes),
-`registry-admin.claudinite.com` (admin). Details in [../architecture/overview.md](../architecture/overview.md).
+`registry-admin.claudinite.com` (admin), `registry-canary.claudinite.com` (release verification,
+behind Access). Details in [../architecture/overview.md](../architecture/overview.md).

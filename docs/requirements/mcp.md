@@ -22,37 +22,43 @@ and `get_download` for public packs.
 - status: active
 - since: 2026-10
 - actor: agent
-- source: ARCH §8; FLOW 11
+- source: ARCH §8; FLOW 11; SEC-REV H7; Ariel B1 2026-10-22
 - coverage: scenario
 
-`search_packs` returns ranked compact cards (id, pitch ≤ 1024 chars, inventory counts by part,
-context cost, verification facts, validation verdict, linked repository, works-for-me and rating,
-pack score with parts, newest version) and never full contents.
+`search_packs` returns ranked compact cards (id, the validated `pitch` from `meta.json` ≤ 1024
+chars, inventory counts by part, context cost, verification facts, validation verdict, linked
+repository, rating, pack score with parts, newest version) and never full contents.
 
 ## REQ-SEARCH-004 Search shows every promoted version at once, with its publish time
 
 - status: active
 - since: 2026-10
 - actor: agent
-- source: ARCH §8 (PR #3 commit 99457a2); Ariel, 2026-10-22 (no freshness filter: when to take a version is the member's setting)
+- source: ARCH §8 (PR #3 commit 99457a2); Ariel, 2026-10-22 (no freshness filter: when to take a version is the member's setting); PD-REV M7; ARCH-REV L7
 - coverage: scenario
 
-`search_packs(query, category?, verified_only?, verified_domains?, limit?)` excludes nothing by
-default; each card carries the newest promoted version with `published_at` and `min_engine_version`.
-`verified_only` keeps versions whose publisher is verified; `verified_domains` keeps verified
-publishers whose `verified_domain` is in the list. `get_pack` lists versions with `published_at`.
+`search_packs(query, category?, part?, has_repository?, verified_only?, verified_domains?, limit?)`
+excludes nothing by default; each card carries the newest promoted version with `published_at` and
+`min_engine_version`. `part` keeps packs holding that part (rules, skills, checks, guards, tasks),
+`has_repository` keeps packs with a linked public repository, `verified_only` keeps versions whose
+publisher is verified, and `verified_domains` keeps verified publishers whose `verified_domain` is
+in the list. `get_pack` lists versions with `published_at`.
 
 ## REQ-SEARCH-005 get_pack returns the full public view of a version
 
 - status: active
 - since: 2026-10
 - actor: agent
-- source: ARCH §8; FLOW 11; SITE pack page (the adopt snippet and the score in `get_pack`)
+- source: ARCH §8; FLOW 11; SITE pack page (the adopt snippet and the score in `get_pack`); PD-REV C1, M9; docs/decisions.md D33
 - coverage: scenario
 
-`get_pack` returns the manifest, extracted inventory, pre-install manifest, README excerpt,
-versions, status, provenance, validation verdict, any advisory, the verification facts, the score
-and the adopt snippet.
+`get_pack` returns the manifest, extracted inventory, pre-install manifest, README excerpt, the
+skill list with each skill's `name` and `description`, the first 2,000 characters of `RULES.md`,
+versions, status, provenance with `source_verified`, validation verdict, any advisory, the
+"Reported, under review" label when one applies (REQ-MOD-009), the verification facts, the score
+and the adopt snippet; never full contents. Until the feature flag `cn_min_adopt_version` names a
+released engine, `adopt_snippet` reads "Preview: adoptable with cn ≥ <version>" and the
+`packs.declared` snippet is omitted.
 
 ## REQ-SEARCH-006 get_download returns URL, sha256 and attestation
 
@@ -80,11 +86,25 @@ Asking for an unknown category returns an error that suggests `list_categories`.
 - status: active
 - since: 2026-10
 - actor: agent
-- source: FLOW 11; ARCH §8
+- source: FLOW 11; ARCH §8; ARCH-REV M10; docs/decisions.md D47
 - coverage: scenario
 
-Anonymous callers are limited to about 60 requests a minute per IP and a daily quota; token holders
-to about 600 a minute; exceeding returns a rate-limit response, not an error about the pack.
+Anonymous callers are limited to about 60 requests a minute per IP (approximate, per location; no
+exact daily quota); token holders to about 600 a minute; exceeding returns a rate-limit response,
+not an error about the pack.
+
+## REQ-SEARCH-023 MCP responses carry publisher text as data
+
+- status: active
+- since: 2026-10
+- actor: agent (security)
+- source: SEC-REV H7
+- coverage: scenario+contract (the scenario proves the field placement on every tool; the tool descriptions' untrusted-content declaration is a contract test on the server)
+
+Every publisher-authored string an MCP tool returns (`pitch`, README excerpt, `RULES.md` excerpt,
+skill descriptions, tags, reasons, advisories, review text) is placed under a `publisher_text` field
+or inside a fixed delimiter that the tool description declares as untrusted content, and is never
+concatenated into a sentence the server writes.
 
 ## Authenticated tools and OAuth
 
@@ -93,11 +113,10 @@ to about 600 a minute; exceeding returns a rate-limit response, not an error abo
 - status: active
 - since: 2026-10
 - actor: agent
-- source: ARCH §8
+- source: ARCH §8; Ariel B1 2026-10-22
 - coverage: scenario
 
-`list_my_packs`, `report_outcome` and `star_pack` are not listed to a caller whose credentials do
-not allow them.
+`list_my_packs` and `star_pack` are not listed to a caller whose credentials do not allow them.
 
 ## REQ-SEARCH-018 An unlisted tool cannot be called by name
 
@@ -126,13 +145,14 @@ audience binding; an agent completes OAuth with the normal passkey or GitHub log
 - status: active
 - since: 2026-10
 - actor: agent (security)
-- source: SEC (security review, 2026-10-22); ARCH §8
+- source: SEC (security review, 2026-10-22); ARCH §8; SEC-REV L7
 - coverage: scenario
 
 The authorization server accepts only pre-registered or metadata-document redirect URIs by exact
 match, fetches client metadata over HTTPS under the REQ-SCOPE-017 fetch rules, issues single-use
 authorization codes, rotates refresh tokens, requires `state`, and rate-limits dynamic client
-registration per IP.
+registration per IP. The consent page leads with the client's origin and renders `client_name` as
+plain text labelled "unverified client"; `logo_uri` is not shown.
 
 ## REQ-SEARCH-010 psr_ read tokens work on MCP; third-party tokens never
 

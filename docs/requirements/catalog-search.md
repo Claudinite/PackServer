@@ -16,19 +16,20 @@ A task-phrased query ("deploy to GCP Cloud Run") finds packs by meaning as well 
 results can be filtered by category, part (rules, skills, checks, guards, tasks), publisher
 verification and has-repository, on the site and over MCP alike. On the site the verification filter
 is one "Verified publisher" toggle; over MCP it is `verified_only` and `verified_domains`
-(REQ-SEARCH-004).
+(REQ-SEARCH-004). When the model budget is spent, search answers by keyword alone with
+`degraded: true` (REQ-VAL-021).
 
 ## REQ-SEARCH-013 Website search and browse mirror MCP results and filters
 
 - status: active
 - since: 2026-10
 - actor: anonymous visitor
-- source: SITE browse; Ariel, 2026-10-22 (every signal kept beside the pack score); Ariel, 2026-10-22 (one "Verified publisher" toggle on the site)
+- source: SITE browse; Ariel, 2026-10-22 (every signal kept beside the pack score); Ariel, 2026-10-22 (one "Verified publisher" toggle on the site); PD-REV L3
 - coverage: scenario
 
 The site's search and browse expose the same results and filters as MCP (category, part, Verified
-publisher, has repository), with selectable sorts (score, stars, rating, recent, fetches), and the
-URL carries the state.
+publisher, has repository, and verified domains as a text filter in the filter drawer), with
+selectable sorts (score, stars, rating, recent, fetches), and the URL carries the state.
 
 ## REQ-SEARCH-020 Fixed top-level categories and free tags
 
@@ -57,22 +58,23 @@ for a query; stars, rating, recency and fetch counts are never the default order
 - status: active
 - since: 2026-10
 - actor: anonymous visitor
-- source: ARCH §10; docs/decisions.md (no tiers: no verification fact bars the slot)
+- source: ARCH §10; docs/decisions.md (no tiers: no verification fact bars the slot); PD-REV L8; docs/decisions.md D40
 - coverage: scenario
 
-Roughly one result in ten on browse is an exploration slot for a new pack that would otherwise rank
-below the fold; no verification fact bars a pack from the slot.
+Once the catalogue holds at least 50 public packs, every tenth result on browse (positions 10, 20,
+…) is an exploration slot filled by a pack promoted within the last 90 days with a score of 60 or
+more that would otherwise rank below the fold; no verification fact bars a pack from the slot.
 
 ## REQ-TELEM-003 30-day fetch counts roll up hourly
 
 - status: active
 - since: 2026-10
 - actor: anonymous visitor / agent
-- source: ARCH §3, §10; DATA
+- source: ARCH §3, §10; DATA; PD-REV M4
 - coverage: scenario
 
 Fetch counts over the last 30 days roll up hourly into per-pack stats and are shown on pack pages,
-in browse and on MCP cards as aggregates.
+in browse and on MCP cards as aggregates, phrased "about N fetches in 30 days".
 
 ## Retired
 

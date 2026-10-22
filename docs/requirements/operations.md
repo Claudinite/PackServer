@@ -1,9 +1,10 @@
 # Operations and telemetry
 
 Areas `OPS` (the self-test and the synthetic tenant, which the release pipeline and the prober
-depend on) and `TELEM` (what PackServer counts and keeps). Signal names are defined once in
-[../operations/monitoring.md](../operations/monitoring.md); an entry here says what is counted. The
-release flow that consumes the self-test: [../operations/release.md](../operations/release.md).
+depend on, and the repository's own hygiene) and `TELEM` (what PackServer counts and keeps). Signal
+names are defined once in [../operations/monitoring.md](../operations/monitoring.md); an entry here
+says what is counted. The release flow that consumes the self-test:
+[../operations/release.md](../operations/release.md).
 
 ## The synthetic tenant
 
@@ -25,12 +26,13 @@ expires after 24 hours and its name may be reused.
 - status: active
 - since: 2026-10
 - actor: CI workflow (security)
-- source: SEC (security review, 2026-10-22); release plan §5.2, §10
+- source: SEC (security review, 2026-10-22); release plan §5.2, §10; PD-REV cut 1; Ariel B3 2026-10-22
 - coverage: scenario
 
-The probe identity is a publish token restricted to the synthetic scope with `publish:update` only;
-it cannot create packs elsewhere, read private packs, mint tokens or perform any account or session
-action, and it is never a human session.
+The probe publishes through two identities only: the probe repository's trusted-publisher
+registration (OIDC, REQ-PUB-003) for the synthetic scope, and the prober Worker's service-binding
+principal. Neither can create packs elsewhere, read private packs, mint tokens or perform any
+account or session action, and neither is ever a human session.
 
 ## REQ-OPS-003 The production configuration rejects test issuers and test bindings
 
@@ -62,13 +64,13 @@ external call, and in production reports check names and pass or fail only.
 - status: active
 - since: 2026-10
 - actor: operator
-- source: release plan §5 (PR #8, `docs/release/README.md`)
+- source: release plan §5 (PR #8, `docs/release/README.md`); ARCH-REV L8
 - coverage: scenario+http (in-process through `world.operator.selfTest()`; the release flow's pre-traffic stage and the nightly http run observe it on a deployed version with the version override)
 
 A full self-test answers `{version_id, release_id, ok, checks: [{name, ok, ms, detail}]}`; `ok` is
 true exactly when every check is; `detail` is an enum plus a duration and never a secret or user
 data; `version_id` is the answering version's id, so a caller pinned to a candidate can tell it
-answered.
+answered, and only an authenticated caller ever reaches this shape (REQ-OPS-004).
 
 ## REQ-OPS-006 Every response names the version that produced it
 
@@ -151,13 +153,30 @@ the full self-test reports `ok: false` naming the head and the range.
 - status: active
 - since: 2026-10
 - actor: operator
-- source: release plan, `docs/release/shadow-traffic.md` §5.1 (PR #8; Ariel's decision, 2026-10-22)
+- source: release plan, `docs/release/shadow-traffic.md` §5.1 (PR #8; Ariel's decision, 2026-10-22); Ariel B7 2026-10-22 (the Recorder port stays; shadow traffic comes later)
 - coverage: scenario+unit (the scenario proves the placeholders on a recorded outbound call through the World; the classification table and the check that fails CI on an unclassified field are the release plan's, tested where the Recorder lives)
 
-Every value the shadow Recorder stores is classified public, operational, personal, secret or
-customer-content and redacted before anything reads it: personal and customer-content values appear
-only as keyed hashes behind placeholders, secrets are dropped, and an unclassified value is treated
-as customer-content; test doubles emit the same redacted records.
+Every value the Recorder stores (in tests, the N/N-1 harness and, later, shadow traffic) is
+classified public, operational, personal, secret or customer-content and redacted before anything
+reads it: personal and customer-content values appear only as keyed hashes behind placeholders,
+secrets are dropped, and an unclassified value is treated as customer-content; test doubles emit
+the same redacted records.
+
+## REQ-OPS-013 Production deploys only from a protected main branch under a hardware-key account
+
+- status: active
+- since: 2026-10
+- actor: operator (security)
+- source: SEC-REV H8 (Q7, as taken in docs/decisions.md D29)
+- coverage: manual (repository and account settings; the release checklist verifies them and the judge's account-audit watch pages on drift)
+
+The PackServer repositories (the registry, `claudinite/publish-pack`, the engine that embeds the
+registry key) accept changes to `main` only through pull requests with required CI and no force
+push, under a branch ruleset with no bypass actors; no bot, App or PAT holds write to `main`, and
+agents commit through pull requests like anyone else. The owner's GitHub account uses a passkey or
+hardware security key as its only second factor. Signed commits are not required. The judge pages
+on any Cloudflare account event by a CI token that does not match the current release manifest
+(`page.account_change`).
 
 ## Telemetry
 
@@ -166,22 +185,24 @@ as customer-content; test doubles emit the same redacted records.
 - status: active
 - since: 2026-10
 - actor: system
-- source: DATA Analytics Engine; docs/decisions.md (public fetches counted from the zone's request logs)
+- source: DATA Analytics Engine; docs/decisions.md (public fetches counted from the zone's request logs); ARCH-REV M6
 - coverage: scenario
 
-Each download and index fetch is counted (pack, version, hashed caller, fetcher: `cn adopt`, the
-update task or MCP) without blocking the response; public fetches are counted from the zone's
-request logs, private ones from the serving Worker.
+Each download and index fetch is counted (pack, version, caller network or hashed principal,
+fetcher: `cn adopt`, the update task or MCP) without blocking the response; public fetches are
+counted from the zone's request logs, private ones from the serving Worker.
 
-## REQ-TELEM-002 A download counts once per caller, version and day
+## REQ-TELEM-002 A public download counts once per network, version and day
 
 - status: active
 - since: 2026-10
 - actor: system
-- source: FLOW 11
+- source: FLOW 11; ARCH-REV M6
 - coverage: scenario
 
-A download is counted once per (caller, version, day).
+A public download is counted once per (/24 network, version, day), since the request logs hold no
+caller identity; a private download is counted once per (principal, version, day). Pages say
+"about N fetches", never a repository count (REQ-TELEM-007 supplies that).
 
 ## REQ-TELEM-004 Counts are approximate; tests assert monotonic behaviour
 
@@ -210,7 +231,7 @@ records a daily-rotating keyed hash.
 - status: active
 - since: 2026-10
 - actor: system
-- source: ARCH §10, §15 Q10 (PR #3 commit 359f3c6); Ariel, 2026-10-22 (cn sends no telemetry; a weekly public-repo scan instead)
+- source: ARCH §10, §15 Q10 (PR #3 commit 359f3c6); Ariel, 2026-10-22 (cn sends no telemetry; a weekly public-repo scan instead); ARCH-REV M12
 - coverage: scenario+contract (the scenario drives the fake GitHub code search, the cursor and the timeout; the real query shapes against GitHub's code-search limits are the weekly contract suite)
 
 cn sends no telemetry (REQ-CN-012) and PackServer never reads a private repository. Once a week the
@@ -219,7 +240,9 @@ and records, per pack, the number of repositories declaring it, the versions pin
 declarations dropped since the previous scan; a run stops after 10 minutes and the next one resumes
 from its saved cursor; it uses a read-only public-repository token and splits its queries by pack id
 and repository creation date to stay within code-search limits. The counts feed the declaring-repo
-count on the pack page, ranking and Trending (REQ-COMM-014).
+count on the pack page, ranking and Trending (REQ-COMM-014), and are labelled "approximate,
+weekly" wherever shown, since code search indexes default branches only and answers at most 1,000
+results per query.
 
 ## REQ-TELEM-008 Fetch telemetry is kept 90 days and never identifies a repository publicly
 
