@@ -1,0 +1,13 @@
+{
+  // Applies the migrations to a local D1 for development and tests; no Cloudflare account is involved.
+  "name": "packserver-schema-migrations",
+  "compatibility_date": "2026-10-01",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "registry",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

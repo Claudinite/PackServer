@@ -4,16 +4,18 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.28.0",
-  "engines": { "node": ">=22.12" },
+  "engines": { "node": ">=22.13" },
   "scripts": {
     "lint": "eslint .",
     "typecheck": "turbo run typecheck",
     "docs:check": "node docs/testing/coverage.mjs --check",
-    "check": "pnpm lint && pnpm typecheck && node tools/check-rules.mjs",
+    "check": "pnpm lint && pnpm typecheck && node tools/check-rules.mjs && pnpm db:check",
     "test": "turbo run test && pnpm test:infra && pnpm test:scenarios",
     "test:infra": "vitest run --project infra",
     "test:scenarios": "vitest run --project scenarios --passWithNoTests",
-    "changeset": "changeset"
+    "changeset": "changeset",
+    "db:migrate": "pnpm --filter @packserver/schema db:migrate",
+    "db:check": "node tools/check-migrations.mjs && pnpm --filter @packserver/schema db:check"
   },
   "devDependencies": {
     "@changesets/cli": "3.0.3",
