@@ -530,5 +530,5 @@ A release that shadows for 48 h at the recommended profile costs about **$0.30**
 5. ~~Statistical bar.~~ Decided with Ariel: Good-Turing coverage plus rule-of-three floors, sample rates computed from a chosen window (min 24 h) (§7.5).
 6. ~~Billing route sampling.~~ Decided: billing is shadowed like every other route; the pipeline is uniform and redaction is classification-based everywhere (§5.1).
 7. ~~Async coverage.~~ Decided: HTTP endpoints only for now; v3 (queue/Workflow replay) is deferred, consumers and Workflows rely on integration tests and staging.
-8. **Retention.** 14 days for raw records, 90 days for aggregated reports. Confirm.
+8. ~~Retention.~~ Decided: 14 days raw, 90 days reports (§5.2).
 9. **Build order.** v0 (record + baseline, ~2 weeks) first, with the RC shadow in v1 (~3 weeks), or everything before the first production release?
