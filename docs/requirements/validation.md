@@ -1,6 +1,6 @@
 # Validation pipeline
 
-Area `VAL`, 45 requirements (1 retired). Format and rules: [README.md](README.md).
+Area `VAL`, 46 requirements (1 retired). Format and rules: [README.md](README.md).
 
 Entries REQ-VAL-024 onwards, and the amended statements of REQ-VAL-002, 010, 011, 012, 013,
 014, 018, 021, 022 and 023, come from the architecture thread's validation-flow review
@@ -244,7 +244,7 @@ A publisher whose runs fail 10 or more times in a day is soft-rate-limited on fu
 - since: 2026-10
 - actor: system
 - source: ARCH §6 "Ongoing"; ARCH-VAL §6 (PR #3 commit 7a01329: packs have no package dependencies, so the dependency re-resolution is gone)
-- decision: ARCH-Q 7; ARCH-VAL §7-3 (what a revocation does in cn); ARCH-SCREEN (the prose-screen rescan exists only with a screen)
+- decision: ARCH-Q 6; ARCH-VAL §7-3 (what a revocation does in cn); ARCH-SCREEN (the prose-screen rescan exists only with a screen)
 - coverage: scenario
 
 Every live latest version is rescanned with the static rules whenever a rule changes and with
@@ -367,27 +367,29 @@ Every URL in the archive is extracted into the version's URL inventory, which th
 read in the report. Prose that instructs the agent to install something from a URL holds the
 version for human review; code or prose that fetches an executable from a URL hard-fails.
 
-## REQ-VAL-027 Each version carries a pre-install manifest derived from the archive and signed into the index
+## REQ-VAL-027 A version's capabilities are computed from the archive and signed into the index
 
-- status: active
+- status: provisional
 - since: 2026-10
-- actor: publisher / anonymous visitor / agent / cn engine
-- source: ARCH-VAL §6, §3.2; Ariel, 2026-10-22 (O8: the pre-install manifest, derived by PackServer)
+- actor: publisher / anonymous visitor / agent
+- source: ARCH-VAL §6, §3.2 (PR #3 commit 99457a2)
+- decision: ARCH-VAL §7-1 (the extracted capability model)
 - coverage: scenario
 
-The validator derives each version's pre-install manifest from the archive (the check tags in
-`checks/*.go`, `declared-checks.json`, `task.json` and `pack.json`). It lists each guard with the
-tool calls it judges, each task with its cadence and whether it opens a PR or has an agentic
-phase, the forced skills, and the GitHub actions requested. The manifest is stored in `meta.json`
-and in the version's signed index entry, so cn can show it in an update PR, and it appears above
-the README on the pack page and in MCP `get_pack`. A prose-only pack has an empty manifest.
+The validator computes the version's capability set from the archive, not from a declaration.
+The set is: `guard` (a PreToolUse judge that can deny a tool call), `coded-check`, `task` (with
+its cadence, and whether it is `opens-pr` or has an `agentic-phase`), `env-setup`,
+`forced-skill`, and `github-action:<name>` for each named GitHub action the pack declares in
+`pack.json`. Its detailed form is the pre-install manifest (REQ-VAL-046). The set is stored in
+`meta.json`, signed into the index, and shown on the pack page and over MCP. A prose-only pack has
+an empty set.
 
 ## REQ-VAL-028 A version that widens the manifest is held and needs passkey approval
 
 - status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH-VAL §6, §3.2, §4 step 15; Ariel, 2026-10-22 (new capability = hold)
+- source: ARCH-VAL §6, §3.2, §4 step 15; Ariel, 2026-10-22 (new capability = hold, as the manifest's widening rule of REQ-VAL-046)
 - coverage: scenario
 
 A version whose manifest widens the previous promoted version's (a new guard, task, forced skill or
@@ -466,7 +468,8 @@ than the pack's newest version, its `minEngineVersion` a three-part engine versi
 
 The archive promoted and served for a version is a deterministic re-pack of the validated tree
 (sorted paths, fixed metadata, plain entry names, a single compression frame within the window
-limit) in PackServer's own `tar.zst` canonical form, not the uploaded bytes. Before promotion the sandbox re-extracts the canonical archive
+limit) in PackServer's own canonical form, `canonical.tar.zst` (sorted paths, fixed metadata, one
+zstd frame, a window of at most 8 MB, a pinned level), not the uploaded bytes; cn accepts this form. Before promotion the sandbox re-extracts the canonical archive
 with the same bounded decoder and compares its tree hash with the validated tree; a mismatch is
 an infrastructure error and nothing is promoted. The uploaded bytes stay in staging for the
 staging lifetime (REQ-PUB-020) so a disputed re-pack can be re-examined, and a publisher can
@@ -575,17 +578,17 @@ resumes the run at the payment step without re-validating.
 - status: provisional
 - since: 2026-10
 - actor: anonymous visitor / agent / cn engine
-- source: ARCH-VAL §6, §3.10 (PR #3 commit 7a01329)
-- decision: ARCH-VAL §7-4; O6 (the tier reaches the signed index only once the engine has a `tier` field and a `minTier` setting); CLN-REV 6 (the top tier's name: `reviewed` is a placeholder, since `canon` already names Claudinite's central pack set)
+- source: ARCH-VAL §6, §3.10 (PR #3 commit 99457a2)
+- decision: ARCH-VAL §7-4; CLN-REV 6 (the top tier's name: `reviewed` is a placeholder, since `canon` already names Claudinite's central pack set)
 - coverage: scenario
 
 Each promoted version carries one tier, `reviewed`, `community` or `third-party`, stored in
-`meta.json` with the version and shown in search and on the pack page; it is in the signed index
-only once the engine has a `tier` field. A community version has passed every fail rule, loaded
+`meta.json`, in the signed index entry (`tier`), and shown in search and on the pack page; cn adds a
+`minTier` repository setting that reads it. A community version has passed every fail rule, loaded
 under cn, proven its fixtures and been found benign by both screens or a human. A third-party
 version (missing fixtures, or resolved from an uncertainty hold by timeout) carries a persistent
-warning on the pack page and in cn, is excluded from default MCP results unless the caller opts
-in (REQ-SEARCH-019), and never fills an exploration slot. cn can enforce a per-repo minimum tier once the index carries the field.
+warning on the pack page and in cn, is excluded from default MCP results unless the caller opts in
+with `include_unreviewed` (REQ-SEARCH-019), and never fills an exploration slot.
 
 ## REQ-VAL-042 The public view shows tier, capabilities, provenance and hashes, never finding text
 
@@ -644,3 +647,20 @@ extraction stops after 60 seconds and each check or guard fixture after 30 secon
 or fixture that hits its limit fails the version with the reason `sandbox.timeout`, except an
 extraction timeout, which fails it with `archive.unsafe` and is final: no retry, no credit, no
 LLM review. A dry-run therefore answers within the promised 4 minutes or with a timeout verdict.
+
+## REQ-VAL-046 Each version carries a pre-install manifest; widening it holds the version
+
+- status: active
+- since: 2026-10
+- actor: publisher / anonymous visitor / agent / cn engine
+- source: ARCH-VAL §6 (PR #3 commit 99457a2); Ariel, 2026-10-22 (was O8)
+- coverage: scenario
+
+The validator extracts every version's pre-install manifest in the sandbox with the `core` rule
+module, from the `checks/*.go` tags, `declared-checks.json`, `task.json` and `pack.json`: each guard
+and the tool calls it judges, each scheduled task with its cadence and whether it opens PRs or has
+an agentic phase, the forced skills, and the GitHub actions requested. It is stored in
+`meta.json`, carried in the signed index entry, and shown above the README on the pack page and in
+MCP `get_pack`. A version that widens it (a new guard, task or forced skill, a faster cadence, or a
+new GitHub action) is held under "new capability = hold" and needs passkey approval
+(REQ-VAL-028).

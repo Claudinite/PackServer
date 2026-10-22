@@ -8,18 +8,21 @@ prior art rather than a constraint: cn adapts to the per-scope and root indexes 
 channels and no cooldown, the index carries each version's `published_at`, and any wait before
 taking a version is a cn or repository setting.
 
-## REQ-DELIV-001 Public versions download from immutable URLs with both hashes and the attestation
+## REQ-DELIV-001 Public versions download from write-once URLs that cn verifies against PackServer's signed index
 
 - status: provisional
 - since: 2026-10
 - actor: anonymous visitor / cn engine
-- source: ARCH §7; ARCH-VAL §6, §3.16
-- decision: ARCH-VAL §7-5 (without the canonical re-pack a download carries one sha256, as before)
+- source: ARCH §7; ARCH-VAL §6, §3.16 (PR #3 commit 99457a2)
+- decision: ARCH-VAL §7-5 (without the canonical re-pack the served archive is the uploaded one)
 - coverage: scenario
 
-A public pack version is downloadable at an immutable, versioned URL and every download response
-carries the canonical archive's SHA-256 (the bytes being served), the uploaded archive's SHA-256
-and the attestation URL; the signed index carries the canonical hash for every version.
+A public pack version downloads from `packs.claudinite.com/@scope/name/<version>/pack.tar.zst`,
+written once, with its `.sha256`, `.attestation.json` and `meta.json` beside it. Each version entry
+in the signed index carries sha256, size, `published_at`, status, tier, `min_engine_version`,
+`requires`, `source_commit` and the pre-install manifest. cn verifies the index signature and the
+archive's sha256 from the index; the attestation (upload and canonical sha256) is extra provenance
+shown on the site.
 
 ## REQ-DELIV-002 Served bytes never change after publication
 
@@ -116,7 +119,7 @@ de-index.
 - since: 2026-10
 - actor: agent
 - source: ARCH §5.4; FLOW 13
-- decision: ARCH-Q 7
+- decision: ARCH-Q 6
 - coverage: scenario
 
 A quarantined version's download is held (451-style) with a reason; `get_pack` reports
@@ -179,28 +182,30 @@ SVG inside a pack never executes on a registry origin.
 Neither bucket is listable or reachable except through the custom domain (public) or the Worker
 (private); the public bucket is writable only by the validator.
 
-## REQ-DELIV-016 The signing key carries a key id and rotates with a successor window
+## REQ-DELIV-016 PackServer signs with its own key, which carries a key id and rotates ahead of use
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: cn
-- source: SEC (security review, 2026-10-22); ARCH §7
-- decision: SEC-1 (no rotation story exists in ARCH; the key id format and the window length are undecided)
+- source: SEC (security review, 2026-10-22); ARCH §7; ARCH-VAL §6 (PR #3 commit 99457a2)
 - coverage: scenario
 
-PackServer's own registry signing key, which signs the indexes and attestations, carries a key id; cn accepts a published successor key
-during a rotation window, so a compromised key has a recovery path.
+The indexes and attestations are signed with PackServer's registry Ed25519 key, held in Secrets
+Store and used only by the validator; cn embeds its public key. Every signature carries the key
+id, and a rotation publishes the new key id before it is used, so a compromised key has a recovery
+path.
 
 ## REQ-DELIV-017 cn accepts only canonical-form archives from the registry
 
 - status: provisional
 - since: 2026-10
 - actor: cn engine
-- source: ARCH-VAL §6, §3.16
+- source: ARCH-VAL §6, §3.16 (PR #3 commit 99457a2)
 - decision: ARCH-VAL §7-5
 - coverage: scenario+unit (the scenario proves the refusal of a tampered or mis-served archive through the member handle; the canonical grammar is a unit test in the engine's extractor)
 
-cn extracts an archive from the registry only when it is in canonical form (REQ-VAL-033) and its
+cn extracts an archive from the registry only when it is in PackServer's canonical form
+(`canonical.tar.zst`, REQ-VAL-033) and its
 bytes match the canonical hash in the attestation; any other archive, including one that a lenient
 extractor would accept, is refused with a verification error and nothing is vendored.
 
@@ -209,15 +214,15 @@ extractor would accept, is refused with a verification error and nothing is vend
 - status: provisional
 - since: 2026-10
 - actor: cn engine
-- source: ARCH-VAL §6, §3.12
+- source: ARCH-VAL §6, §3.12 (PR #3 commit 99457a2)
 - decision: ARCH-VAL §7-3
 - coverage: scenario
 
 When a version's status in the signed index becomes `revoked` with a security reason, a member
-that holds the version disables its guards, coded checks, tasks and env setup by default and keeps
-its prose loaded behind a banner until a person in that repository acknowledges it. A repository
-can opt into report-only handling; `yanked`, `deprecated` and `quarantined` only report and never
-disable anything.
+that holds the version disables its executable parts (guards, declared and coded checks, tasks,
+env setup) and keeps its prose loaded only behind a banner, unless the repository opted into
+`revocation: reportOnly`. cn acts when it next checks the index: at update or adopt time, or at
+session start. `yanked`, `deprecated` and `quarantined` only report and never disable anything.
 
 ## REQ-DELIV-019 cn proposes updates only after a tier-aware cooldown
 

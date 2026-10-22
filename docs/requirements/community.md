@@ -119,7 +119,7 @@ the bottom or excluded from ranking.
 - since: 2026-10
 - actor: agent
 - source: ARCH §10
-- decision: ARCH-Q 11; CLN-REV 8 (stars and fetch counts are exposed as raw signals, never as the default rank)
+- decision: ARCH-Q 10; CLN-REV 8 (stars and fetch counts are exposed as raw signals, never as the default rank)
 - coverage: scenario
 
 Raw signals (stars, works/fails, verified fetches, members holding the pack if cn reports it,

@@ -36,17 +36,18 @@ full contents.
 A task-phrased query ("deploy to GCP Cloud Run") finds packs by meaning as well as by keyword;
 results can be filtered by category, part (rules, skills, checks, tasks) and verified-only.
 
-## REQ-SEARCH-004 Search shows every version at once, with its publish time
+## REQ-SEARCH-004 Search shows every promoted version at once, with its publish time
 
 - status: active
 - since: 2026-10
 - actor: agent
-- source: ARCH §8; Ariel, 2026-10-22 (no freshness filter: when to take a version is the member's setting)
+- source: ARCH §8 (PR #3 commit 99457a2); Ariel, 2026-10-22 (no freshness filter: when to take a version is the member's setting)
 - coverage: scenario
 
-A promoted version appears in `search_packs`, `get_pack`, the site and the signed index as soon as
-it is promoted, each carrying the version's `published_at`; there is no freshness flag to opt in
-to.
+`search_packs(query, category?, include_unreviewed?, limit?)` has no fresh or staging flag: each
+card carries the newest promoted version with its `published_at`, `min_engine_version` and tier,
+and third-party-tier versions appear only with `include_unreviewed`. `get_pack` lists the versions
+with their `published_at`.
 
 ## REQ-SEARCH-005 get_pack returns the full public view of a version
 

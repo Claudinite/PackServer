@@ -75,7 +75,7 @@ Raw IP addresses are never stored in telemetry; only hashes.
 - since: 2026-10
 - actor: cn engine
 - source: ARCH §15 Q11; TRUST Q7
-- decision: ARCH-Q 11
+- decision: ARCH-Q 10
 - coverage: scenario
 
 If cn reports repo-level signals (repos keeping a pack, check fire rate, drop rate), they are
