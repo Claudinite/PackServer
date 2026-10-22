@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "settings": {
+    "path": ".claudinite/settings.yaml",
+    "format": "yaml"
+  },
+  "engine": {
+    "package": "@claudinite/cli",
+    "version": "1.61022.1",
+    "channel": "staging"
+  },
+  "packs": {
+    "channel": "canary",
+    "declared": [
+      {
+        "id": "basics"
+      },
+      {
+        "id": "cloudflare-workers"
+      },
+      {
+        "id": "node"
+      },
+      {
+        "id": "jwt"
+      },
+      {
+        "id": "public-website"
+      },
+      {
+        "id": "claudinite"
+      },
+      {
+        "id": "git-github"
+      },
+      {
+        "id": "html"
+      }
+    ]
+  },
+  "dormant": false,
+  "held": {
+    "basics": "1.61009.1",
+    "cloudflare-workers": "1.61004.1",
+    "git-github": "1.61013.1",
+    "html": "1.61004.1",
+    "jwt": "1.61004.1",
+    "node": "1.61004.1",
+    "public-website": "1.61005.1"
+  }
+}
