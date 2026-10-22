@@ -4,6 +4,9 @@ export default defineConfig({
   test: {
     projects: [
       {
+        test: { name: "infra", include: ["infra/**/*.test.mjs"] },
+      },
+      {
         test: {
           name: "scenarios",
           include: ["scenarios/**/*.scenario.ts"],

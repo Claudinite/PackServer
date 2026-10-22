@@ -142,6 +142,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec turbo run test
+      - run: pnpm test:infra
 
   scenarios:
     needs: changes
