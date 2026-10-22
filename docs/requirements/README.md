@@ -151,7 +151,7 @@ The research that produced this register found six places where `docs/architectu
 | # | Topic | Architecture says | UI flows say | Register uses | Entries |
 |---|---|---|---|---|---|
 | CONFLICT-1 | Step-up freshness window | **resolved 2026-10-22:** no window; a passkey assertion per action (ARCH §4) | 5 min (FLOW preamble, FLOW 2; now stale) | per-action assertion | REQ-ACC-010 (active, no `conflict` line) |
-| CONFLICT-2 | Session lifetime | 12 h idle / 7 d absolute (ARCH §4) | 30 days (FLOW preamble) | 12 h / 7 d | REQ-ACC-013 |
+| CONFLICT-2 | Session lifetime | **resolved 2026-10-22 by Ariel:** 12 h idle / 7 d absolute (ARCH §4) | 30 days (FLOW preamble) | 12 h / 7 d | REQ-ACC-013 |
 | CONFLICT-3 | Archive size cap | 25 MB (ARCH §3) | 50 MB (FLOW 5, FLOW 7) | 25 MB | REQ-VAL-002 |
 | CONFLICT-4 | Token maximum lifetime | 90 days, default 7 (ARCH §5.2) | up to 1 year for agent read tokens (FLOW 10 C) | 90 days for publish tokens; read-token lifetime undecided | REQ-PUB-012 |
 | CONFLICT-5 | Does a Verified Publisher pay the $1? | waived (ARCH §9) | still pays (FLOW 8) | waived, provisional on ARCH-Q 2 | REQ-PAY-009 |

@@ -156,11 +156,10 @@ session state.
 
 ## REQ-ACC-013 Sessions expire after 12 h idle or 7 days absolute
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: member
-- source: ARCH §4; DATA decision 5
-- conflict: CONFLICT-2
+- source: ARCH §4; DATA decision 5; Ariel 2026-10-22 (CONFLICT-2 resolved)
 - coverage: scenario
 
 A session expires after 12 hours idle or 7 days absolute, whichever comes first. Idle time is
