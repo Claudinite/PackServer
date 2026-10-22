@@ -64,12 +64,12 @@ previous holder is renamed and notified.
 - status: active
 - since: 2026-10
 - actor: admin
-- source: ARCH §7 (validation-reports); ARCH-VAL §3.6, §3.7, §4 steps 9 to 11, §6; ARCH §6, §15 Q3 (PR #3 commit 6995682); Ariel, 2026-10-22 (the prose screen is Jev on Workers AI)
+- source: ARCH §7 (validation-reports); ARCH-VAL §3.6, §3.7, §4 steps 9 to 11, §6; ARCH §6, §15 Q3 (PR #3 commit 6995682); Ariel, 2026-10-22 (the prose screen is Jev on Workers AI); PR #3 commit 51bb098 (no one sees the numbers)
 - coverage: scenario
 
 An admin can view the full validation report of any version, including for every screened chunk
-the questions asked, the probabilities returned, the thresholds applied, the question-set version
-and the Jev model version named in the response.
+the question that was tripped, the question-set version and the Jev model version named in the
+response, with the static findings; never a probability or a threshold (REQ-VAL-050).
 
 ## REQ-ADMIN-007 Admins process delayed recoveries and clear refund flags
 

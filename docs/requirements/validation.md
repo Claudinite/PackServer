@@ -508,9 +508,9 @@ takes several calls.
 - coverage: scenario
 
 Any prose-screen answer over its threshold holds the version for human review, and the queue item
-carries the chunk, the question, the probability and the static findings as evidence. The prose
-screen never fails or rejects a version on its own: rejection comes only from fail-class static
-rules or from an admin.
+carries the chunk, the question that was tripped and the static findings as evidence, never the
+probability (REQ-VAL-050). The prose screen never fails or rejects a version on its own: rejection
+comes only from fail-class static rules or from an admin.
 
 ## REQ-VAL-038 The next version after a publisher-change event is treated as a first publish
 
@@ -688,11 +688,13 @@ egress allowlist exists for the prose screen, and the sandbox keeps internet ful
 - status: active
 - since: 2026-10
 - actor: publisher / anonymous visitor (security)
-- source: Ariel, 2026-10-22 (sitemap decision 7, PR #4: the uploader, not the public, is the real oracle)
+- source: Ariel, 2026-10-22 (sitemap decision 7, PR #4; PR #3 commit 51bb098: the uploader, not the public, is the real oracle)
 - coverage: scenario
 
-No validation report, public or the publisher's own, shows a prose-screen probability or a
-threshold: a report says only whether the prose screen blocked or passed the version and quotes
-the flagged passage. The numbers are visible only in the admin application (REQ-ADMIN-006).
+No report or screen shows a prose-screen probability or threshold to anyone, the uploader and
+admins included: the publisher's and the public report say only whether the prose screen blocked or
+passed the version and quote the flagged passage, and an admin also sees the question that was
+tripped and the static findings. The probabilities and thresholds are stored for calibration
+(REQ-VAL-048) only.
 Validation runs stay rate-limited (REQ-VAL-021), so the verdict alone cannot be probed at volume.
 
