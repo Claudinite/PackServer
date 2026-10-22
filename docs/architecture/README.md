@@ -177,7 +177,7 @@ A GitHub App mode is also offered for publishers who prefer "publish when a tag 
 
 ### 5.2 CLI / API with tokens
 
-For non-GitHub sources. Tokens are granular (`publish:new`, `publish:update`, `yank`, `manage`), pack- or scope-restricted, 7-day default and 90-day maximum lifetime, prefixed (`pks_` publish, `psr_` read) so secret scanners can detect them, stored only as SHA-256 hashes, and revocable through a public "I found a leaked token" endpoint, with an optional CIDR allowlist. Minting one requires step-up MFA. A version uploaded with a token is always staged: it only goes live after an owner approves it with a passkey.
+For non-GitHub sources. Tokens are granular (`publish:new`, `publish:update`, `yank`, `manage`), pack- or scope-restricted, 7-day default lifetime, with a 90-day maximum for tokens carrying publish, yank or manage scopes and a 1-year maximum for read-only `psr_` tokens (decided by Ariel 2026-10-22), prefixed (`pks_` publish, `psr_` read) so secret scanners can detect them, stored only as SHA-256 hashes, and revocable through a public "I found a leaked token" endpoint, with an optional CIDR allowlist. Minting one requires step-up MFA. A version uploaded with a token is always staged: it only goes live after an owner approves it with a passkey.
 
 ### 5.3 Web upload
 
