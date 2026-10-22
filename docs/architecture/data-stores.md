@@ -99,7 +99,7 @@ Considered and not chosen: S3 Object Lock in Compliance mode, which would preven
 
 ### R2 `validation-reports`: full logs
 
-**Writes.** One report per validation run, including static findings, sandbox output and the prose-screen results (each chunk's questions and probabilities, the thresholds applied and the Jev model version).
+**Writes.** One report per validation run, including static findings, sandbox output and the prose-screen results (each chunk's questions and probabilities, the thresholds applied and the Jev model version). Probabilities and thresholds are kept for calibration only and are never rendered in any report view.
 
 **Reads.** The publisher's dashboard and the moderation queue.
 
