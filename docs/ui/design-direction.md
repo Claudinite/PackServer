@@ -301,14 +301,11 @@ to approve vpc-review 1.61020.1 · Approve").
 | Browse filter sidebar | One row of toggle pills under the search box |
 | `Follow`, `Report publisher`, `Report a bug` buttons in headers | `…` overflow menu; Star stays as icon |
 
-## 6. Open decisions
+## 6. Owner decisions
 
 PackServer replaces the engine's current repo-and-R2 pack serving, so the engine's layout, `staging` / `stable`
-channels and `packs.sources` are prior art, not constraints. Still open with the owner (`sitemap.md` decisions
-13–19 hold the detail):
-
-- **Private access model** (options A–D) and its pricing.
-- **Fees** (public credit settled; private pricing open).
+channels and `packs.sources` are prior art, not constraints. The owner settled every open question on
+2026-10-22 (`sitemap.md` decisions 13–19 hold the detail).
 
 Settled: the site is called **Claudinite Packs**; pack ids are `@scope/name`; versions are any semver
 `x.y.z` the publisher chooses, ordered by semver precedence; a version is served once it passes
@@ -317,7 +314,9 @@ from a repo or by upload is open to every pack, and a pack without a public repo
 public repo" on cards and the pack page, Partial trust, lower score); the pre-install manifest (§2.2b) sits
 above the README on every pack page as one bottom-line line, details one click away, with widening
 versions flagged; every reputation signal stays (star ratings, Trending, fetch counts, the pack score,
-comments and votes); and a person is *signed in*, never a *member* (a
+comments and votes); private packs have an allowlist of GitHub orgs, proven by the GitHub Actions OIDC
+token with no stored secret; a new pack costs $1 for every publisher, waived for Verified Publishers
+($99/year); and a person is *signed in*, never a *member* (a
 Claudinite member is a repo; the prototype's internal persona value is still `member`).
 
 ## 7. References

@@ -97,7 +97,7 @@ Failure / edge states:
 
 ## 3. Star, rate, review
 
-**Goal**: signed-in users express approval (star) and quality judgment (1-5 rating + optional review). Whether a pack-level rating stays at all is `sitemap.md` open decisions 1 and 15.
+**Goal**: signed-in users express approval (star) and quality judgment (1-5 rating + optional review). The pack-level rating stays (`sitemap.md` decision 15).
 
 1. `pack`: click Star → toggles immediately (optimistic), count updates. Anonymous click → `signin` with return URL.
 2. Click "Rate" or "Write a review" → `review`.
@@ -180,7 +180,7 @@ Failure / edge states:
 1. `publish` step 1 Source → "Upload archive" (`.tar.gz`/`.zip`, ≤ 3 MB). Browser uploads directly to R2 via a presigned URL (upload bucket, 24h TTL).
 2. Step 2 Validate → Worker enqueues validation job; UI streams progress; links to `validation`.
 3. On pass/warn → step 3 Listing details, pre-filled from `pack.json` (name, `pitch` as summary, category, repo URL if declared). Publisher confirms "No public repo" if none.
-4. Step 4 Visibility & price → Public ($1) or Private (TBD price, pick access model).
+4. Step 4 Visibility → Public or Private (add the GitHub orgs allowed to adopt it). A new pack costs $1 either way, waived for Verified Publishers.
 5. Step 5 Pay → Stripe Checkout (or one-click with saved method). See flow 8.
 6. Step 6 Publish → confirm with passkey → Worker copies the archive from the upload bucket to the public (or private) packs bucket as `packs/<id>/<version>.tar.gz` (never overwritten), rewrites and signs `packs/<id>/index.json` (versions, sha256, size, publishedAt, revoked, minEngineVersion, requires, sourceCommit, serial), then rewrites and signs `packs/catalog.json` as the last write; invalidates cache, emits "published" event. The version is served from that moment.
 
@@ -332,11 +332,11 @@ Failure / edge states:
 
 ## 8. Payment via Stripe Checkout
 
-**Goal**: collect $1 for a public pack (anti-spam), private-pack price TBD, without charging for packs that cannot be published.
+**Goal**: collect $1 per new pack (anti-spam), from every publisher including open source, waived for Verified Publishers ($99/year), without charging for packs that cannot be published.
 
 **Decision: charge after validation passes, before publish.** Rationale: the fee is anti-spam, not revenue; charging on submit would require refunds for every failed run (Stripe keeps fees on refunds, support burden, bad first impression). Validation is cheap and rate-limited by account age + MFA + CAPTCHA, which already deters bulk spam. Payment is tied to the validated artifact hash, so a different archive cannot reuse it.
 
-1. `publish` step 5: show line item (Public pack: $1.00 one-time / Private pack: TBD), pack name, artifact hash.
+1. `publish` step 5: show line item (New pack: $1.00 one-time), pack name, artifact hash. Verified Publishers skip this step.
 2. Click Pay → Worker creates Stripe Checkout Session with `client_reference_id = validation_run_id`, metadata `{pack, version, hash, user}`; redirect.
 3. Stripe hosted page; card saved for future (optional "save for one-click").
 4. Return URL → wizard step 5 shows "Confirming…" until webhook `checkout.session.completed` arrives (Durable Object notifies).
@@ -367,9 +367,8 @@ Failure / edge states:
 - Webhook delayed > 60s → wizard shows "Still confirming, we'll email you"; draft stays; alert on `dashboard`.
 - Payment succeeded, publish never completed → credit tied to hash valid 30 days; after that, refunded automatically.
 - Chargeback → version revoked, publisher account flagged, further publishes require manual review.
-- Private pack pricing TBD → wizard shows "Private packs: pricing coming, join waitlist" until decided.
 - Re-publishing a new version of an already-paid public pack: free (decision). Alternative considered: $1 per version — rejected as it taxes good maintenance.
-- Verified orgs: still pay $1 (keeps rules uniform); can be revisited.
+- Verified Publishers ($99/year) pay nothing per pack (owner decision, 2026-10-22); open-source publishers pay the $1 like everyone else.
 - Publish credits (backend design): $1 buys one credit; bundles of credits can be bought up front so CI publishes of new packs don't stall on checkout. One credit is consumed per new pack, never per version.
 
 ---
@@ -411,52 +410,41 @@ Failure / edge states:
 
 ---
 
-## 10. Private pack access (options)
+## 10. Private pack access
 
-**Goal**: restrict who can discover a private pack and which repos can fetch it. Not decided; UI must support switching models per pack. In every option the reader of a private pack is a repo's scheduled update task or `cn adopt`, reading from PackServer with a read token kept in the repo's CI secrets; not a session-time fetch. Which access model PackServer offers is `sitemap.md` open decision 17.
+**Goal**: let the repos of chosen GitHub orgs adopt a private pack, with no stored secret. Settled by the owner (2026-10-22): each private pack has an allowlist of GitHub orgs; `cn` proves its repo's org with the GitHub Actions OIDC token. The reader is a repo's scheduled update task or `cn adopt` running in Actions, never a session-time fetch.
 
-Option A – Org members / teams:
-1. `access`: model = "Org members"; optional team filter.
-2. Org members read via web (session); their repos read via a personal `read:private` token kept in the repo's CI secrets, used by the update task in CI and by `cn adopt`.
-3. Removing an org member revokes access immediately (tokens of that account stop resolving that pack).
-
-Option B – Named allow-list:
-1. `access`: add handles / org handles; invitee sees invitation on `account`; accept.
-2. Same read mechanics as A.
-
-Option D – Gated access requests (Hugging Face style, recommended by the registry research):
-1. The private pack's listing is visible (name, summary, publisher) with a "Request access" button; contents and archives stay gated.
-2. Requester (signed in) fills the owner's form: name, org, intended use, which repos will declare the pack, accept terms.
-3. Owner sees pending requests on `access` and approves or denies; or sets auto-approve.
-4. For paid packs, a Stripe webhook calls the grant API after payment, so approval is automatic.
-5. Grants are per user and revocable; the user's read token then resolves the pack for their repos' update task and `cn adopt`.
-
-Option C – Scoped read tokens for repos:
-1. `access`: "Create read token" (confirm with passkey): name, scope `read:pack/{id}` (or `read:org/{org}/*`), expiry (max 1 year), optional CIDR allow-list.
-2. Token shown once; put into the repo's (or fleet's) CI secrets; the update task sends it to PackServer as `Authorization: Bearer`, as does `cn adopt`.
-3. Audit log on `access`: token name, last used, fetch counts by member repo; revoke anytime.
+1. `access` on the pack: the owner adds GitHub orgs to the allowlist (confirm with passkey). Each row shows the org, who added it, when, and the last fetch from one of its repos.
+2. In a member repo's workflow, `cn` requests the GitHub Actions OIDC token (audience PackServer) and sends it with the fetch. Nothing is stored in CI secrets.
+3. The Worker verifies the token against GitHub's OIDC keys, reads `repository_owner` (and the repository id), and checks it against the pack's allowlist; then it streams the archive and the signed per-pack index from private R2.
+4. Removing an org takes effect on that org's next fetch. Repos that already vendor the pack keep what they hold.
+5. Signed-in people from an allowlisted org (proven by GitHub sign-in or the org link) can read the pack on the site; everyone else gets 404.
+6. Audit on `access`: fetches by org and repo, last seen, denied attempts.
 
 ```mermaid
-flowchart LR
-  subgraph A["Option A: org members"]
-    A1["Account with an org role"] --> A2["Session, or read token in CI secrets"] --> A3["Repo update task reads pack"]
-  end
-  subgraph B["Option B: allow-list"]
-    B1["Invited handle/org"] --> B2["Accept invite"] --> B3["Repo update task reads pack"]
-  end
-  subgraph C["Option C: scoped read token"]
-    C1["Publisher mints token read:pack/id"] --> C2["Update task sends Bearer to the pack source"] --> C3["Repo update task reads pack"]
-  end
-  subgraph D["Option D: gated request"]
-    D1["Request access form"] --> D2["Owner approves, auto-approve, or Stripe webhook"] --> D3["Repo update task reads pack"]
+sequenceDiagram
+  participant GA as GitHub Actions (member repo)
+  participant CN as cn (update task or cn adopt)
+  participant W as Worker
+  participant R2 as private R2
+  CN->>GA: request OIDC token (audience PackServer)
+  GA-->>CN: signed token (repository_owner, repository)
+  CN->>W: fetch @scope/pack version + OIDC token
+  W->>W: verify token with GitHub keys
+  alt org on the pack's allowlist
+    W->>R2: read archive and signed index
+    R2-->>W: bytes
+    W-->>CN: archive + index entry
+  else not on the allowlist
+    W-->>CN: 404
   end
 ```
 
-Edge states (all options):
-- Under A, B and C, private packs are never indexed in `browse` or `search_packs` for unauthorized callers; 404 (not 403) to avoid existence leaks. Under D the owner chooses to list the pack publicly so people can request access; its contents still return 404 until granted.
-- Archives and the signed per-pack index served through a Worker that checks authorization then streams from private R2 (never a public R2 URL); optional 5-min signed URLs for large archives.
-- Making a private pack public: passkey confirmation, confirmation that all versions become public and permanent.
-- Making a public pack private: only future versions; previously public versions remain fetchable by exact version, since member repos already vendor them.
+Edge states:
+- Private packs are never listed in `browse` or `search_packs` for callers outside the allowlist; 404, not 403, so their existence does not leak.
+- A run outside GitHub Actions (a laptop) has no OIDC token: `cn adopt` there can only read public packs; private adoption happens in the repo's workflow.
+- A token for another audience, an expired token, or a fork's pull-request run → 404, logged as a denied attempt.
+- Pricing for private packs is not part of this decision.
 
 ---
 
@@ -472,9 +460,7 @@ Public:
 3. `get_pack("@google/gcp")` → summary, warnings, validation verdict, newest version, manifest of effects.
 4. The session proposes `cn adopt @google/gcp` (or the settings declaration, with an optional `version:` freeze); running it fetches the archive, checks it against the signed index, vendors it into `.claudinite/shared/packs/<id>/` and lands a PR for review. `fetch_pack` exists so a session (or a person) can read the archive before proposing; it is not the delivery path.
 
-Private (option C token or personal read token):
-5. Same with `Authorization: Bearer ps_rt_…`; `search_packs` now includes private packs the token can read. The same token, kept in CI secrets, is what the repo's update task uses.
-6. Worker verifies token hash in D1/KV, checks scope and expiry, logs usage.
+Private packs: the MCP endpoint lists public packs only. A private pack is adopted by name; the fetch happens in the member repo's GitHub Actions workflow, authorized by its OIDC token against the pack's org allowlist (§10).
 
 ```mermaid
 sequenceDiagram
@@ -490,16 +476,11 @@ sequenceDiagram
   M-->>Ag: metadata, manifest of effects, adoption instructions
   Ag->>Repo: propose cn adopt @google/gcp
   Repo->>Repo: fetch archive, verify signed index, vendor, open PR
-  Note over Ag,M: Private: same calls with Authorization Bearer token
-  Ag->>M: search_packs with Bearer
-  M->>D: verify token hash, scope, expiry
-  M->>D: query public + authorized private
-  M-->>Ag: results incl. private
 ```
 
 Failure / edge states:
-- Invalid/expired token → 401 with `WWW-Authenticate` hint and docs link; never reveals whether pack exists.
-- Rate limits: anonymous 60 req/min per IP; token 600 req/min; archive fetches counted toward "member repos holding this pack" once per (token/IP, version, day).
+- A private pack's id asked for over MCP → 404, the same as a pack that does not exist.
+- Rate limits: 60 req/min per IP; archive fetches counted toward "member repos holding this pack" once per (repo or IP, version, day).
 - Revoked version requested → `get_pack` returns it with `revoked: true` and reason; `fetch_pack` works only with exact version. Selection is the newest not-revoked version that fits the member's engine, after any wait the repo's own settings ask for; there is no "latest".
 - The session asks for a category that doesn't exist → `list_categories` suggestion in error.
 - Responses include `advisory` field when a public security advisory exists for the version.

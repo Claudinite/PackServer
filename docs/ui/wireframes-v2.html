@@ -550,14 +550,13 @@ jobs:
     <h1>Who can use it?</h1>
     <div class="choice">
       <label><input type="radio" name="vis" id="vis-public" checked><span>Public <span class="muted">· listed, adoptable by any repo</span></span></label>
-      <label><input type="radio" name="vis" id="vis-private"><span>Private <span class="muted">· only the repos you allow</span></span></label>
+      <label><input type="radio" name="vis" id="vis-private"><span>Private <span class="muted">· only repos in the GitHub orgs you allow</span></span></label>
     </div>
-    <p class="small" id="pay-line">First publish of a new pack: $1 · <button type="button" class="linkbtn" data-toast="Visa ····4242 will be charged after validation passes">Pay with saved card</button> <button type="button" class="why" data-why="why-pay">Why?</button></p>
-    <p class="why-text" hidden id="why-pay">One credit per new pack keeps spam out. It is charged only after validation passes; new versions are free.</p>
+    <p class="small" id="pay-line">New pack: no fee, included with Verified Publisher <button type="button" class="why" data-why="why-pay">Why?</button></p>
+    <p class="why-text" hidden id="why-pay">Every new pack costs $1, open source included, charged only after validation passes; new versions are free. Verified Publishers ($99 a year) pay no per-pack fee.</p>
     <details class="adv"><summary>Advanced</summary><div class="body"><div class="filters-list">
-      <label><input type="checkbox" id="acc-org" checked> All members of Google Cloud</label>
-      <label><input type="checkbox" id="acc-tokens"> Read tokens for a repo's update task and cn adopt</label>
-      <label><input type="checkbox" id="acc-requests"> Allow access requests</label>
+      <div class="field"><label class="lbl" for="acc-orgs">GitHub orgs allowed to adopt it (private packs)</label><input type="text" id="acc-orgs" value="googlecloudplatform, google-partner-labs" class="mono"></div>
+      <p class="muted small">A repo in one of these orgs proves it with its GitHub Actions OIDC token when cn fetches the pack. Nothing to store in CI secrets.</p>
     </div></div></details>
     <div class="step-nav"><button class="btn primary" type="button" data-step-go="5">Continue</button><button class="btn quiet" type="button" data-step-go="3">Back</button></div>
   </div>
@@ -565,7 +564,7 @@ jobs:
   <div class="step" data-step="5" hidden>
     <div id="pub-pre">
       <h1>Publish gcp-ops 1.61021.1?</h1>
-      <p class="ink2">Public · from tag 1.61021.1 · passed with 1 warning · $1 after validation.</p>
+      <p class="ink2">Public · from tag 1.61021.1 · passed with 1 warning · no fee (Verified Publisher).</p>
       <p class="muted small" style="margin-top:8px">You confirm this exact version with a passkey tap. The archive is written once and never overwritten; a later fix is a new build number (1.61021.2).</p>
       <div class="step-nav"><button class="btn primary lg" type="button" data-passkey="Publish @google/gcp-ops 1.61021.1" data-after="pub-done">Publish with passkey</button><button class="btn quiet" type="button" data-step-go="4">Back</button></div>
     </div>
@@ -1167,7 +1166,7 @@ jobs:
     if (kind === 'version') { var v = p.versions[i], frz = adoptSnippet(p, v[0]); return openDrawer(p.name.split('/')[1] + ' ' + v[0], '<p class="ink2">' + esc(v[3]) + '</p>' + kv([['Released', v[1], 'mono small'], ['Effects', v[4] ? 'Widens: ' + esc(v[4]) : 'No change to what adopting adds', 'small'], ['Validation', v[2] === 'revoked' ? 'Revoked · advisory PS-2026-014 · never selected by an update; repos holding it keep it' : 'Passed · <a href="#validation" data-val="gcp">report</a>'], ['SHA-256', esc(p.sha), 'mono small'], ['Engine', 'minEngineVersion ' + esc(p.minEngine), 'mono small'], ['Requires', p.requires.length ? esc(p.requires.join(', ')) : 'none', 'mono small'], ['Adopt', 'cn adopt ' + esc(p.name), 'mono small'], ['Freeze', '<pre style="font-size:12px">' + esc(frz) + '</pre>', 'small']]) + '<div class="actions"><button class="btn" type="button" data-copy="cn adopt ' + esc(p.name) + '">Copy adopt command</button><button class="btn quiet" type="button" data-copy="' + esc(frz) + '">Copy freeze</button></div>'); }
     if (kind === 'review') { var r = p.reviews[i]; return openDrawer('Review', '<p class="muted small">' + stars(r[0]) + ' · ' + esc(r[1]) + ' · ' + esc(r[2]) + ' · ' + esc(r[3]) + '</p><h3 style="margin-top:12px">' + esc(r[4]) + '</h3><p class="ink2" style="margin-top:8px">' + esc(r[5]) + '</p><div class="actions"><button class="btn quiet" type="button" data-auth="mark helpful" data-toast="Marked helpful">Helpful · ' + r[6] + '</button><button class="btn quiet" type="button" data-auth="flag" data-toast="Flagged for moderators">Flag</button></div>'); }
     if (kind === 'contents-gcp') return openDrawer('Contents', '<table class="ctable">' + TYPES.map(function (t) { var items = PACKS.pack.contents[t]; return items.length ? '<tr><td>' + t + ' · ' + items.length + '</td><td class="mono small">' + items.map(esc).join(', ') + '</td></tr>' : ''; }).join('') + '</table>');
-    if (kind === 'claude-code') return openDrawer('For Claude Code', '<p class="ink2">A Claude Code session can discover packs over MCP and propose one for the repo. Adopting is cn adopt, which lands a pull request; nothing is fetched at session time.</p><div class="install"><pre>https://packs.example/mcp</pre><button class="btn" type="button" data-copy="https://packs.example/mcp">Copy</button></div>' + kv([['Tools', 'search_packs · get_pack · list_categories · fetch_pack', 'mono small'], ['Auth', 'None for public packs; a read token for private packs, kept in the repo\'s CI secrets and used by its update task and cn adopt', 'small'], ['Limits', '120 calls / min anonymous · 1,000 with a token', 'small']]));
+    if (kind === 'claude-code') return openDrawer('For Claude Code', '<p class="ink2">A Claude Code session can discover packs over MCP and propose one for the repo. Adopting is cn adopt, which lands a pull request; nothing is fetched at session time.</p><div class="install"><pre>https://packs.example/mcp</pre><button class="btn" type="button" data-copy="https://packs.example/mcp">Copy</button></div>' + kv([['Tools', 'search_packs · get_pack · list_categories · fetch_pack', 'mono small'], ['Auth', 'None. MCP lists public packs only; a private pack is fetched from the repo\'s GitHub Actions workflow, which proves its org with the OIDC token', 'small'], ['Limits', '120 calls / min', 'small']]));
     if (kind === 'proves') return openDrawer('What validation checks', kv([['Manifest', 'pack.json, .yaml or .toml (exactly one): version (any semver x.y.z), minEngineVersion, requires', 'small'], ['Contents', 'RULES.md, skills, declared-checks.json, checks/*.go, tasks/*/task.json resolve; no undeclared executables', 'small'], ['Effects', 'Guards and the tool calls they judge, tasks and cadence, forced skills, GitHub actions requested: derived and shown on the pack page', 'small'], ['Secrets', '48 detectors across all files', 'small'], ['Imports', 'Go checks: check SDK and standard library only; task workers: @claudinite/sdk only', 'small'], ['Prose', 'RULES.md and SKILL.md scanned as code: operator override, exfiltration, hidden behavior', 'small'], ['Tests', 'The pack\'s test/ folder in a container (stripped by cn vendor)', 'small'], ['Size', '3 MB archive', 'small']]) + '<p class="muted small" style="margin-top:16px">It does not run the pack against your data or judge whether its advice is correct.</p>');
     if (kind === 'verification') return openDrawer('Verification', kv([['Domains', 'google.com · cloud.google.com', 'small'], ['Method', 'DNS TXT record, re-checked every 30 days', 'small'], ['GitHub org', 'googlecloudplatform', 'mono small'], ['Verified on', '2026-03-04', 'mono small'], ['Members', 'MFA enforced for all 6', 'small']]));
     if (kind === 'publisher-other') return openDrawer('Publisher', '<p class="ink2">Verification details for this publisher would appear here; the publisher page is a deep link.</p>');
@@ -1273,8 +1272,6 @@ jobs:
   showStep(1);
   document.getElementById('src-zip').addEventListener('change', function () { document.getElementById('src-gh-fields').hidden = true; });
   document.getElementById('src-gh').addEventListener('change', function () { document.getElementById('src-gh-fields').hidden = false; });
-  document.getElementById('vis-private').addEventListener('change', function () { document.getElementById('pay-line').hidden = true; });
-  document.getElementById('vis-public').addEventListener('change', function () { document.getElementById('pay-line').hidden = false; });
 
   /* ---------- hover cards: position + tap ---------- */
   var canHover = mq('(hover: hover)');
