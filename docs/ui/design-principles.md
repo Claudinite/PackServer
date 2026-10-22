@@ -2,8 +2,10 @@
 
 The site shows the verdict and keeps the evidence one gesture away. The visual direction was
 settled in PR #4 (`design-direction.md` v2 and the `wireframes-v2.html` prototype); this page keeps
-what is still true after the decisions of 2026-10-22. The prototype's stale labels ("Signed
-(Sigstore)", "6/6 tests") are not carried.
+what is still true after the decisions of 2026-10-22. The prototype now lives here as
+[wireframes-v2.html](wireframes-v2.html): open it in a browser to try the hover and drawer layers
+(manifest, trust, Needs-you sheet, section comments). Where it and the requirements disagree, the
+requirements win.
 
 ## Rules
 
