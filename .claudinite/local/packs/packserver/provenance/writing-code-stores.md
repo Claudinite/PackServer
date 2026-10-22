@@ -7,3 +7,8 @@
 - **Mechanism:** prose in RULES.md; whether a shape is readable by the old code has no checkable
   signature yet.
 - **Retire when:** rollback stops being automatic, or a check proves N-1 readers accept N's writes.
+
+## 2026-10-22 · reworded · rollback is no longer tied to a staged rollout
+- **Reason:** Ariel chose a simple pre-launch release mode with the gradual ladder deferred;
+  rollback after any deploy still applies.
+- **Actor:** @missingbulb (owner).
