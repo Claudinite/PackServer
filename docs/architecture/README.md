@@ -395,7 +395,7 @@ Later phases, in order:
 1. ~~Who decides access to private packs?~~ Decided: an allowlist of GitHub orgs per private pack, proven by GitHub Actions OIDC (§11).
 2. ~~Is the $1 fee per new pack or per version?~~ Decided: $1 per new pack for everyone, open-source included, waived for Verified Publishers ($99/year).
 3. ~~Which model screens pack prose?~~ Decided: Jev on Workers AI (`typesafe/jev`), with no agentic step anywhere in validation. Code compares its probabilities with versioned thresholds, an over-threshold answer holds the version for a human, and the model never fails or rejects a version on its own; about $40/month at 40k versions ([validation.md](validation.md) §3.6, [pack-score.md](pack-score.md) §3).
-4. **Non-GitHub trusted publishing at launch** (GitLab OIDC), or GitHub OIDC only, with direct upload covering every other source?
+4. ~~Non-GitHub trusted publishing at launch?~~ Decided: GitHub OIDC only at launch; GitLab and other sources publish by direct upload or a CLI token, and GitLab OIDC can come later.
 5. **Data residency:** default location or EU jurisdiction for D1 and R2?
 
 Still open from the [registry trust research](../registry-trust-research.md), and this design leaves room for any answer:
