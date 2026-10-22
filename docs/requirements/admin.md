@@ -27,11 +27,10 @@ suspend a publisher, revoke a verification; each action is audited with the acto
 
 ## REQ-ADMIN-003 Admins approve or reject versions in human review
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: admin
 - source: ARCH §6 step 5; ARCH-VAL §6, §3.7
-- decision: ARCH-Q 3
 - coverage: scenario
 
 An admin can approve or reject a version waiting in the human review queue; approval resumes

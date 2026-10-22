@@ -1,6 +1,6 @@
 # Community signals and ranking
 
-Area `COMM`, 13 requirements. Format and rules: [README.md](README.md).
+Area `COMM`, 14 requirements. Format and rules: [README.md](README.md).
 
 ## REQ-COMM-001 Star and unstar; anonymous clicks redirect to sign-in
 
@@ -119,7 +119,7 @@ the bottom or excluded from ranking.
 - since: 2026-10
 - actor: agent
 - source: ARCH §10
-- decision: ARCH-Q 10; CLN-REV 8 (stars and fetch counts are exposed as raw signals, never as the default rank)
+- decision: ARCH-Q 10 (ranking signals only cn has)
 - coverage: scenario
 
 Raw signals (stars, works/fails, verified fetches, members holding the pack if cn reports it,
@@ -145,3 +145,15 @@ A removed review's author is notified with the reason.
 - coverage: scenario
 
 Reviews of a yanked pack remain, and the pack shows "unavailable".
+
+## REQ-COMM-014 Trending ranks packs by recent growth, with a minimum count
+
+- status: active
+- since: 2026-10
+- actor: anonymous visitor / agent
+- source: ARCH §10 (PR #3 commit 2ff18f5); Ariel, 2026-10-22 (every signal kept beside the pack score)
+- coverage: scenario
+
+Trending ranks packs by their growth in verified adoptions and stars over the last 7 days against
+the previous 28, and a pack below the minimum count never appears in it, so a new pack with a
+handful of fetches cannot top it.

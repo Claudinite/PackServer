@@ -394,11 +394,10 @@ publish; GitHub is only read.
 
 ## REQ-PUB-034 Names near a verified scope or a popular pack are refused or held
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher
 - source: ARCH-VAL §6, §1 T9, §4 step 4
-- decision: ARCH-Q 3 (a hold needs the human queue)
 - coverage: scenario+unit (the scenario proves the refusal, the hold and the suggestion; the distance and confusable tables are unit tests)
 
 A pack name is ASCII only. A name within edit distance 2 of, or visually confusable with, a

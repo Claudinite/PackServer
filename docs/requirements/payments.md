@@ -4,11 +4,10 @@ Area `PAY`, 13 requirements. Format and rules: [README.md](README.md).
 
 ## REQ-PAY-001 Buy publish credits through hosted checkout
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH §9
-- decision: ARCH-Q 2
+- source: ARCH §9; Ariel, 2026-10-22 (ARCH-Q 2: per new pack, for everyone)
 - coverage: scenario
 
 A publisher can buy publish credits in bundles (1/$1, 5/$5, 12/$10, 25/$20) through hosted
@@ -16,14 +15,14 @@ checkout; no card data passes through the registry.
 
 ## REQ-PAY-002 One credit per new public pack; versions are free
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH §9; FLOW 8
-- decision: ARCH-Q 2
+- source: ARCH §9; Ariel, 2026-10-22 (ARCH-Q 2: per new pack, for everyone); FLOW 8
 - coverage: scenario
 
-One credit is consumed when a new public pack is first published; new versions of an existing
+One credit is consumed when a new public pack is first published, by every publisher, open-source
+packs included, unless the scope is a paid-up Verified Publisher (REQ-PAY-009); new versions of an existing
 public pack consume nothing.
 
 ## REQ-PAY-003 A credit is charged after validation and bound to the sha256

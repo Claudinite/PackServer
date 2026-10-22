@@ -118,11 +118,10 @@ never accepted.
 
 ## REQ-SEARCH-011 Authenticated search includes only the caller's private packs
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: agent
 - source: ARCH §8; FLOW 11
-- decision: ARCH-Q 1
 - coverage: scenario
 
 With valid credentials, `search_packs` and `list_my_packs` include the private packs the caller
@@ -141,11 +140,10 @@ refresh at the latest.
 
 ## REQ-SEARCH-013 Website search and browse mirror MCP results and filters
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: anonymous visitor
-- source: SITE browse
-- decision: CLN-REV 8 (ranking by stars or downloads: the research says never rank by installs or stars; a user-chosen sort may stay if the default order is the pack score)
+- source: SITE browse; Ariel, 2026-10-22 (every signal kept beside the pack score)
 - coverage: scenario
 
 The website search and browse page expose the same results and filters (category, part,

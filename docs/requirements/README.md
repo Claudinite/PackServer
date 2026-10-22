@@ -52,17 +52,18 @@ One file per area, in the order a user meets them:
 | [validation.md](validation.md) | `REQ-VAL` | 46 (1 retired) | the validation pipeline |
 | [delivery.md](delivery.md) | `REQ-DELIV` | 20 (3 retired) | downloads, the signed index, what cn does with a status |
 | [search-mcp.md](search-mcp.md) | `REQ-SEARCH` | 19 | search, browse, the MCP endpoint |
-| [private.md](private.md) | `REQ-PRIV` | 15 | private packs and access grants |
+| [private.md](private.md) | `REQ-PRIV` | 19 | private packs, the GitHub org allowlist, access grants |
 | [payments.md](payments.md) | `REQ-PAY` | 13 | credits, subscriptions, Stripe events |
-| [community.md](community.md) | `REQ-COMM` | 13 | stars, reviews, outcomes, ranking |
+| [community.md](community.md) | `REQ-COMM` | 14 | stars, reviews, outcomes, Trending, ranking |
 | [moderation.md](moderation.md) | `REQ-MOD` | 17 | bug and security reports, abuse, yank |
 | [admin.md](admin.md) | `REQ-ADMIN` | 9 | the admin application |
 | [audit.md](audit.md) | `REQ-AUDIT` | 7 | the audit record and its 90-day copy |
 | [abuse.md](abuse.md) | `REQ-ABUSE` | 9 | rate limits, CSRF, CSP, CORS |
+| [score.md](score.md) | `REQ-SCORE` | 10 | the code-only pack score, its caps and labels |
 | [telemetry.md](telemetry.md) | `REQ-TELEM` | 7 | counters and the dashboard |
 | [operations.md](operations.md) | `REQ-OPS` | 12 | synthetic scopes, probes, the self-test contract, recorded-traffic redaction, the production configuration |
 
-263 entries: 197 derived from the design documents (46 of them provisional, 2 retired), 29 from the security review (all active), 8 from the release plan (the self-test contract and the redaction rule), 28 from the validation-flow review (19 provisional, 2 retired) and 1 from the Claudinite alignment review (retired). 193 are active, 65 provisional and 5 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. (The totals were recounted from the files on 2026-10-22 when the architecture thread's Claudinite deltas were applied: REQ-VAL-030 was retired, REQ-OPS-012 was added, and no other status moved; REQ-DELIV-003, 004 and 005 returned to active when CLN-REV 1 was withdrawn, and REQ-SCOPE-001 when Ariel chose scoped ids; REQ-DELIV-019 and 020 retired and REQ-SEARCH-004 became active when Ariel dropped channels and the cooldown, and REQ-VAL-028 and the new REQ-VAL-046 when Ariel chose the pre-install manifest; REQ-DELIV-016 became active with PackServer's own key (PR #3 commit `99457a2`).)
+278 entries: 197 derived from the design documents, 29 from the security review, 8 from the release plan (the self-test contract and the redaction rule), 28 from the validation-flow review, 1 from the Claudinite alignment review, 5 from Ariel's decisions of 2026-10-22 (the GitHub org allowlist and Trending) and 10 from the architecture thread's pack-score proposal. 215 are active, 58 provisional and 5 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. The totals were recounted from the files on 2026-10-22, after Ariel's decisions of that day were applied (PR #3 commits `99457a2` and `2ff18f5`).
 
 ## Entry format
 
@@ -180,7 +181,7 @@ Its nine owner decisions are Ariel's and were not answered here; the affected en
 | CLN-REV 5 (channels and the soak) | **resolved** (Ariel, 2026-10-22): no channels and no cooldown; when to take a version is a cn or repository setting. REQ-DELIV-019 and 020 retired; REQ-SEARCH-004 exposes `published_at` | — |
 | CLN-REV 6 (the top tier's name; `canon` already means Claudinite's central pack set, so `reviewed` stands as a placeholder) | REQ-VAL-041, 042, the DSL's `Tier` | the tier word in the index, the views and the scenarios |
 | CLN-REV 7 (Verified Publisher: domain proof and GitHub org, or either) | REQ-SCOPE-010 | which proofs the grant needs |
-| CLN-REV 8 (ranking by how many members hold a pack, or by stars: the research says never; a user-chosen sort may stay if the default is the pack score) | REQ-VAL-013 (queue order), REQ-SEARCH-013 (browse sorts), REQ-COMM-011 | the queue order and the default browse sort |
+| CLN-REV 8 (ranking by how many members hold a pack, or by stars) | **resolved** with the row below: every signal is kept | — |
 | CLN-REV 9 (the `client` dimension) | none: the dimension was dropped from REQ-SEARCH-003, REQ-COMM-008 and REQ-TELEM-001, since Claudinite is Claude Code only; the telemetry field now names the fetcher (`cn adopt`, the update task or MCP) | a decision to keep a client axis would restore one field in three entries |
 
 ### Reconciled with the Claudinite alignment of the validation flow
@@ -237,22 +238,22 @@ The ones that touch the most entries:
 
 | Decision | Entries | What a decision changes |
 |---|---|---|
-| ARCH-Q 1 (who decides private access, and in which order the phases ship) | REQ-DELIV-006, REQ-SEARCH-011, REQ-PRIV-003..009, REQ-PRIV-013 | which private-access scenarios are active at launch |
-| ARCH-Q 2 (fee per pack or per version; Verified Publishers exempt) | REQ-PAY-001, 002, 009 | the credit arithmetic in the payment scenarios |
-| ARCH-Q 3 (review depth at launch) | REQ-VAL-009, 012, 013, REQ-ADMIN-003 | whether the LLM step and human queue exist in v1 |
+| ARCH-Q 1 (who decides private access) | **resolved** (Ariel, 2026-10-22): an allowlist of GitHub orgs per private pack, proven by the Actions OIDC token (REQ-PRIV-016 to 019); the other access entries are active, named by their architecture §11 phase | — |
+| ARCH-Q 2 (fee per pack or per version) | **resolved** (Ariel, 2026-10-22): $1 per new pack for everyone, open-source included, waived for Verified Publishers; REQ-PAY-001 and 002 are active | — |
+| ARCH-Q 3 (review depth at launch; now only which model screens pack prose) | static checks, the sandboxed load and the human review of holds are settled, so the entries that waited only on the queue are active; the screen model is cited as ARCH-SCREEN | — |
 | SITE-D 4 (MFA required for which actions) | REQ-ACC-008, 009, 018 | the refusal matrix in the accounts scenarios (which actions need a factor at all; which actions need a per-action assertion is REQ-ACC-010 and is decided) |
 | SITE-D 6, 7 (which checks fail vs warn; what the public page shows) | REQ-VAL-005, 006, 007, 009, 015 | verdict expectations in the validation scenarios |
 | SITE-D 2 (private pack plans) | REQ-PAY-010, 011, REQ-AUDIT-003 | plan limits |
 | ARCH-VAL §7-1 (capabilities as an extracted, first-class model; runtime network forbidden outright; reopens ARCH-Q 8; the manifest and its widening hold are decided as REQ-VAL-046 and 028) | REQ-VAL-027, 029, 031 | whether the capability and network scenarios exist |
 | ARCH-VAL §7-2 (the pack must load under cn, and every check ships firing and silent fixtures; reopens ARCH-Q 7) | REQ-VAL-010, REQ-VAL-032 | what the sandbox step asserts instead of "the pack's declared tests" |
 | ARCH-VAL §7-3 (a security revocation disables the executable parts by default, with a report-only opt-in; ARCH-Q 6) | REQ-DELIV-018, REQ-VAL-018 (who may revoke) | what the member handle observes after a revocation |
-| CLN-REV 8 (ranking by members or stars) | REQ-SEARCH-013, REQ-VAL-013, REQ-COMM-011 | the default order of the queue and of browse |
+| CLN-REV 8 (ranking by members or stars) | **resolved** (Ariel, 2026-10-22): every signal stays beside the pack score (stars, ratings, Trending, fetch counts); REQ-SEARCH-013 is active, REQ-COMM-014 adds Trending | — |
 | ARCH-VAL §7-4 (tiers canon / community / third-party per version; uncertainty holds time out to third-party after 7 days; two independent screens; reopens ARCH-Q 9) | REQ-VAL-010 (which tier a missing fixture holds), 013, 036, 041, 042, REQ-SEARCH-019, REQ-DELIV-019 | tier fields in the views (and the index, with O6), the queue timeout, which tier never leaves `staging`, default search exclusions |
 | ARCH-VAL §7-5 (serve a canonical re-pack instead of the uploaded bytes; attestation over both hashes; cn accepts canonical form only) | REQ-VAL-033, REQ-VAL-042 (the hashes shown), REQ-PUB-021, REQ-DELIV-001, REQ-DELIV-017 | which bytes and hashes the download, index and attestation scenarios assert |
 | ARCH-SCORE (whether the LLM screens stay at all, after Ariel asked for no agentic scans and a code-only pack score) | REQ-VAL-012, 034, 035, 036, 037, 039, REQ-ADMIN-006 | whether any scenario scripts the LLM fake; the pack-score requirements arrive from the architecture thread once Ariel decides |
 | ARCH-SCREEN (which prose-screen model, if the screens stay: a model on Workers AI as Jev recommended, Haiku screens with a Sonnet deep review, or none) | the same entries as ARCH-SCORE, plus REQ-VAL-018 (the rescan on a screen-model change) | what the LLM fake answers as, whether two screens and a deep review exist as distinct calls, and the per-version budget the hold in REQ-VAL-036 is measured against |
 
-The ARCH-VAL items reopen four architecture questions the register already names (ARCH-Q 6, 8, 9, 10); an entry provisional on both keeps both in `decision:` so either landing is visible.
+The ARCH-VAL items reopen four architecture questions the register already names (ARCH-Q 6, 7, 8, 9); an entry provisional on both keeps both in `decision:` so either landing is visible.
 
 ## Changing this document
 

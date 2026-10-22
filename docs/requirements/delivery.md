@@ -70,11 +70,10 @@ An index entry's `latest` never points at a yanked, quarantined or removed versi
 
 ## REQ-DELIV-006 Private packs never appear in the public index
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: cn engine / member
 - source: ARCH §7.1
-- decision: ARCH-Q 1
 - coverage: scenario
 
 A private pack never appears in the public index; a caller with access gets a per-caller private

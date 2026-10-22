@@ -91,6 +91,7 @@ await version.deprecate(reason);  await version.yank({ reason, security?: true }
 await version.delete()
 await pack.setVisibility('private' | 'public')
 await pack.transfer(org)
+await pack.access.allowOrg(org);  await pack.access.disallowOrg(org)   // the GitHub org allowlist; each needs the owner's passkey (REQ-PRIV-016, 019)
 await pack.access.grant(user);  await pack.access.invite(email);  await pack.access.inviteLink({ expires: '7d' })
 await pack.access.revoke(user);  await pack.access.gate({ fields, terms, autoApprove? })
 await pack.access.approve(request);  await pack.access.deny(request)
@@ -125,7 +126,8 @@ workflow.oidcToken({ aud?, iss?, exp?, nbf?, alg?, kid?, ...claims })    // mint
 await workflow.upload(archive, { reuse?: upload })                       // the 15-minute upload credential; reuse replays it
 world.github.webhook(event, { signature?: 'wrong' | 'missing', installation? })  // a delivery the World can send
 await member.fetchIndex('acme');  await member.fetchRoot();  await member.download(pack, version);  await member.reportHolding(pack, version)
-world.member({ minTier?: 'community' })                                  // a member with a policy (REQ-VAL-041)
+world.member({ minTier?: 'community', inActionsOf?: org })               // a policy (REQ-VAL-041); inActionsOf runs cn in a GitHub Actions repo of that org, presenting its OIDC token (REQ-PRIV-016)
+await member.signIn(user)                                                // device-code sign-in for cn on a laptop (REQ-PRIV-017)
 await member.adopt(pack, version)                                        // -> Vendored | a verification refusal (REQ-DELIV-017)
 await member.updateCheck(pack)                                               // -> { proposed?: Version, capabilityDiff?, revoked? } : what one update run proposes and which held versions it reports as revoked (REQ-DELIV-018)
 await member.lint(archive);  await member.canonicalize(archive)                  // the offline rule set and the canonical archive (REQ-VAL-044, REQ-VAL-033)
@@ -147,6 +149,7 @@ await world.cron.run('domain-rechecks' | 'stats-rollup' | 'staging-expiry' | 're
 await world.clock.advance('31d')
 world.dns.publishTxt(name, value);  world.dns.remove(name)
 world.github.repo('acme/tool');  world.github.installApp({ org, installer })
+world.github.org('acme');  org.addMember(user);  org.removeMember(user);  org.rename('acme-inc')   // a GitHub org with a stable numeric id (REQ-PRIV-016, 017)
 world.github.rotateJwks()                                                // the issuer publishes a new key and drops the old one
 world.stripe.event('checkout.session.completed', { session })           // an event the World can deliver, incl. replay
 await world.stripe.deliver(event, { signature?: 'wrong' })               // sends it to the webhook endpoint

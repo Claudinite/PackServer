@@ -117,7 +117,7 @@ is the one extracted from the archive, not the one the manifest declares.
 - since: 2026-10
 - actor: publisher
 - source: ARCH §6; FLOW 7; ARCH-VAL §6 (PR #3 commit 7a01329)
-- decision: SITE-D 6, ARCH-Q 3 (a hold needs the human queue)
+- decision: SITE-D 6
 - coverage: scenario
 
 Prompt-injection / tool-poisoning heuristics run on `RULES.md`, `SKILL.md` files, the what, why
@@ -164,7 +164,7 @@ verdict. Results are written by the registry, never by the sandbox.
 - since: 2026-10
 - actor: system
 - source: ARCH §6 step 4; ARCH-VAL §6
-- decision: ARCH-Q 3; ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
+- decision: ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
 - coverage: scenario
 
 An LLM review runs only after every cheaper step has passed and a credit has been reserved (or the
@@ -181,7 +181,7 @@ tenth version.
 - since: 2026-10
 - actor: admin
 - source: ARCH §6 step 5; ARCH-VAL §6
-- decision: ARCH-Q 3; ARCH-VAL §7-4 (the timeout to third-party tier); CLN-REV 8 (whether a queue may be ordered by how many members hold a pack at all)
+- decision: ARCH-VAL §7-4 (the timeout to third-party tier)
 - coverage: scenario
 
 A version held by any rule waits in the human review queue and is not promoted until an admin
@@ -334,7 +334,7 @@ LLM review call.
 - since: 2026-10
 - actor: publisher
 - source: ARCH-VAL §6, §3.1
-- decision: SITE-D 6 (which checks fail vs warn); ARCH-Q 3 (whether a hold can exist without the human queue)
+- decision: SITE-D 6 (which checks fail vs warn)
 - coverage: scenario
 
 Every validation rule has exactly one class, `fail` (never promotable), `hold` (promotable only
@@ -356,11 +356,10 @@ hard-fails with the file and line; an identifier that mixes scripts produces a w
 
 ## REQ-VAL-026 Every URL is inventoried; installing from a URL holds and fetching an executable fails
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher (security)
 - source: ARCH-VAL §6, §1 T2, T15
-- decision: ARCH-Q 3 (a hold needs the human queue)
 - coverage: scenario
 
 Every URL in the archive is extracted into the version's URL inventory, which the publisher can
@@ -481,7 +480,7 @@ produce byte-identical canonical archives offline with cn's canonicalise command
 - since: 2026-10
 - actor: publisher
 - source: ARCH-VAL §6, §3.6
-- decision: ARCH-Q 3; ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
+- decision: ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
 - coverage: scenario
 
 Every LLM finding carries a rule id, severity, file, line and a quote from the archive; the
@@ -496,7 +495,7 @@ admins can see in the report.
 - since: 2026-10
 - actor: publisher (security)
 - source: ARCH-VAL §6, §3.6, §1 T13
-- decision: ARCH-Q 3; ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
+- decision: ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
 - coverage: scenario+contract (the scenario proves the hold and the separation of calls through the LLM port's recorded requests; the delimiter contract is a contract test on the port)
 
 Pack content is passed to the reviewer inside delimiters carrying a per-run random nonce and
@@ -510,7 +509,7 @@ reviewing this") holds the version by itself, and that hold never resolves by ti
 - since: 2026-10
 - actor: system
 - source: ARCH-VAL §6, §3.6
-- decision: ARCH-Q 3; ARCH-VAL §7-4 (the accepted spend for two screens); ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
+- decision: ARCH-VAL §7-4 (the accepted spend for two screens); ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
 - coverage: scenario
 
 Two independent screening reviews with different framings run on every version that reaches the
@@ -524,7 +523,7 @@ never partially reviewed.
 - since: 2026-10
 - actor: publisher
 - source: ARCH-VAL §6, §3.7, §4 step 11
-- decision: ARCH-Q 3; ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
+- decision: ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
 - coverage: scenario
 
 When the deep review finds the version malicious with high confidence and every quoted piece of
@@ -561,11 +560,10 @@ does not run, and a publisher with no credit is refused at admission, before any
 
 ## REQ-VAL-040 A rejected version can be appealed once; the appeal never reaches a model
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher
 - source: ARCH-VAL §6, §3.8
-- decision: ARCH-Q 3
 - coverage: scenario
 
 A publisher can appeal a rejected version once from the dashboard with up to 2,000 characters of
