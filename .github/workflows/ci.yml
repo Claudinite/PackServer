@@ -66,6 +66,7 @@ jobs:
       contents: read
     outputs:
       code: ${{ steps.diff.outputs.code }}
+      start: ${{ steps.diff.outputs.start }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -79,11 +80,30 @@ jobs:
         run: |
           code=true
           if [ "$EVENT" != workflow_dispatch ] && [ -n "$BASE" ] && [ "$BASE" != 0000000000000000000000000000000000000000 ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
-            if ! git diff --name-only "$BASE" "$HEAD" | grep -qvE '^(docs/|.*\.md$|CODEOWNERS$|\.claudinite/)'; then
-              code=false
-            fi
+            code=false
+            while IFS= read -r f; do
+              case "$f" in
+                docs/requirements/*|docs/testing/*) code=true ;;
+                docs/*|*.md|CODEOWNERS|.claudinite/*) ;;
+                *) code=true ;;
+              esac
+            done < <(git diff --name-only "$BASE" "$HEAD")
           fi
+          echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
           echo "code=$code" >> "$GITHUB_OUTPUT"
+
+  # Requirement and test-register edits never skip; this needs no install.
+  coverage:
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: node docs/testing/coverage.mjs --check
 
   checks:
     needs: changes
@@ -154,8 +174,8 @@ jobs:
 
   # The one check to require: green when every product job passed or was skipped as docs-only.
   summary:
-    needs: [check, changes, checks, unit, scenarios]
-    if: always()
+    needs: [check, changes, coverage, checks, unit, scenarios]
+    if: always() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft))
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     permissions:
@@ -163,8 +183,17 @@ jobs:
     steps:
       - env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
+          START: ${{ needs.changes.outputs.start }}
         run: |
           echo "job results: $RESULTS"
+          if [ -n "$START" ]; then
+            elapsed=$(( $(date +%s) - START ))
+            echo "elapsed: ${elapsed}s (budget 120s)"
+            if [ "$elapsed" -gt 120 ]; then
+              echo "::error::push CI took ${elapsed}s, over the 2-minute budget"
+              exit 1
+            fi
+          fi
           case " $RESULTS " in
             *" failure "*|*" cancelled "*) exit 1 ;;
           esac
