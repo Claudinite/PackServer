@@ -148,6 +148,8 @@ Where the registry's own docs were fetched the facts below reflect the live page
   2. *GitHub-verified*: namespace `@org` is linked to GitHub org `org` via GitHub OAuth (org admin) or GitHub Actions OIDC claim `repository_owner`. Give a GitHub-derived namespace only to the matching GitHub org/user name, as Maven Central and the MCP Registry do, to kill squatting of well-known GitHub names.
   3. *Domain-verified*: DNS TXT on the apex (`_packserver.google.com TXT "v=PS1; k=ed25519; p=<pubkey>; org=<org-id>"`) **or** `https://<domain>/.well-known/packserver.json`. Store the public key, not just a nonce, so the org can sign publish requests and challenges with a KMS-held key (MCP Registry pattern). Re-check periodically (unlike pub.dev's one-time check) and show "verification stale" rather than silently dropping.
   4. *Reviewed publisher* (manual, like VS Marketplace/Docker DVP): domain-verified + org 2FA enforced + tenure (e.g. 90 days) + human review. This is the badge that answers "is this really Google".
+
+  Architecture outcome (decided by Ariel 2026-10-22): these badges are not trust tiers. Each pack version carries `verified` (Verified Publisher, the paid and reviewed status, true or false) plus the sources `verified_domain` and `verified_github_org`, shown whenever the scope has the proof. The agent or cn applies its own policy, for example only verified publishers, or only verified publishers whose domain is on an allowlist ([validation.md](../validation.md) §3.10).
 - **Reserve names**: block look-alike/homoglyph namespaces of top packs and of verified orgs (VS Marketplace does this automatically); hold brand names for domain-verified claims; publish a dispute process (Open VSX-style public issue is low-cost and transparent).
 
 ### 4.2 MFA plan (day one)
@@ -211,7 +213,7 @@ Public packs may be published either from a GitHub repo (flows 1 and 2) or by di
 
 - Whether PackServer runs its own Sigstore-style transparency log or relies on public Rekor (public Rekor for public packs; private packs cannot use it without leaking names, so plan a private append-only log in D1/Durable Objects).
 - How to express pack *capabilities* (rules, skills, declared checks, coded checks, guards, tasks) in the manifest so the validator can produce the listing summary and the MCP endpoint can filter on it.
-- Whether the MCP endpoint should return only packs meeting a minimum trust tier by default (recommended: verified-or-reviewed by default, opt-in to unverified).
+- ~~Whether the MCP endpoint should return only packs meeting a minimum trust tier by default.~~ Decided by Ariel (2026-10-22): no tiers and no default exclusion; `search_packs` takes optional `verified_only` and `verified_domains` filters, and each result shows whether its publisher is verified and by which domain or GitHub org.
 
 ---
 

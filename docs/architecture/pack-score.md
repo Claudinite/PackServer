@@ -14,7 +14,7 @@ Nothing in the pipeline is an agent. Nothing gets tools, a loop or the ability t
 | Run the pack | The pinned cn engine loads it, coded checks compile, and any network egress fails it | Sandbox, no internet |
 | Measure | The pack score (§2), from the same tree | Sandbox code |
 | Prose screen | Jev scores chunks of the pack text against a fixed, versioned question set; any probability over its threshold holds the version | Jev on Workers AI, one request per chunk, no tools (decided, see §3) |
-| Verdict | Fail, hold or warn, by rule class; tier | Worker code |
+| Verdict | Fail, hold or warn, by rule class | Worker code |
 | Human | Only holds; about 10 a day | Admin app |
 | Publish | Passkey approval if staged, then the canonical re-pack is served | Worker |
 
@@ -26,7 +26,7 @@ Every public pack is readable after publishing. Its files are listed and rendere
 
 - **Measured, not judged.** Every input is a number or a yes/no that code extracts from the canonical tree, the provenance record or cn telemetry. No model contributes to the score, so it is reproducible: `cn pack lint` (cn adds this command) prints the same score before upload.
 - **Versioned.** The rules carry a version. A rule change recomputes the score for every latest version and shows "score rules v3".
-- **Quality, not safety.** Safety is the verdict and the tier. A pack can score low and be perfectly safe. The score feeds ranking but never hides a pack.
+- **Quality, not safety.** Safety is the verdict, and who stands behind a pack is shown by the publisher verification facts (verified or not, and the verified domain or GitHub org). A pack can score low and be perfectly safe. The score feeds ranking but never hides a pack.
 - **Fixable.** Each lost point names the file and the fix, so the score works as a lint report for publishers.
 
 ### Shape
@@ -74,7 +74,7 @@ Thresholds are starting points, to be tuned once we've measured real packs (the 
 
 ### Caps
 
-As Socket does, some facts cap the score regardless of the rest: an open security report caps it at 40, a third-party tier at 60, no linked public source repo at 70 (the pack page also shows a "no public source" label). (A missing-fixture cap returns if fixture tests are added later.) Ranking takes the missing source in through the score, not as a separate penalty. The cap is shown as the reason ("capped: open security report").
+As Socket does, some facts cap the score regardless of the rest: an open security report caps it at 40 and no linked public source repo at 70 (the pack page also shows a "no public source" label). (A missing-fixture cap returns if fixture tests are added later.) Ranking takes the missing source in through the score, not as a separate penalty. The cap is shown as the reason ("capped: open security report").
 
 ### Where it lives
 

@@ -117,10 +117,13 @@ packs(id, scope_id, name, visibility[public|private], status[active|deprecated|q
       repo_url, trusted_publishing_only, staged_publishing, created_at)          -- names never recycled
 pack_versions(id, pack_id, version, sha256, size, r2_key, state, repo_commit, inventory counts,
               context_tokens, risk_score, validation_report_key, published_at, yanked_at,
-              tier, min_engine_version, requires, source_commit)
-                                    -- the last four are per-version fields the signed index
-                                    -- carries; full inventory, provenance, report live in
-                                    -- R2 meta.json
+              verified, verified_domain, verified_github_org,
+              min_engine_version, requires, source_commit)
+                                    -- the last six are per-version fields the signed index
+                                    -- carries; the verified_* facts are copied from the scope
+                                    -- at promotion and refreshed when the scope's proofs or
+                                    -- badge change; full inventory, provenance, report live
+                                    -- in R2 meta.json
 trusted_publishers(pack_id | pending_name, provider='github', repository_owner_id, repository, workflow,
                    environment, path)
 grants(resource_type[pack|scope], resource_id, principal_type[user|team|scope|token|domain|github_org],
@@ -171,6 +174,8 @@ Packs are named `@<scope>/<pack>`, and that scoped name is the pack id everywher
 | GitHub org | Org owner installs the PackServer GitHub App, or signs in with GitHub and we confirm org admin via the API. Scope name defaults to the org login. | "github.com/google" |
 | Domain | DNS TXT `_packserver-challenge.google.com` with a signed token, or `https://google.com/.well-known/packserver-auth` (MCP Registry model). Re-checked monthly; lapses after 30 days of failure. | "google.com ✓" |
 | Verified Publisher | Domain proof + linked GitHub org + scope MFA enforcement + manual review by us (VS Code / Hugging Face model) + an active $99/year Verified Publisher subscription. | "Verified publisher" |
+
+There are no trust tiers (decided by Ariel 2026-10-22). Each version carries these facts as `verified` (the Verified Publisher badge, true or false), `verified_domain` and `verified_github_org`; the domain and org are shown whenever the scope has the proof, even without the badge. They appear on the pack page, in search cards, in `get_pack` and in the signed index entry, and the agent or `cn` applies its own policy, for example allowing only verified publishers, or only verified publishers whose domain is on an allowlist. Claudinite's own packs publish from the verified `@claudinite` scope (domain `claudinite.com`) like any other verified publisher ([validation.md](validation.md) §3.10).
 
 Rules: first proof claims an unclaimed scope; a domain owner can dispute a squatted scope with the same name through a documented policy; deleted scopes and pack names are **never recycled** (Hugging Face re-registration attack); version numbers are never reused. Scope owners can require MFA (and passkeys only) for all members.
 
@@ -233,8 +238,8 @@ The full design, threat model and rationale are in [validation.md](validation.md
                      over threshold = hold, sent to the human queue with chunk, question,
                      probability and static findings; the model never fails or rejects;
                      the static reviewer-addressed heuristic holds on its own
-12  verdict + tier   fail / hold / warn by rule class; tier canon | community | third-party  Worker
-13  human review     holds only; ~10/day budget; uncertainty holds time out to third-party   admin app
+12  verdict          fail / hold / warn by rule class                                        Worker
+13  human review     holds only; ~10/day budget; a hold stays held until an admin decides     admin app
 14  payment          consume reserved credit, bound to canonical sha256                      Worker
 15  staged approval  passkey, showing diff and capability changes                            publisher
 16  promote          canonical archive + attestation {upload & canonical sha256, provenance,  Worker
@@ -247,7 +252,7 @@ Steps 2–8 are also a free **dry-run** endpoint and a GitHub Action, and run of
 
 No step is agentic: the prose screen is a set of single requests with no tools that return one probability per question, and code makes every decision. Thresholds are calibrated before launch on the canon packs, which should pass, and on an injection fixture corpus, which should hold; the measured flag rate is tracked against the budget of about 10 holds a day, and if it is exceeded the thresholds change in a new rules version. The report records the Jev model version named in each response, and a model version or question-set change rescans every live latest version (about $0.001 per pack). The details are in [validation.md](validation.md) §3.6. The **pack score** (0–100, computed by code from the same tree, no model) is defined in [pack-score.md](pack-score.md).
 
-**Update timing is not PackServer's concern** (decided by Ariel 2026-10-22). PackServer serves every validated version as soon as it is promoted and exposes each version's `published_at` in the signed index, over MCP and on the site. Any wait before a repo takes a new version is a `cn` or repo setting, an engine follow-up `cn` adds. Search policy is separate: third-party-tier versions are excluded from default MCP results unless the caller sets `include_unreviewed`.
+**Update timing is not PackServer's concern** (decided by Ariel 2026-10-22). PackServer serves every validated version as soon as it is promoted and exposes each version's `published_at` in the signed index, over MCP and on the site. Any wait before a repo takes a new version is a `cn` or repo setting, an engine follow-up `cn` adds. Search policy is separate and is the caller's: MCP search excludes nothing by default, and a caller can filter with `verified_only` or `verified_domains`.
 
 ## 7. Delivery from R2
 
@@ -264,7 +269,7 @@ Keys are immutable and versioned, so R2's one-write-per-second-per-key limit nev
 
 The cn engine is the main consumer, not agents. `cn adopt` and the scheduled update fetch each pack, verify it against the signed index and vendor it unchanged into the member repo (`commitToRepo`, today's model), and every change reaches the member as an update PR. Sessions and CI read the repo's own tree, so a repo only talks to PackServer when it checks for updates (about 6 checks per repo per month at the default weekly setting). Each check fetches one small root file, then only the scope indexes whose hash changed, then only the archives whose version changed. The layout is PackServer's own, and `cn` will read it in place of the ClaudinitePacks layout:
 
-- `packs.claudinite.com/index/v1/<scope>.json` per scope plus a top-level `index/v1/root.json` listing each scope index's hash. Each pack entry carries `{pack, latest, versions}`, and each version carries `{version, sha256, size, published_at, status[active|deprecated|yanked|quarantined|revoked], tier, min_engine_version, requires, source_commit, preinstall}` (the pre-install manifest, §3), so `cn` can pick the newest version whose `min_engine_version` it meets.
+- `packs.claudinite.com/index/v1/<scope>.json` per scope plus a top-level `index/v1/root.json` listing each scope index's hash. Each pack entry carries `{pack, latest, versions}`, and each version carries `{version, sha256, size, published_at, status[active|deprecated|yanked|quarantined|revoked], verified, verified_domain, verified_github_org, min_engine_version, requires, source_commit, preinstall}` (the pre-install manifest, §3), so `cn` can pick the newest version whose `min_engine_version` it meets and apply the repo's publisher policy (an engine follow-up, for example `packs.allowPublishers: verified` or an allowlist of verified domains). The verification facts are kept current: when a scope gains or loses the badge or a proof, its index is re-signed with the new values.
 - The index is signed with the registry Ed25519 key, which lives in Secrets Store and is used only by the validator; `cn` embeds the matching public key and trusts it. The validator regenerates and signs the affected scope index and `root.json` on every promote or status change, served with a short cache TTL.
 - Archives live at `@scope/name/<version>/pack.tar.zst` with `.sha256`, `.attestation.json` and `meta.json` beside them, written once and long-cached.
 - Private packs get a per-caller index from the `web` Worker after an access check, never on the CDN.
@@ -286,9 +291,9 @@ Proven by the spike in `spike/mcp-worker` (stateless `createMcpHandler`, D1 FTS5
 
 | Tool | Auth | Returns |
 |---|---|---|
-| `search_packs(query, category?, include_unreviewed?, limit?)` | none | ranked compact cards: name, summary (≤ 1024 chars), inventory counts, context cost, trust signals (validated, verified flag, has repo, works-for-me %, rating), newest version with its `published_at`, `min_engine_version` and tier; third-party-tier versions only with `include_unreviewed` |
+| `search_packs(query, category?, verified_only?, verified_domains?, limit?)` | none | ranked compact cards: name, summary (≤ 1024 chars), inventory counts, context cost, trust signals (validated, `verified`, `verified_domain`, `verified_github_org`, has repo, works-for-me %, rating), newest version with its `published_at` and `min_engine_version`; nothing is excluded by default, `verified_only` keeps verified publishers and `verified_domains` keeps verified publishers whose domain is in the list |
 | `list_categories()` | none | category tree with counts |
-| `get_pack(name, version?)` | none / read | manifest, extracted inventory, the pre-install manifest (guards, tasks and cadence, forced skills, GitHub actions), README excerpt, versions with their `published_at`, status, provenance, and the `cn adopt <id>` / `packs.declared` snippet |
+| `get_pack(name, version?)` | none / read | manifest, extracted inventory, the pre-install manifest (guards, tasks and cadence, forced skills, GitHub actions), README excerpt, the publisher verification facts (`verified`, `verified_domain`, `verified_github_org`), versions with their `published_at`, status, provenance, and the `cn adopt <id>` / `packs.declared` snippet |
 | `get_download(name, version)` | none / read | URL (CDN or 5-min presigned for private), sha256, attestation URL |
 | `list_my_packs()` | read | private and shared packs for the caller |
 | `report_outcome(name, version, result, engine_version)` | write | records works / fails (counts as verified only when the version is vendored in a member the principal's token belongs to) |
@@ -330,7 +335,7 @@ Ariel decided (2026-10-22) to keep every signal side by side: the [pack score](p
 - **Works for me / Didn't work** per version and engine version. This is the signal agents actually need, and it's weighted 1.0 when the voter has a recorded adoption of that pack (a fetch by `cn adopt` or the update) and 0.25 otherwise.
 - **Ratings and reviews:** 1–5 rating with an optional review, one per user per pack, one publisher reply per review (VS Code model). Reviews from accounts that actually fetched the pack carry a "verified fetch" marker and full weight in ranking. Reviews need moderation tooling from day one, so they go through the same admin queue as reports.
 - **Bug reports:** when a public repo is linked, "Report a bug" opens a pre-filled GitHub issue and we read its status back through the GitHub App's issue webhooks; otherwise an in-site inbox for the publisher. Security reports are always private.
-- **Ranking:** directory score mixes a Wilson lower bound on works/fails and on ratings, normalised verified adoptions, stars, health (validation passed, public repo, verified publisher, recently updated) and freshness. MCP score is text relevance × quality × category match × engine compatibility (`minEngineVersion`). Open security reports, failed latest validation or an abuse hold zero or heavily demote a pack. One result in ten in browse is an "exploration" slot for new packs. Raw signals are exposed over MCP so agents can apply their own policy.
+- **Ranking:** directory score mixes a Wilson lower bound on works/fails and on ratings, normalised verified adoptions, stars, health (validation passed, public repo, verified publisher, recently updated) and freshness. Verified publisher status is a ranking signal only; it never hides a pack. MCP score is text relevance × quality × category match × engine compatibility (`minEngineVersion`). Open security reports, failed latest validation or an abuse hold zero or heavily demote a pack. One result in ten in browse is an "exploration" slot for new packs. Raw signals are exposed over MCP so agents can apply their own policy.
 - **Abuse:** Turnstile on all forms, per-scope daily caps on new packs, Rate Limiting binding as the first line, Durable Object counters for exact daily limits, star-velocity anomaly holds, self-stars from the owning scope ignored, per-account credit purchase limits (§9).
 
 ## 11. Private packs and access control
@@ -402,5 +407,5 @@ Still open from the [registry trust research](../registry-trust-research.md), an
 6. ~~Remote revocation or report only?~~ Decided: the split. A security `revoked` disables the version's guards, coded checks, tasks and env setup in cn by default, a repo can opt into `reportOnly`, and every other status only reports ([validation.md](validation.md) §3.12). cn adds the check at update or adopt time and at session start.
 7. ~~Must a pack pass our CI before listing, and must each check ship fixtures?~~ Decided: every pack must load under cn or it fails; fixture tests (a firing and a silent case per check) are out of scope for v1.
 8. ~~Should an update that adds a capability be held?~~ Decided: capabilities are extracted into the pre-install manifest and new ones are highlighted on the page and in the update PR, but nothing is held.
-9. **Tiers** like Claude Code's: canon (curated by us), community (pinned, scanned, tested), third-party (unchecked, with a warning)? "Canon" already means the central pack set, so a tier named `canon` reads as "is on the shelf".
+9. ~~Tiers like Claude Code's (canon, community, third-party)?~~ Decided: no tiers. Each version shows whether its publisher is verified, with the verification source (`verified_domain`, `verified_github_org`), and the agent or cn applies its own policy; holds never time out ([validation.md](validation.md) §3.10).
 10. **Ranking signals** only cn has: how many repos keep a pack, how often its checks fire, how often members drop it. These would replace most of the star/rating weight in §10 if cn reports them.
