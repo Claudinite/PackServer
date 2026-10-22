@@ -123,8 +123,9 @@ Format: **Visible** (default) · **Hover** · **Click** · **Removed**.
 - Visible: query, result count, result list (cards per §1 budget). One sort control (Relevance / Stars /
   Updated) as text.
 - Hover: the three marks.
-- Click: "Filters" text link opens a side sheet (type of content, targets Claude/Ant, verified only, price).
-  Applied filters show as plain text under the query: `Filters: verified · free ×`.
+- Visible: one quiet row of filter toggles under the query (Trusted only, Verified publisher, Public repo,
+  Works with Claude/Ant, Contains…). Outline pills, filled only when on; no counts, no sidebar.
+  (Ariel, 2026-10-22: hiding filters in a sheet went too far; search filters stay on the page.)
 - Removed: always-visible filter sidebar, "public repo / validated" pills on cards, seven counts per card,
   star glyph rows, `v2.4.1` on cards (version belongs to the pack page).
 
@@ -241,7 +242,7 @@ to approve vpc-review 0.5.0 · Approve").
 | Publish wizard: 6 numbered sections on one page | One step per screen, thin progress line, Advanced disclosure |
 | Validation report: artifact panel + per-check pills | One-sentence verdict + "Show report" list |
 | Account: Enabled / Not enabled / this device pills | One line of text per setting with Manage link |
-| Browse filter sidebar | "Filters" sheet; applied filters as plain text |
+| Browse filter sidebar | One row of toggle pills under the search box |
 | `Follow`, `Report publisher`, `Report a bug` buttons in headers | `…` overflow menu; Star stays as icon |
 
 ## 6. References

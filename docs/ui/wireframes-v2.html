@@ -272,6 +272,11 @@ details.adv .body { padding-top: 16px; }
 .proto select { padding: 5px 8px; font-size: 13px; }
 .proto .cur { color: var(--muted); font-family: "IBM Plex Mono", monospace; font-size: 11px; }
 
+.frow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; align-items: center; }
+.ftog { padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line-strong); color: var(--ink-2); font-size: 13px; }
+.ftog:hover { background: var(--raise); }
+.ftog[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.fsel select { width: auto; padding: 4px 10px; border-radius: 999px; font-size: 13px; color: var(--ink-2); }
 .auth { max-width: 360px; margin: 24px auto 0; }
 .auth .stack { gap: 12px; }
 .inline-form[hidden] { display: none; }
@@ -328,14 +333,20 @@ details.adv .body { padding-top: 16px; }
     <label for="b-q" class="sr">Search packs</label>
     <input type="search" id="b-q" value="gcp" style="flex:1 1 240px">
   </form>
+  <div class="frow" role="group" aria-label="Filters">
+    <button type="button" class="ftog" data-ftog aria-pressed="false">Trusted only</button>
+    <button type="button" class="ftog" data-ftog aria-pressed="false">Verified publisher</button>
+    <button type="button" class="ftog" data-ftog aria-pressed="false">Public repo</button>
+    <label class="fsel"><span class="sr">Works with</span><select id="f-target"><option>Claude and Ant</option><option>Claude</option><option>Ant</option></select></label>
+    <label class="fsel"><span class="sr">Contains</span><select id="f-contains"><option>Any contents</option><option>Has skills</option><option>Has checks</option><option>Has tasks</option><option>Has hooks</option><option>Has commands</option><option>Has agents</option><option>Has MCP servers</option></select></label>
+  </div>
   <div class="row between" style="margin-top:14px">
-    <span class="muted">6 results for <span class="ink2">gcp</span> <span id="b-filters"></span></span>
+    <span class="muted" id="b-count">6 results for <span class="ink2">gcp</span></span>
     <span class="row small" style="gap:12px">
       <span class="muted">Sort</span>
       <button type="button" class="textbtn" data-sort aria-pressed="true">Relevance</button>
       <button type="button" class="textbtn" data-sort aria-pressed="false">Stars</button>
       <button type="button" class="textbtn" data-sort aria-pressed="false">Updated</button>
-      <button type="button" class="linkbtn" data-sheet="filters">Filters</button>
     </span>
   </div>
   <div class="cards list" id="browse-cards" style="margin-top:20px"></div>
@@ -789,7 +800,6 @@ jobs:
     if (kind === 'review') { var r = p.reviews[i]; return openDrawer('Review', '<p class="muted small">' + stars(r[0]) + ' · ' + esc(r[1]) + ' · v' + esc(r[2]) + ' · ' + esc(r[3]) + '</p><h3 style="margin-top:12px">' + esc(r[4]) + '</h3><p class="ink2" style="margin-top:8px">' + esc(r[5]) + '</p><div class="actions"><button class="btn quiet" type="button" data-auth="mark helpful" data-toast="Marked helpful">Helpful · ' + r[6] + '</button><button class="btn quiet" type="button" data-auth="flag" data-toast="Flagged for moderators">Flag</button></div>'); }
     if (kind === 'contents-gcp') return openDrawer('Contents', '<table class="ctable">' + TYPES.map(function (t) { var items = PACKS.pack.contents[t]; return items.length ? '<tr><td>' + t + ' · ' + items.length + '</td><td class="mono small">' + items.map(esc).join(', ') + '</td></tr>' : ''; }).join('') + '</table>');
     if (kind === 'agents') return openDrawer('For agents', '<p class="ink2">Agents discover packs over MCP. Point your client at the endpoint and call search_packs with a category of work.</p><div class="install"><pre>https://packs.example/mcp</pre><button class="btn" type="button" data-copy="https://packs.example/mcp">Copy</button></div>' + kv([['Tools', 'search_packs · get_pack · list_categories · fetch_pack', 'mono small'], ['Auth', 'None for public packs; a scoped read token for private packs', 'small'], ['Limits', '120 calls / min anonymous · 1,000 with a token', 'small']]));
-    if (kind === 'filters') return openDrawer('Filters', '<div class="filters-list"><label><input type="checkbox" id="f-verified" checked> Verified publishers only</label><label><input type="checkbox" id="f-free" checked> Free</label><label><input type="checkbox" id="f-claude"> Targets Claude</label><label><input type="checkbox" id="f-ant"> Targets Ant</label><label><input type="checkbox" id="f-skills"> Has skills</label><label><input type="checkbox" id="f-checks"> Has checks</label><label><input type="checkbox" id="f-mcp"> Has MCP servers</label></div><div class="actions"><button class="btn primary" type="button" data-apply-filters>Apply</button><button class="btn quiet" type="button" data-close-drawer>Cancel</button></div>');
     if (kind === 'proves') return openDrawer('What validation checks', kv([['Manifest', 'pack.json against schema v1.3', 'small'], ['Contents', 'Every declared item resolves to a file; no undeclared executables', 'small'], ['Secrets', '48 detectors across all files', 'small'], ['Dependencies', 'Lockfile pinned; no known advisories; no undeclared network hosts', 'small'], ['Prompt injection', 'Heuristics for operator override, exfiltration, hidden behavior', 'small'], ['Tests', 'The pack\'s own tests in an isolated sandbox', 'small'], ['Size', '25 MB archive, 5,000 files', 'small']]) + '<p class="muted small" style="margin-top:16px">It does not run the pack against your data or judge whether its advice is correct.</p>');
     if (kind === 'verification') return openDrawer('Verification', kv([['Domains', 'google.com · cloud.google.com', 'small'], ['Method', 'DNS TXT record, re-checked every 30 days', 'small'], ['GitHub org', 'googlecloudplatform', 'mono small'], ['Verified on', '2026-03-04', 'mono small'], ['Members', 'MFA enforced for all 6', 'small']]));
     if (kind === 'publisher-other') return openDrawer('Publisher', '<p class="ink2">Verification details for this publisher would appear here; the publisher page is a deep link.</p>');
@@ -921,6 +931,14 @@ jobs:
     if (kind === 'status') return sheet('status:' + tok);
   }
 
+  function updateCount() {
+    var on = document.querySelectorAll('[data-ftog][aria-pressed="true"]').length + (document.getElementById('f-target').selectedIndex ? 1 : 0) + (document.getElementById('f-contains').selectedIndex ? 1 : 0);
+    var n = [6, 4, 3, 2, 2, 1][Math.min(on, 5)];
+    document.getElementById('b-count').innerHTML = n + ' result' + (n === 1 ? '' : 's') + ' for <span class="ink2">gcp</span>';
+  }
+  document.getElementById('f-target').addEventListener('change', updateCount);
+  document.getElementById('f-contains').addEventListener('change', updateCount);
+
   /* ---------- delegated clicks ---------- */
   document.addEventListener('click', function (e) {
     var t = e.target;
@@ -975,8 +993,8 @@ jobs:
     var sortBtn = t.closest('[data-sort]');
     if (sortBtn) { document.querySelectorAll('[data-sort]').forEach(function (b) { b.setAttribute('aria-pressed', b === sortBtn ? 'true' : 'false'); }); return; }
 
-    if (t.closest('[data-apply-filters]')) { document.getElementById('b-filters').innerHTML = '· Filters: verified · free <button type="button" class="textbtn" data-clear-filters aria-label="Clear filters">×</button>'; closeDrawer(); return; }
-    if (t.closest('[data-clear-filters]')) { document.getElementById('b-filters').innerHTML = ''; return; }
+    var ftog = t.closest('[data-ftog]');
+    if (ftog) { ftog.setAttribute('aria-pressed', ftog.getAttribute('aria-pressed') === 'true' ? 'false' : 'true'); updateCount(); return; }
 
     var stepGo = t.closest('[data-step-go]');
     if (stepGo) { showStep(Number(stepGo.getAttribute('data-step-go'))); window.scrollTo(0, 0); return; }
