@@ -521,7 +521,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
   <div class="section grid2">
     <div class="panel">
       <h3>Publish a pack</h3>
-      <p class="small">Connect a GitHub repo or upload a zip. We validate the manifest, scan for secrets and prompt injection, run the pack's tests, build the effects manifest, and publish it to staging; stable after the soak. Public listing costs a <b>$1 publish credit per new pack</b>; new versions are free; credit bundles available.</p>
+      <p class="small">Connect a GitHub repo or upload a zip. We validate the manifest, scan for secrets and prompt injection, run the pack's tests, build the effects manifest, and publish it; repos take it after a short cooldown. Public listing costs a <b>$1 publish credit per new pack</b>; new versions are free; credit bundles available.</p>
       <a class="btn" href="#publish">Start publishing</a>
     </div>
     <div class="panel">
@@ -654,9 +654,9 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
           <thead><tr><th>Tool</th><th>Purpose</th><th>Key arguments</th></tr></thead>
           <tbody>
             <tr><td class="mono">search_packs</td><td>Find packs for a category of work or free-text query.</td><td class="mono small">query, category, feature_types[], verified_only, limit</td></tr>
-            <tr><td class="mono">get_pack</td><td>Full metadata: contents inventory, effects manifest, versions, channel, validation status, adoption instructions.</td><td class="mono small">name, version?</td></tr>
+            <tr><td class="mono">get_pack</td><td>Full metadata: contents inventory, effects manifest, versions, cooldown state, validation status, adoption instructions.</td><td class="mono small">name, version?</td></tr>
             <tr><td class="mono">list_categories</td><td>The controlled vocabulary of work categories, with counts.</td><td class="mono small">—</td></tr>
-            <tr><td class="mono">fetch_pack</td><td>The archive URL and the signed index entry (sha256, channel, minEngineVersion, requires) for an exact version.</td><td class="mono small">name, version</td></tr>
+            <tr><td class="mono">fetch_pack</td><td>The archive URL and the signed index entry (sha256, cooldown state, minEngineVersion, requires) for an exact version.</td><td class="mono small">name, version</td></tr>
           </tbody>
         </table></div>
       </div>
@@ -684,7 +684,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
                      "scope": "@google",
                      "verified": true },
       "version": "1.61021.1",
-      "channel": "stable",
+      "cooldown": "passed",
       "minEngineVersion": "1.61006.1",
       "requires": ["basics"],
       "summary": "Operate GCP projects: IAM audits,
@@ -704,7 +704,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
                      "scope": "@dana-k",
                      "verified": false },
       "version": "1.61009.1",
-      "channel": "stable",
+      "cooldown": "passed",
       "minEngineVersion": "1.61006.1",
       "requires": [],
       "summary": "Format, lint and explain SQL.",
@@ -737,7 +737,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
   "index": {
     "sha256": "9f1c…e3a0",
     "size": 184320,
-    "channel": "stable",
+    "cooldown": "passed",
     "minEngineVersion": "1.61006.1",
     "requires": ["basics"],
     "revoked": false,
@@ -751,7 +751,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
 
       <div>
         <h2>Authentication</h2>
-        <p class="small">Public packs need no auth. For private packs, an org owner creates a <b>scoped read token</b> (see <a href="#access">private pack access</a>) and the repo's update task or <code>cn adopt</code> sends it as a bearer token (<code>packs.sources</code>).</p>
+        <p class="small">Public packs need no auth. For private packs, an org owner creates a <b>scoped read token</b> (see <a href="#access">private pack access</a>) and the repo's update task or <code>cn adopt</code> sends it as a bearer token, read from the repo's CI secrets.</p>
         <div class="codebox"><pre><code>{
   "mcpServers": {
     "packserver": {
@@ -981,7 +981,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
       </div>
       <div>
         <h3>API tokens</h3>
-        <p class="small muted">Personal tokens for <code>cn adopt</code> and the update task reading private packs (<code>packs.sources</code>). Publishing from CI should use <a href="#github">trusted publishing</a> instead of a token.</p>
+        <p class="small muted">Personal tokens for <code>cn adopt</code> and the update task reading private packs. Publishing from CI should use <a href="#github">trusted publishing</a> instead of a token.</p>
         <div class="table-wrap"><table><thead><tr><th>Name</th><th>Scopes</th><th>Expires</th><th></th></tr></thead>
         <tbody>
           <tr><td>laptop-cli</td><td class="mono small">packs:read packs:fetch</td><td class="mono small">2026-12-01</td><td><button class="btn sm ghost" type="button" data-toast="Token revoked">Revoke</button></td></tr>
@@ -1014,11 +1014,11 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
   </div>
   <div class="section-head"><h2>My packs</h2><div class="row"><input type="search" id="db-q" placeholder="Filter packs" style="width:200px"><select id="db-status" aria-label="Filter status" style="width:auto"><option>All statuses</option><option>Published</option><option>Validating</option><option>Awaiting owner approval</option><option>Failed validation</option><option>Revoked</option><option>Private</option><option>Draft</option></select></div></div>
   <div class="table-wrap"><table>
-    <thead><tr><th>Pack</th><th>Newest</th><th>Status</th><th>Channel</th><th>Source</th><th>Repos</th><th>Stars</th><th>Issues</th><th></th></tr></thead>
+    <thead><tr><th>Pack</th><th>Newest</th><th>Status</th><th>Cooldown</th><th>Source</th><th>Repos</th><th>Stars</th><th>Issues</th><th></th></tr></thead>
     <tbody>
       <tr><td><a href="#pack"><b>@google/gcp-ops</b></a><br><span class="tiny muted">Operate GCP projects</span></td><td class="ver">1.61021.1</td><td><span class="pill ok">Published</span></td><td><span class="pill accent">stable</span></td><td class="small"><span class="pill outline">GitHub · tag</span></td><td class="mono">931</td><td class="mono">1,842</td><td class="mono">3</td><td><a class="btn sm" href="#pack">Manage</a></td></tr>
       <tr><td><b>@google/gke-autopilot</b><br><span class="tiny muted">GKE cluster ops</span></td><td class="ver">1.61002.1 → 1.61021.1</td><td><span class="pill info">Validating</span></td><td><span class="pill accent">stable</span></td><td class="small"><span class="pill outline">GitHub · tag</span></td><td class="mono">421</td><td class="mono">903</td><td class="mono">1</td><td><a class="btn sm" href="#validation">View run</a></td></tr>
-      <tr><td><b>@google/vpc-review</b><br><span class="tiny muted">Network posture reviews</span></td><td class="ver">1.61006.1 → 1.61020.1</td><td><span class="pill warn">Awaiting owner approval</span></td><td><span class="pill outline">staging</span></td><td class="small"><span class="pill outline">GitHub · tag</span></td><td class="mono">204</td><td class="mono">512</td><td class="mono">0</td><td><button class="btn sm primary" type="button" data-stepup="Approve @google/vpc-review 1.61020.1 to staging" data-toast="vpc-review 1.61020.1 approved and published to staging">Approve with passkey</button></td></tr>
+      <tr><td><b>@google/vpc-review</b><br><span class="tiny muted">Network posture reviews</span></td><td class="ver">1.61006.1 → 1.61020.1</td><td><span class="pill warn">Awaiting owner approval</span></td><td><span class="pill outline">in cooldown</span></td><td class="small"><span class="pill outline">GitHub · tag</span></td><td class="mono">204</td><td class="mono">512</td><td class="mono">0</td><td><button class="btn sm primary" type="button" data-stepup="Approve and publish @google/vpc-review 1.61020.1" data-toast="vpc-review 1.61020.1 approved and published">Approve with passkey</button></td></tr>
       <tr><td><b>@google/bq-migrate</b><br><span class="tiny muted">BigQuery schema migrations</span></td><td class="ver">1.61020.1</td><td><span class="pill fail">Failed validation</span></td><td><span class="faint">—</span></td><td class="small"><span class="pill outline">GitHub · tag</span></td><td class="mono">110</td><td class="mono">311</td><td class="mono">2</td><td><a class="btn sm" href="#validation">See report</a></td></tr>
       <tr><td><b>@google/internal-incident-runbooks</b><br><span class="tiny muted">On-call playbooks</span></td><td class="ver">1.61001.1</td><td><span class="pill warn">Private</span></td><td><span class="pill accent">stable</span></td><td class="small"><span class="pill outline">Upload</span></td><td class="mono">28</td><td class="mono">—</td><td class="mono">0</td><td><a class="btn sm" href="#access">Access</a></td></tr>
       <tr><td><b>@google/vertex-eval</b><br><span class="tiny muted">Model eval harness</span></td><td class="ver">—</td><td><span class="pill">Draft</span></td><td><span class="faint">—</span></td><td class="small"><span class="pill outline">Upload</span></td><td class="mono">—</td><td class="mono">—</td><td class="mono">—</td><td><a class="btn sm" href="#publish">Continue</a></td></tr>
@@ -1026,8 +1026,8 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
   </table></div>
   <h3 class="mt3">Recent activity</h3>
   <ul class="checklist">
-    <li><span class="st ok">✓</span><span><b>gcp-ops 1.61021.1</b> published to staging from tag <code>1.61021.1</code> via trusted publishing · 2 h ago</span></li>
-    <li><span class="st warn">!</span><span><b>vpc-review 1.61020.1</b> validated from tag <code>1.61020.1</code> and held; an Owner must approve before it reaches staging (org policy: CI publishes require approval) · 40 min ago</span></li>
+    <li><span class="st ok">✓</span><span><b>gcp-ops 1.61021.1</b> published from tag <code>1.61021.1</code> via trusted publishing · 2 h ago</span></li>
+    <li><span class="st warn">!</span><span><b>vpc-review 1.61020.1</b> validated from tag <code>1.61020.1</code> and held; an Owner must approve before it is published (org policy: CI publishes require approval) · 40 min ago</span></li>
     <li><span class="st run">…</span><span><b>gke-autopilot 1.61021.1</b> validation running: test run (3/5) · now</span></li>
     <li><span class="st fail">!</span><span><b>bq-migrate 1.61020.1</b> failed: secret scan found a GCP service-account key in <code>fixtures/</code> · yesterday</span></li>
     <li><span class="st warn">!</span><span>New <b>high</b> severity report on gcp-ops: "rotate-service-keys deletes key before new one is active" · yesterday</span></li>
@@ -1150,15 +1150,15 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
           <dt>Source</dt><dd class="mono">github.com/googlecloudplatform/claudinite-packs · packs/gcp-ops/ · 1.61021.1</dd>
           <dt>Validation</dt><dd><span class="pill ok">Passed</span> <span class="pill warn">1 warning</span></dd>
           <dt>Visibility</dt><dd>Public · $1.00</dd>
-          <dt>Channel</dt><dd>staging now · stable after the soak</dd>
+          <dt>Cooldown</dt><dd>starts on publish; repos take it once it passes</dd>
           <dt>Artifact</dt><dd class="mono small">sha256 9f1c…e3a0 · 180 KB</dd>
         </dl>
       </div>
       <p class="small muted mt2">Publishing is a sensitive action: you'll confirm this exact version with a passkey tap.</p>
-      <button class="btn primary lg" type="button" data-stepup="Publish gcp-ops 1.61021.1 to staging" data-after="pub-success">Publish gcp-ops 1.61021.1 to staging</button>
+      <button class="btn primary lg" type="button" data-stepup="Publish gcp-ops 1.61021.1" data-after="pub-success">Publish gcp-ops 1.61021.1</button>
     </div>
     <div id="pub-success" hidden style="max-width:640px">
-      <div class="note ok"><b>gcp-ops 1.61021.1 is on staging.</b> Served from <code>cdn.packs.example</code>; it moves to stable after the soak, and member repos take it on their next update PR.</div>
+      <div class="note ok"><b>gcp-ops 1.61021.1 is published.</b> Served from <code>cdn.packs.example</code>; after the cooldown, member repos take it on their next update PR.</div>
       <div class="row mt2"><a class="btn primary" href="#pack">View pack page</a><a class="btn" href="#github">Set up auto-publish on tags</a><a class="btn ghost" href="#dashboard">Back to dashboard</a></div>
       <p class="small muted mt2">Receipt <code>rcpt_01JB3</code> emailed · <a href="#billing">Billing</a></p>
     </div>
@@ -1229,7 +1229,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
           <dt>SHA-256</dt><dd class="mono">9f1c7e02b4…e3a0</dd>
           <dt>Size</dt><dd class="mono">184,320 B</dd>
           <dt>Stored</dt><dd class="mono">packs/@google/gcp-ops/1.61021.1.tar.gz</dd>
-          <dt>Channel</dt><dd>stable (soaked on staging first)</dd>
+          <dt>Cooldown</dt><dd>passed</dd>
           <dt>Signed</dt><dd>Sigstore (OIDC identity: <span class="mono">github.com/googlecloudplatform/claudinite-packs/.github/workflows/publish.yml@refs/tags/1.61021.1</span>)</dd>
         </dl>
       </div>
@@ -1261,7 +1261,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
           <div class="field"><label class="lbl" for="gh-branch">Allowed branch for tags</label><input type="text" id="gh-branch" value="main" class="mono"><div class="hint">Tags on other branches are ignored.</div></div>
         </div>
         <label class="check mb1"><input type="radio" name="gh-mode" id="gh-auto"> Publish automatically when validation passes</label>
-        <label class="check mb1"><input type="radio" name="gh-mode" id="gh-staged" checked> Hold after validation; an Owner approves with a passkey before it reaches staging <span class="pill warn">Awaiting owner approval</span></label>
+        <label class="check mb1"><input type="radio" name="gh-mode" id="gh-staged" checked> Hold after validation; an Owner approves with a passkey before it is published <span class="pill warn">Awaiting owner approval</span></label>
         <label class="check mb2"><input type="checkbox" id="gh-env"> Require the <code>release</code> GitHub environment (protected reviewers)</label>
         <h2 class="mt2">3 · Trusted publishing identity</h2>
         <p class="small muted">We accept publishes only from this exact workflow identity. Anything else is rejected, even with a valid tag.</p>
@@ -1300,7 +1300,7 @@ jobs:
       <div class="panel">
         <h3>Recent runs</h3>
         <ul class="checklist">
-          <li><span class="st ok">✓</span><span class="small"><code>1.61021.1</code> → published 1.61021.1 to staging · 2 h ago</span></li>
+          <li><span class="st ok">✓</span><span class="small"><code>1.61021.1</code> → published 1.61021.1 · 2 h ago</span></li>
           <li><span class="st ok">✓</span><span class="small"><code>1.61009.1</code> → published 1.61009.1 · 12 days ago</span></li>
           <li><span class="st fail">!</span><span class="small"><code>1.61001.1</code> → rejected: OIDC subject mismatch (ran from fork) · 20 days ago</span></li>
         </ul>
@@ -1414,7 +1414,7 @@ jobs:
   <div class="tabpanel" data-tabgroup="acc" data-panel="c" hidden>
     <div class="layout right">
       <div>
-        <p class="small">Mint read-only tokens scoped to this pack (or the whole org) and hand them to the repo's CI (<code>packs.sources</code>). No human account needed on the consuming side.</p>
+        <p class="small">Mint read-only tokens scoped to this pack (or the whole org) and hand them to the repo's CI secrets. No human account needed on the consuming side.</p>
         <div class="table-wrap mb2"><table><thead><tr><th>Token</th><th>Scope</th><th>Expires</th><th>Last used</th><th></th></tr></thead><tbody>
           <tr><td class="mono">psr_live_…4f2a <span class="tiny muted">oncall-repos-ci</span></td><td class="mono small">packs:read,fetch · this pack</td><td class="mono small">2026-12-31</td><td class="small">4 min ago</td><td><button class="btn sm ghost" type="button" data-toast="Token revoked">Revoke</button></td></tr>
           <tr><td class="mono">psr_live_…91cc <span class="tiny muted">acme-customer</span></td><td class="mono small">packs:read,fetch · this pack</td><td class="mono small">2026-11-15</td><td class="small">yesterday</td><td><button class="btn sm ghost" type="button" data-toast="Token revoked">Revoke</button></td></tr>
@@ -1529,7 +1529,7 @@ jobs:
   var PACKS = {
     'gcp-ops': {
       token: 'pack', name: '@google/gcp-ops', icon: 'GC', publisher: 'Google Cloud', publisherHref: '#publisher', verified: true,
-      version: '1.61021.1', channel: 'stable', minEngineVersion: '1.61006.1', requires: ['basics'], updated: '2 hours ago', license: 'Apache-2.0',
+      version: '1.61021.1', channel: 'passed', minEngineVersion: '1.61006.1', requires: ['basics'], updated: '2 hours ago', license: 'Apache-2.0',
       summary: 'Operate GCP projects: IAM audits, Cloud Run deploys, log triage and key rotation.',
       categories: ['Cloud ops', 'Security review'], stars: 1842, rating: 4.7, ratings: 236, holders: '931',
       repo: 'github.com/googlecloudplatform/claudinite-packs', repoPath: 'packs/gcp-ops/',
@@ -1545,9 +1545,9 @@ jobs:
       effects: 'Adds 1 PreToolUse guard (pre-deploy-guard, on Bash) · 4 scheduled tasks (monthly ×3, quarterly ×1), landing as PRs · 3 checks (advisory for 14 days, then blocking) · 6 skills, 1 forced before edits to infra/** · no extra GitHub actions',
       readme: 'gcp-ops gives a repo a safe, opinionated set of rules for day-to-day Google Cloud operations. RULES.md sets the ground rules every session reads. Skills explain how to audit IAM, deploy to Cloud Run with a dry-run first, and triage Cloud Logging output. Checks block the most common foot-guns (public buckets, stale service-account keys) at Stop and in CI. Tasks are scheduled work the scheduler files and the executor runs, landing as PRs. The pre-deploy-guard is a PreToolUse guard that denies deploys to production projects without an approved plan.',
       versions: [
-        ['1.61021.1', '2026-10-21', 'Passed', 'stable', 'Fix custom-role handling in iam-audit'],
-        ['1.61009.1', '2026-10-09', 'Passed', 'stable', 'Add billing-anomalies skill, billing-anomaly declared check'],
-        ['1.60922.1', '2026-09-22', 'Passed', 'stable', 'Docs; tighten no-public-buckets check'],
+        ['1.61021.1', '2026-10-21', 'Passed', 'passed', 'Fix custom-role handling in iam-audit'],
+        ['1.61009.1', '2026-10-09', 'Passed', 'passed', 'Add billing-anomalies skill, billing-anomaly declared check'],
+        ['1.60922.1', '2026-09-22', 'Passed', 'passed', 'Docs; tighten no-public-buckets check'],
         ['1.60910.1', '2026-09-10', 'Revoked', 'revoked', 'Revoked: rotate-service-keys could delete a key before the new one was active (advisory PS-2026-014). Members holding it keep it and are told on their next update.']
       ],
       reviews: [
@@ -1563,7 +1563,7 @@ jobs:
     },
     'sql-tidy': {
       token: 'pack2', name: '@dana-k/sql-tidy', icon: 'SQ', publisher: 'dana-k', publisherHref: '#browse', verified: false,
-      version: '1.61009.1', channel: 'stable', minEngineVersion: '1.61006.1', requires: [], updated: '12 days ago', license: 'MIT',
+      version: '1.61009.1', channel: 'passed', minEngineVersion: '1.61006.1', requires: [], updated: '12 days ago', license: 'MIT',
       summary: 'Format, lint and explain SQL across Postgres, BigQuery and DuckDB. One skill, two checks, no fuss.',
       categories: ['Data engineering'], stars: 214, rating: 3.9, ratings: 31, holders: '64',
       repo: null, repoPath: null,
@@ -1579,9 +1579,9 @@ jobs:
       effects: 'Adds 2 checks (advisory for 14 days, then blocking) · 1 skill · no guards, no tasks, no GitHub actions',
       readme: 'sql-tidy gives a repo a consistent SQL style in RULES.md and two checks to enforce it at Stop and in CI. It is intentionally small. The formatter check is opinionated about CTE placement and currently has no configuration.',
       versions: [
-        ['1.61009.1', '2026-10-09', 'Passed', 'stable', 'Keep trailing comments when formatting'],
-        ['1.60920.1', '2026-09-20', 'Passed', 'stable', 'Add no-select-star check'],
-        ['1.60830.1', '2026-08-30', 'Passed', 'stable', 'DuckDB dialect']
+        ['1.61009.1', '2026-10-09', 'Passed', 'passed', 'Keep trailing comments when formatting'],
+        ['1.60920.1', '2026-09-20', 'Passed', 'passed', 'Add no-select-star check'],
+        ['1.60830.1', '2026-08-30', 'Passed', 'passed', 'DuckDB dialect']
       ],
       reviews: [
         ['★★★☆☆', 'ariel', '1.60920.1', 'Sep 30, 2026', 'Opinionated, no config', 'Works, but the formatter check is opinionated about CTE placement and has no config.'],
@@ -1651,7 +1651,7 @@ jobs:
       '<div class="grow"><div class="t">No public repo</div><div class="small">This pack was uploaded as an archive. You cannot inspect its source history or open issues upstream; you can still read every file in the <b>Contents</b> tab and the validation report before adopting.</div></div></div>';
     var versions = p.versions.map(function (v) {
       var pill = v[2] === 'Passed' ? '<span class="pill ok">Passed</span>' : '<span class="pill fail">Revoked</span>';
-      var chan = v[3] === 'stable' ? '<span class="pill accent">stable</span>' : (v[3] === 'staging' ? '<span class="pill outline">staging</span>' : '<span class="faint">—</span>');
+      var chan = v[3] === 'passed' ? '<span class="pill accent">passed</span>' : (v[3] === 'in cooldown' ? '<span class="pill outline">in cooldown</span>' : '<span class="faint">—</span>');
       return '<tr><td class="ver">' + esc(v[0]) + '</td><td class="mono small">' + esc(v[1]) + '</td><td>' + pill + '</td><td>' + chan + '</td><td class="small">' + esc(v[4]) + '</td><td><a class="small" href="#validation">report</a></td></tr>';
     }).join('');
     var reviews = p.reviews.map(function (r) {
@@ -1670,7 +1670,7 @@ jobs:
       '<div class="page-head">' +
         '<div class="row" style="gap:16px"><span class="pack-icon lg">' + esc(p.icon) + '</span><div>' +
           '<h1 style="margin-bottom:2px">' + esc(p.name) + ' <span class="ver">' + esc(p.version) + '</span></h1>' +
-          '<div class="small muted">by <a href="' + p.publisherHref + '">' + esc(p.publisher) + '</a>' + verifiedMark(p) + ' · updated ' + esc(p.updated) + ' · ' + esc(p.channel) + ' · ' + esc(p.license) + ' · minEngineVersion ' + esc(p.minEngineVersion) + '</div>' +
+          '<div class="small muted">by <a href="' + p.publisherHref + '">' + esc(p.publisher) + '</a>' + verifiedMark(p) + ' · updated ' + esc(p.updated) + ' · cooldown ' + esc(p.channel) + ' · ' + esc(p.license) + ' · minEngineVersion ' + esc(p.minEngineVersion) + '</div>' +
           '<div class="row mt1"><span class="stars">' + starStr(p.rating) + '</span><span class="small"><b>' + p.rating.toFixed(1) + '</b> (' + p.ratings + ' ratings)</span><span class="small">☆ ' + p.stars.toLocaleString() + ' stars</span><span class="small muted">· ' + esc(p.holders) + ' member repos hold this pack</span></div>' +
         '</div></div>' +
         '<div class="row">' +
@@ -1705,8 +1705,8 @@ jobs:
             '<h4 class="mt2">Files</h4><pre><code>pack.json\nRULES.md\nREADME.md\nskills/' + esc((c.Skills[0] || 'example')) + '/SKILL.md\ndeclared-checks.json\nchecks/' + esc(((c['Coded checks'][0] || c.Guards[0] || 'example')).replace(/-/g, '_')) + '.go' + (c.Tasks.length ? '\ntasks/' + esc(c.Tasks[0]) + '/task.json\ntasks/' + esc(c.Tasks[0]) + '/worker.mjs' : '') + '\n… (' + (p.repo ? 212 : 19) + ' files)</code></pre>' +
           '</div>' +
           '<div class="tabpanel" data-tabgroup="pack" data-panel="versions" hidden>' +
-            '<p class="small muted">A member selects the newest version on its channel that is not revoked and fits its engine; there is no "latest" tag. Revoked versions stay retrievable because member repos already vendor them.</p>' +
-            '<div class="table-wrap"><table><thead><tr><th>Version</th><th>Date</th><th>Validation</th><th>Channel</th><th>Notes</th><th></th></tr></thead><tbody>' + versions + '</tbody></table></div>' +
+            '<p class="small muted">A member repo selects the newest version past its cooldown that is not revoked and fits its engine; there is no "latest" tag. Revoked versions stay retrievable because member repos already vendor them.</p>' +
+            '<div class="table-wrap"><table><thead><tr><th>Version</th><th>Date</th><th>Validation</th><th>Cooldown</th><th>Notes</th><th></th></tr></thead><tbody>' + versions + '</tbody></table></div>' +
           '</div>' +
           '<div class="tabpanel" data-tabgroup="pack" data-panel="reviews" hidden>' +
             '<div class="row between mb2"><div class="rating-bars grow" style="max-width:320px">' +
@@ -1740,7 +1740,7 @@ jobs:
               '<dt>Source</dt><dd>' + (p.repo ? '<span class="pill ok">Public repo</span>' : '<span class="pill warn">No public repo</span>') + '</dd>' +
               '<dt>Signed</dt><dd>' + (p.repo ? 'Sigstore · OIDC' : 'Server-signed on upload') + '</dd>' +
               '<dt>SHA-256</dt><dd class="mono">' + (p.repo ? '9f1c…e3a0' : '41b2…77cd') + '</dd>' +
-              '<dt>Channel</dt><dd class="mono">' + esc(p.channel) + '</dd>' +
+              '<dt>Cooldown</dt><dd class="mono">' + esc(p.channel) + '</dd>' +
               '<dt>minEngineVersion</dt><dd class="mono">' + esc(p.minEngineVersion) + '</dd>' +
               '<dt>Requires</dt><dd class="mono">' + (p.requires.length ? p.requires.map(esc).join(', ') : '<span class="faint">—</span>') + '</dd>' +
             '</dl>' +

@@ -52,7 +52,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <li>All mutating actions are POST with CSRF token and idempotency key.</li>
 <li>PackServer never writes to GitHub: no Check Runs, no mirroring, no comments. An optional GitHub App only reads (repo tarballs, org membership, issue webhooks). Results go to the dashboard and email; &quot;Report on GitHub&quot; only opens a pre-filled issue the user files themselves.</li>
 <li>Async work (validation, payment webhooks) runs in Cloudflare Workers consuming a Queue; UI polls or uses SSE/WebSocket via a Durable Object per run.</li>
-<li>How a pack reaches a repo: a repo (a Claudinite <em>member</em>) declares the pack in its Claudinite settings (<code>packs.declared</code>, optional <code>version:</code> freeze) or runs <code>cn adopt &lt;id&gt;</code>; the pack is fetched as an immutable per-version archive, checked against the signed per-pack index, and vendored into <code>.claudinite/shared/packs/&lt;id&gt;/</code>, landing as a pull request. Nothing is fetched at session time and nothing is installed into Claude Code. Versions are date-based, <code>1.YMMDD.n</code> (e.g. <code>1.61021.1</code>). A version is published to the <code>staging</code> channel and promoted to <code>stable</code> after a soak (length: <code>sitemap.md</code> open decision 16).</li>
+<li>How a pack reaches a repo: a repo (a Claudinite <em>member</em>) declares the pack in its Claudinite settings (<code>packs.declared</code>, optional <code>version:</code> freeze) or runs <code>cn adopt &lt;id&gt;</code>; the pack is fetched as an immutable per-version archive, checked against the signed per-pack index, and vendored into <code>.claudinite/shared/packs/&lt;id&gt;/</code>, landing as a pull request. Nothing is fetched at session time and nothing is installed into Claude Code. Versions are date-based, <code>1.YMMDD.n</code> (e.g. <code>1.61021.1</code>). A published version enters a cooldown (length: <code>sitemap.md</code> open decision 16); member repos&#39; scheduled updates select it only once the cooldown has passed. PackServer replaces the engine&#39;s current repo-and-R2 serving, so that layout is prior art here, not a constraint; <code>cn adopt</code> will take PackServer&#39;s ids.</li>
 <li>&quot;Member&quot; below means a repo running Claudinite. A person with a session is a <em>signed-in user</em> or <em>account</em>.</li>
 </ul>
 <hr>
@@ -103,8 +103,8 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <ol>
 <li><code>signin</code>: &quot;Sign in with a passkey&quot; (default, discoverable credential) or &quot;Sign in with GitHub&quot;. Email codes are not a sign-in method for existing accounts; they appear only under &quot;Lost your passkey?&quot; (recovery).</li>
 <li>GitHub sign-in on an account with MFA → prompt for passkey or TOTP (or a recovery code) before the session is issued.</li>
-<li>Later, user triggers a sensitive action: approve a publish awaiting approval, publish, promote to <code>stable</code>, revoke, change visibility, mint a token, change owners or org members, grant private access, edit trusted publishers, change billing, remove an MFA factor, change email.</li>
-<li>A &quot;Confirm with passkey&quot; dialog names the action (e.g. &quot;Approve @google/vpc-review 1.61020.1 to staging&quot;). The WebAuthn challenge is derived from that action&#39;s parameters, so the assertion cannot be replayed for anything else. TOTP-only accounts type a fresh code in the same dialog.</li>
+<li>Later, user triggers a sensitive action: approve a publish awaiting approval, publish, revoke, change visibility, mint a token, change owners or org members, grant private access, edit trusted publishers, change billing, remove an MFA factor, change email.</li>
+<li>A &quot;Confirm with passkey&quot; dialog names the action (e.g. &quot;Approve and publish @google/vpc-review 1.61020.1&quot;). The WebAuthn challenge is derived from that action&#39;s parameters, so the assertion cannot be replayed for anything else. TOTP-only accounts type a fresh code in the same dialog.</li>
 <li>Worker verifies the assertion and checks the session against the D1 revocation table (not just cached KV), then performs the action. The next sensitive action asks again.</li>
 </ol>
 <div class="diagram"><pre class="mermaid">flowchart TD
@@ -133,7 +133,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <ol>
 <li><code>pack</code>: click Star → toggles immediately (optimistic), count updates. Anonymous click → <code>signin</code> with return URL.</li>
 <li>Click &quot;Rate&quot; or &quot;Write a review&quot; → <code>review</code>.</li>
-<li>Choose version (default: newest stable), 1-5 stars, optional title/body.</li>
+<li>Choose version (default: newest version past its cooldown), 1-5 stars, optional title/body.</li>
 <li>Submit → stored; pack rating recomputed (Bayesian average with prior to avoid 1-review 5-star packs ranking first; see open decision 15).</li>
 <li>Review appears in <code>pack</code> &gt; Reviews with &quot;verified adoption&quot; badge if a repo of the account fetched the pack (optional, decision #8).</li>
 <li>Publisher may reply once per review and flag for moderation.</li>
@@ -197,14 +197,14 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 </ul>
 <hr>
 <h2 id="f-5-publish-via-upload">5. Publish via upload</h2>
-<p><strong>Goal</strong>: publisher uploads an archive, it is validated, listed, paid for, and published to R2 in the engine&#39;s serving layout, on the <code>staging</code> channel. Whether upload-only packs (no <code>sourceCommit</code>, no reviewable source) exist at all, or every pack must come from a repo, is <code>sitemap.md</code> open decision 14.</p>
+<p><strong>Goal</strong>: publisher uploads an archive, it is validated, listed, paid for, and published to R2, where it enters its cooldown. Whether upload-only packs (no <code>sourceCommit</code>, no reviewable source) exist at all, or every pack must come from a repo, is <code>sitemap.md</code> open decision 14.</p>
 <ol>
 <li><code>publish</code> step 1 Source → &quot;Upload archive&quot; (<code>.tar.gz</code>/<code>.zip</code>, ≤ 3 MB). Browser uploads directly to R2 via a presigned URL (upload bucket, 24h TTL).</li>
 <li>Step 2 Validate → Worker enqueues validation job; UI streams progress; links to <code>validation</code>.</li>
 <li>On pass/warn → step 3 Listing details, pre-filled from <code>pack.json</code> (name, <code>pitch</code> as summary, category, repo URL if declared). Publisher confirms &quot;No public repo&quot; if none.</li>
 <li>Step 4 Visibility &amp; price → Public ($1) or Private (TBD price, pick access model).</li>
 <li>Step 5 Pay → Stripe Checkout (or one-click with saved method). See flow 8.</li>
-<li>Step 6 Publish → confirm with passkey → Worker copies the archive from the upload bucket to the public (or private) packs bucket as <code>packs/&lt;id&gt;/&lt;version&gt;.tar.gz</code> (never overwritten), rewrites and signs <code>packs/&lt;id&gt;/index.json</code> (versions, sha256, size, channel = <code>staging</code>, revoked, minEngineVersion, requires, sourceCommit, serial), then rewrites and signs <code>packs/catalog.json</code> as the last write; invalidates cache, emits &quot;published&quot; event. The version is on <code>staging</code>; it is promoted to <code>stable</code> after the soak (open decision 16).</li>
+<li>Step 6 Publish → confirm with passkey → Worker copies the archive from the upload bucket to the public (or private) packs bucket as <code>packs/&lt;id&gt;/&lt;version&gt;.tar.gz</code> (never overwritten), rewrites and signs <code>packs/&lt;id&gt;/index.json</code> (versions, sha256, size, publishedAt, revoked, minEngineVersion, requires, sourceCommit, serial), then rewrites and signs <code>packs/catalog.json</code> as the last write; invalidates cache, emits &quot;published&quot; event. The version is published; member repos&#39; updates select it once its cooldown passes (open decision 16).</li>
 </ol>
 <div class="diagram"><pre class="mermaid">sequenceDiagram
   participant Pu as Publisher
@@ -229,9 +229,9 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
   St--&gt;&gt;W: webhook payment_intent.succeeded
   Pu-&gt;&gt;Wz: Publish (passkey tap)
   W-&gt;&gt;R2: write packs/id/version.tar.gz once
-  W-&gt;&gt;R2: rewrite and sign packs/id/index.json (channel staging)
+  W-&gt;&gt;R2: rewrite and sign packs/id/index.json
   W-&gt;&gt;R2: rewrite and sign packs/catalog.json
-  W--&gt;&gt;Pu: published to staging, redirect to pack</pre></div><p>Failure / edge states:</p>
+  W--&gt;&gt;Pu: published, redirect to pack</pre></div><p>Failure / edge states:</p>
 <ul>
 <li>Upload interrupted → resumable multipart; draft persists on <code>dashboard</code> &gt; Drafts.</li>
 <li>Validation fail → flow 7.</li>
@@ -246,7 +246,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <p>Setup (once, in <code>github</code>, each change confirmed with a passkey):</p>
 <ol>
 <li>Add a trusted publisher: owner, repo, workflow file, optional environment, path, tag rule (the tag is the version, e.g. <code>1.61021.1</code>), target pack.</li>
-<li>Choose release mode: publish to <code>staging</code> automatically when validation passes, or hold for owner approval (default for verified orgs).</li>
+<li>Choose release mode: publish automatically when validation passes, or hold for owner approval (default for verified orgs).</li>
 <li>Copy the provided workflow YAML (<code>id-token: write</code>; it runs <code>cn vendor</code> so the archive is the vendored set, with <code>test/</code>, <code>docs/</code> and <code>provenance/</code> stripped, then uploads it with the OIDC token; first adoption and the update then give identical files). PackServer gets no write access to the repo.
 Alternative without a workflow: install the read-only PackServer GitHub App; a matching tag push webhook makes PackServer fetch that path&#39;s tarball, apply the same vendoring rule, and run the same validation. Results go to the dashboard and email only.</li>
 </ol>
@@ -254,8 +254,8 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 4. Tag pushed → workflow runs → <code>cn vendor</code> → requests an OIDC token → <code>POST /api/publish/oidc</code> with the token and the pack archive built from the path at that ref.
 5. Worker verifies the JWT against GitHub&#39;s JWKS and matches <code>repository</code>, <code>workflow_ref</code>, <code>environment</code> and <code>ref</code> claims to a trusted publisher → stores the archive in the R2 upload bucket, enqueues validation, returns a run id and status URL.
 6. The workflow polls the status URL and prints the verdict and report link in its own job log; it exits non-zero on failure, so the GitHub run shows red or green without PackServer writing anything.
-7. On pass: if the trusted publisher is in hold mode, the version becomes <strong>Awaiting approval</strong> and an owner approves it on <code>dashboard</code> with a passkey tap bound to that version. Otherwise, if the pack already has its credit (existing pack, new version) → publish directly. A new pack without a credit → &quot;awaiting payment&quot;, dashboard alert and email; publisher completes flow 8. Publishing writes the archive once, re-signs the per-pack index with channel <code>staging</code> and <code>sourceCommit</code> = the tagged commit, and re-signs the catalog (as in flow 5 step 6).
-8. Version live on <code>staging</code>; the status URL now links to <code>pack</code>. After the soak it is promoted to <code>stable</code> (automatic or a second passkey action: open decision 16).</p>
+7. On pass: if the trusted publisher is in hold mode, the version becomes <strong>Awaiting approval</strong> and an owner approves it on <code>dashboard</code> with a passkey tap bound to that version. Otherwise, if the pack already has its credit (existing pack, new version) → publish directly. A new pack without a credit → &quot;awaiting payment&quot;, dashboard alert and email; publisher completes flow 8. Publishing writes the archive once, re-signs the per-pack index with <code>sourceCommit</code> = the tagged commit, and re-signs the catalog (as in flow 5 step 6).
+8. Version published; the status URL now links to <code>pack</code>. Member repos&#39; updates select it once its cooldown passes (open decision 16).</p>
 <div class="diagram"><pre class="mermaid">sequenceDiagram
   participant GH as GitHub Actions
   participant W as Worker (api)
@@ -277,16 +277,16 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
   alt pass, hold mode
     W--&gt;&gt;GH: awaiting owner approval
     O-&gt;&gt;W: approve with passkey (bound to this version)
-    W-&gt;&gt;R2: publish to staging (archive, signed index, catalog)
+    W-&gt;&gt;R2: publish (archive, signed index, catalog)
   else pass, auto mode, credit available
-    W-&gt;&gt;R2: publish to staging (archive, signed index, catalog)
-    W--&gt;&gt;GH: published to staging, link to pack
+    W-&gt;&gt;R2: publish (archive, signed index, catalog)
+    W--&gt;&gt;GH: published, link to pack
   else pass, new pack needs credit
     W--&gt;&gt;GH: awaiting payment (job exits neutral)
   else fail
     W--&gt;&gt;GH: failed + report link (job exits 1)
   end
-  Note over W,R2: after the soak: index entry channel becomes stable</pre></div><p>Failure / edge states:</p>
+  Note over W,R2: after the cooldown, member repos' updates select it</pre></div><p>Failure / edge states:</p>
 <ul>
 <li>JWT claims mismatch (wrong workflow file, fork PR, environment missing) → 403 with the exact claim diff in the response, printed in the job log; nothing stored.</li>
 <li>Trusted publisher removed or disabled → 403 &quot;No trusted publisher matches&quot;.</li>
@@ -450,11 +450,11 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 </ul>
 <hr>
 <h2 id="f-10-private-pack-access-options">10. Private pack access (options)</h2>
-<p><strong>Goal</strong>: restrict who can discover a private pack and which repos can fetch it. Not decided; UI must support switching models per pack. In every option the reader of a private pack is a repo&#39;s scheduled update task or <code>cn adopt</code>, through a <code>packs.sources</code> entry (a CDN base or a repo&#39;s <code>vendored</code> branch) with a read token in CI secrets; not a session-time fetch. Whether PackServer serves private packs as a <code>packs.sources</code> host at all, or steps aside for &quot;packs from a repo&quot;, is <code>sitemap.md</code> open decision 17.</p>
+<p><strong>Goal</strong>: restrict who can discover a private pack and which repos can fetch it. Not decided; UI must support switching models per pack. In every option the reader of a private pack is a repo&#39;s scheduled update task or <code>cn adopt</code>, reading from PackServer with a read token kept in the repo&#39;s CI secrets; not a session-time fetch. Which access model PackServer offers is <code>sitemap.md</code> open decision 17.</p>
 <p>Option A – Org members / teams:</p>
 <ol>
 <li><code>access</code>: model = &quot;Org members&quot;; optional team filter.</li>
-<li>Org members read via web (session); their repos read via a personal <code>read:private</code> token placed in <code>packs.sources</code>, used by the update task in CI and by <code>cn adopt</code>.</li>
+<li>Org members read via web (session); their repos read via a personal <code>read:private</code> token kept in the repo&#39;s CI secrets, used by the update task in CI and by <code>cn adopt</code>.</li>
 <li>Removing an org member revokes access immediately (tokens of that account stop resolving that pack).</li>
 </ol>
 <p>Option B – Named allow-list:</p>
@@ -473,12 +473,12 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <p>Option C – Scoped read tokens for repos:</p>
 <ol>
 <li><code>access</code>: &quot;Create read token&quot; (confirm with passkey): name, scope <code>read:pack/{id}</code> (or <code>read:org/{org}/*</code>), expiry (max 1 year), optional CIDR allow-list.</li>
-<li>Token shown once; put into the repo&#39;s (or fleet&#39;s) CI secrets and referenced from <code>packs.sources</code>; the update task sends it as <code>Authorization: Bearer</code> to the pack source, as does <code>cn adopt</code>.</li>
+<li>Token shown once; put into the repo&#39;s (or fleet&#39;s) CI secrets; the update task sends it to PackServer as <code>Authorization: Bearer</code>, as does <code>cn adopt</code>.</li>
 <li>Audit log on <code>access</code>: token name, last used, fetch counts by member repo; revoke anytime.</li>
 </ol>
 <div class="diagram"><pre class="mermaid">flowchart LR
   subgraph A["Option A: org members"]
-    A1["Account with an org role"] --&gt; A2["Session, or read token in packs.sources"] --&gt; A3["Repo update task reads pack"]
+    A1["Account with an org role"] --&gt; A2["Session, or read token in CI secrets"] --&gt; A3["Repo update task reads pack"]
   end
   subgraph B["Option B: allow-list"]
     B1["Invited handle/org"] --&gt; B2["Accept invite"] --&gt; B3["Repo update task reads pack"]
@@ -498,16 +498,16 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <hr>
 <h2 id="f-11-a-claude-code-session-discovering-a-pack-via-mcp">11. A Claude Code session discovering a pack via MCP</h2>
 <p><strong>Goal</strong>: a Claude Code session asks what packs exist for a kind of work and suggests one to declare. The MCP endpoint is a discovery aid; delivery is <code>cn adopt &lt;id&gt;</code> (or a <code>packs.declared</code> entry), which vendors the pack and lands a PR. Nothing is fetched at session time. Documented on <code>claude-code</code>.</p>
-<p>Tools: <code>list_categories()</code>, <code>search_packs(query, category?, content_type?, verified_only?, channel?, limit)</code> where <code>content_type</code> is one of <code>rules</code>, <code>skills</code>, <code>checks</code>, <code>guards</code>, <code>tasks</code>; <code>get_pack(id, version?)</code> → metadata, manifest of effects, channel, <code>minEngineVersion</code>, <code>requires</code>, publisher tier, adoption instructions; <code>get_pack_manifest(id, version)</code> → <code>pack.json</code>; <code>fetch_pack(id, version)</code> → the archive URL (<code>packs/&lt;id&gt;/&lt;version&gt;.tar.gz</code> on the public CDN) and the signed index entry (sha256, channel, minEngineVersion, requires, revoked), for inspection.</p>
+<p>Tools: <code>list_categories()</code>, <code>search_packs(query, category?, content_type?, verified_only?, past_cooldown?, limit)</code> where <code>content_type</code> is one of <code>rules</code>, <code>skills</code>, <code>checks</code>, <code>guards</code>, <code>tasks</code>; <code>get_pack(id, version?)</code> → metadata, manifest of effects, cooldown state, <code>minEngineVersion</code>, <code>requires</code>, publisher tier, adoption instructions; <code>get_pack_manifest(id, version)</code> → <code>pack.json</code>; <code>fetch_pack(id, version)</code> → the archive URL (<code>packs/&lt;id&gt;/&lt;version&gt;.tar.gz</code> on the public CDN) and the signed index entry (sha256, publishedAt, minEngineVersion, requires, revoked), for inspection.</p>
 <p>Public:</p>
 <ol>
 <li>The session connects to <code>https://mcp.packserver.dev</code> (Streamable HTTP MCP), no auth.</li>
-<li><code>search_packs(&quot;deploy to GCP Cloud Run&quot;, category=&quot;cloud&quot;)</code> → ranked list of compact summaries: <code>pitch</code> (from <code>pack.json</code>), manifest of effects, channel, <code>minEngineVersion</code>, <code>requires</code>, publisher tier. Full content stays behind <code>get_pack</code> so a search costs the session little context.</li>
-<li><code>get_pack(&quot;@google/gcp&quot;)</code> → summary, warnings, validation verdict, newest stable version, manifest of effects.</li>
+<li><code>search_packs(&quot;deploy to GCP Cloud Run&quot;, category=&quot;cloud&quot;)</code> → ranked list of compact summaries: <code>pitch</code> (from <code>pack.json</code>), manifest of effects, cooldown state, <code>minEngineVersion</code>, <code>requires</code>, publisher tier. Full content stays behind <code>get_pack</code> so a search costs the session little context.</li>
+<li><code>get_pack(&quot;@google/gcp&quot;)</code> → summary, warnings, validation verdict, newest version past its cooldown, manifest of effects.</li>
 <li>The session proposes <code>cn adopt @google/gcp</code> (or the settings declaration, with an optional <code>version:</code> freeze); running it fetches the archive, checks it against the signed index, vendors it into <code>.claudinite/shared/packs/&lt;id&gt;/</code> and lands a PR for review. <code>fetch_pack</code> exists so a session (or a person) can read the archive before proposing; it is not the delivery path.</li>
 </ol>
 <p>Private (option C token or personal read token):
-5. Same with <code>Authorization: Bearer ps_rt_…</code>; <code>search_packs</code> now includes private packs the token can read. The same token, placed in <code>packs.sources</code>, is what the repo&#39;s update task uses.
+5. Same with <code>Authorization: Bearer ps_rt_…</code>; <code>search_packs</code> now includes private packs the token can read. The same token, kept in CI secrets, is what the repo&#39;s update task uses.
 6. Worker verifies token hash in D1/KV, checks scope and expiry, logs usage.</p>
 <div class="diagram"><pre class="mermaid">sequenceDiagram
   participant Ag as Claude Code session
@@ -517,7 +517,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
   Ag-&gt;&gt;M: initialize (no auth)
   Ag-&gt;&gt;M: search_packs "deploy to GCP"
   M-&gt;&gt;D: query public index
-  M--&gt;&gt;Ag: results with pitch, effects, channel, publisher tier
+  M--&gt;&gt;Ag: results with pitch, effects, cooldown, publisher tier
   Ag-&gt;&gt;M: get_pack @google/gcp
   M--&gt;&gt;Ag: metadata, manifest of effects, adoption instructions
   Ag-&gt;&gt;Repo: propose cn adopt @google/gcp
@@ -530,7 +530,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <ul>
 <li>Invalid/expired token → 401 with <code>WWW-Authenticate</code> hint and docs link; never reveals whether pack exists.</li>
 <li>Rate limits: anonymous 60 req/min per IP; token 600 req/min; archive fetches counted toward &quot;member repos holding this pack&quot; once per (token/IP, version, day).</li>
-<li>Revoked version requested → <code>get_pack</code> returns it with <code>revoked: true</code> and reason; <code>fetch_pack</code> works only with exact version. Selection is by channel (newest not-revoked version on the member&#39;s channel that fits its engine); there is no &quot;latest&quot;.</li>
+<li>Revoked version requested → <code>get_pack</code> returns it with <code>revoked: true</code> and reason; <code>fetch_pack</code> works only with exact version. Selection is the newest not-revoked version past its cooldown that fits the member&#39;s engine; there is no &quot;latest&quot;.</li>
 <li>The session asks for a category that doesn&#39;t exist → <code>list_categories</code> suggestion in error.</li>
 <li>Responses include <code>advisory</code> field when a public security advisory exists for the version.</li>
 </ul>
@@ -541,7 +541,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <li><code>pack</code> &gt; Versions (publisher view) → version row menu → &quot;Revoke&quot;.</li>
 <li>Enter reason (shown publicly) and optional &quot;security&quot; flag (creates advisory stub).</li>
 <li>Confirm with passkey (bound to this version).</li>
-<li>Revoke: the index entry is marked <code>revoked</code> with the reason and re-signed; the revocation feed is appended and signed; the update never selects it again (selection is by channel, there is no &quot;latest&quot;); members already holding it keep it, and their next update reports the held version and its reason; exact-version fetch still works with <code>revoked: true</code>; search excludes it.</li>
+<li>Revoke: the index entry is marked <code>revoked</code> with the reason and re-signed; the revocation feed is appended and signed; the update never selects it again (selection is the newest eligible version, there is no &quot;latest&quot;); members already holding it keep it, and their next update reports the held version and its reason; exact-version fetch still works with <code>revoked: true</code>; search excludes it.</li>
 <li>Notify users who starred the pack (opt-in digest) and open issues referencing the version.</li>
 <li>Un-revoke possible by owner (confirm with passkey), logged; the index is re-signed.</li>
 </ol>
@@ -704,15 +704,15 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <td><code>/</code></td>
 <td>Entry point: search, discovery; the pitch leads with checks (&quot;the Stripe pack exists and I can pin it&quot;)</td>
 <td>Anon+</td>
-<td>Hero search box; category grid (e.g. Cloud, Data, Testing, Security, Docs, DevOps); Recently stable / Verified publishers rails (a &quot;Trending&quot; rail is open decision 15); &quot;For Claude Code&quot; panel with the MCP endpoint URL and the one-line adoption (<code>cn adopt &lt;id&gt;</code>, lands as a PR); footer</td>
+<td>Hero search box; category grid (e.g. Cloud, Data, Testing, Security, Docs, DevOps); Recently published / Verified publishers rails (a &quot;Trending&quot; rail is open decision 15); &quot;For Claude Code&quot; panel with the MCP endpoint URL and the one-line adoption (<code>cn adopt &lt;id&gt;</code>, lands as a PR); footer</td>
 <td>Search, pick category, open pack, open <code>claude-code</code>, sign in</td>
 </tr>
 <tr>
 <td><code>browse</code></td>
-<td><code>/browse?q=&amp;category=&amp;feature=&amp;verified=&amp;repo=&amp;channel=&amp;sort=</code></td>
+<td><code>/browse?q=&amp;category=&amp;feature=&amp;verified=&amp;repo=&amp;cooldown=&amp;sort=</code></td>
 <td>Search results</td>
 <td>Anon+</td>
-<td>Left filter rail: category (multi), contains pack content type (rules / skills / checks / guards / tasks), &quot;checks only (no tasks, no skills)&quot;, channel: stable, verified publisher toggle, has public repo toggle; sort: relevance / age / publisher tier; result cards (name, publisher + badge, one-liner, manifest line &quot;4 checks · 1 guard · 4 tasks (monthly) · 6 skills&quot;, channel, publisher tier, updated); pagination</td>
+<td>Left filter rail: category (multi), contains pack content type (rules / skills / checks / guards / tasks), &quot;checks only (no tasks, no skills)&quot;, past cooldown, verified publisher toggle, has public repo toggle; sort: relevance / age / publisher tier; result cards (name, publisher + badge, one-liner, manifest line &quot;4 checks · 1 guard · 4 tasks (monthly) · 6 skills&quot;, cooldown state, publisher tier, updated); pagination</td>
 <td>Filter, sort, open pack. URL is the state (crates.io / npm pattern)</td>
 </tr>
 <tr>
@@ -720,7 +720,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <td><code>/packs/{publisher}/{pack}</code></td>
 <td>Pack detail</td>
 <td>Anon+ (actions gated)</td>
-<td>Header: name, publisher + verified badge, newest stable version + channel + visibility chip, star button + count, rating stars + count (rating display is open decision 15); <strong>Manifest of effects</strong> (above the README): guards added, tool calls guarded, tasks and cadence, forced skills, GitHub actions requested, <code>minEngineVersion</code>, <code>requires</code>; <strong>Adopt panel</strong>: <code>cn adopt &lt;id&gt;</code> and the Claudinite settings declaration (<code>packs.declared</code>, with optional <code>version:</code> freeze), muted line &quot;Lands as a pull request; updates arrive the same way&quot; (copy); <strong>Repo link</strong> or prominent <strong>&quot;No public repo&quot;</strong> badge; <strong>Contents summary</strong> by pack content type with counts (rules, skills, declared / coded checks, guards, tasks); <strong>Validation status</strong> chip (passed / warnings) linking to public summary; tabs: Overview (README), Contents (tree by content type, each with name + description; every file readable), Versions (list, channel, revoked marker, sha256, minEngineVersion, requires, changelog), Reviews (rating histogram + reviews), Issues (bug reports, severity, status)</td>
+<td>Header: name, publisher + verified badge, newest version + cooldown state + visibility chip, star button + count, rating stars + count (rating display is open decision 15); <strong>Manifest of effects</strong> (above the README): guards added, tool calls guarded, tasks and cadence, forced skills, GitHub actions requested, <code>minEngineVersion</code>, <code>requires</code>; <strong>Adopt panel</strong>: <code>cn adopt &lt;id&gt;</code> and the Claudinite settings declaration (<code>packs.declared</code>, with optional <code>version:</code> freeze), muted line &quot;Lands as a pull request; updates arrive the same way&quot; (copy); <strong>Repo link</strong> or prominent <strong>&quot;No public repo&quot;</strong> badge; <strong>Contents summary</strong> by pack content type with counts (rules, skills, declared / coded checks, guards, tasks); <strong>Validation status</strong> chip (passed / warnings) linking to public summary; tabs: Overview (README), Contents (tree by content type, each with name + description; every file readable), Versions (list, cooldown state, revoked marker, sha256, minEngineVersion, requires, changelog), Reviews (rating histogram + reviews), Issues (bug reports, severity, status)</td>
 <td>Star, rate/review (-&gt; <code>review</code>), report (-&gt; <code>report</code>), copy adopt snippet, switch version, publisher-only: Manage menu (edit listing, access, revoke, new version)</td>
 </tr>
 <tr>
@@ -736,7 +736,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <td><code>/claude-code</code></td>
 <td>&quot;For Claude Code&quot;: MCP endpoint docs</td>
 <td>Anon+</td>
-<td>Endpoint URL; tool reference: <code>search_packs</code>, <code>get_pack</code>, <code>list_categories</code>, <code>get_pack_manifest</code>, <code>fetch_pack</code>; how a session uses them (discover and inspect, then propose <code>cn adopt &lt;id&gt;</code>, which lands a PR; nothing is fetched at session time); auth section (public = none, private = a read token used by the repo&#39;s update task and <code>cn adopt</code> via <code>packs.sources</code>, see open decision 17); example transcripts; MCP client config snippet; rate limits</td>
+<td>Endpoint URL; tool reference: <code>search_packs</code>, <code>get_pack</code>, <code>list_categories</code>, <code>get_pack_manifest</code>, <code>fetch_pack</code>; how a session uses them (discover and inspect, then propose <code>cn adopt &lt;id&gt;</code>, which lands a PR; nothing is fetched at session time); auth section (public = none, private = a read token kept in the repo&#39;s CI secrets and used by its update task and <code>cn adopt</code>, see open decision 17); example transcripts; MCP client config snippet; rate limits</td>
 <td>Copy config, create read token (-&gt; <code>account</code>)</td>
 </tr>
 <tr>
@@ -760,7 +760,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <td><code>/packs/{p}/{pack}/review</code></td>
 <td>Rate + write review</td>
 <td>Signed-in</td>
-<td>Version selector (defaults to newest stable); 1-5 star input (open decision 15); title; body (markdown); edit existing review notice</td>
+<td>Version selector (defaults to newest version); 1-5 star input (open decision 15); title; body (markdown); edit existing review notice</td>
 <td>Submit, edit, delete own review</td>
 </tr>
 <tr>
@@ -784,7 +784,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <td><code>/dashboard</code></td>
 <td>Publisher home</td>
 <td>Publisher</td>
-<td>Context switcher (personal / each org); alerts strip (failed validations, pending payments, expiring domain verification, security reports); My packs table (name, visibility, newest version, channel, status: published / draft / validating / failed / revoked, stars, member repos holding it, open issues); Drafts; Private packs section; quick links to <code>github</code>, <code>org</code>, <code>billing</code></td>
+<td>Context switcher (personal / each org); alerts strip (failed validations, pending payments, expiring domain verification, security reports); My packs table (name, visibility, newest version, cooldown state, status: published / draft / validating / failed / revoked, stars, member repos holding it, open issues); Drafts; Private packs section; quick links to <code>github</code>, <code>org</code>, <code>billing</code></td>
 <td>New pack (-&gt; <code>publish</code>), open pack manage, resume draft</td>
 </tr>
 <tr>
@@ -792,7 +792,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <td><code>/publish</code></td>
 <td>6-step wizard</td>
 <td>Publisher</td>
-<td>Stepper: 1 Source (GitHub repo + path, read from the repo (trusted publishing workflow running <code>cn vendor</code>, or the read-only GitHub App), or upload archive drag-drop with size limit; upload vs. packs-from-a-repo is open decision 14) → 2 Validate (live log, links to <code>validation</code>) → 3 Listing details (name, slug, category, tags, summary, README preview, repo link / &quot;no public repo&quot; confirm, icon) → 4 Visibility &amp; price (Public $1 one-time / Private: price TBD, access model picker) → 5 Pay (Stripe Checkout redirect, or &quot;payment method on file&quot; one-click) → 6 Publish to <code>staging</code> (confirm with passkey); <code>stable</code> after the soak (open decision 16)</td>
+<td>Stepper: 1 Source (GitHub repo + path, read from the repo (trusted publishing workflow running <code>cn vendor</code>, or the read-only GitHub App), or upload archive drag-drop with size limit; upload vs. packs-from-a-repo is open decision 14) → 2 Validate (live log, links to <code>validation</code>) → 3 Listing details (name, slug, category, tags, summary, README preview, repo link / &quot;no public repo&quot; confirm, icon) → 4 Visibility &amp; price (Public $1 one-time / Private: price TBD, access model picker) → 5 Pay (Stripe Checkout redirect, or &quot;payment method on file&quot; one-click) → 6 Publish (confirm with passkey); member repos&#39; updates take it after the cooldown (open decision 16)</td>
 <td>Next/back, save draft, cancel</td>
 </tr>
 <tr>
@@ -1080,7 +1080,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 </tbody></table>
 </div><p>Note: publishing a public pack is a one-way &quot;public forever&quot; promise for already-vendored versions: a public version can be revoked (never selected by an update) but the archive stays retrievable by exact version, since member repos already vendor it. Taking a pack private after being public only affects future versions.</p>
 <h2 id="s-private-pack-access-options-not-decided">Private pack access: options (not decided)</h2>
-<p>The engine&#39;s private path today is a <code>packs.sources</code> entry (a CDN base or a repo&#39;s <code>vendored</code> branch) read by <code>cn adopt</code> and the scheduled update task in Actions; whether PackServer serves private packs as a <code>packs.sources</code> host or steps aside for &quot;packs from a repo&quot; is open decision 17. The options below describe who may read; in every option the reader is a repo&#39;s update task or <code>cn adopt</code>, not a session-time fetch.</p>
+<p>PackServer serves private packs itself, replacing the engine&#39;s current <code>packs.sources</code> path (prior art, not a constraint); which model it offers is open decision 17. The options below describe who may read; in every option the reader is a repo&#39;s update task or <code>cn adopt</code>, not a session-time fetch.</p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -1093,7 +1093,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 </thead>
 <tbody><tr>
 <td>A. Org members / teams</td>
-<td>Anyone with a role in the owning org (or named team) can read. The repo&#39;s update task and <code>cn adopt</code> use a read token in <code>packs.sources</code>.</td>
+<td>Anyone with a role in the owning org (or named team) can read. The repo&#39;s update task and <code>cn adopt</code> use a read token kept in CI secrets.</td>
 <td>Simplest mental model; mirrors npm private packages / Docker Hub private repos</td>
 <td>Requires everyone to be in the org; no fine-grained external sharing</td>
 <td>npm orgs, Docker Hub, GitHub Packages</td>
@@ -1107,8 +1107,8 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 </tr>
 <tr>
 <td>C. Scoped read tokens for repos</td>
-<td>Publisher mints tokens scoped to <code>read:pack/{id}</code> with expiry and optional IP/CIDR; distributed out-of-band into CI secrets; the update task sends them to the pack source.</td>
-<td>Best fit for a fleet manager mirroring a private pack for its members (<code>packs.sources</code>, engine design §Pack sources); no PackServer account needed for the consumer</td>
+<td>Publisher mints tokens scoped to <code>read:pack/{id}</code> with expiry and optional IP/CIDR; distributed out-of-band into CI secrets; the update task sends them to PackServer.</td>
+<td>Best fit for a fleet manager handing a private pack to its member repos; no PackServer account needed for the consumer</td>
 <td>Secret distribution and rotation on the publisher; audit by token not by person</td>
 <td>PyPI/npm granular tokens, Artifactory access tokens, Cloudflare API tokens</td>
 </tr>
@@ -1136,15 +1136,16 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <li><strong>Category taxonomy</strong>: fixed curated list vs. free tags. Proposal: fixed top-level categories + free tags.</li>
 <li><strong>Org verification method</strong> (settled by the backend design): GitHub org proof (read-only App install or GitHub sign-in as org admin) and domain proof (DNS TXT or <code>.well-known</code> file) each give their own badge; Verified Publisher needs both plus scope-wide MFA and manual review.</li>
 </ol>
-<p>Raised by the Claudinite alignment review (<code>/mnt/project-files/claudinite/reviews/ui.md</code>, owner decisions D1–D7); open, not rewritten here:</p>
+<p>Raised by the Claudinite alignment review (<code>/mnt/project-files/claudinite/reviews/ui.md</code>). PackServer replaces the engine&#39;s current repo-and-R2 pack serving, so the engine&#39;s layout, channels and <code>packs.sources</code> are prior art, not constraints; <code>cn adopt</code> will adapt to PackServer&#39;s ids.</p>
 <ol start="13">
-<li><strong>Pack ids: <code>@scope/name</code> vs bare ids</strong> (review D1). The backend design and every UI file use <code>@google/gcp-ops</code>; the engine&#39;s declarations, index layout (<code>packs/&lt;id&gt;/…</code>), check-id prefixes and <code>cn adopt ID[,ID]</code> use bare ids, and the shelf must reserve <code>fleet</code>. Either the engine learns scoped ids, or PackServer maps a scope to a bare id (<code>google-gcp-ops</code>) and the UI shows both. The adopt line on every pack page depends on this.</li>
-<li><strong>Who publishes, and from where</strong> (review D2). Today only the packs repo&#39;s release workflow publishes, and an organisation&#39;s own packs come <em>from a repo</em> it controls. The wizard&#39;s &quot;upload an archive&quot; path produces packs with no <code>sourceCommit</code> and no reviewable source. Decide whether upload-only packs exist at all, or whether every pack must come from a repo with upload reserved for private packs.</li>
-<li><strong>Reputation signals: stars, 1-5 ratings, &quot;Trending&quot;, fetch counts, pack score</strong> (review D3). The personas say install and star counts are ignored, freshness is a risk signal, and a score is accepted only from verifiable facts with a published formula. Decide which of these stay and, if the score stays, that its formula is published beside it. Section-level comments and votes in the reader are not in question.</li>
-<li><strong>Channels and soak in the publish flow</strong> (review D5). The engine has <code>staging</code> and <code>stable</code> and the personas want a soak. Decide the soak length (Claudinite&#39;s own shelf uses 48 h; Dependabot 72 h) and whether promotion to <code>stable</code> is automatic after the soak or a second passkey action; the Status mark, the Versions tab and flow 6 change with it.</li>
-<li><strong>Private packs and <code>packs.sources</code></strong> (review D6). The engine&#39;s private path is a <code>packs.sources</code> entry read by <code>cn adopt</code> and the update task in Actions with the repo&#39;s GitHub access. Decide whether PackServer private packs are served as a <code>packs.sources</code> host (token in CI secrets) or as &quot;packs from a repo&quot; (no PackServer involvement), before the access page is designed further.</li>
-<li><strong>The word &quot;member&quot;</strong> (review D7). Claudinite uses it for a repo running Claudinite, and PackServer&#39;s own copy needs that sense (&quot;member repos holding this pack&quot;). These documents now say <em>signed-in user</em> / <em>account</em> for a person; confirm, and align the wireframes.</li>
-<li><strong>Brand</strong> (review D4). Neither wireframe uses Claudinite&#39;s pentagonal crystal glyph or its paper/ink/malachite tokens. Is PackServer presented as Claudinite&#39;s shelf (glyph, tokens, &quot;Claude Code only&quot; admission on the site) or as a separate product that serves Claudinite packs?</li>
+<li><strong>Pack ids</strong> (review D1). Proposal: <code>@scope/name</code>, as in every UI file; <code>cn adopt</code> takes PackServer&#39;s ids. Open with the owner.</li>
+<li><strong>Publish from a repo vs. upload</strong> (review D2). The wizard offers both; an upload carries no <code>sourceCommit</code> and no reviewable source. Decide whether upload-only packs exist, or every public pack comes from a repo.</li>
+<li><strong>Reputation signals: stars, 1-5 ratings, &quot;Trending&quot;, fetch counts, pack score</strong> (review D3). The personas ignore install and star counts, treat freshness as a risk signal, and accept a score only with a published formula. Section-level comments and votes in the reader are not in question.</li>
+<li><strong>Cooldown length.</strong> A published version waits out a cooldown before member repos&#39; updates select it (Dependabot uses 72 h). Decide the length and whether an owner can shorten it for a security fix; the Status mark, the Versions tab and flow 6 change with it. PackServer has no <code>staging</code> / <code>stable</code> channels of its own.</li>
+<li><strong>Private access model.</strong> Options A–D above, served by PackServer with read tokens kept in the repo&#39;s CI secrets. Decide which ship, and private pricing (decision 2).</li>
+<li><strong>Version format.</strong> Proposal: date-based <code>1.YMMDD.n</code>, as in the examples. Open with the owner.</li>
+<li><strong>Pre-install manifest.</strong> Which effects the manifest above the README lists (guards and what they judge, tasks and cadence, forced skills, GitHub actions requested). Open with the owner, together with fees (decision 3 and private pricing).</li>
 </ol>
+<p>Settled: the site is called <strong>Claudinite Packs</strong> (review D4); a person is <em>signed in</em>, never a <em>member</em>, since a Claudinite member is a repo (review D7).</p>
 </article></main>
 </div></div>
