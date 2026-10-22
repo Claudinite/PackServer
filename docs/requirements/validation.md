@@ -683,3 +683,16 @@ version, never by skipping holds.
 The validator reaches Jev only through its Workers AI binding: no AI Gateway, provider key or
 egress allowlist exists for the prose screen, and the sandbox keeps internet fully off.
 
+## REQ-VAL-050 Prose-screen probabilities and thresholds never appear in a report
+
+- status: active
+- since: 2026-10
+- actor: publisher / anonymous visitor (security)
+- source: Ariel, 2026-10-22 (sitemap decision 7, PR #4: the uploader, not the public, is the real oracle)
+- coverage: scenario
+
+No validation report, public or the publisher's own, shows a prose-screen probability or a
+threshold: a report says only whether the prose screen blocked or passed the version and quotes
+the flagged passage. The numbers are visible only in the admin application (REQ-ADMIN-006).
+Validation runs stay rate-limited (REQ-VAL-021), so the verdict alone cannot be probed at volume.
+

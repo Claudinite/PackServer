@@ -205,7 +205,7 @@ await run.holdReasons()                    // why a held version waits: 'review-
 await run.requestReview()                  // the publisher asks for a manual review of a blocked prompt-injection finding (REQ-VAL-009)
 await run.urls()                           // the URL inventory with each domain's class (REQ-VAL-026)
 await run.capabilities();  await run.manifest()   // the extracted set and manifest, before promotion
-await run.screened()                       // per chunk: { file, lines, probabilities, thresholds, model, questionSet } (REQ-VAL-036, 047, REQ-ADMIN-006)
+await run.screened()                       // per chunk: { file, lines, probabilities, thresholds, model, questionSet } as an admin sees it (REQ-VAL-036, 047, REQ-ADMIN-006); the publisher's and the public report never carry the numbers (REQ-VAL-050)
 await world.rules.list()                   // the published rule list: { id, class }[] (REQ-VAL-024)
 await admin.queue.list()                   // QueueItem[] in queue order; each has .diff, .capabilityChanges, .findings, .holdReasons
 await agent.get(pack)                      // .verification, .capabilities, .newCapabilities, .warningCounts, and never .findings (REQ-VAL-042)

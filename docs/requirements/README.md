@@ -49,7 +49,7 @@ One file per area, in the order a user meets them:
 | [accounts.md](accounts.md) | `REQ-ACC` | 25 | accounts, MFA, sessions, recovery |
 | [scopes.md](scopes.md) | `REQ-SCOPE` | 17 | scopes, orgs, domain and GitHub proofs, Verified Publisher |
 | [publishing.md](publishing.md) | `REQ-PUB` | 34 (1 retired) | trusted publishing, tokens, web upload, lifecycle |
-| [validation.md](validation.md) | `REQ-VAL` | 49 (2 retired) | the validation pipeline |
+| [validation.md](validation.md) | `REQ-VAL` | 50 (2 retired) | the validation pipeline |
 | [delivery.md](delivery.md) | `REQ-DELIV` | 20 (3 retired) | downloads, the signed index, what cn does with a status |
 | [search-mcp.md](search-mcp.md) | `REQ-SEARCH` | 19 (1 retired) | search, browse, the MCP endpoint |
 | [private.md](private.md) | `REQ-PRIV` | 19 | private packs, the GitHub account allowlist, access grants |
@@ -63,7 +63,7 @@ One file per area, in the order a user meets them:
 | [telemetry.md](telemetry.md) | `REQ-TELEM` | 7 | counters and the dashboard |
 | [operations.md](operations.md) | `REQ-OPS` | 12 | synthetic scopes, probes, the self-test contract, recorded-traffic redaction, the production configuration |
 
-283 entries: 197 derived from the design documents, 29 from the security review, 8 from the release plan (the self-test contract and the redaction rule), 31 from the validation-flow review (three of them from its prose-screen decision), 1 from the Claudinite alignment review, 5 from Ariel's decisions of 2026-10-22 (the GitHub account allowlist and Trending) 10 from the architecture thread's pack-score proposal and 2 from its Polar billing design. 266 are active, 9 provisional and 8 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. The totals were recounted from the files on 2026-10-22, after Ariel's decisions of that day were applied (PR #3 commits `99457a2`, `2ff18f5`, `5b1ac94`, `07b211d`, `6995682`, `1ca52e1`, `21f0105` and `359f3c6`; PR #4 commit `79e7900`).
+284 entries: 197 derived from the design documents, 29 from the security review, 8 from the release plan (the self-test contract and the redaction rule), 31 from the validation-flow review (three of them from its prose-screen decision), 1 from the Claudinite alignment review, 6 from Ariel's decisions of 2026-10-22 (the GitHub account allowlist, Trending and hidden screen scores) 10 from the architecture thread's pack-score proposal and 2 from its Polar billing design. 267 are active, 9 provisional and 8 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. The totals were recounted from the files on 2026-10-22, after Ariel's decisions of that day were applied (PR #3 commits `99457a2`, `2ff18f5`, `5b1ac94`, `07b211d`, `6995682`, `1ca52e1`, `21f0105` and `359f3c6`; PR #4 commit `79e7900`).
 
 ## Entry format
 
