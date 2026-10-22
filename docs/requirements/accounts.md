@@ -111,18 +111,21 @@ transfer ownership; attempting any of these redirects to MFA enrolment.
 A member with only a verified email can star, vote works-for-me and file bug reports without
 MFA.
 
-## REQ-ACC-010 Sensitive actions require a passkey assertion bound to that action
+## REQ-ACC-010 Sensitive actions require a fresh confirmation bound to that action
 
 - status: active
 - since: 2026-10
 - actor: publisher / org owner
-- source: ARCH §4; DATA decision 1; FLOW 2 (superseded on the window)
+- source: ARCH §4; DATA decision 1 (PR #3 commit 77c3956); FLOW 2 (superseded on the window)
 - coverage: scenario
 
 A sensitive action (approve a staged publish, mint a token, add a scope owner, change billing,
 yank, change visibility, remove a factor, change email with a notice to the old address)
 requires a passkey assertion made for that specific action and its target, even in a valid
-session. There is no reusable step-up window: an assertion made for one action or target does
+session; a member with only TOTP confirms instead by entering a fresh code in that action's
+dialog, and each TOTP time-step is accepted for one action only. A scope can require passkeys
+only, in which case a TOTP code is refused for its sensitive actions; Verified Publisher scopes
+require passkeys by default. There is no reusable step-up window: an assertion made for one action or target does
 not authorise another, a second sensitive action needs a second assertion, and no amount of time
 since an earlier assertion makes one unnecessary or sufficient.
 
@@ -263,7 +266,7 @@ invalidate server-side; the session cookie is host-only, secure, HTTP-only and s
 A step-up assertion is bound to the session that requested it and to the action and target it
 was requested for; an assertion obtained in one session does not authorise another session, an
 assertion for one action or target is refused for any other, and a replayed assertion is
-refused; a TOTP code is accepted once per window; recovery-code attempts are rate-limited like
+refused; a TOTP time-step is accepted for one action only, so a code cannot confirm a second action; recovery-code attempts are rate-limited like
 step-up.
 
 ## REQ-ACC-023 Sign-in return targets are same-origin only

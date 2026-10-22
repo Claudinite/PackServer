@@ -33,7 +33,7 @@ The architecture PR changed after this register was derived. The register was re
 | Claude Code web-VM reachability is solved client-side (ARCH §7.2) | no entry; it was only ever the rationale for the retired mirror |
 | Self-test contract (release plan §5) | REQ-OPS-005..011 added |
 
-Two things the revised architecture leaves unstated, kept out of the register until Ariel decides: whether a TOTP-only member (no passkey) can perform a sensitive action at all, since ARCH §4 now says the per-action assertion is WebAuthn; and whether the FLOW documents' 5-minute step-up window will be removed from `docs/ui/flows.md` (the register no longer depends on it).
+The architecture thread closed two follow-ups (PR #3 commit 77c3956): a TOTP-only member confirms a sensitive action with a fresh code in that action's dialog, one action per time-step, and a scope can require passkeys only (Verified Publisher scopes do by default), now in REQ-ACC-010 and REQ-ACC-022; and the sensitive-action path also reads a D1 `session_revocations` table, which is what makes REQ-ACC-012's "at once for sensitive actions" hold. The stale 5-minute window and Google sign-in in `docs/ui/flows.md` are with the UI thread; the register no longer depends on them.
 
 ## Files
 

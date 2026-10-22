@@ -332,7 +332,6 @@ The default day-to-day flow under agents: Ariel names the requirement ID (or ask
 ## 14. Open questions for Ariel
 
 1. **The five remaining conflicts** between the architecture and UI documents ([../requirements/README.md](../requirements/README.md#conflicts-between-the-architecture-and-the-ui-flows)). Each freezes a scenario value. (CONFLICT-1, the step-up window, is closed: there is no window.)
-6. **TOTP-only members and sensitive actions.** The revised architecture makes the per-action step-up a WebAuthn assertion. Can a member with only TOTP (no passkey) perform a sensitive action at all? The register leaves it unstated; a scenario needs the answer.
 2. **The 29 security-review requirements** ([../requirements/README.md](../requirements/README.md#entries-from-the-security-review)) are the only register entries not derived from the design documents. Confirm them (they become architecture work) or strike any you do not want promised.
 3. **CI-only Cloudflare account** ($5/month). This plan recommends it; say if the production account's preview environment must do instead.
 4. **Public or private repository?** It removes the Actions cost and changes nothing else.
