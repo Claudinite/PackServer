@@ -115,9 +115,9 @@ files.forEach((file, index) => {
   }
 
   touched.set(file, new Set([...own, ...referenced]));
-  for (const t of matches(ALTERED, sql)) {
+  for (const t of [...matches(ALTERED, sql), ...matches(DROPPED, sql)]) {
     if (area !== FOUNDATION && created.get(t) === FOUNDATION)
-      problems.push(`${file}: alters foundation table ${t}; foundation tables are altered only by ${FOUNDATION} migrations`);
+      problems.push(`${file}: changes foundation table ${t}; foundation tables are altered only by ${FOUNDATION} migrations`);
   }
   for (const t of own) if (!created.has(t)) created.set(t, area);
   for (const t of matches(RENAMED_TO, sql)) if (!created.has(t)) created.set(t, area);
