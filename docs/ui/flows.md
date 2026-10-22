@@ -297,7 +297,7 @@ Check stages, in order (fail-fast on blocking checks):
 | Manifest consistency (declared items exist on disk; version is semver `x.y.z`; `minEngineVersion` is a `cn` version; `requires` names published packs) | ✓ | |
 | Secret scan (gitleaks-style rules) | ✓ | |
 | Security scan (executables, path traversal; Go checks import only the check SDK and the standard library; task workers import only `@claudinite/sdk`) | ✓ for traversal / binaries / foreign imports | |
-| Prompt-injection heuristics on `RULES.md` and `SKILL.md` (prose scanned as code) | ✓ (manual review on request for a false positive) | |
+| Prompt-injection heuristics on `RULES.md` and `SKILL.md` (prose scanned as code; the report quotes the flagged passage and never shows a score or threshold, to anyone) | ✓ (manual review on request for a false positive) | |
 | Manifest of effects derived and shown (guards and the tool calls they judge, tasks and cadence, forced skills, GitHub actions requested) | ✓ if it cannot be derived | |
 | Test run (the pack's `test/` folder, in a container; Go checks need Go, 10-min cap) | ✓ if declared tests fail | ✓ if no tests |
 | License present | | ✓ |

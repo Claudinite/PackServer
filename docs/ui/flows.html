@@ -333,7 +333,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <td></td>
 </tr>
 <tr>
-<td>Prompt-injection heuristics on <code>RULES.md</code> and <code>SKILL.md</code> (prose scanned as code)</td>
+<td>Prompt-injection heuristics on <code>RULES.md</code> and <code>SKILL.md</code> (prose scanned as code; the report quotes the flagged passage and never shows a score or threshold, to anyone)</td>
 <td>✓ (manual review on request for a false positive)</td>
 <td></td>
 </tr>
@@ -1058,7 +1058,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <li><strong>MFA scope</strong> (settled, owner 2026-10-22): required for publishers, optional for other signed-in users; an org owner can require it for every org member (npm &quot;enforce 2FA&quot; style).</li>
 <li><strong>Namespace model</strong>: scoped <code>@&lt;scope&gt;/&lt;pack&gt;</code>, matching the backend design. A scope belongs to a user or an org; its badge states what was proven (GitHub org, domain). Names are never recycled. Scoped names remove name-squatting disputes. See decision 13.</li>
 <li><strong>Validation gate strictness</strong> (settled, owner 2026-10-22): schema, secrets, size and prompt-injection heuristics all block; a blocked injection finding can go to manual review for a false positive. Missing tests and a missing license only warn.</li>
-<li><strong>Public validation detail</strong> (settled, owner 2026-10-22): the full report, logs included, is public once its version is published. Until then only the publisher sees it and can decide not to publish.</li>
+<li><strong>Public validation detail</strong> (settled, owner 2026-10-22): the full report, logs included, is public once its version is published. Until then only the publisher sees it and can decide not to publish. The prompt-injection screen&#39;s probability scores and thresholds are never shown to anyone, uploader included: a report says blocked or passed and quotes the flagged passage, and validation runs stay rate-limited, so the screen cannot be used as a tuning oracle.</li>
 <li><strong>Rating eligibility</strong> (settled, owner 2026-10-22): any signed-in user can rate; a &quot;verified adoption&quot; badge marks reviews from accounts whose repos fetched the pack.</li>
 <li><strong>Review moderation</strong> (settled, owner 2026-10-22): publishers reply and flag; only moderators remove a review, and publishers never delete one.</li>
 <li><strong>Abuse reports</strong> (settled, owner 2026-10-22): sign-in required; no anonymous reports.</li>
