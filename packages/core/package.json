@@ -1,0 +1,18 @@
+{
+  "name": "@packserver/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./index": "./index/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@noble/ed25519": "catalog:",
+    "@packserver/schema": "workspace:*",
+    "zod": "catalog:"
+  }
+}

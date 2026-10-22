@@ -6,6 +6,9 @@ settings:
 
 catalogs:
   default:
+    '@noble/ed25519':
+      specifier: 3.2.0
+      version: 3.2.0
     drizzle-kit:
       specifier: 0.31.11
       version: 0.31.11
@@ -47,6 +50,18 @@ importers:
       vitest:
         specifier: 5.0.5
         version: 5.0.5(@types/node@22.20.5)(msw@3.0.3(@types/node@22.20.5)(typescript@5.9.3)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1)))(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/core:
+    dependencies:
+      '@noble/ed25519':
+        specifier: 'catalog:'
+        version: 3.2.0
+      '@packserver/schema':
+        specifier: workspace:*
+        version: link:../schema
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
 
   packages/rules:
     dependencies:
@@ -932,6 +947,9 @@ packages:
   '@mswjs/interceptors@0.45.9':
     resolution: {integrity: sha512-NmEzpWbbiWpudgqKVZtGdSAvQGIYyj7Rf8ea+1hJEo+Dn0YvPHtiz577US7kGg0sCaZtPelrdqV4SfwwGJq1cA==}
     engines: {node: '>=22'}
+
+  '@noble/ed25519@3.2.0':
+    resolution: {integrity: sha512-criDgRlnUA09hchYrTy/JUWPIEap5rZxQe6wDWzRx51oWWpDRcUpuNzlgPxDJaOK6AsW9c0wKcj3rKRv6t+bPQ==}
 
   '@open-draft/until@3.0.1':
     resolution: {integrity: sha512-s7/9ELP4aP9YZtW7RJaa0Xf3RISaRH9+EFN18FtykJYRHGNrl8f9ymvoNXzjhrjmftFvkQudtuDU9RYhk0xs3A==}
@@ -2707,6 +2725,8 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
     optional: true
+
+  '@noble/ed25519@3.2.0': {}
 
   '@open-draft/until@3.0.1':
     optional: true
