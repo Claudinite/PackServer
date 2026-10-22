@@ -100,7 +100,7 @@ files.forEach((file, index) => {
 
   if (area === FOUNDATION) {
     firstFoundation ??= file;
-    if (file !== firstFoundation && own.size > 0)
+    if (file !== firstFoundation && [...own].some((t) => !INTERNAL.test(t)))
       problems.push(`${file}: only the first foundation migration (${firstFoundation}) may create foundation tables`);
   }
 
