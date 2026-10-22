@@ -70,7 +70,7 @@ previous holder is renamed and notified.
 
 An admin can view the full validation report and LLM review of any version.
 
-## REQ-ADMIN-007 Admins process delayed recovery and chargeback reviews
+## REQ-ADMIN-007 Admins process delayed account recoveries
 
 - status: active
 - since: 2026-10
@@ -78,8 +78,7 @@ An admin can view the full validation report and LLM review of any version.
 - source: ARCH §4; FLOW 8
 - coverage: scenario
 
-An admin can process a delayed account recovery and a chargeback-flagged publisher's manual
-review.
+An admin can process a delayed account recovery.
 
 ## REQ-ADMIN-008 The admin Worker validates the Access assertion itself
 

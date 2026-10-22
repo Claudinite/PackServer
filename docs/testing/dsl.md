@@ -144,14 +144,15 @@ await admin.recovery.approve(user)
 // World-level
 await world.validation.completes(version)                                // runs the workflow to a verdict, gates auto-answered
 await world.validation.of(version)                                       // -> ValidationRun handle (verdict(), report(), findings())
-await world.cron.run('domain-rechecks' | 'stats-rollup' | 'staging-expiry' | 'rescan' | 'domain-drift' | 'queue-timeouts' | 'audit-head' | 'audit-verify' | 'activity-prune')
+await world.cron.run('domain-rechecks' | 'stats-rollup' | 'staging-expiry' | 'rescan' | 'domain-drift' | 'queue-timeouts' | 'billing-reconcile' | 'audit-head' | 'audit-verify' | 'activity-prune')
                                             // 'domain-drift' re-resolves the URL domains of live versions (REQ-VAL-018)
 await world.clock.advance('31d')
 world.dns.publishTxt(name, value);  world.dns.remove(name)
 world.github.repo('acme/tool');  world.github.installApp({ org, installer })
 world.github.org('acme');  org.addMember(user);  org.removeMember(user);  org.rename('acme-inc')   // a GitHub org with a stable numeric id (REQ-PRIV-016, 017)
 world.github.rotateJwks()                                                // the issuer publishes a new key and drops the old one
-world.polar.event('order.paid', { checkout })                           // an event the World can deliver, incl. replay
+world.polar.event('order.paid' | 'order.refunded' | 'subscription.revoked', { checkout })   // an event the World can deliver, incl. replay
+world.polar.dropDeliveries()                                           // Polar's deliveries fail; only the hourly reconciliation sees the change (REQ-PAY-014)
 await world.polar.deliver(event, { signature?: 'wrong' })               // sends it to the webhook endpoint
 world.llm.script({ screen: 'first' | 'second' | 'deep', findings: [{ rule, severity, file, line, quote }], addressesReviewer?: true })
                                             // what the faked reviewer answers; a quote absent from the tree is the hallucination negative (REQ-VAL-034)

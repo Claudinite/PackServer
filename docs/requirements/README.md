@@ -53,7 +53,7 @@ One file per area, in the order a user meets them:
 | [delivery.md](delivery.md) | `REQ-DELIV` | 20 (3 retired) | downloads, the signed index, what cn does with a status |
 | [search-mcp.md](search-mcp.md) | `REQ-SEARCH` | 19 | search, browse, the MCP endpoint |
 | [private.md](private.md) | `REQ-PRIV` | 19 | private packs, the GitHub org allowlist, access grants |
-| [payments.md](payments.md) | `REQ-PAY` | 13 | credits, subscriptions, Polar events |
+| [payments.md](payments.md) | `REQ-PAY` | 15 (1 retired) | credits, subscriptions, Polar events |
 | [community.md](community.md) | `REQ-COMM` | 14 | stars, reviews, outcomes, Trending, ranking |
 | [moderation.md](moderation.md) | `REQ-MOD` | 17 | bug and security reports, abuse, yank |
 | [admin.md](admin.md) | `REQ-ADMIN` | 9 | the admin application |
@@ -63,7 +63,7 @@ One file per area, in the order a user meets them:
 | [telemetry.md](telemetry.md) | `REQ-TELEM` | 7 | counters and the dashboard |
 | [operations.md](operations.md) | `REQ-OPS` | 12 | synthetic scopes, probes, the self-test contract, recorded-traffic redaction, the production configuration |
 
-278 entries: 197 derived from the design documents, 29 from the security review, 8 from the release plan (the self-test contract and the redaction rule), 28 from the validation-flow review, 1 from the Claudinite alignment review, 5 from Ariel's decisions of 2026-10-22 (the GitHub org allowlist and Trending) and 10 from the architecture thread's pack-score proposal. 213 are active, 60 provisional and 5 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. The totals were recounted from the files on 2026-10-22, after Ariel's decisions of that day were applied (PR #3 commits `99457a2` and `2ff18f5`).
+280 entries: 197 derived from the design documents, 29 from the security review, 8 from the release plan (the self-test contract and the redaction rule), 28 from the validation-flow review, 1 from the Claudinite alignment review, 5 from Ariel's decisions of 2026-10-22 (the GitHub org allowlist and Trending) 10 from the architecture thread's pack-score proposal and 2 from its Polar billing design. 215 are active, 59 provisional and 6 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. The totals were recounted from the files on 2026-10-22, after Ariel's decisions of that day were applied (PR #3 commits `99457a2`, `2ff18f5` and `5b1ac94`).
 
 ## Entry format
 
@@ -238,7 +238,7 @@ The ones that touch the most entries:
 
 | Decision | Entries | What a decision changes |
 |---|---|---|
-| POLAR-1 (with Polar as merchant of record: whether Polar tells the merchant about a dispute, and whether it exposes a payment-method fingerprint) | REQ-PAY-008, 013 | whether the chargeback and per-card limit scenarios exist, or what replaces their trigger and key |
+| POLAR-1 (with Polar as merchant of record: whether Polar exposes a payment-method fingerprint to the merchant) | REQ-PAY-013 | the key the per-purchaser credit limit uses |
 | ARCH-Q 1 (who decides private access) | **resolved** (Ariel, 2026-10-22): an allowlist of GitHub orgs per private pack, proven by the Actions OIDC token (REQ-PRIV-016 to 019); the other access entries are active, named by their architecture §11 phase | — |
 | ARCH-Q 2 (fee per pack or per version) | **resolved** (Ariel, 2026-10-22): $1 per new pack for everyone, open-source included, waived for Verified Publishers; REQ-PAY-001 and 002 are active | — |
 | ARCH-Q 3 (review depth at launch; now only which model screens pack prose) | static checks, the sandboxed load and the human review of holds are settled, so the entries that waited only on the queue are active; the screen model is cited as ARCH-SCREEN | — |

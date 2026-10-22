@@ -1,21 +1,23 @@
 # Payments and credits
 
-Area `PAY`, 13 requirements. Format and rules: [README.md](README.md).
+Area `PAY`, 15 requirements (1 retired). Format and rules: [README.md](README.md).
 
 Billing runs on Polar as merchant of record (Ariel, 2026-10-22): Polar sells to the buyer and
 handles tax, receipts and card data, and the registry learns of payments only through Polar's
-signed webhooks. `POLAR-1` is what Polar exposes to a merchant about disputes and payment
-methods, which REQ-PAY-008 and 013 depend on.
+signed webhooks and an hourly reconciliation against its API (PR #3 commit `5b1ac94`). Polar owns
+chargebacks, so REQ-PAY-008 is retired. `POLAR-1` is whether Polar exposes any payment-method
+fingerprint, which REQ-PAY-013 depends on.
 
-## REQ-PAY-001 Buy publish credits through hosted checkout
+## REQ-PAY-001 Buy publish credits in bundles through hosted checkout
 
 - status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH §9; Ariel, 2026-10-22 (ARCH-Q 2: per new pack, for everyone); Ariel, 2026-10-22 (Polar)
+- source: ARCH §9; Ariel, 2026-10-22 (ARCH-Q 2: per new pack, for everyone); Ariel, 2026-10-22 (Polar); PR #3 commit 5b1ac94 (bundles from 5)
 - coverage: scenario
 
-A publisher can buy publish credits in bundles (1/$1, 5/$5, 12/$10, 25/$20) through hosted
+A publisher can buy publish credits in bundles of 5, 12 or 25 ($5, $10, $20; there is no single
+$1 credit, which would lose 55% to Polar's fee) through hosted
 checkout on Polar, the merchant of record; no card data passes through the registry.
 
 ## REQ-PAY-002 One credit per new public pack; versions are free
@@ -90,26 +92,26 @@ after that it is refunded automatically.
 
 ## REQ-PAY-008 A chargeback yanks and flags
 
-- status: provisional
+- status: retired
 - since: 2026-10
 - actor: system / admin
-- source: FLOW 8; Ariel, 2026-10-22 (Polar as merchant of record)
-- decision: POLAR-1 (whether Polar notifies the merchant of a dispute, and how)
-- coverage: scenario
+- source: FLOW 8
+- retired: Ariel, 2026-10-22: Polar is merchant of record and owns chargebacks, so the registry has no chargeback to act on (PR #3 commit 5b1ac94)
+- coverage: manual (never built; no scenario may name this ID)
 
-A chargeback yanks the version, flags the publisher, and further publishes by that account
-require manual review.
+A chargeback yanked the version, flagged the publisher, and sent further publishes by that account
+to manual review.
 
 ## REQ-PAY-009 Verified Publisher status costs $99 a year and covers publishing
 
 - status: active
 - since: 2026-10
 - actor: publisher / org owner
-- source: Ariel 2026-10-22 (CONFLICT-5 resolved); ARCH §9 (to be updated)
+- source: Ariel 2026-10-22 (CONFLICT-5 resolved); ARCH §9 (PR #3 commit 5b1ac94)
 - coverage: scenario
 
 Verified Publisher status is an annual $99 USD subscription. While it is paid up, the scope
-publishes new public packs without consuming per-pack credits. When the subscription lapses,
+publishes new public packs without consuming per-pack credits. When Polar revokes the subscription (`subscription.revoked`),
 the Verified Publisher badge stays for a 30-day grace period and is then removed, after which
 new packs need credits again; packs already
 published stay published.
@@ -137,7 +139,8 @@ is refused.
 - coverage: scenario
 
 A seat is a human who can read private packs; an agent read token hangs off a seat and stops
-working when the seat is removed.
+working when the seat is removed. A repository that reads through an allowlisted GitHub org
+(REQ-PRIV-016) uses no seat.
 
 ## REQ-PAY-012 Billing is visible only to owners
 
@@ -156,7 +159,32 @@ personal publisher or the org owner, not a maintainer.
 - since: 2026-10
 - actor: system
 - source: ARCH §10; Ariel, 2026-10-22 (Polar as merchant of record)
-- decision: POLAR-1 (whether Polar exposes a payment-method fingerprint, or which other key the purchase limit uses)
+- decision: POLAR-1 (whether Polar exposes a payment-method fingerprint to the merchant, or which other key the purchase limit uses)
 - coverage: scenario
 
 Credit purchases are limited per card fingerprint to deter bulk spam.
+
+## REQ-PAY-014 An hourly reconciliation applies any payment event a webhook missed
+
+- status: active
+- since: 2026-10
+- actor: system
+- source: ARCH §9 (PR #3 commit 5b1ac94)
+- coverage: scenario
+
+Every hour the billing Worker lists the orders and subscriptions Polar changed since a stored
+cursor and applies them through the same idempotent handler as the webhook, so an event whose
+delivery failed is applied exactly once; it records how many events it had to repair, and that
+Polar reports the webhook endpoint disabled.
+
+## REQ-PAY-015 A refunded credit order removes only its unused credits
+
+- status: active
+- since: 2026-10
+- actor: publisher / system
+- source: ARCH §9 (PR #3 commit 5b1ac94)
+- coverage: scenario
+
+When Polar refunds a credit order (`order.refunded`), the order's unused credits leave the
+balance; credits it already spent stay spent and the packs they published stay up.
+
