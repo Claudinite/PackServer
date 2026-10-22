@@ -70,7 +70,7 @@ previous holder is renamed and notified.
 
 An admin can view the full validation report and LLM review of any version.
 
-## REQ-ADMIN-007 Admins process delayed account recoveries
+## REQ-ADMIN-007 Admins process delayed recoveries and clear refund flags
 
 - status: active
 - since: 2026-10
@@ -78,7 +78,7 @@ An admin can view the full validation report and LLM review of any version.
 - source: ARCH §4; FLOW 8
 - coverage: scenario
 
-An admin can process a delayed account recovery.
+An admin can process a delayed account recovery and clear a scope's refund flag (REQ-PAY-008).
 
 ## REQ-ADMIN-008 The admin Worker validates the Access assertion itself
 
