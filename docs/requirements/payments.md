@@ -104,7 +104,8 @@ require manual review.
 
 Verified Publisher status is an annual $99 USD subscription. While it is paid up, the scope
 publishes new public packs without consuming per-pack credits. When the subscription lapses,
-the Verified Publisher badge is removed and new packs need credits again; packs already
+the Verified Publisher badge stays for a 30-day grace period and is then removed, after which
+new packs need credits again; packs already
 published stay published.
 
 ## REQ-PAY-010 Private packs need an active subscription within plan limits
