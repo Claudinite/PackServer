@@ -14,7 +14,7 @@ On top of that guarantee they layer five kinds of signal:
 4. **Advisories.** Public feeds (GitHub Advisory Database, RustSec, OSV) flag bad versions to tools like Dependabot and `npm audit`.
 5. **Reputation.** Downloads, stars and third-party scores (OpenSSF Scorecard, Socket) are mostly not computed by the registry itself.
 
-The closest analogue to packs is agent plugin and skill marketplaces. There, malware scans proved blind: ClawHub found 341 malicious skills out of 2,857, and its maintainers say a scan cannot catch a skill that tells the agent to do harm in plain language.
+A pack has two halves with different analogues. Its prose (`RULES.md`, skills) is what agent skill marketplaces distribute, and there malware scans proved blind: ClawHub found 341 malicious skills out of 2,857, and its maintainers say a scan cannot catch a skill that tells the agent to do harm in plain language.
 
 ## Comparison
 
@@ -56,7 +56,7 @@ Only Homebrew requires tests, and only the editor and browser stores review cont
 
 ## Closest analogues to packs
 
-Packs are closest to agent plugins and skills, not to libraries. A pack carries both code that runs (checks, task commands, env steps, hooks) and prose the agent obeys. Agent marketplaces show the prose half is where scanning fails.
+A pack carries code `cn` compiles and runs (coded checks in Go, including guards judged before a tool call, and task workers the executor runs in Actions), data `cn` interprets (declared checks, `pack.json`) and prose the session reads (`RULES.md`, skills). The code half makes it closer to a source library than to a plugin; agent marketplaces show the prose half is where scanning fails.
 
 - **Claude Code plugins.** The [docs](https://code.claude.com/docs/en/plugins/security) say a plugin "can execute arbitrary code on your machine" and that skills "enter Claude's context as instructions". Every install shows a warning that Anthropic "cannot verify that they will work as intended or that they won't change." The safeguards are tiers and pins: the official and community names are reserved for `github.com/anthropics/` sources, the community catalog pins nearly every entry to a commit, and archive sources can pin a sha256. Auto-update is called out as a way reviewed files change under you.
 - **ClawHub (OpenClaw skills).** [Koi Security found 341 malicious skills out of 2,857](https://thehackernews.com/2026/02/researchers-find-341-malicious-clawhub.html) in Feb 2026, 335 from one campaign that used fake "prerequisites" to get the user to install a macOS stealer. ClawHub [answered with VirusTotal scanning](https://www.openclaw.ai/blog/virustotal-partnership) and an LLM review starting from SKILL.md, plus daily rescans. Its own post says "A skill that uses natural language to instruct an agent to do something malicious won't trigger a virus signature" and "A clean scan doesn't mean a skill is safe."
@@ -67,19 +67,22 @@ Packs are closest to agent plugins and skills, not to libraries. A pack carries 
 
 Yes, we can require more than a file registry can, because a pack has a known format and cn loads it. These are the decisions the research puts on the table, not a design.
 
-1. **Should a pack have to pass our own CI before it is listed, Homebrew-style?** We could run the same load and self-test that already refuses a pack that fails to load, plus schema validation of its manifest and declared checks.
-2. **Should every check ship tests that run at submission?** For example, a fixture it must fire on and one it must stay silent on. No registry does this today; Homebrew comes closest.
+1. **Should a pack have to pass our own CI before it is listed, Homebrew-style?** We could run the same load and self-test that already refuses a pack that fails to load, plus schema validation of its manifest and declared checks, compiling its Go checks under the build's import restriction (public check SDK and standard library only) and running the pack's tests against the pinned engine. That is what the ClaudinitePacks release workflow already does for our own shelf before it uploads a version; the question is whether third-party publishers get the same gate.
+2. **Should every check ship tests that run at submission?** For example, a fixture it must fire on and one it must stay silent on. No public registry does this today (Homebrew comes closest), though our own shelf's release workflow runs pack tests. Should the score count tested checks?
 3. **Should publishing require Trusted Publishing from a GitHub repo, with the source commit recorded in our signed index?** That gives npm/PyPI-grade origin proof, which is still not proof of safety.
-4. **Should a pack declare its capabilities (runs code in Actions, env steps at session start, hooks, network), with an update that adds one held for review?** Ariel closed permission declarations in the first security review. Public submissions are a different threat than our own canon, so this may be worth reopening.
+4. **Should a version that widens what a pack can do be held for review?** Every pack already declares the GitHub actions it needs in `pack.json`, and the persona research's second-ranked demand is a pre-install manifest on every pack page: guards and the tool calls they judge, scheduled tasks and their cadence, forced skills. PackServer can derive it from the archive. Ariel closed permission declarations in the first security review. Public submissions are a different threat than our own canon, so this may be worth reopening.
 5. **How deep should the prose review go?** ClawHub shows an LLM review is needed and still not sufficient. The [hosting cost estimate](hosting-cost-estimate.md) puts a Sonnet review of every version at about $2,900 a month for 1M repos.
 6. **Should a revoked pack be disabled on members, VS Code-style, or only reported?** We own the client, so we can do either. The fleet's existing `reportOnly` default for held versions is the precedent for reporting only.
-7. **What ranking do we show?** Stars are weak. We have signals no registry has: how many repos keep a pack, how often its checks fire, and how often members drop it.
-8. **Do we want tiers like Claude Code's?** For example: canon (curated by us), community (pinned, scanned, tested) and third-party (unchecked, with a warning).
+7. **What ranking do we show?** Stars are weak. We have signals no registry has: how many repos keep a pack, how often its checks fire, and how often members drop it. Claudinite's persona research adds that freshness is a risk signal, not a quality one (the update is the attack); age, stability and a soak before `stable` rank first, and a score is trusted only with a published formula, never by installs or stars.
+8. **Which tiers do we show?** The personas asked for a verified publisher bound to a GitHub organisation or a DNS domain, shown as a tier like Terraform's (Official, Partner, Community) or Artifact Hub's two flags, and default-deny for unverified publishers in an organisation allow list. (Avoid naming a tier *canon*: in Claudinite that is the central pack set.)
+9. **What else does Claudinite's own research make day-one?** A soak before `stable` (the signed index already has `staging` and `stable` channels, so this is a promotion rule, not a new mechanism), a signed per-pack revocation feed (the index already carries `revoked`), prose scanned as code, and an open, documented pack format readable without the binary.
 
 ## Sources
 
 All opened on 2026-10-15 unless marked.
 
+- Claudinite/Website `product-wiki/Personas/persona-validation.md`, section "Claudinite as a package manager" (read 2026-10-22)
+- Claudinite/Engine `docs/design.md`, sections "Packs" and "Pack serving and publishing" (read 2026-10-22)
 - [npm: Generating provenance statements](https://docs.npmjs.com/generating-provenance-statements)
 - [npm: Unpublish policy](https://docs.npmjs.com/policies/unpublish)
 - [Help Net Security: After Shai-Hulud, GitHub tightens npm publishing security](https://www.helpnetsecurity.com/2025/09/23/npm-publishing-security-improvements/) (search summary only)

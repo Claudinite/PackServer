@@ -18,8 +18,9 @@ Cost only; no design or security choices are implied.
 | manual | 5% | ~0 |
 
 → **~6.2 checks per repo per month → 6.2M checks/month** for 1M repos.
-Each check: 1 index/metadata request + downloads of only the packs whose version changed;
-assumed **~3 requests and ~100 KB per check** on average (worst case: full 250 KB set).
+Each check: one signed index read per declared pack plus the catalog, then downloads of only the packs whose
+version changed. With `basics` + 5 others that is ~7 index requests plus 0–6 archives; assumed
+**~8 requests and ~100 KB per check** on average (worst case: full 250 KB set).
 
 **Prices** (Cloudflare docs, read 2026-10-15; Workers Paid plan, which we already pay):
 - R2: storage $0.015/GB-mo; Class A (writes) $4.50/M; Class B (reads) $0.36/M (10M free); **egress $0**.
@@ -45,7 +46,10 @@ Egress is the main cost only off Cloudflare; on R2 it is zero.
 
 ## Moderation / scanning (the real cost driver)
 
-Packs are instructions an agent follows, so every submitted version needs a review beyond static checks.
+A pack carries prose the session reads (`RULES.md`, skills), data `cn` interprets (`declared-checks.json`,
+`pack.json`), Go checks `cn` compiles and runs (including guards judged before a tool call), and task workers
+the executor runs in Actions. The prose needs review for instruction injection and the code for what it does
+when run, so every submitted version needs a review beyond static checks.
 A pack version is ~80 KB raw ≈ 25k tokens.
 - Static scans (hidden unicode, size, structure) in a Worker: ~50 ms CPU each → negligible.
 - LLM review per version: Haiku 5.5 ≈ $0.003; Sonnet 5.5 ≈ $0.07 (Batch API halves both).
@@ -85,5 +89,5 @@ On Cloudflare the dollar cost stays small because egress is free; the multiplier
 count, availability (every session start now depends on the server) and latency, not the bill.
 
 Caveat from the licensing design (2026-09-30): Claude Code web VMs on the default Trusted network
-could not reach our hosts, so web-session fetches might have to go through GitHub instead, moving
-that traffic off our bill entirely.
+could not reach our hosts, so there the `vendored` branch of the public packs repo answers alone (the engine
+reads the CDN first and the branch while the CDN does not answer), moving that traffic off our bill entirely.
