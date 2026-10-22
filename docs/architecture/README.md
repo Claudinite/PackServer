@@ -19,7 +19,7 @@ Cloudflare can carry the whole product. The pieces that needed proof are covered
 | Pack storage and delivery | R2, custom domain with CDN cache, free egress | GA |
 | Metadata, search | D1 (SQLite) with FTS5; Vectorize + Workers AI embeddings for semantic search | GA (D1 read replicas beta) |
 | Validation of untrusted packs | Workflows to orchestrate, Containers / Sandbox SDK microVMs to execute | GA (Sandbox GA Apr 2026) |
-| LLM-based pack evaluation | Claude Code inside a Sandbox, calls via AI Gateway with our Anthropic key | Documented by Cloudflare |
+| Prose screen of pack text | One single-shot classification call per version, no tools; model pending Ariel (Jev on Workers AI recommended, else Haiku via AI Gateway) | Workers AI model catalog |
 | Remote MCP for agents | `createMcpHandler` (stateless Streamable HTTP) | GA; **spike works** |
 | OAuth for MCP and API | `@cloudflare/workers-oauth-provider` | GA library |
 | Passkeys + TOTP | `@simplewebauthn/server` (WebCrypto, supports Workers), WebCrypto HMAC for TOTP | Libraries, no CF primitive |
@@ -28,7 +28,7 @@ Cloudflare can carry the whole product. The pieces that needed proof are covered
 | Admin access | Cloudflare Access (Zero Trust) in front of the admin app | GA |
 | Email | Email Service (sending) | **Beta**, keep a fallback provider |
 
-Indicative running cost at launch scale is about $30/month (Workers Paid $5, a Pro zone for WAF rate rules ~$25, everything else inside included quotas), plus Stripe fees and Anthropic tokens for LLM evaluation.
+Indicative running cost at launch scale is about $30/month (Workers Paid $5, a Pro zone for WAF rate rules ~$25, everything else inside included quotas), plus Stripe fees and the prose screen (about $40/month at 40k versions with Jev).
 
 ## 2. System overview
 
@@ -218,9 +218,10 @@ The full design, threat model and rationale are in [validation.md](validation.md
  8  canonical repack deterministic tar.gz from the validated tree, round-trip checked; only   Sandbox
                      compatible if it matches what cn vendor emits (O3 open)
  9  reserve credit   before any model call                                                    Worker
-10  LLM screens      two independent Haiku screens, structured output, quotes verified,      AI Gateway
+10  prose screen     single-shot classifier, no tools (model pending: Jev recommended);    Workers AI
                      diff mode for n+1, reviewer-addressed text = hold
-11  deep review      Sonnet only on flags; high-confidence malicious = reject (appealable)    AI Gateway
+11  deep review      only if the Haiku option is chosen: Sonnet on flags; with Jev, flags   AI Gateway
+                     go straight to human review
 12  verdict + tier   fail / hold / warn by rule class; tier canon | community | third-party  Worker
 13  human review     holds only; ~10/day budget; uncertainty holds time out to third-party   admin app
 14  payment          consume reserved credit, bound to canonical sha256                      Worker
@@ -322,7 +323,7 @@ The permission model is JFrog-style rows of (resource, principal, action) in `gr
 | Email sending is beta with an undisclosed starting quota | Signup codes and alerts could be throttled at launch | Mail behind an interface with Postmark/Resend as fallback |
 | No WebAuthn primitive | Passkeys are our own code | `@simplewebauthn/server` on WebCrypto; extensive tests; consider a managed IdP (WorkOS, Stytch) only if needed |
 | Containers have ephemeral disk, everything runs as root inside, internet ports other than 80/443 bypass egress control when internet is enabled | Sandbox misuse risk | One sandbox per job, internet off with explicit allowlist, no tokens in the sandbox, destroy after run |
-| No Anthropic models on Workers AI | LLM evaluation must leave Cloudflare | AI Gateway with our key, spend caps, run only after cheap checks pass |
+| No Anthropic models on Workers AI | A Haiku screen would leave Cloudflare | Use Jev on Workers AI (recommended), or AI Gateway with spend caps; either runs only after cheap checks pass |
 | MCP SDK churn (McpAgent deprecated within ~18 months; DCR being deprecated in spec); `agents@0.23.0` pins `@modelcontextprotocol/server@2.0.0`, which has open high-severity advisories | Upgrade work; must not ship with known vulns | Pin versions, track the advisories, upgrade before public launch |
 | Lock-in concentrated in Workflows, Durable Objects, Vectorize | Hard to move later | Business logic in plain functions; R2 is S3-compatible; SQL is portable; sandbox images are OCI |
 | Claude Code web VMs may not reach custom hosts | Only `cn adopt` in a web session reads the registry | The engine falls back to the `vendored` branch of the public packs repo; updates already run in GitHub Actions (§7.2, O2) |
@@ -349,7 +350,7 @@ The permission model is JFrog-style rows of (resource, principal, action) in `gr
 | 4. Payments | Stripe Checkout credits, webhooks, ledger; private pack subscriptions |
 | 5. Community | Stars, works-for-me, bug reports (GitHub-linked and in-site), ranking job, moderation queue in admin |
 | 6. Private access | Allowlists, invite links, read tokens, OAuth on MCP; then gated access and orgs |
-| 7. Hardening | LLM evaluation step, staged publishing, Vectorize semantic search, rescans, security review, policies |
+| 7. Hardening | Prose screen with tuned thresholds, staged publishing, Vectorize semantic search, rescans, security review, policies |
 
 ## 15. Open questions for Ariel
 
