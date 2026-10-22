@@ -29,7 +29,8 @@ export const D1_ROW_CAP = 50;
 export const FLOAT_SIGNIFICANT_DIGITS = 6;
 
 const hash = z.string().min(1);
-const headers = z.record(z.string(), z.string());
+const requestHeaders = z.partialRecord(z.enum(REQUEST_HEADER_ALLOWLIST), z.string());
+const responseHeaders = z.partialRecord(z.enum(RESPONSE_HEADER_ALLOWLIST), z.string());
 const json = z.unknown();
 
 const errorRecord = z.object({ name: z.string(), message: z.string(), stack_hash: hash });
@@ -73,14 +74,14 @@ export const RecordEnvelope = z
       route: z.string().min(1),
       path_params: z.record(z.string(), z.string()),
       query: z.record(z.string(), z.union([z.string(), z.array(z.string())])),
-      headers,
+      headers: requestHeaders,
       principal: z.object({ kind: z.string().min(1), id_hash: hash }).nullable(),
       body_hash: hash.nullable(),
       body: json.optional(),
     }),
     response: z.object({
       status: z.number().int().min(100).max(599),
-      headers,
+      headers: responseHeaders,
       body_hash: hash.nullable(),
       body: json.optional(),
       ms: z.number().nonnegative(),

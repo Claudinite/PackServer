@@ -32,6 +32,16 @@ describe("admin internal API method sets (REQ-ADMIN-010)", () => {
     expect(shaped).toEqual([...ADMIN_METHOD_NAMES].sort());
   });
 
+  it("has roll_back for the admin app only, with an Access assertion", () => {
+    expect(ADMIN_METHODS.roll_back.callers).toEqual(["admin_app"]);
+    expect(authoriseAdminCall("judge", "roll_back", true)).toEqual({ allowed: false, reason: "caller_not_permitted" });
+    expect(authoriseAdminCall("admin_app", "roll_back", false)).toEqual({ allowed: false, reason: "access_assertion_required" });
+    expect(AdminRequest.safeParse({ method: "roll_back", reason: "bad release" }).success).toBe(true);
+  });
+  it("narrows set_telemetry_mode to normal or economy", () => {
+    expect(AdminRequest.safeParse({ method: "set_telemetry_mode", mode: "economy" }).success).toBe(true);
+    expect(AdminRequest.safeParse({ method: "set_telemetry_mode", mode: "off" }).success).toBe(false);
+  });
   it("refuses the judge a method outside its set, even with an assertion", () => {
     expect(authoriseAdminCall("judge", "unquarantine_version", true)).toEqual({ allowed: false, reason: "caller_not_permitted" });
     expect(authoriseAdminCall("judge", "block_source", true)).toEqual({ allowed: false, reason: "caller_not_permitted" });

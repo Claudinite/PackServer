@@ -6,7 +6,9 @@ import {
   Serial,
   Sha256,
   Timestamp,
+  Verdict,
 } from "../shapes/domain";
+import { ScoreBreakdown } from "../shapes/meta";
 import { UnsignedPrivateEntry, UnsignedRoot, UnsignedScopeIndex } from "../shapes/index-v1";
 import { Refusal } from "../shapes/refusals";
 
@@ -44,10 +46,11 @@ export const PackCard = z.object({
   verified: z.boolean(),
   verified_domain: z.string().nullable(),
   verified_github_org: z.string().nullable(),
-  verdict: z.string(),
+  verdict: Verdict,
   repository: z.string().nullable(),
   rating: z.number().nullable(),
   score: z.number().int().min(0).max(100),
+  score_parts: ScoreBreakdown.shape.parts,
   newest_eligible: z.object({ version: PackVersion, published_at: Timestamp, min_engine_version: PackVersion }).nullable(),
 });
 export const SearchResponse = z.object({
@@ -87,9 +90,16 @@ export const TreeFetchResponse = z.discriminatedUnion("status", [
 
 /** coordinator -> validator: the validator signs, writes to R2, and returns hash and serial. */
 export const SignedDocumentAck = z.object({ sha256: Sha256, serial: Serial, key: z.string().min(1), kid: z.string().min(1) });
-export const SignScopeIndexRequest = z.object({ scope: ScopeName, unsigned: UnsignedScopeIndex });
+export const SignScopeIndexRequest = z
+  .object({ scope: ScopeName, unsigned: UnsignedScopeIndex })
+  .refine((r) => r.unsigned.scope === r.scope, { message: "the document's scope is the request's scope", path: ["unsigned", "scope"] });
 export const SignScopeIndexResponse = SignedDocumentAck;
-export const SignPrivateEntriesRequest = z.object({ scope: ScopeName, entries: z.array(UnsignedPrivateEntry) });
+export const SignPrivateEntriesRequest = z
+  .object({ scope: ScopeName, entries: z.array(UnsignedPrivateEntry) })
+  .refine((r) => r.entries.every((e) => e.pack.startsWith(`@${r.scope}/`)), {
+    message: "every private entry's pack belongs to the request's scope",
+    path: ["entries"],
+  });
 export const SignPrivateEntriesResponse = z.object({ entries: z.array(SignedDocumentAck.extend({ pack: PackName })) });
 export const SignAndWriteRootRequest = z.object({ unsigned: UnsignedRoot });
 export const SignAndWriteRootResponse = SignedDocumentAck;

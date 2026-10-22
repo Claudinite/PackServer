@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DO_RPC, DO_RPC_SCHEMA_VERSION, type QuotaRpc, type ScopeCoordinatorRpc, type RootCoordinatorRpc } from "./durable-objects";
+import { acceptDoResult, DO_RPC, DO_RPC_SCHEMA_VERSION, type QuotaRpc, type ScopeCoordinatorRpc, type RootCoordinatorRpc } from "./durable-objects";
 
 const sha = "a".repeat(64);
 
@@ -19,6 +19,17 @@ describe("Durable Object RPC contracts", () => {
     expect(
       DO_RPC.Quota.consume.result.safeParse({ schema_version: DO_RPC_SCHEMA_VERSION, allowed: true, count: 1, cap: 5 }).success,
     ).toBe(true);
+  });
+  it("have no method without a caller in the trust table", () => {
+    expect(Object.keys(DO_RPC.RootCoordinator).sort()).toEqual(["notifyScopeChange", "ping"]);
+  });
+  it("accept a result at the caller's schema_version or the next one", () => {
+    expect(acceptDoResult(1, { schema_version: 1 })).toEqual({ ok: true, schema_version: 1 });
+    expect(acceptDoResult(1, { schema_version: 2 }).ok).toBe(true);
+    expect(acceptDoResult(2, { schema_version: 1 })).toEqual({ ok: false, reason: "schema.unsupported", schema_version: 1 });
+    expect(acceptDoResult(1, { schema_version: 3 }).ok).toBe(false);
+    expect(acceptDoResult(1, {})).toEqual({ ok: false, reason: "malformed" });
+    expect(acceptDoResult(1, null).ok).toBe(false);
   });
   it("refuse a quota call with an unknown kind or a non-date day", () => {
     const ok = { kind: "dry_runs", principal: "p", day: "2026-10-22", cap: 5 };

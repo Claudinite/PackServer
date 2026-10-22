@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   SearchRequest,
+  SearchResponse,
   SignAndWriteRootRequest,
   SignScopeIndexRequest,
   StartValidationRequest,
@@ -29,9 +30,19 @@ describe("service-binding contracts", () => {
     expect(StartValidationRequest.safeParse({ ...req, declared_sha256: "short" }).success).toBe(false);
     expect(StartValidationRequest.safeParse({ ...req, source: "email" }).success).toBe(false);
     expect(StartValidationResponse.safeParse({ ok: true, run_id: "r", workflow_instance_id: "w" }).success).toBe(true);
-    expect(StartValidationResponse.safeParse({ ok: false, refusal: { reason: "quota_exceeded" } }).success).toBe(true);
+    expect(StartValidationResponse.safeParse({ ok: false, refusal: { reason: "quota" } }).success).toBe(true);
     expect(StartValidationResponse.safeParse({ ok: false, refusal: { reason: "nope" } }).success).toBe(false);
     expect(StartValidationResponse.safeParse({ ok: true }).success).toBe(false);
+  });
+  it("web -> mcp search cards carry a verdict value and the score parts", () => {
+    const card = {
+      id: "@acme/gcp", pitch: "p", inventory_counts: { skills: 1 }, context_cost: 100, verified: true,
+      verified_domain: null, verified_github_org: null, verdict: "pass", repository: null, rating: null, score: 80,
+      score_parts: [{ part: "context", weight: 25, points: 20, rules: [] }], newest_eligible: null,
+    };
+    expect(SearchResponse.safeParse({ cards: [card], degraded: false }).success).toBe(true);
+    expect(SearchResponse.safeParse({ cards: [{ ...card, verdict: "ok" }], degraded: false }).success).toBe(false);
+    expect(SearchResponse.safeParse({ cards: [{ ...card, score_parts: undefined }], degraded: false }).success).toBe(false);
   });
   it("web -> mcp search", () => {
     expect(SearchRequest.safeParse({ query: "gcp", limit: 10 }).success).toBe(true);
@@ -54,6 +65,10 @@ describe("service-binding contracts", () => {
     expect(SignScopeIndexRequest.safeParse({ scope: "acme", unsigned: unsignedScope }).success).toBe(true);
     expect(SignAndWriteRootRequest.safeParse({ unsigned: unsignedRoot }).success).toBe(true);
     expect(SignPrivateEntriesRequest.safeParse({ scope: "acme", entries: [unsignedPrivate] }).success).toBe(true);
+    const otherScope = { ...unsignedScope, scope: "evil" };
+    expect(SignScopeIndexRequest.safeParse({ scope: "acme", unsigned: otherScope }).success).toBe(false);
+    const foreign = { ...unsignedPrivate, pack: "@evil/internal" };
+    expect(SignPrivateEntriesRequest.safeParse({ scope: "acme", entries: [foreign] }).success).toBe(false);
     // a document of the wrong kind, or with a bad expiry, is refused before it can be signed
     expect(SignAndWriteRootRequest.safeParse({ unsigned: unsignedScope }).success).toBe(false);
     expect(SignScopeIndexRequest.safeParse({ scope: "acme", unsigned: { ...unsignedScope, expires: unsignedScope.generated_at } }).success).toBe(false);

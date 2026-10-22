@@ -21,8 +21,11 @@ export const VerificationFacts = z.object({
 export type VerificationFacts = z.infer<typeof VerificationFacts>;
 
 export const CAPABILITY_KINDS = ["guard", "coded-check", "task", "env-setup", "forced-skill"] as const;
+/** A task that gains opens-pr or agentic-phase adds a member, so a widening shows as a set difference. */
+export const TASK_FLAG_CAPABILITIES = ["task:opens-pr", "task:agentic-phase"] as const;
 export const Capability = z.union([
   z.enum(CAPABILITY_KINDS),
+  z.enum(TASK_FLAG_CAPABILITIES),
   z.string().regex(/^github-action:.+$/, "github-action:<name>"),
 ]);
 export type Capability = z.infer<typeof Capability>;

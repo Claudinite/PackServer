@@ -1,32 +1,27 @@
 import { z } from "zod";
 
-/** The reason words a refusal can carry, as values. Append-only. */
+/** The reason words a refusal can carry, as values: dsl.md section 3 plus the dotted register words. Append-only. */
 export const REFUSAL_REASONS = [
-  "unauthenticated",
+  "step-up",
+  "mfa-required",
+  "oidc.fork",
+  "oidc.workflow",
+  "oidc.environment",
+  "oidc.invalid",
+  "signature",
+  "signed-out",
+  "rate-limited",
+  "human-check",
   "forbidden",
-  "not_found",
-  "invalid_request",
-  "conflict",
-  "csrf_failed",
-  "idempotency_key_missing",
-  "idempotency_conflict",
-  "rate_limited",
-  "quota_exceeded",
-  "turnstile_failed",
-  "step_up_required",
-  "under_review",
-  "held",
-  "kill_switch",
-  "oidc.rejected",
+  "exists",
+  "trusted-only",
+  "quota",
+  "unknown-tool",
+  "scope",
   "archive.bomb",
   "archive.unsafe",
-  "sandbox.timeout",
-  "provenance.tree_mismatch",
-  "engine.unsupported_min_version",
   "index.rollback",
   "index.stale",
-  "release.unsupported",
-  "schema.unsupported",
 ] as const;
 
 export const RefusalReason = z.enum(REFUSAL_REASONS);
@@ -38,3 +33,15 @@ export const Refusal = z.object({
   retry_after_s: z.number().int().positive().optional(),
 });
 export type Refusal = z.infer<typeof Refusal>;
+
+/** Why a held version waits (dsl.md section 2.4). Append-only. */
+export const HOLD_REASONS = [
+  "new-capability",
+  "review-requested",
+  "prose-screen",
+  "budget",
+  "name-near-miss",
+  "install-url",
+] as const;
+export const HoldReason = z.enum(HOLD_REASONS);
+export type HoldReason = z.infer<typeof HoldReason>;

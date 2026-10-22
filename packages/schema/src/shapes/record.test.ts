@@ -30,6 +30,16 @@ describe("record envelope", () => {
   it("rejects dry-side fields set in wet mode", () => {
     expect(RecordEnvelope.safeParse({ ...envelope, invocations: [invocation(0, { stub: "x" })] }).success).toBe(false);
   });
+  it("rejects headers outside the allowlists, authorization and cookie included", () => {
+    const req = (headers: object) => ({ ...envelope, request: { ...envelope.request, headers } });
+    const res = (headers: object) => ({ ...envelope, response: { ...envelope.response, headers } });
+    expect(RecordEnvelope.safeParse(req({ "content-type": "application/json" })).success).toBe(true);
+    expect(RecordEnvelope.safeParse(req({ authorization: "Bearer x" })).success).toBe(false);
+    expect(RecordEnvelope.safeParse(req({ cookie: "s=1" })).success).toBe(false);
+    expect(RecordEnvelope.safeParse(req({ "retry-after": "1" })).success).toBe(false);
+    expect(RecordEnvelope.safeParse(res({ "x-packserver-version": "r1" })).success).toBe(true);
+    expect(RecordEnvelope.safeParse(res({ "set-cookie": "s=1" })).success).toBe(false);
+  });
   it("rejects an unknown effect and a record without redactions", () => {
     expect(RecordEnvelope.safeParse({ ...envelope, invocations: [invocation(0, { effect: "delete" })] }).success).toBe(false);
     expect(RecordEnvelope.safeParse({ ...envelope, redactions: undefined }).success).toBe(false);

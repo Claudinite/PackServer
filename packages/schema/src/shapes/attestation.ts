@@ -14,7 +14,7 @@ const oidcProvenance = z.object({
 });
 
 /** An upload carries no repository claims, so none can be asserted. */
-const uploadProvenance = z.object({
+const uploadProvenance = z.strictObject({
   source: z.literal("upload"),
   source_verified: z.literal(false),
 });

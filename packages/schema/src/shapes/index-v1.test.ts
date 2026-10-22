@@ -44,6 +44,29 @@ describe("scope index", () => {
   });
 });
 
+describe("strictness and latest_eligible", () => {
+  it("rejects unknown fields on signed documents", () => {
+    expect(RootIndex.safeParse({ ...f.root, extra: 1 }).success).toBe(false);
+    expect(ScopeIndex.safeParse({ ...f.scopeIndex, extra: 1 }).success).toBe(false);
+    expect(KeysDocument.safeParse({ ...f.keys, extra: 1 }).success).toBe(false);
+  });
+  it("rejects latest_eligible naming a missing, yanked or quarantined version", () => {
+    const point = (latest_eligible: string | null, status = "active") => {
+      const doc = clone(f.scopeIndex);
+      const v = doc.packs[0]!.versions[0]!;
+      Object.assign(v, { status, reason: "r" });
+      Object.assign(doc.packs[0]!, { latest_eligible });
+      return ScopeIndex.safeParse(doc).success;
+    };
+    expect(point("1.61021.1")).toBe(true);
+    expect(point("1.61021.1", "deprecated")).toBe(true);
+    expect(point(null, "yanked")).toBe(true);
+    expect(point("9.9.9")).toBe(false);
+    expect(point("1.61021.1", "yanked")).toBe(false);
+    expect(point("1.61021.1", "quarantined")).toBe(false);
+  });
+});
+
 describe("index version", () => {
   it("requires a reason for any status but active", () => {
     for (const status of ["deprecated", "yanked", "quarantined", "removed"]) {

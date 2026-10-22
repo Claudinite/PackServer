@@ -1,11 +1,26 @@
 import { z } from "zod";
-import { PackName, PackVersion, ScopeName, Serial, Sha256, Timestamp } from "../shapes/domain";
+import { PackName, PackVersion, ScopeName, Serial, Sha256 } from "../shapes/domain";
 
 export const DO_RPC_SCHEMA_VERSION = 1;
 
 /** Every Durable Object RPC result carries `schema_version`. */
 function result<S extends z.ZodRawShape>(shape: S) {
   return z.object({ schema_version: z.number().int().positive(), ...shape });
+}
+
+export type DoResultAcceptance =
+  | { ok: true; schema_version: number }
+  | { ok: false; reason: "malformed" | "schema.unsupported"; schema_version?: number };
+
+/** A caller at schema_version n accepts results at n and n+1. */
+export function acceptDoResult(callerSchemaVersion: number, raw: unknown): DoResultAcceptance {
+  const head = z.object({ schema_version: z.number().int().positive() }).safeParse(raw);
+  if (!head.success) return { ok: false, reason: "malformed" };
+  const n = head.data.schema_version;
+  if (n !== callerSchemaVersion && n !== callerSchemaVersion + 1) {
+    return { ok: false, reason: "schema.unsupported", schema_version: n };
+  }
+  return { ok: true, schema_version: n };
 }
 
 const ping = { args: z.tuple([]), result: result({ ok: z.literal(true) }) };
@@ -56,10 +71,6 @@ export const DO_RPC = {
     notifyScopeChange: {
       args: z.tuple([z.object({ scope: ScopeName, sha256: Sha256, serial: Serial })]),
       result: result({ queued: z.boolean() }),
-    },
-    resignNow: {
-      args: z.tuple([]),
-      result: result({ sha256: Sha256, serial: Serial, signed_at: Timestamp }),
     },
   },
 } as const;

@@ -12,6 +12,10 @@ describe("attestation", () => {
     const doc = { ...f.attestation, provenance: { source: "upload", source_verified: true } };
     expect(Attestation.safeParse(doc).success).toBe(false);
   });
+  it("rejects an upload provenance that smuggles repository claims", () => {
+    const provenance = { source: "upload", source_verified: false, repository: "acme/packs" };
+    expect(Attestation.safeParse({ ...f.attestation, provenance }).success).toBe(false);
+  });
   it("rejects an OIDC provenance missing its repository id or with a short commit", () => {
     const rest: Record<string, unknown> = { ...f.attestation.provenance };
     delete rest.repository_id;

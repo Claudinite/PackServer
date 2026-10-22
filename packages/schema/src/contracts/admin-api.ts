@@ -33,6 +33,7 @@ export const ADMIN_METHODS = {
   block_source: adminOnly,
   turn_flag_on: adminOnly,
   yank_version: adminOnly,
+  roll_back: adminOnly,
 } as const satisfies Record<string, AdminMethodPolicy>;
 
 export type AdminMethod = keyof typeof ADMIN_METHODS;
@@ -68,9 +69,10 @@ export const AdminRequest = z.discriminatedUnion("method", [
   z.object({ method: z.literal("quarantine_version"), ...version }),
   z.object({ method: z.literal("unquarantine_version"), ...version }),
   z.object({ method: z.literal("yank_version"), ...version }),
+  z.object({ method: z.literal("roll_back"), reason }),
   z.object({ method: z.literal("enable_new_pack_kill_switch"), reason }),
   z.object({ method: z.literal("disable_new_pack_kill_switch"), reason }),
-  z.object({ method: z.literal("set_telemetry_mode"), mode: z.string().min(1) }),
+  z.object({ method: z.literal("set_telemetry_mode"), mode: z.enum(["normal", "economy"]) }),
   z.object({ method: z.literal("acknowledge_page"), page: z.string().min(1) }),
   z.object({ method: z.literal("freeze_index_regeneration"), reason }),
   z.object({ method: z.literal("unfreeze_index_regeneration"), reason }),

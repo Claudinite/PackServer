@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Capability, CapabilitySet, Finding, PackName, PreInstallManifest, VERSION_STATUSES, VerificationFacts, VersionStatus } from "./domain";
-import { REFUSAL_REASONS, Refusal } from "./refusals";
+import { HOLD_REASONS, HoldReason, REFUSAL_REASONS, Refusal } from "./refusals";
 import { preinstall } from "./fixtures";
 
 describe("statuses", () => {
@@ -38,6 +38,13 @@ describe("capabilities", () => {
     expect(Capability.safeParse("github-action:").success).toBe(false);
     expect(CapabilitySet.safeParse(["guard", "guard"]).success).toBe(false);
   });
+  it("make a task gaining opens-pr or agentic-phase visible as a set difference", () => {
+    for (const c of ["task:opens-pr", "task:agentic-phase"]) expect(Capability.safeParse(c).success).toBe(true);
+    expect(Capability.safeParse("task:unknown").success).toBe(false);
+    const before = new Set(CapabilitySet.parse(["task"]));
+    const after = CapabilitySet.parse(["task", "task:opens-pr"]);
+    expect(after.filter((c) => !before.has(c))).toEqual(["task:opens-pr"]);
+  });
   it("allow the empty set of a prose-only pack", () => expect(CapabilitySet.parse([])).toEqual([]));
 });
 
@@ -66,6 +73,24 @@ describe("refusals", () => {
   it("carry a reason from the register", () => {
     expect(Refusal.safeParse({ reason: "archive.bomb" }).success).toBe(true);
     expect(Refusal.safeParse({ reason: "because" }).success).toBe(false);
+  });
+  it("are exactly dsl.md section 3's words plus the dotted register words", () => {
+    expect([...REFUSAL_REASONS].sort()).toEqual(
+      [
+        "step-up", "mfa-required", "oidc.fork", "oidc.workflow", "oidc.environment", "oidc.invalid", "signature",
+        "signed-out", "rate-limited", "human-check", "forbidden", "exists", "trusted-only", "quota", "unknown-tool",
+        "scope", "archive.bomb", "archive.unsafe", "index.rollback", "index.stale",
+      ].sort(),
+    );
+    for (const dropped of ["not_found", "rate_limited", "quota_exceeded", "under_review", "held"]) {
+      expect(Refusal.safeParse({ reason: dropped }).success).toBe(false);
+    }
+  });
+  it("name the hold reasons of the register", () => {
+    expect([...HOLD_REASONS].sort()).toEqual(
+      ["budget", "install-url", "name-near-miss", "new-capability", "prose-screen", "review-requested"],
+    );
+    expect(HoldReason.safeParse("because").success).toBe(false);
   });
   it("list no reason twice", () => expect(new Set(REFUSAL_REASONS).size).toBe(REFUSAL_REASONS.length));
 });

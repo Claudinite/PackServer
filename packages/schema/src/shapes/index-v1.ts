@@ -52,18 +52,28 @@ const indexVersionBase = z.object({ ...versionFields, ...VerificationFacts.shape
 export const IndexVersion = indexVersionBase.superRefine(checkStatusFields);
 export type IndexVersion = z.infer<typeof IndexVersion>;
 
-export const IndexPack = z.object({
-  name: PackName,
-  /** Never a yanked, quarantined or removed version. */
-  latest_eligible: PackVersion.nullable(),
-  status: z.literal("removed").optional(),
-  versions: z.array(IndexVersion),
-});
+const INELIGIBLE_FOR_LATEST: readonly VersionStatus[] = ["yanked", "quarantined", "removed"];
+
+export const IndexPack = z
+  .object({
+    name: PackName,
+    latest_eligible: PackVersion.nullable(),
+    status: z.literal("removed").optional(),
+    versions: z.array(IndexVersion),
+  })
+  .refine(
+    (p) => {
+      if (p.latest_eligible === null) return true;
+      const listed = p.versions.find((v) => v.version === p.latest_eligible);
+      return listed !== undefined && !INELIGIBLE_FOR_LATEST.includes(listed.status);
+    },
+    { message: "latest_eligible names a listed version that is not yanked, quarantined or removed", path: ["latest_eligible"] },
+  );
 export type IndexPack = z.infer<typeof IndexPack>;
 
 export const ROOT_KIND = "root";
 
-const rootBody = z.object({
+const rootBody = z.strictObject({
   kind: z.literal(ROOT_KIND),
   ...documentHead,
   scopes: z.array(z.object({ scope: ScopeName, sha256: Sha256, serial: Serial })),
@@ -72,7 +82,7 @@ export const UnsignedRoot = rootBody.refine(hasStandardExpiry, expiryIssue);
 export const RootIndex = rootBody.extend(signature).refine(hasStandardExpiry, expiryIssue);
 export type RootIndex = z.infer<typeof RootIndex>;
 
-const scopeBody = z.object({
+const scopeBody = z.strictObject({
   kind: z.literal("scope"),
   scope: ScopeName,
   ...documentHead,
@@ -82,7 +92,7 @@ export const UnsignedScopeIndex = scopeBody.refine(hasStandardExpiry, expiryIssu
 export const ScopeIndex = scopeBody.extend(signature).refine(hasStandardExpiry, expiryIssue);
 export type ScopeIndex = z.infer<typeof ScopeIndex>;
 
-const privateEntryBody = z.object({
+const privateEntryBody = z.strictObject({
   kind: z.literal("private"),
   pack: PackName,
   ...documentHead,
@@ -114,7 +124,7 @@ export const RegistryKey = z
   });
 export type RegistryKey = z.infer<typeof RegistryKey>;
 
-const keysBody = z.object({
+const keysBody = z.strictObject({
   kind: z.literal("keys"),
   ...documentHead,
   keys: z.array(RegistryKey),
@@ -123,7 +133,7 @@ export const UnsignedKeysDocument = keysBody.refine(hasStandardExpiry, expiryIss
 export const KeysDocument = keysBody.extend(signature).refine(hasStandardExpiry, expiryIssue);
 export type KeysDocument = z.infer<typeof KeysDocument>;
 
-const versionsBody = z.object({
+const versionsBody = z.strictObject({
   kind: z.literal("versions"),
   pack: PackName,
   ...documentHead,
