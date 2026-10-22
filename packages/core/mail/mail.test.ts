@@ -13,7 +13,7 @@ const SAMPLES: { [K in NoticeKind]: NoticeData<K> } = {
   "domain-proof-warning": { scope: "@acme", domain: "acme.test", failedChecks: 1, removalDate: "2026-11-21", scopeUrl: url },
   "verified-publisher-decision": { scope: "@acme", decision: "denied", reason: "no MFA", scopeUrl: url },
   "report-status-changed": { pack: "@acme/pack", status: "fixed", fixedIn: "1.0.1", reportUrl: url },
-  "version-withdrawn": { items: [{ pack: "@acme/pack", version: "1.0.0", action: "yanked", reason: null }], packUrl: url },
+  "version-withdrawn": { items: [{ pack: "@acme/pack", version: "1.0.0", action: "yanked", reason: null, url }] },
   "pack-actioned": { pack: "@acme/pack", action: "quarantined", reason: "malware", appealUrl: url },
   "appeal-decided": { pack: "@acme/pack", outcome: "denied", packUrl: url },
   "domain-drift-warning": { pack: "@acme/pack", version: "1.0.0", domain: "x.test", versionUrl: url },
@@ -69,10 +69,22 @@ describe("notice rules", () => {
     expect(() => renderNotice("pack-actioned", { ...SAMPLES["pack-actioned"], appealUrl: "javascript:alert(1)" })).toThrow(/https/);
   });
 
+  it("refuses an empty withdrawal digest", () => {
+    expect(() => renderNotice("version-withdrawn", { items: [] })).toThrow(/at least one/);
+  });
+
+  it("refuses a blank denial reason", () => {
+    for (const reason of ["", "   \n"]) {
+      expect(() => renderNotice("verified-publisher-decision", { scope: "@acme", decision: "denied", reason, scopeUrl: url })).toThrow(/reason/);
+    }
+  });
+
   it("digests several withdrawals into one notice", () => {
     const d = SAMPLES["version-withdrawn"];
-    const out = renderNotice("version-withdrawn", { ...d, items: [...d.items, { pack: "@b/c", version: "2.0.0", action: "deprecated", reason: "old" }] });
+    const out = renderNotice("version-withdrawn", { ...d, items: [...d.items, { pack: "@b/c", version: "2.0.0", action: "deprecated", reason: "old", url: "https://packserver.example/b" }] });
     expect(out.text).toContain("@b/c 2.0.0");
+    expect(out.html).toContain('href="https://packserver.example/b"');
+    expect(out.html).toContain('href="https://packserver.example/x?a=1&amp;b=2"');
   });
 });
 

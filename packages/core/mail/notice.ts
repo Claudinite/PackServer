@@ -5,21 +5,23 @@ export interface Notice {
   subject: string;
   paragraphs: string[];
   action?: { label: string; url: string };
+  /** Further links, one per item the notice lists. */
+  links?: Array<{ label: string; url: string }>;
 }
 
 export const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 export function render(notice: Notice): Pick<MailMessage, "subject" | "text" | "html"> {
-  if (notice.action && !notice.action.url.startsWith("https://")) {
-    throw new Error("notice action links must be https");
+  const links = [...(notice.links ?? []), ...(notice.action ? [notice.action] : [])];
+  if (links.some((l) => !l.url.startsWith("https://"))) {
+    throw new Error("notice links must be https");
   }
-  const textParts = [...notice.paragraphs];
-  if (notice.action) textParts.push(`${notice.action.label}: ${notice.action.url}`);
-  const htmlParts = notice.paragraphs.map((p) => `<p>${escapeHtml(p)}</p>`);
-  if (notice.action) {
-    htmlParts.push(`<p><a href="${escapeHtml(notice.action.url)}">${escapeHtml(notice.action.label)}</a></p>`);
-  }
+  const textParts = [...notice.paragraphs, ...links.map((l) => `${l.label}: ${l.url}`)];
+  const htmlParts = [
+    ...notice.paragraphs.map((p) => `<p>${escapeHtml(p)}</p>`),
+    ...links.map((l) => `<p><a href="${escapeHtml(l.url)}">${escapeHtml(l.label)}</a></p>`),
+  ];
   return {
     subject: notice.subject,
     text: `${textParts.join("\n\n")}\n`,

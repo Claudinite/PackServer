@@ -19,7 +19,7 @@ export interface MailTelemetry {
 }
 
 /** Errors about one recipient say nothing about the provider's health. */
-const RECIPIENT_ERRORS = new Set(["E_RECIPIENT_SUPPRESSED", "E_RECIPIENT_NOT_ALLOWED", "E_VALIDATION_ERROR"]);
+const RECIPIENT_ERRORS = new Set(["E_RECIPIENT_SUPPRESSED", "E_RECIPIENT_NOT_ALLOWED"]);
 
 export interface EmailServiceOptions {
   from: string;

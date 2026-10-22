@@ -41,6 +41,12 @@ describe("EmailServiceMail", () => {
     expect(events).toEqual(Array(4).fill("email.failed"));
   });
 
+  it("counts a malformed-payload error toward the streak", async () => {
+    const { mail, events } = setup(2, "E_VALIDATION_ERROR");
+    for (let i = 0; i < 2; i++) await expect(mail.send(msg)).rejects.toThrow();
+    expect(events).toEqual(["email.failed", "email.failed", "ticket:email_failed"]);
+  });
+
   it("resets the count after a success", async () => {
     const { mail, events } = setup(1);
     await expect(mail.send(msg)).rejects.toThrow();
