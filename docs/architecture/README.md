@@ -40,7 +40,7 @@ Indicative running cost at launch scale is about $30/month (Workers Paid $5, a P
                          │              │   │    │                                                │
  CLI / CI ─API+OIDC─▶ publish Worker (/api/publish, GitHub OIDC exchange, presigned uploads)     │
                          │              ▼   ▼    ▼                                                │
- GitHub ──webhooks─▶  github Worker   D1 (registry)   KV (sessions, cache)   Vectorize (embeds)  │
+ GitHub ──webhooks─▶  github Worker   D1 (registry)   KV (OAuth, cache)      Vectorize (embeds)  │
  Stripe ──webhooks─▶  billing Worker    │                                                         │
                          │              ▼                                                         │
                          └──▶ Workflows: ValidatePackWorkflow ──▶ Sandbox (Container microVM)     │
@@ -91,7 +91,7 @@ The validator does not trust the declared inventory: it extracts the real one (c
 users(id, handle, email, email_verified_at, created_at, status)
 credentials(id, user_id, type[passkey|totp|recovery], public_key|secret_enc, sign_count, transports, created_at, last_used_at)
 identities(user_id, provider[github|google], subject, login, linked_at)          -- linked logins
-sessions → KV (sid → {user_id, mfa_at, created_at}, 12h idle / 7d absolute; step-up window 10 min)
+sessions(id_hash, user_id, mfa_at, created_at, last_seen_at, revoked_at)        -- 12h idle / 7d absolute; step-up window 10 min
 
 scopes(id, name UNIQUE, kind[user|org], verified_github_org, verified_domain, verified_publisher_at)
 scope_members(scope_id, user_id, role[owner|admin|publisher|member])
@@ -100,14 +100,16 @@ domain_challenges(scope_id, domain, token, method[dns_txt|well_known], verified_
 
 packs(id, scope_id, name, visibility[public|private], status[active|deprecated|quarantined|removed],
       repo_url, trusted_publishing_only, staged_publishing, created_at)          -- names never recycled
-pack_versions(id, pack_id, version, sha256, size, r2_key, state, provenance_json, inventory_json,
-              context_tokens, validation_report_key, published_at, yanked_at)
+pack_versions(id, pack_id, version, sha256, size, r2_key, state, repo_commit, inventory counts,
+              context_tokens, risk_score, validation_report_key, published_at, yanked_at)
+                                    -- full inventory, provenance, report live in R2 meta.json
 trusted_publishers(pack_id | pending_name, provider='github', repository_owner_id, repository, workflow,
                    environment, path)
 grants(resource_type[pack|scope], resource_id, principal_type[user|team|scope|token|domain],
        principal_id, action[read|publish|yank|manage], created_by, expires_at)   -- JFrog-style permission rows
 effective_access(pack_id, user_id)                                                -- materialised from grants
 tokens(id, owner_user_id, prefix, hash, scopes, restrict_pack_id, restrict_scope_id, expires_at, last_used_at)
+                                    -- last_used_at updated at most hourly
 
 stars(user_id, pack_id, created_at)
 reviews(user_id, pack_id, rating 1-5, body, verified_fetch, publisher_reply, status)
@@ -118,11 +120,13 @@ pack_stats(pack_id, installs_30d, stars, works, fails, score_directory, score_mc
 
 credit_ledger(id, owner_type, owner_id, delta, reason, stripe_event_id UNIQUE, pack_id, created_at)
 subscriptions(scope_id, stripe_customer_id, stripe_subscription_id, plan, seats, status)
-audit_log(id, actor, action, target, ip_hash, at, detail_json)
 packs_fts  (FTS5 external-content over name, summary, keywords, inventory names)
+
+-- separate D1 database `audit`
+audit_log(id, actor, action, target, ip_hash, at, detail_json)
 ```
 
-D1 limits shape the model: one database is single-writer and hard-capped at 10 GB. So D1 holds only metadata and indexes; READMEs, manifests and validation logs live in R2; high-frequency counters (installs, downloads) go to Analytics Engine and are rolled up. A registry is overwhelmingly read-heavy, and a few hundred writes a minute is far below what one SQLite primary handles. The schema is plain SQL through Drizzle so that moving to Postgres via Hyperdrive is a migration, not a rewrite.
+D1 limits shape the model: one database is single-writer and hard-capped at 10 GB. So D1 holds only metadata and indexes; READMEs, manifests and validation logs live in R2; high-frequency counters (installs, downloads) go to Analytics Engine and are rolled up. A registry is overwhelmingly read-heavy, and a few hundred writes a minute is far below what one SQLite primary handles. The schema is plain SQL through Drizzle so that moving to Postgres via Hyperdrive is a migration, not a rewrite. Every store PackServer writes to, and why each fits its read and write pattern, is in [data-stores.md](data-stores.md).
 
 ## 4. Identity, authentication and MFA
 
@@ -135,7 +139,7 @@ Publishers are the attack surface that matters (the 2025–2026 npm, crates.io a
 - **Passkeys first, TOTP as fallback.** npm stopped allowing new TOTP setups in 2025 because TOTP is phishable; we keep it as a fallback factor but nudge to passkeys and allow scopes to enforce "passkeys only" for their members.
 - **Recovery:** 10 single-use recovery codes shown once; account recovery without a factor goes to a manual, delayed (72 h) review with notification to every verified email, never instant.
 - **Step-up:** sensitive actions (approve a staged publish, mint a token, add a scope owner, change billing) require a fresh WebAuthn assertion within the last 10 minutes, even inside a valid session.
-- **Sessions:** opaque session id in a `__Host-` cookie (Secure, HttpOnly, SameSite=Lax), state in KV, 12 h idle / 7 day absolute, revocable list on `/account/security`. CSRF tokens on all state-changing forms.
+- **Sessions:** opaque session id in a `__Host-` cookie (Secure, HttpOnly, SameSite=Lax), state in D1 so revocation is immediate (KV can take 60 seconds or more to propagate), 12 h idle / 7 day absolute, revocable list on `/account/security`. CSRF tokens on all state-changing forms.
 - **Implementation:** `@simplewebauthn/server` (runs on WebCrypto, lists Workers as supported), `otpauth`-style TOTP over WebCrypto HMAC, credential public keys and sign counters in D1, TOTP secrets encrypted with a key from Secrets Store. Turnstile on signup, login and code requests. Rate limits per IP and per account on every auth endpoint.
 
 ### Scopes (namespaces) and proving "this is really Google"
@@ -219,6 +223,7 @@ Ongoing: a Cron Trigger re-validates popular packs and everything when detection
 | `packs-staging` | uploads awaiting validation | private; written via presigned PUT, read by the validator; lifecycle rule deletes after 14 days |
 | `packs-public` | validated public versions, attestations, rendered READMEs | custom domain `cdn.packserver.dev`, Cache Everything, `immutable` cache headers; free egress |
 | `packs-private` | validated private versions | never public; the `mcp`/`web` Worker checks `effective_access` then streams the object or mints a 5-minute presigned GET |
+| `validation-reports` | full validation and LLM review logs | private; read by the publisher dashboard and moderators |
 
 Keys are immutable and versioned, so R2's one-write-per-second-per-key limit never matters, and "latest" pointers live in D1, never in R2. A published version never changes: the same name and version always resolve to the same SHA-256. Every download response carries the SHA-256 and the attestation URL, and the client verifies both.
 
@@ -232,7 +237,11 @@ The cn engine is the main consumer, not agents. Packs are committed to the membe
 
 ### 7.2 GitHub mirror for networks that can't reach us
 
-Claude Code web VMs on the default Trusted network could not reach our hosts during the licensing work (2026-09-30), so `cdn.packserver.dev` may be unreachable from web sessions. The validator therefore also pushes each public promote (archive, `.sha256`, attestation, scope index) to a GitHub mirror repository (e.g. `Claudinite/packs-mirror`, one commit per publish, by the GitHub App). cn tries PackServer first and falls back to the mirror; signatures and hashes are identical, so the mirror needs no extra trust. This also moves web-session traffic off our bill. Private packs have no mirror; web sessions would need the network allowlist to include our host.
+Claude Code web VMs on the default Trusted network could not reach our hosts during the licensing work (2026-09-30), so `cdn.packserver.dev` may be unreachable from web sessions.
+
+Preferred: run update checks from a GitHub Actions workflow in the member repo, which can reach our hosts, and have it open a pull request with the new pack versions. Packs are committed to the repo, so web sessions then never need PackServer at all.
+
+Fallback, only if checks must run inside web sessions: the validator publishes each public version's archive, `.sha256` and attestation as GitHub Release assets on a mirror repository (e.g. `Claudinite/packs-mirror`), and commits only the small scope indexes as files. Committing archives to git would add about 1 GB a month at 40k versions, past GitHub's recommended repository size within months, and git history can't be pruned without rewriting it. cn tries PackServer first and falls back to the mirror; signatures and hashes are identical, so the mirror needs no extra trust. Private packs have no mirror; web sessions would need the network allowlist to include our host.
 
 ## 8. MCP endpoint for agents
 
@@ -295,7 +304,7 @@ The permission model is JFrog-style rows of (resource, principal, action) in `gr
 | No Anthropic models on Workers AI | LLM evaluation must leave Cloudflare | AI Gateway with our key, spend caps, run only after cheap checks pass |
 | MCP SDK churn (McpAgent deprecated within ~18 months; DCR being deprecated in spec); `agents@0.23.0` pins `@modelcontextprotocol/server@2.0.0`, which has open high-severity advisories | Upgrade work; must not ship with known vulns | Pin versions, track the advisories, upgrade before public launch |
 | Lock-in concentrated in Workflows, Durable Objects, Vectorize | Hard to move later | Business logic in plain functions; R2 is S3-compatible; SQL is portable; sandbox images are OCI |
-| Claude Code web VMs may not reach custom hosts | Web sessions can't fetch packs or check updates | GitHub mirror of public packs and indexes (§7.1–7.2); ask for the host to be allowlisted |
+| Claude Code web VMs may not reach custom hosts | Web sessions can't fetch packs or check updates | Run update checks from GitHub Actions; Release-asset mirror only as fallback (§7.2); ask for the host to be allowlisted |
 | D1 primary location / jurisdiction chosen at creation | Data residency choice is effectively permanent | Decide (likely default or `eu`) before creating the production database |
 
 ## 13. Security summary
