@@ -1,8 +1,8 @@
 # Cloudflare release engineering, HA, staging and traffic shadowing for PackServer
 
-Researched 2026-10-22 against developers.cloudflare.com, blog.cloudflare.com, cloudflarestatus.com and the prior-art projects named below. Every figure carries a source in section H; "last updated" dates are the ones printed on the Cloudflare page. Anything I could not confirm from a primary source is marked **unverified**. This document does not repeat the platform limits and prices already collected in [`docs/architecture/research/cloudflare-platform.md`](../../architecture/research/cloudflare-platform.md) (on branch `claude/project-thread-437fer`); it cites that file where relevant.
+Researched 2026-10-22 against developers.cloudflare.com, blog.cloudflare.com, cloudflarestatus.com and the prior-art projects named below. Every figure carries a source in section H; "last updated" dates are the ones printed on the Cloudflare page. Anything I could not confirm from a primary source is marked **unverified**. This document does not repeat the platform limits and prices already collected in `docs/architecture/research/cloudflare-platform.md` (PR #3) (on branch `claude/project-thread-437fer`); it cites that file where relevant.
 
-Context assumed from the architecture ([README](../../architecture/README.md), [data-stores](../../architecture/data-stores.md)): seven Workers split by trust boundary (`web`, `mcp`, `publish`, `github`, `billing`, `validator`, `admin`), Workflows + Sandbox for validation, D1 `registry` and `audit`, four R2 buckets, Vectorize, Analytics Engine, a `ScopeCoordinator` Durable Object per scope, KV for OAuth and caches, Queues, Stripe and GitHub OIDC. Traffic assumptions are taken from [`docs/hosting-cost-estimate.md`](../../hosting-cost-estimate.md) (section G states them).
+Context assumed from the architecture (README (`docs/architecture/README.md`, PR #3), data-stores (`docs/architecture/data-stores.md`, PR #3)): seven Workers split by trust boundary (`web`, `mcp`, `publish`, `github`, `billing`, `validator`, `admin`), Workflows + Sandbox for validation, D1 `registry` and `audit`, four R2 buckets, Vectorize, Analytics Engine, a `ScopeCoordinator` Durable Object per scope, KV for OAuth and caches, Queues, Stripe and GitHub OIDC. Traffic assumptions are taken from [`docs/hosting-cost-estimate.md`](../../hosting-cost-estimate.md) (section G states them).
 
 ## Executive summary: the 10 facts that drive decisions
 
@@ -353,4 +353,4 @@ Prior art:
 - [S64] Facebook Chat dark launch (2008), via https://simonwillison.net/2008/May/15/ (original note: https://www.facebook.com/note.php?note_id=14218138919)
 - [S65] Microsoft engineering playbook, shadow testing: https://microsoft.github.io/code-with-engineering-playbook/automated-testing/shadow-testing/
 
-Project files cited: [`docs/architecture/research/cloudflare-platform.md`](../../architecture/research/cloudflare-platform.md), [`docs/architecture/data-stores.md`](../../architecture/data-stores.md), [`docs/hosting-cost-estimate.md`](../../hosting-cost-estimate.md).
+Project files cited: `docs/architecture/research/cloudflare-platform.md` (PR #3), `docs/architecture/data-stores.md` (PR #3), [`docs/hosting-cost-estimate.md`](../../hosting-cost-estimate.md).
