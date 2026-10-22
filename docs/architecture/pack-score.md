@@ -4,7 +4,7 @@ Ariel asked two things: how validation works end to end, with no agentic scans, 
 
 ## 1. Validation, end to end
 
-Nothing in the pipeline is an agent. Nothing gets tools, a loop or the ability to fetch, run or decide what to look at next. Each step is either deterministic code or a single model call that returns a fixed JSON shape.
+Nothing in the pipeline is an agent. Nothing gets tools, a loop or the ability to fetch, run or decide what to look at next. Each step is either deterministic code or the prose screen, a set of single Jev calls that return one probability per question, with code making the decision.
 
 | Stage | What it does | How |
 |---|---|---|
@@ -13,7 +13,7 @@ Nothing in the pipeline is an agent. Nothing gets tools, a loop or the ability t
 | Read the pack | Manifest schema, real inventory, names, hidden characters, secrets, URLs, extracted capabilities | Sandbox code (the `core` rule module, also in `cn pack lint`) |
 | Run the pack | The pinned cn engine loads it, and every declared check, coded check and guard runs on its firing and silent fixtures; any network egress fails it | Sandbox, no internet |
 | Measure | The pack score (§2), from the same tree | Sandbox code |
-| Prose screen | Two single-shot Haiku classification calls over the text, with structured output and quotes verified against the files | One request each, no tools (optional, see §3) |
+| Prose screen | Jev scores chunks of the pack text against a fixed, versioned question set; any probability over its threshold holds the version | Jev on Workers AI, one request per chunk, no tools (decided, see §3) |
 | Verdict | Fail, hold or warn, by rule class; tier | Worker code |
 | Human | Only holds; about 10 a day | Admin app |
 | Publish | Passkey approval if staged, then the canonical re-pack is served | Worker |
@@ -89,8 +89,8 @@ As Socket does, some facts cap the score regardless of the rest: an open securit
 - "Anthropic guidelines" means the Agent Skills best practices for now. When Anthropic publishes guidance beyond skills, the matching rules are added under a new rules version.
 - Whether to show a score for packs with fewer than 30 days of cn telemetry (the fire-rate rule) or mark that rule "not enough data". Proposed: the latter.
 
-## 3. The one model call that remains
+## 3. The one model that remains
 
-The prose screen in §1 is the only place a model sees pack content. It is not agentic: one request, the pack text as delimited data, no tools, a fixed JSON answer, and code decides the verdict. Its job is the threat the deterministic rules handle worst: plain-language instructions that steer the agent (exfiltrate secrets, disable checks, address the reviewer). Without it those packs are caught only by the URL, secret and capability rules, by community reports, and by human review of holds.
+The prose screen in §1 is the only place a model sees pack content. Ariel decided (2026-10-22) that it is Jev (`typesafe/jev`), a structured evaluation model served by Workers AI, and that nothing in validation is agentic. It is not an agent: the validator sends the pack text in chunks of at most about 28k tokens as delimited data, asks a fixed, versioned set of questions, and gets back only a probability per question (and, for the question whether the content matches the pack's `pitch`, a label with its probabilities). Its job is the threat the deterministic rules handle worst: plain-language instructions that steer the agent (read or send secrets, disable checks or guards, address the reviewer, fetch and run code from a URL, act outside the repo).
 
-If Ariel wants no model at all, the pipeline still works. The two screens and the Sonnet step are removed, and in their place every first publish of a pack with any capability beyond prose is held for a human, and prose-only packs publish at the third-party tier until they gain reports-free age (proposed 14 days) or a human review. That saves about $520 a month at 40k versions and adds an estimated 5 to 15 holds a day for one operator.
+Code decides what happens. Each question has a threshold in the rules version, and an answer over its threshold holds the version for a human, who sees the chunk, the question, the probability and the static findings. The model never fails or rejects a version on its own, and it never contributes to the score. A typical pack costs about $0.001 to screen, about $40 a month at 40k versions. Running no model at all was considered and set aside.

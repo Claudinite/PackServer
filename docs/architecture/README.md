@@ -21,7 +21,7 @@ Cloudflare can carry the whole product. The pieces that needed proof are covered
 | Pack storage and delivery | R2, custom domain with CDN cache, free egress | GA |
 | Metadata, search | D1 (SQLite) with FTS5; Vectorize + Workers AI embeddings for semantic search | GA (D1 read replicas beta) |
 | Validation of untrusted packs | Workflows to orchestrate, Containers / Sandbox SDK microVMs to execute | GA (Sandbox GA Apr 2026) |
-| Prose screen of pack text | One single-shot classification call per version, no tools; model pending Ariel (Jev on Workers AI recommended, else Haiku via AI Gateway) | Workers AI model catalog |
+| Prose screen of pack text | Jev (`typesafe/jev`) on Workers AI, decided by Ariel 2026-10-22: structured evaluation calls over chunked pack text, no tools, and code compares the returned probabilities with versioned thresholds | Third-party model served by Workers AI, zero data retention |
 | Remote MCP for agents | `createMcpHandler` (stateless Streamable HTTP) | GA; **spike works** |
 | OAuth for MCP and API | `@cloudflare/workers-oauth-provider` | GA library |
 | Passkeys + TOTP | `@simplewebauthn/server` (WebCrypto, supports Workers), WebCrypto HMAC for TOTP | Libraries, no CF primitive |
@@ -30,7 +30,7 @@ Cloudflare can carry the whole product. The pieces that needed proof are covered
 | Admin access | Cloudflare Access (Zero Trust) in front of the admin app | GA |
 | Email | Email Service (sending) | **Beta**, keep a fallback provider |
 
-Indicative running cost at launch scale is about $30/month (Workers Paid $5, a Pro zone for WAF rate rules ~$25, everything else inside included quotas), plus Polar's fees and the prose screen (about $40/month at 40k versions with Jev).
+Indicative running cost at launch scale is about $30/month (Workers Paid $5, a Pro zone for WAF rate rules ~$25, everything else inside included quotas), plus Polar's fees and the prose screen (Jev on Workers AI, decided: about $0.001 per version, so about $40/month at 40k versions).
 
 ## 2. System overview
 
@@ -46,7 +46,7 @@ Indicative running cost at launch scale is about $30/month (Workers Paid $5, a P
  Polar  ──webhooks─▶  billing Worker    │                                                         │
                          │              ▼                                                         │
                          └──▶ Workflows: ValidatePackWorkflow ──▶ Sandbox (Container microVM)     │
-                                        │          │                    └─egress allowlist─▶ AI Gateway ─▶ Anthropic
+                                        │          │   validator ──▶ Workers AI (Jev)             │
                                         ▼          ▼                                              │
                                  R2 packs-staging  R2 packs-public ──▶ packs.claudinite.com (cache) │
                                                    R2 packs-private ─▶ served via mcp/web Worker  │
@@ -70,7 +70,7 @@ All Workers live in one repository and share a `core` package (domain logic as p
 | `publish` | `/api/publish/*`, `/api/oidc/*` | D1, R2 staging (write), Workflows, DO quotas |
 | `github` | `/hooks/github` | GitHub App key (Secrets Store), D1, Workflows |
 | `billing` | `/hooks/polar`, `/api/billing/*` | Polar access token and webhook secret, D1 (ledger), Queue, Workflows (send events) |
-| `validator` | internal (Workflow + Sandbox DO) | R2 staging (read), R2 public/private (write), D1, Vectorize, AI Gateway token |
+| `validator` | internal (Workflow + Sandbox DO) | R2 staging (read), R2 public/private (write), D1, Vectorize, Workers AI (`typesafe/jev` for the prose screen) |
 | `admin` | `registry-admin.claudinite.com` behind Cloudflare Access | D1, R2, Workflows |
 
 ## 3. Domain model
@@ -213,7 +213,7 @@ The full design, threat model and rationale are in [validation.md](validation.md
  2  integrity        ≤ 3 MB compressed, streaming sha256, zstd magic; no decompression      Worker
  3  bounded extract  one streaming pass counting produced bytes (20 MB total, 5 MB/file,     Sandbox,
                      5k entries, 8 MB zstd window, path caps); bomb = hard fail, no retry,   no network
-                     no credit, no LLM
+                     no credit, no prose screen
  4  manifest         schema, semver version above the newest, declared inventory ⊆ real,  Sandbox
                      ASCII names, typosquat/confusable
  5  text hygiene     secrets, bidi/zero-width/tag chars, URL inventory, fetch-from-URL       Sandbox
@@ -226,11 +226,14 @@ The full design, threat model and rationale are in [validation.md](validation.md
                      scrubbed environment; undeclared egress during the run = fail
  8  canonical repack deterministic tar.zst from the validated tree, round-trip checked;      Sandbox
                      PackServer's canonical form, which cn accepts
- 9  reserve credit   before any model call                                                    Worker
-10  prose screen     single-shot classifier, no tools (model pending: Jev recommended);    Workers AI
-                     diff mode for n+1, reviewer-addressed text = hold
-11  deep review      only if the Haiku option is chosen: Sonnet on flags; with Jev, flags   AI Gateway
-                     go straight to human review
+ 9  reserve credit   before the prose screen                                                 Worker
+10  prose screen     Jev (typesafe/jev): pack text in chunks of at most ~28k tokens,         Workers AI
+    (Jev)            each passed as delimited data with a fixed, versioned question set;
+                     diff mode for n+1; no tools, no quotes, returns probabilities
+11  thresholds       code compares each probability with the rules version's threshold;      Worker
+                     over threshold = hold, sent to the human queue with chunk, question,
+                     probability and static findings; the model never fails or rejects;
+                     the static reviewer-addressed heuristic holds on its own
 12  verdict + tier   fail / hold / warn by rule class; tier canon | community | third-party  Worker
 13  human review     holds only; ~10/day budget; uncertainty holds time out to third-party   admin app
 14  payment          consume reserved credit, bound to canonical sha256                      Worker
@@ -241,9 +244,9 @@ The full design, threat model and rationale are in [validation.md](validation.md
 17  after promote    rescans, revoke flow                                                     Cron
 ```
 
-Steps 2–8 are also a free **dry-run** endpoint and a GitHub Action, and run offline in `cn pack lint` (cn adds this command), using the same `core` rule module, so CI and the registry never disagree. Steps 1–8 cost nothing and fail in minutes, so almost every rejected upload never reaches a model. LLM review is about $0.006 per version for the two screens plus $0.07 for the ~10% that get a deep review: roughly $520 a month at 40k versions. Human moderation of holds is not priced.
+Steps 2–8 are also a free **dry-run** endpoint and a GitHub Action, and run offline in `cn pack lint` (cn adds this command), using the same `core` rule module, so CI and the registry never disagree. Steps 1–8 cost nothing and fail in minutes, so almost every rejected upload never reaches the prose screen. The screen reads about 25k tokens for a typical pack at $0.042 per million input tokens (output is free), so it costs about $0.001 per version, roughly $40 a month at 40k versions. The credit is still reserved before it runs, which guards against budget floods. Human moderation of holds is not priced.
 
-No step is agentic: model calls are single requests with no tools and a fixed JSON answer, and code makes every decision. The **pack score** (0–100, computed by code from the same tree, no model) is defined in [pack-score.md](pack-score.md).
+No step is agentic: the prose screen is a set of single requests with no tools that return one probability per question, and code makes every decision. Thresholds are calibrated before launch on the canon packs, which should pass, and on an injection fixture corpus, which should hold; the measured flag rate is tracked against the budget of about 10 holds a day, and if it is exceeded the thresholds change in a new rules version. The report records the Jev model version named in each response, and a model version or question-set change rescans every live latest version (about $0.001 per pack). The details are in [validation.md](validation.md) §3.6. The **pack score** (0–100, computed by code from the same tree, no model) is defined in [pack-score.md](pack-score.md).
 
 **Update timing is not PackServer's concern** (decided by Ariel 2026-10-22). PackServer serves every validated version as soon as it is promoted and exposes each version's `published_at` in the signed index, over MCP and on the site. Any wait before a repo takes a new version is a `cn` or repo setting, an engine follow-up `cn` adds. Search policy is separate: third-party-tier versions are excluded from default MCP results unless the caller sets `include_unreviewed`.
 
@@ -254,7 +257,7 @@ No step is agentic: model calls are single requests with no tools and a fixed JS
 | `packs-staging` | uploads awaiting validation | private; written via presigned PUT, read by the validator; lifecycle rule deletes after 14 days |
 | `packs-public` | validated public versions, attestations, rendered READMEs | custom domain `packs.claudinite.com`, Cache Everything, `immutable` cache headers; free egress |
 | `packs-private` | validated private versions | never public; the `mcp`/`web` Worker checks `effective_access` then streams the object or mints a 5-minute presigned GET |
-| `validation-reports` | full validation and LLM review logs | private; read by the publisher dashboard and moderators |
+| `validation-reports` | full validation logs and prose-screen results | private; read by the publisher dashboard and moderators |
 
 Keys are immutable and versioned, so R2's one-write-per-second-per-key limit never matters, and "latest" pointers live in D1, never in R2. A published version never changes: the same name and version always resolve to the same SHA-256. `cn` verifies the index signature and each archive's sha256 against its index entry; the attestation is extra provenance that the site shows.
 
@@ -357,8 +360,8 @@ Later phases, in order:
 | Rate Limiting binding is per-location and approximate; WAF rate rules on Free are IP-only | Can't enforce exact quotas with it | Durable Objects for exact quotas; a Pro zone for WAF rules |
 | Email sending is beta with an undisclosed starting quota | Signup codes and alerts could be throttled at launch | Mail behind an interface with Postmark/Resend as fallback |
 | No WebAuthn primitive | Passkeys are our own code | `@simplewebauthn/server` on WebCrypto; extensive tests; consider a managed IdP (WorkOS, Stytch) only if needed |
-| Containers have ephemeral disk, everything runs as root inside, internet ports other than 80/443 bypass egress control when internet is enabled | Sandbox misuse risk | One sandbox per job, internet off with explicit allowlist, no tokens in the sandbox, destroy after run |
-| No Anthropic models on Workers AI | A Haiku screen would leave Cloudflare | Use Jev on Workers AI (recommended), or AI Gateway with spend caps; either runs only after cheap checks pass |
+| Containers have ephemeral disk, everything runs as root inside, internet ports other than 80/443 bypass egress control when internet is enabled | Sandbox misuse risk | One sandbox per job, internet off with no allowlist (the prose screen is called by the validator Worker, not the sandbox), no tokens in the sandbox, destroy after run |
+| The prose screen is Jev, a third-party model on Workers AI | Its robustness to prompt injection is not published, and it returns probabilities only, with no evidence quotes or explanations | Thresholds are calibrated on the canon packs and an injection fixture corpus; an over-threshold answer only holds the version for a human, who sees the chunk, question, probability and static findings; the static reviewer-addressed heuristic holds independently |
 | MCP SDK churn (McpAgent deprecated within ~18 months; DCR being deprecated in spec); `agents@0.23.0` pins `@modelcontextprotocol/server@2.0.0`, which has open high-severity advisories | Upgrade work; must not ship with known vulns | Pin versions, track the advisories, upgrade before public launch |
 | Lock-in concentrated in Workflows, Durable Objects, Vectorize | Hard to move later | Business logic in plain functions; R2 is S3-compatible; SQL is portable; sandbox images are OCI |
 | Claude Code web VMs may not reach custom hosts | Web sessions can't fetch packs or check updates | Allowlist our host, or run update checks from GitHub Actions (§7.2) |
@@ -391,7 +394,7 @@ Later phases, in order:
 
 1. ~~Who decides access to private packs?~~ Decided: an allowlist of GitHub orgs per private pack, proven by GitHub Actions OIDC (§11).
 2. ~~Is the $1 fee per new pack or per version?~~ Decided: $1 per new pack for everyone, open-source included, waived for Verified Publishers ($99/year).
-3. **Which model screens pack prose?** No agentic scans (decided). Static checks, sandboxed load and prove, and human review of holds are settled; the single-shot screen is Jev on Workers AI (recommended, about $40/month), Haiku with Sonnet on flags (about $520/month), or none ([pack-score.md](pack-score.md) §3).
+3. ~~Which model screens pack prose?~~ Decided: Jev on Workers AI (`typesafe/jev`), with no agentic step anywhere in validation. Code compares its probabilities with versioned thresholds, an over-threshold answer holds the version for a human, and the model never fails or rejects a version on its own; about $40/month at 40k versions ([validation.md](validation.md) §3.6, [pack-score.md](pack-score.md) §3).
 4. **Non-GitHub trusted publishing at launch** (GitLab OIDC), or GitHub OIDC only, with direct upload covering every other source?
 5. **Data residency:** default location or EU jurisdiction for D1 and R2?
 

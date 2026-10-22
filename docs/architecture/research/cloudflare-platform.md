@@ -2,6 +2,8 @@
 
 > **Superseded on billing (2026-10-22):** Ariel chose Polar as merchant of record instead of Stripe. The Stripe material below is kept as research; the current billing design is ARCH §9.
 
+> **Superseded on the prose screen (2026-10-22):** Ariel chose Jev (`typesafe/jev`) on Workers AI, called through the validator's binding with no AI Gateway and no Anthropic key; mentions below of a model screen through AI Gateway are out of date, and the current design is ../validation.md §3.6.
+
 Researched 2026-10-21 against developers.cloudflare.com (all figures below are from pages fetched that day; doc URLs under each section). "Paid" means the Workers Paid plan ($5/month minimum per account), which is the baseline PackServer will need.
 
 ## 0. Verdict in one paragraph

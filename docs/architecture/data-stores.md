@@ -31,7 +31,7 @@ Writing this out changed six decisions in the [architecture](README.md). They're
 | Queues | Notifications, re-index jobs | Per event | Consumed once | No |
 | KV `sessions` / `oauth` / `cache` | Web sessions, OAuth grants and tokens (library-owned), OAuth state, JWKS cache | Per login/logout, last-seen at most every 15 min, per OAuth flow | Every signed-in request, every MCP request with a token | Sessions and OAuth grants |
 | Sandbox disk | Unpacked pack during validation | During one run | During one run | No (destroyed) |
-| Secrets Store | Polar, GitHub App, signing and AI Gateway keys | By people, at rotation | At Worker start | Yes |
+| Secrets Store | Polar, GitHub App and signing keys | By people, at rotation | At Worker start | Yes |
 | Outside Cloudflare | Polar (payments, merchant of record), email provider; GitHub is read-only | Per event | Per event | Polar is the record for money |
 
 ## Each store in detail
@@ -99,7 +99,7 @@ Considered and not chosen: S3 Object Lock in Compliance mode, which would preven
 
 ### R2 `validation-reports`: full logs
 
-**Writes.** One report per validation run, including static findings, sandbox output and LLM review text.
+**Writes.** One report per validation run, including static findings, sandbox output and the prose-screen results (each chunk's questions and probabilities, the thresholds applied and the Jev model version).
 
 **Reads.** The publisher's dashboard and the moderation queue.
 
@@ -161,7 +161,7 @@ Scratch space for unpacking and running a pack during validation. Nothing is per
 
 ### Secrets Store
 
-The Polar access token and webhook secret, the GitHub App private key, the registry's index and attestation signing key (its public half is embedded in `cn`, which trusts it), and the AI Gateway token. They're written by people when keys rotate and read by Workers at startup, so rotating a key doesn't need a redeploy of every Worker.
+The Polar access token and webhook secret, the GitHub App private key, the registry's index and attestation signing key (its public half is embedded in `cn`, which trusts it). The prose screen needs no secret: the validator reaches Jev through its Workers AI binding. They're written by people when keys rotate and read by Workers at startup, so rotating a key doesn't need a redeploy of every Worker.
 
 ### Outside Cloudflare
 
