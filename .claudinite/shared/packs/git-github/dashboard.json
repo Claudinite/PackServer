@@ -1,0 +1,13 @@
+{
+  "widgets": [
+    {
+      "id": "stars",
+      "kind": "stat",
+      "label": "stars",
+      "noun": "stars",
+      "glyph": "★",
+      "source": "repo-stars"
+    }
+  ],
+  "repo": ["stars"]
+}
