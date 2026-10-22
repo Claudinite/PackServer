@@ -189,35 +189,38 @@ The new-pack wizard (Source, Metadata, Validation, Visibility, Pay) uploads stra
 
 ## 6. Validation pipeline
 
+The full design, threat model and rationale are in [validation.md](validation.md). In short, PackServer uses two things a library registry doesn't have: a known pack format that cn loads, so the pack can actually be run, and a previous version to diff against.
+
 ```
-upload ─▶ pack_versions.state=uploaded ─▶ ValidatePackWorkflow(version_id)   (idempotent instance id)
-  step 1  fetch from R2 staging, verify sha256 and size
-  step 2  static checks in the Worker: archive safety (no symlinks, path traversal, zip bombs),
-          pack.json schema, Agent Skills naming/description rules, file type allowlist,
-          secret scan (block on hit), license present, link sanitising
-  step 3  Sandbox (fresh Container microVM per version, internet off):
-            - extract the real inventory, count tokens per skill (context cost)
-            - lint hooks/commands, validate MCP configs, static malware/IoC rules on scripts
-            - prompt-injection and tool-poisoning heuristics on skills, hooks, MCP tool descriptions
-            - run the pack's declared checks/tests
-  step 4  LLM prose review via AI Gateway (only after 1–3 pass, token-capped): Haiku screens every
-          version (~$0.003 each); Sonnet reviews only the ~10% Haiku flags (~$0.07 each); Batch API
-          where latency allows. Claude Code inside the sandbox is reserved for packs whose checks
-          or tasks need a live agent run.
-  step 5  risk score → auto-approve / human review queue (step.waitForEvent "review")
-  step 6  payment / plan check, only after validation passed; the credit is bound to the validated
-          archive's sha256 (step.waitForEvent "payment" from the Stripe webhook if needed)
-  step 7  staged-publish approval if enabled (step.waitForEvent "approve", passkey in the dashboard)
-  step 8  promote: copy to packs-public (or packs-private) at immutable key
-          @scope/name/1.2.3/pack.tar.zst + .sha256 + .attestation.json; write version row,
-          FTS row, Vectorize embedding; purge cache; notify publisher
+ 1  admission        credit or Verified Publisher, daily caps, publisher not quarantined     Worker
+ 2  integrity        ≤ 3 MB compressed, streaming sha256, zstd magic; no decompression      Worker
+ 3  bounded extract  one streaming pass counting produced bytes (20 MB total, 5 MB/file,     Sandbox,
+                     5k entries, 8 MB zstd window, path caps); bomb = hard fail, no retry,   no network
+                     no credit, no LLM
+ 4  manifest         schema, declared inventory ⊆ real, ASCII names, typosquat/confusable    Sandbox
+ 5  text hygiene     secrets, bidi/zero-width/tag chars, URL inventory, install-from-URL     Sandbox
+ 6  capabilities     extracted set (exec:hook|check|task|env, mcp, network:<domains>, ...);  Sandbox
+                     declared ⊇ extracted; MCP packages exact-pinned with integrity hash;
+                     new capability vs previous version = hold
+ 7  load and prove   pinned cn loads the pack; every check/hook passes firing + silent       Sandbox
+                     fixtures; undeclared egress during the run = fail
+ 8  canonical repack deterministic tar.zst from the validated tree, round-trip checked        Sandbox
+ 9  reserve credit   before any model call                                                    Worker
+10  LLM screens      two independent Haiku screens, structured output, quotes verified,      AI Gateway
+                     diff mode for n+1, reviewer-addressed text = hold
+11  deep review      Sonnet only on flags; high-confidence malicious = reject (appealable)    AI Gateway
+12  verdict + tier   fail / hold / warn by rule class; tier canon | community | third-party  Worker
+13  human review     holds only; ~10/day budget; uncertainty holds time out to third-party   admin app
+14  payment          consume reserved credit, bound to canonical sha256                      Worker
+15  staged approval  passkey, showing diff and capability changes                            publisher
+16  promote          canonical archive + attestation {upload & canonical sha256, provenance,  Worker
+                     rules version, kid}, meta.json, signed index, FTS, Vectorize
+17  after promote    tier-aware cooldown, rescans, weekly dependency re-resolution           Cron
 ```
 
-Why this shape: Workflows give durable steps with retries, unlimited wall-clock per step and `waitForEvent` for the human and payment gates, with observability for free. Containers/Sandbox give a real VM with its own kernel per job, internet disabled by default, and a Worker-side egress handler that allowlists destinations and injects the AI Gateway credential so no secret ever enters the sandbox. A 2-minute basic run costs a fraction of a cent. The LLM review is the real cost driver: at the [hosting cost estimate](../hosting-cost-estimate.md)'s 40k versions a month (1M repos), Haiku on everything plus Sonnet on flagged packs is about $400/month, against about $2,900 for Sonnet on everything and about $7,000 for a one-off Sonnet rescan of a 100k-pack corpus. Static scanners alone are not enough: ClawHub found 341 malicious skills out of 2,857 that used plain-language instructions no virus signature catches (see [registry trust research](../registry-trust-research.md)). Human moderation of flagged packs is not priced and will dominate. Dynamic Workers (open beta) can run sub-second pre-checks at upload time later.
+Steps 2–8 are also a free **dry-run** endpoint and a GitHub Action, and run offline in `cn pack lint`, using the same `core` rule module, so CI and the registry never disagree. Steps 1–8 cost nothing and fail in minutes, so almost every rejected upload never reaches a model. LLM review is about $0.006 per version for the two screens plus $0.07 for the ~10% that get a deep review: roughly $520 a month at 40k versions. Human moderation of holds is not priced.
 
-Ongoing: a Cron Trigger re-validates popular packs and everything when detection rules change; findings on a live version move it to `quarantined`/`revoked` in the signed index (§7.1) and in MCP status. Whether the cn engine then disables the pack on members' repos (VS Code / Chrome style, which we can do because we own the client) or only reports it (the fleet's existing `reportOnly` default for held versions) is an open decision (§15). Expect false positives (RubyGems reports about 95% of automated flags are false), so the review queue and an appeal path are part of v1.
-
-**Cooldown for agents:** MCP search defaults to versions published more than 24 hours ago (configurable by the caller), so agents don't auto-adopt a minutes-old malicious release.
+**Cooldown for agents:** MCP search and cn update checks default to versions older than 24 hours (Verified Publishers) or 72 hours (others); third-party-tier versions are never proposed automatically.
 
 ## 7. Delivery from R2
 
