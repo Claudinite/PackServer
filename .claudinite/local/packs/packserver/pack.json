@@ -1,0 +1,7 @@
+{
+  "version": "1",
+  "ruleRoutingGuidance": {
+    "belongs": "PackServer's own release, rollback and data-compatibility rules for its Cloudflare Workers",
+    "excludes": "generic Cloudflare Workers platform lessons — cloudflare-workers; generic Node conventions — node"
+  }
+}

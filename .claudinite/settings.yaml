@@ -13,6 +13,8 @@ packs:
     - "claudinite"
     - "git-github"
     - "html"
+    - id: "packserver"
+      source: "local"
   manager:
     repo: "Claudinite/FleetManager"
 tasks:

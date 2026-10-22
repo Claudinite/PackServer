@@ -3,3 +3,4 @@
 @../shared/packs/html/RULES.md
 @../shared/packs/node/RULES.md
 @../shared/packs/public-website/RULES.md
+@../local/packs/packserver/RULES.md
