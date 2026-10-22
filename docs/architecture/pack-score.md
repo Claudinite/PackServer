@@ -11,7 +11,7 @@ Nothing in the pipeline is an agent. Nothing gets tools, a loop or the ability t
 | Upload checks | Size ≤ 3 MB, hash, format, credit or Verified Publisher | Worker code |
 | Unpack | Bounded streaming extraction; a bomb or unsafe path fails immediately | Sandbox code, no network |
 | Read the pack | Manifest schema, real inventory, names, hidden characters, secrets, URLs, extracted capabilities | Sandbox code (the `core` rule module, also in `cn pack lint`) |
-| Run the pack | The pinned cn engine loads it, and every declared check, coded check and guard runs on its firing and silent fixtures; any network egress fails it | Sandbox, no internet |
+| Run the pack | The pinned cn engine loads it, coded checks compile, and any network egress fails it | Sandbox, no internet |
 | Measure | The pack score (§2), from the same tree | Sandbox code |
 | Prose screen | Jev scores chunks of the pack text against a fixed, versioned question set; any probability over its threshold holds the version | Jev on Workers AI, one request per chunk, no tools (decided, see §3) |
 | Verdict | Fail, hold or warn, by rule class; tier | Worker code |
@@ -37,7 +37,7 @@ A score from 0 to 100 in a ring, made of five parts. The page shows the ring and
 |---|---|---|
 | Context cost | 25 | Tokens the pack costs the agent: always-loaded text (`RULES.md` whole, which the rules index imports into every session, plus each skill's name and description) plus per-skill body size |
 | Skill structure | 25 | Anthropic's Agent Skills authoring guidance |
-| Checks | 20 | Declared checks vs coded ones, fixtures, how often checks fire, and whether a check is blocking or advisory, with its grace |
+| Checks | 20 | Declared checks vs coded ones, how often checks fire, and whether a check is blocking or advisory, with its grace |
 | Provenance | 15 | Source repo, commit binding, trusted publishing |
 | Footprint | 15 | Capabilities requested: guards, coded checks, tasks, env setup, declared GitHub actions |
 
@@ -61,7 +61,6 @@ Thresholds are starting points, to be tuned once we've measured real packs (the 
 
 **Checks (20)**
 - Prefer declared checks. A check in `declared-checks.json` scores fully. A coded Go check in `checks/*.go` scores less, because it needs compiling and people can't read it at a glance. A guard (a judge on PreToolUse that can deny a tool call) is listed as a capability. The part scores the share of declared checks, and a pack with no checks scores neutral, not zero.
-- Fixtures: every check ships a firing and a silent fixture, and both pass in the sandbox.
 - Fire rate (once cn reports it; the source is the engine's usage fold, which counts check results per day): a check that fires in nearly every session, or never in 90 days, loses points. Neither is a useful check.
 
 **Provenance (15)**
@@ -75,7 +74,7 @@ Thresholds are starting points, to be tuned once we've measured real packs (the 
 
 ### Caps
 
-As Socket does, some facts cap the score regardless of the rest: an open security report caps it at 40, a third-party tier at 60, no linked public source repo at 70 (the pack page also shows a "no public source" label), and a warned check (missing fixture) at 80. Ranking takes the missing source in through the score, not as a separate penalty. The cap is shown as the reason ("capped: open security report").
+As Socket does, some facts cap the score regardless of the rest: an open security report caps it at 40, a third-party tier at 60, no linked public source repo at 70 (the pack page also shows a "no public source" label). (A missing-fixture cap returns if fixture tests are added later.) Ranking takes the missing source in through the score, not as a separate penalty. The cap is shown as the reason ("capped: open security report").
 
 ### Where it lives
 
