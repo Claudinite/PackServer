@@ -153,7 +153,7 @@ Packs are named `@<scope>/<pack>`. A scope belongs to a user or an organisation,
 |---|---|---|
 | GitHub org | Org owner installs the PackServer GitHub App, or signs in with GitHub and we confirm org admin via the API. Scope name defaults to the org login. | "github.com/google" |
 | Domain | DNS TXT `_packserver-challenge.google.com` with a signed token, or `https://google.com/.well-known/packserver-auth` (MCP Registry model). Re-checked monthly; lapses after 30 days of failure. | "google.com ✓" |
-| Verified Publisher | Domain proof + linked GitHub org + scope MFA enforcement + manual review by us (VS Code / Hugging Face model). | "Verified publisher" |
+| Verified Publisher | Domain proof + linked GitHub org + scope MFA enforcement + manual review by us (VS Code / Hugging Face model) + an active $99/year Verified Publisher subscription. | "Verified publisher" |
 
 Rules: first proof claims an unclaimed scope; a domain owner can dispute a squatted scope with the same name through a documented policy; deleted scopes and pack names are **never recycled** (Hugging Face re-registration attack); version numbers are never reused. Scope owners can require MFA (and passkeys only) for all members.
 
@@ -269,6 +269,7 @@ Proven by the spike in `spike/mcp-worker` (stateless `createMcpHandler`, D1 FTS5
 - **Stripe Checkout Sessions** (hosted), not raw PaymentIntents: built-in Stripe Tax, receipts and wallets, and no card data ever touches our Workers. Subscriptions via Checkout `mode=subscription`; the Stripe Customer Portal for plan and card management.
 - **Webhooks** on the `billing` Worker: read the raw body with `request.text()`, verify with `stripe.webhooks.constructEventAsync` (SubtleCrypto), 300 s tolerance, idempotent on `event.id` (unique column in `credit_ledger`), acknowledge fast and do the work by sending an event to the waiting Workflow.
 - **Public upload fee:** a $1 charge loses 33% to card fees ($0.30 + 2.9%), and a single $15 dispute wipes out 22 uploads, so the fee is a spam deterrent, not revenue. We sell **publish credits**: 1 for $1, 5 for $5, 12 for $10, 25 for $20. A credit is consumed when a **new public pack** is first published; new versions of an existing pack are free but rate-limited (e.g. 20 per pack per day). Credits are waived for Verified Publishers. If validation fails, the credit is not consumed.
+- **Verified Publisher subscription: $99 a year** (decided by Ariel 2026-10-22), billed per scope through Stripe Checkout `mode=subscription`. It covers the manual review and the badge, and makes public publishing in that scope credit-free. Organisations that want to be recognised as the real source of their packs are the ones most willing to pay, so the review cost lands on them rather than on hobby publishers. If the subscription lapses, the badge is removed after a 30-day grace period. The scope, its packs and its domain or GitHub proofs stay, and new packs need credits again. Private-pack seats are billed separately.
 - **Private packs** are a subscription, not per upload, priced per seat like npm and Docker: Solo $5/month (10 private packs), Team $7/seat/month (unlimited packs, teams, audit log), Enterprise custom (SSO, domain access). A seat is a human who can read private packs; agent read tokens hang off a seat. Packs are tiny and R2 egress is free, so cost of goods is near zero.
 
 ## 10. Community signals and ranking
@@ -332,7 +333,7 @@ The permission model is JFrog-style rows of (resource, principal, action) in `gr
 ## 15. Open questions for Ariel
 
 1. **Who decides access to private packs?** The design supports allowlists, teams, gated requests and GitHub/domain sync; which should launch first? (Proposed: allowlist + invite links + read tokens.)
-2. **Is the $1 fee per new pack (proposed) or per version?** And should Verified Publishers be exempt (proposed)?
+2. **Is the $1 fee per new pack (proposed) or per version?** Verified Publishers are exempt through their $99/year subscription (decided).
 3. **How deep should the review go at launch?** Proposed: static checks, sandboxed load and self-test, Haiku screen on every version and Sonnet only on flagged packs (~$400/month at 1M repos), plus human review of what's flagged.
 4. **Non-GitHub sources at launch** (GitLab OIDC, plain upload) or GitHub trusted publishing + web upload only?
 5. **Scope naming:** `@scope/pack` with proofs shown as badges (proposed), or MCP-Registry-style names that embed the proof (`io.github.google/…`, `com.google/…`)?
