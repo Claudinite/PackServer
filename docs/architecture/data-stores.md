@@ -25,7 +25,7 @@ Writing this out changed six decisions in the [architecture](README.md). They're
 | R2 `packs-private` | Validated private archives and their `meta.json` | Once per version | Through a Worker after an access check | Yes, for bytes |
 | R2 `validation-reports` | Full validation and review logs | Once per validation run | Rare: publisher dashboard, moderators | Yes |
 | Vectorize `packs` | One embedding per pack (latest stable version) | Upsert per promote, delete per removal | Every semantic search | No (rebuildable from D1 + R2) |
-| Analytics Engine `downloads` | Download and index-fetch events | One event per fetch, fire and forget | Hourly rollup query | No (approximate by design) |
+| Download counts: Logpush `http_requests` in R2 (public) + Analytics Engine `downloads` (private) | Download and index-fetch records | Public: written by Cloudflare's log push, no code of ours; private: one point per Worker-served download | Hourly rollup | No (approximate by design) |
 | Durable Object `ScopeCoordinator` | Per-scope publish lock, daily quotas, index rebuild debounce | Per publish or quota check in that scope | Same calls | Yes, for quotas |
 | Workflows (platform-managed) | Validation run state, step results | Per step | By the workflow itself and the dashboard status | No (D1 is updated at each milestone) |
 | Queues | Notifications, re-index jobs | Per event | Consumed once | No |
@@ -108,13 +108,17 @@ Considered and not chosen: S3 Object Lock in Compliance mode, which would preven
 
 **Why it fits.** It's purpose-built for nearest-neighbour search with metadata filters, and cheap at this size (about $0.05 a month at 100k packs). A new vector takes seconds to a couple of minutes to become searchable, which is fine because new versions are held back from agents for 24 hours anyway. It's a derived index: if it's lost or the embedding model changes, a job rebuilds it from D1 and R2.
 
-### Analytics Engine `downloads`: high-volume counters
+### Download counts: Cloudflare's request logs for public packs, Analytics Engine for private
 
-**Writes.** One data point per archive download and per index fetch (pack, version, hashed caller, client), written without waiting for a response. At 1M repos that's roughly 20M events a month, about $2.50 beyond the 10M included.
+**The catch.** `cdn.packserver.dev` is an R2 custom domain with no Worker in front, so public downloads and index fetches never run our code and can't write anything themselves. (Putting a Worker in front just to count would add a request charge to every update check for no other benefit.)
 
-**Reads.** One hourly query that computes 30-day download and active-repo counts per pack, written into `pack_stats` in D1 for only the packs whose numbers changed.
+**Writes.**
+- *Public packs:* nothing we write. The zone's Logpush job (set up by the monitoring plan) already delivers every `http_requests` record to an R2 archive with IPs truncated, with CDN cache hits sampled at 10%. Each record has the path (`@scope/name/1.2.3/pack.tar.zst` or `index/v1/<scope>.json`), status and a client hash.
+- *Private packs:* these go through the `web`/`mcp` Worker after the access check, so that Worker writes one Analytics Engine `downloads` point (pack, version, hashed caller, client) per download, fire and forget.
 
-**Why it fits.** Writing a D1 row per download would spend the single writer on counters. Analytics Engine is built for exactly this: cheap, unbounded event writes and aggregate SQL queries. It samples at very high volume (queries weight each row by its sample interval) and keeps 3 months of data, so counts are approximate. That's acceptable for ranking, and the hourly rollup keeps the history we care about in D1.
+**Reads.** An hourly rollup job reads the new Logpush files from R2 and the `downloads` points, scales sampled rows back up, counts downloads and distinct callers per pack over 30 days, and writes `pack_stats` in D1 for the packs whose numbers changed.
+
+**Why it fits.** Writing a D1 row per download would spend the single writer on counters, and the public path has no Worker to write from anyway. The Logpush archive exists for operations regardless, so counting from it costs only the rollup's reads. Analytics Engine handles the much smaller private stream cheaply. Both are approximate (sampling, cache-hit sampling, IP-based caller hashes), which is fine for ranking.
 
 ### Durable Object `ScopeCoordinator`: one per scope
 

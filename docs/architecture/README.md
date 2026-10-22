@@ -49,7 +49,7 @@ Indicative running cost at launch scale is about $30/month (Workers Paid $5, a P
                                  R2 packs-staging  R2 packs-public ──▶ cdn.packserver.dev (cache) │
                                                    R2 packs-private ─▶ served via mcp/web Worker  │
                          Durable Objects: quotas, per-publisher locks   Queues: indexing, notify   │
-                         Analytics Engine: download/install counters   Access: /admin              │
+                         Analytics Engine: private download counts    Access: /admin              │
                          └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -116,7 +116,8 @@ stars(user_id, pack_id, created_at)
 reviews(user_id, pack_id, rating 1-5, body, verified_fetch, publisher_reply, status)
 outcomes(user_id, pack_version_id, client, client_version, result[works|fails], verified_install)
 reports(id, pack_id, version, reporter_id, kind[bug|security|abuse], github_issue_url, status, private)
-installs → Analytics Engine (pack_version_id, principal hash, client) rolled up hourly into pack_stats
+downloads → public: counted from the zone's Logpush http_requests archive in R2 (CDN has no Worker);
+            private: Analytics Engine points from the serving Worker; both rolled up hourly into pack_stats
 pack_stats(pack_id, installs_30d, stars, works, fails, score_directory, score_mcp, updated_at)
 
 credit_ledger(id, owner_type, owner_id, delta, reason, stripe_event_id UNIQUE, pack_id, created_at)
@@ -127,7 +128,7 @@ recent_activity(id, actor, scope_id, action, target, ip_hash, at, detail_json)  
 -- the audit record itself is append-only NDJSON in write-once storage (data-stores.md)
 ```
 
-D1 limits shape the model: one database is single-writer and hard-capped at 10 GB. So D1 holds only metadata and indexes; READMEs, manifests and validation logs live in R2; high-frequency counters (installs, downloads) go to Analytics Engine and are rolled up. A registry is overwhelmingly read-heavy, and a few hundred writes a minute is far below what one SQLite primary handles. The schema is plain SQL through Drizzle so that moving to Postgres via Hyperdrive is a migration, not a rewrite. Every store PackServer writes to, and why each fits its read and write pattern, is in [data-stores.md](data-stores.md).
+D1 limits shape the model: one database is single-writer and hard-capped at 10 GB. So D1 holds only metadata and indexes; READMEs, manifests and validation logs live in R2; high-frequency counters (downloads) come from Cloudflare's request logs and Analytics Engine and are rolled up. A registry is overwhelmingly read-heavy, and a few hundred writes a minute is far below what one SQLite primary handles. The schema is plain SQL through Drizzle so that moving to Postgres via Hyperdrive is a migration, not a rewrite. Every store PackServer writes to, and why each fits its read and write pattern, is in [data-stores.md](data-stores.md).
 
 ## 4. Identity, authentication and MFA
 
