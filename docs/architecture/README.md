@@ -70,7 +70,7 @@ All Workers live in one repository and share a `core` package (domain logic as p
 A **pack** is a named, versioned bundle. A **pack version** is immutable once published: same name and version always means the same bytes (SHA-256 recorded).
 
 ```
-pack archive (tar.zst, ≤ 25 MB)
+pack archive (tar.zst, ≤ 3 MB compressed; see §6 for decompression limits)
 ├── pack.json                 manifest: name, version, summary (≤ 1024 chars), categories,
 │                             license, repository, compatibility (claude-code ≥ x, ant ≥ y),
 │                             contents inventory (declared)

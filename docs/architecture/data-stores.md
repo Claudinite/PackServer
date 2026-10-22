@@ -72,7 +72,7 @@ Considered and not chosen: S3 Object Lock in Compliance mode, which would preven
 
 **Reads.** The validator reads it once, sometimes twice on retry.
 
-**Why it fits.** Blob storage with presigned uploads is the only sensible place for untrusted files of up to 25 MB. Keeping it in its own bucket means a bug in the upload path can never put anything on the public CDN. A lifecycle rule deletes objects after 14 days.
+**Why it fits.** Blob storage with presigned uploads is the only sensible place for untrusted files of up to 3 MB. Keeping it in its own bucket means a bug in the upload path can never put anything on the public CDN. A lifecycle rule deletes objects after 14 days.
 
 ### R2 `packs-public`: the bytes everyone downloads
 
