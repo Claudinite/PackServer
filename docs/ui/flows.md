@@ -99,7 +99,7 @@ Failure / edge states:
 
 1. `pack`: click Star → toggles immediately (optimistic), count updates. Anonymous click → `signin` with return URL.
 2. Click "Rate" or "Write a review" → `review`.
-3. Choose version (default latest), 1-5 stars, optional title/body, "used with" (Claude / Ant).
+3. Choose version (default latest), 1-5 stars, optional title/body.
 4. Submit → stored; pack rating recomputed (Bayesian average with prior to avoid 1-review 5-star packs ranking first).
 5. Review appears in `pack` > Reviews with "verified fetch" badge if the account fetched the pack (optional, decision #8).
 6. Publisher may reply once per review and flag for moderation.
@@ -457,7 +457,7 @@ Edge states (all options):
 
 ## 11. Agent discovering & fetching a pack via MCP
 
-**Goal**: an agent (Claude / Ant) asks what packs exist for a kind of work and installs one. Documented on `agents`.
+**Goal**: an agent asks what packs exist for a kind of work and installs one. Documented on `agents`.
 
 Tools: `list_categories()`, `search_packs(query, category?, feature_type?, verified_only?, limit)`, `get_pack(id, version?)` → metadata + contents summary + install instructions, `get_pack_manifest(id, version)`, `download_pack(id, version)` → signed URL or inline archive (size-capped).
 

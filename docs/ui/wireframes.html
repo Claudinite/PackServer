@@ -496,7 +496,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
   <div class="hero">
     <div>
       <h1>Packs that teach agents how to work.</h1>
-      <p class="muted">A registry of validated bundles of skills, checks, tasks, hooks, commands, subagents and MCP servers for Claude and Ant. Every pack is tested before it is served.</p>
+      <p class="muted">A registry of validated bundles of skills, checks, tasks, hooks, commands, subagents and MCP servers for Claudinite. Every pack is tested before it is served.</p>
       <form class="search-big" data-go="browse" data-toast="Showing results">
         <input type="search" id="home-q" placeholder="Search packs by name, category or feature…" aria-label="Search packs">
         <button class="btn primary" type="submit">Search</button>
@@ -905,7 +905,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
         <div class="field"><label class="lbl" for="rp-exp">Expected</label><textarea id="rp-exp"></textarea></div>
         <div class="field"><label class="lbl" for="rp-act">Actual</label><textarea id="rp-act"></textarea></div>
       </div>
-      <div class="field"><label class="lbl" for="rp-env">Environment</label><input type="text" id="rp-env" placeholder="Claude Code 2.x, macOS, Ant 0.9"></div>
+      <div class="field"><label class="lbl" for="rp-env">Environment</label><input type="text" id="rp-env" placeholder="Claude Code 2.x, cn 1.0, macOS"></div>
       <div class="note warn mb2">
         <label class="check"><input type="checkbox" id="rp-sec"> <span><b>This is a security vulnerability — report privately.</b><br><span class="small">The report is hidden from the public Issues tab, encrypted to the publisher's security contact, and we open a 90-day disclosure clock.</span></span></label>
       </div>
@@ -1053,7 +1053,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
       <div class="field"><label class="lbl" for="pub-path">Path to pack</label><input type="text" id="pub-path" value="packs/gcp-ops/" class="mono"><div class="hint">Folder containing <code>pack.json</code>.</div></div>
       <div class="field"><label class="lbl" for="pub-ref">Ref to validate now</label><input type="text" id="pub-ref" value="v2.4.1" class="mono"><div class="hint">Later tags matching <code>v*</code> publish automatically.</div></div>
     </div>
-    <div class="panel mt2" style="max-width:720px"><b class="small">Detected manifest</b><pre class="mt1"><code>{ "name": "gcp-ops", "version": "2.4.1", "targets": ["claude", "ant"], "license": "Apache-2.0" }</code></pre></div>
+    <div class="panel mt2" style="max-width:720px"><b class="small">Detected manifest</b><pre class="mt1"><code>{ "name": "gcp-ops", "version": "2.4.1", "engine": "cn >=1.0", "license": "Apache-2.0" }</code></pre></div>
   </div>
 
   <!-- step 2 -->
@@ -1171,7 +1171,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
   <div class="layout right">
     <div>
       <details class="report" open><summary><span class="st ok">✓</span>Manifest schema <span class="pill ok">pass</span><span class="ver">0.2s</span></summary><div class="body">
-        <p><code>pack.json</code> validates against schema <code>v1.3</code>. Required fields present: name, version, targets, license, contents. <code>targets: ["claude","ant"]</code>.</p>
+        <p><code>pack.json</code> validates against schema <code>v1.3</code>. Required fields present: name, version, engine, license, contents. <code>engine: "cn &gt;=1.0"</code>.</p>
       </div></details>
       <details class="report"><summary><span class="st ok">✓</span>Contents inventory <span class="pill ok">pass</span><span class="ver">0.4s</span></summary><div class="body">
         <div class="table-wrap"><table><thead><tr><th>Type</th><th>Count</th><th>Items</th></tr></thead><tbody>
@@ -1508,7 +1508,7 @@ jobs:
   var PACKS = {
     'gcp-ops': {
       token: 'pack', name: '@google/gcp-ops', icon: 'GC', publisher: 'Google Cloud', publisherHref: '#publisher', verified: true,
-      version: '2.4.1', updated: '2 hours ago', license: 'Apache-2.0', targets: 'claude, ant',
+      version: '2.4.1', updated: '2 hours ago', license: 'Apache-2.0', targets: 'cn >=1.0',
       summary: 'Operate GCP projects: IAM audits, Cloud Run deploys, log triage and key rotation.',
       categories: ['Cloud ops', 'Security review'], stars: 1842, rating: 4.7, ratings: 236, fetches: '9,318 / 7d',
       repo: 'github.com/googlecloudplatform/agent-packs', repoPath: 'packs/gcp-ops/',
@@ -1542,7 +1542,7 @@ jobs:
     },
     'sql-tidy': {
       token: 'pack2', name: '@dana-k/sql-tidy', icon: 'SQ', publisher: 'dana-k', publisherHref: '#browse', verified: false,
-      version: '0.3.1', updated: '12 days ago', license: 'MIT', targets: 'claude',
+      version: '0.3.1', updated: '12 days ago', license: 'MIT', targets: 'cn >=1.0',
       summary: 'Format, lint and explain SQL across Postgres, BigQuery and DuckDB. One skill, two checks, no fuss.',
       categories: ['Data engineering'], stars: 214, rating: 3.9, ratings: 31, fetches: '640 / 7d',
       repo: null, repoPath: null,
@@ -1636,7 +1636,7 @@ jobs:
       return '<div class="issue"><span class="pill ' + sev + '">' + i[1] + '</span><div><b class="mono">' + i[0] + '</b> ' + esc(i[2]) + '<br><span class="small muted">by ' + esc(i[3]) + ' · </span><span class="pill ' + st + '">' + esc(i[4]) + '</span></div></div>';
     }).join('');
     var mcpSnippet = '{\n  "packs": [\n    { "registry": "https://packs.example", "name": "' + p.name + '", "version": "' + p.version + '" }\n  ]\n}';
-    var cliSnippet = 'claude packs add ' + p.name + '@' + p.version + '   # or: ant pack install ' + p.name;
+    var cliSnippet = 'cn adopt ' + p.name + '@' + p.version;
 
     return '' +
       '<div class="crumbs"><a href="#browse">Packs</a> / ' + esc(p.name) + '</div>' +
@@ -1709,7 +1709,7 @@ jobs:
               '<dt>Source</dt><dd>' + (p.repo ? '<span class="pill ok">Public repo</span>' : '<span class="pill warn">No public repo</span>') + '</dd>' +
               '<dt>Signed</dt><dd>' + (p.repo ? 'Sigstore · OIDC' : 'Server-signed on upload') + '</dd>' +
               '<dt>SHA-256</dt><dd class="mono">' + (p.repo ? '9f1c…e3a0' : '41b2…77cd') + '</dd>' +
-              '<dt>Targets</dt><dd class="mono">' + esc(p.targets) + '</dd>' +
+              '<dt>Engine</dt><dd class="mono">' + esc(p.targets) + '</dd>' +
             '</dl>' +
           '</div>' +
         '</aside>' +

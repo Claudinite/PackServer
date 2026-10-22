@@ -283,6 +283,73 @@ details.adv .body { padding-top: 16px; }
 .filters-list label { display: flex; gap: 10px; align-items: center; padding: 6px 0; }
 .note-line { color: var(--muted); font-size: 13px; }
 
+/* ---- reader (pack content) ---- */
+body[data-persona="anonymous"] .only-signed { display: none !important; }
+.rd-top { display: flex; justify-content: space-between; align-items: center; gap: 16px; font-size: 13px; }
+.rd-top > * { min-width: 0; }
+.reader { display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 40px; margin-top: 24px; }
+.files { font-size: 13px; }
+.files h3 { color: var(--muted); font-weight: 500; font-size: 12px; margin: 14px 0 2px; }
+.files h3:first-child { margin-top: 0; }
+.files ul { list-style: none; margin: 0; padding: 0; }
+.files button { display: block; width: calc(100% + 16px); text-align: left; padding: 3px 8px; margin-left: -8px; border-radius: 4px; color: var(--ink-2); font-family: "IBM Plex Mono", monospace; font-size: 12px; overflow-wrap: anywhere; }
+.files button:hover { color: var(--ink); background: var(--raise); }
+.files button[aria-current="true"] { color: var(--ink); background: var(--raise); }
+.rd-sel { display: none; }
+.doc { min-width: 0; }
+.doc > h1 { font-family: "IBM Plex Mono", monospace; font-size: 16px; font-weight: 500; overflow-wrap: anywhere; }
+.doc .body { margin-top: 24px; max-width: 640px; }
+.doc .fm { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--muted); border-left: 2px solid var(--line-strong); padding-left: 10px; margin-bottom: 20px; overflow-wrap: anywhere; }
+.doc .fm b { color: var(--ink-2); font-weight: 500; }
+.doc h2 { margin: 0 0 10px; }
+.doc h2.h1 { font-size: 20px; }
+.doc h2.h2 { font-size: 16px; }
+.doc h2.h3 { font-size: 14px; }
+.doc p { margin-bottom: 12px; color: var(--ink-2); }
+.doc ul, .doc ol { margin: 0 0 12px; padding-left: 20px; color: var(--ink-2); }
+.doc li { margin-bottom: 4px; }
+.doc pre { background: var(--raise); padding: 10px 12px; border-radius: 6px; margin-bottom: 12px; }
+.doc code { font-size: 12.5px; }
+.sec { position: relative; padding-top: 16px; }
+.sec:first-child { padding-top: 0; }
+.sec .mg { display: none; }
+.comments-on .sec { padding-right: 56px; }
+.comments-on .sec .mg { display: flex; position: absolute; right: 0; top: 16px; flex-direction: column; align-items: flex-end; gap: 4px; }
+.comments-on .sec:first-child .mg { top: 0; }
+.sec .cnt { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); border-radius: 4px; padding: 2px 5px; }
+.sec .cnt svg { width: 12px; height: 12px; }
+.sec .cnt:hover { color: var(--ink); background: var(--raise); }
+.sec .add { width: 22px; height: 22px; border-radius: 4px; color: var(--muted); font-size: 15px; line-height: 1; display: inline-grid; place-items: center; opacity: 0; transition: opacity .12s; }
+.sec:hover .add, .sec:focus-within .add, .sec .add:focus-visible { opacity: 1; }
+.sec .add:hover { color: var(--ink); background: var(--raise); }
+.cmt { position: relative; padding: 12px 0; border-top: 1px solid var(--line); }
+.cmt:first-child { border-top: 0; padding-top: 0; }
+.cmt .ch { display: flex; gap: 8px; align-items: baseline; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+.cmt .ch b { color: var(--ink); font-weight: 500; }
+.plabel { font-size: 11px; border: 1px solid var(--line-strong); border-radius: 3px; padding: 0 4px; color: var(--ink-2); line-height: 1.5; }
+.cmt .ct { margin-top: 4px; color: var(--ink-2); overflow-wrap: anywhere; }
+.cmt .cf { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+.vote { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; color: var(--muted); }
+.vote button { width: 22px; height: 22px; border-radius: 4px; display: inline-grid; place-items: center; }
+.vote button:hover { background: var(--raise); color: var(--ink); }
+.vote button[aria-pressed="true"] { color: var(--ink); font-weight: 600; }
+.vote .sc { min-width: 18px; text-align: center; color: var(--ink-2); font-size: 13px; }
+.cmt.dim .ch, .cmt.dim .ct, .cmt.dim .vote { opacity: .5; }
+.cmt.dim:hover .ch, .cmt.dim:hover .ct, .cmt.dim:hover .vote, .cmt.dim:focus-within .ch, .cmt.dim:focus-within .ct, .cmt.dim:focus-within .vote { opacity: .8; }
+.cmt .hint { display: none; font-size: 12px; color: var(--muted); margin-top: 4px; }
+.cmt.dim:hover .hint, .cmt.dim:focus-within .hint { display: block; }
+.cmenu { position: relative; }
+.cmenu .menu { top: 30px; }
+.hid { padding: 10px 0; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.cform { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+@media (max-width: 640px) {
+  .reader { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .files { display: none; }
+  .rd-sel { display: block; }
+  .comments-on .sec { padding-right: 0; }
+  .comments-on .sec .mg { position: static; flex-direction: row; align-items: center; margin-bottom: 8px; }
+}
+
 @media (max-width: 480px) {
   .hdr .nav { display: none; }
   .facts { gap: 10px 20px; }
@@ -291,7 +358,7 @@ details.adv .body { padding-top: 16px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .view { animation: none; }
-  .pop, .drawer, .scrim, .card { transition: none !important; }
+  .pop, .drawer, .scrim, .card, .sec .add { transition: none !important; }
   .spin { animation: none; }
 }
 </style>
@@ -337,7 +404,6 @@ details.adv .body { padding-top: 16px; }
     <button type="button" class="ftog" data-ftog aria-pressed="false">Trusted only</button>
     <button type="button" class="ftog" data-ftog aria-pressed="false">Verified publisher</button>
     <button type="button" class="ftog" data-ftog aria-pressed="false">Public repo</button>
-    <label class="fsel"><span class="sr">Works with</span><select id="f-target"><option>Claude and Ant</option><option>Claude</option><option>Ant</option></select></label>
     <label class="fsel"><span class="sr">Contains</span><select id="f-contains"><option>Any contents</option><option>Has skills</option><option>Has checks</option><option>Has tasks</option><option>Has hooks</option><option>Has commands</option><option>Has agents</option><option>Has MCP servers</option></select></label>
   </div>
   <div class="row between" style="margin-top:14px">
@@ -354,6 +420,9 @@ details.adv .body { padding-top: 16px; }
 
 <!-- PACK (rendered) -->
 <section class="view" id="view-pack" data-view="pack" hidden></section>
+
+<!-- READER (rendered) -->
+<section class="view" id="view-read" data-view="read" hidden></section>
 
 <!-- PUBLISHER -->
 <section class="view" id="view-publisher" data-view="publisher" hidden>
@@ -451,7 +520,6 @@ jobs:
     <div class="field"><label class="lbl" for="ls-summary">One-line summary</label><input type="text" id="ls-summary" value="Operate GCP projects: IAM audits, Cloud Run deploys, log triage and key rotation."></div>
     <p class="row muted small" style="gap:10px"><span id="pub-shape"></span><span>22 items, from the manifest. <button type="button" class="linkbtn" data-sheet="contents-gcp">See contents</button></span></p>
     <details class="adv"><summary>Advanced</summary><div class="body">
-      <div class="field"><label class="lbl" for="ls-targets">Targets</label><input type="text" id="ls-targets" value="claude, ant" class="mono"></div>
       <div class="field"><label class="lbl" for="ls-tags">Tags</label><input type="text" id="ls-tags" value="cloud-ops, security-review"></div>
       <div class="field"><label class="lbl" for="ls-price">Price</label><select id="ls-price"><option>Free</option><option>Paid (coming later)</option></select></div>
     </div></details>
@@ -531,7 +599,7 @@ jobs:
     </fieldset>
     <label for="screen-jump" class="muted">Screen</label>
     <select id="screen-jump">
-      <option value="home">home</option><option value="browse">browse</option><option value="pack">pack · gcp-ops</option><option value="pack2">pack2 · sql-tidy</option><option value="publisher">publisher</option><option value="signin">signin</option><option value="dashboard">dashboard</option><option value="publish">publish</option><option value="validation">validation</option>
+      <option value="home">home</option><option value="browse">browse</option><option value="pack">pack · gcp-ops</option><option value="pack2">pack2 · sql-tidy</option><option value="read">read · gcp-ops files</option><option value="publisher">publisher</option><option value="signin">signin</option><option value="dashboard">dashboard</option><option value="publish">publish</option><option value="validation">validation</option>
     </select>
     <span class="cur">#<span id="cur-route">home</span></span>
   </div>
@@ -687,9 +755,10 @@ jobs:
   /* ---------- pack page ---------- */
   function stars(n) { var s = ''; for (var i = 1; i <= 5; i++) s += i <= n ? '★' : '☆'; return s; }
   function packHtml(p) {
-    var cmd = 'claude packs add ' + p.name + '@' + p.version;
+    var cmd = 'cn adopt ' + p.name + '@' + p.version;
     var src = p.repo ? '<a href="#' + p.token + '">Source ↗</a>' : '<span>No public repo</span>';
-    var contents = '<table class="ctable">' + TYPES.map(function (t) { var items = p.contents[t]; return items.length ? '<tr><td>' + t + ' · ' + items.length + '</td><td class="mono small">' + items.map(esc).join(', ') + '</td></tr>' : ''; }).join('') + '</table>';
+    var readable = p.token === 'pack';
+    var contents = '<table class="ctable">' + TYPES.map(function (t) { var items = p.contents[t]; return items.length ? '<tr><td>' + t + ' · ' + items.length + '</td><td class="mono small">' + items.map(function (n) { return readable ? '<a href="#read" data-file="' + esc(filePath(t, n)) + '">' + esc(n) + '</a>' : esc(n); }).join(', ') + '</td></tr>' : ''; }).join('') + '</table>';
     var versions = '<ul class="rows">' + p.versions.map(function (v, i) { return '<li><button type="button" data-sheet="version:' + p.token + ':' + i + '"><span class="k mono">' + esc(v[0]) + '</span><span class="g">' + esc(v[3]) + '</span><span class="m">' + (v[2] === 'yanked' ? 'yanked · ' : '') + esc(v[1]) + '</span></button></li>'; }).join('') + '</ul>';
     var reviews = '<ul class="rows">' + p.reviews.map(function (r, i) { return '<li><button type="button" data-sheet="review:' + p.token + ':' + i + '"><span class="k">' + r[0] + '.0</span><span class="g">' + esc(r[4]) + '</span><span class="m">' + esc(r[1]) + '</span></button></li>'; }).join('') + '</ul>';
     var issues = '<ul class="rows">' + p.issues.map(function (i) { return '<li><div><span class="k sev" style="width:14px">' + sevSvg(i[1]) + '</span><span class="g">' + esc(i[2])+ '</span><span class="m">' + esc(i[4]) + '</span></div></li>'; }).join('') + '</ul>';
@@ -704,13 +773,14 @@ jobs:
       '<p class="lg ink2" style="margin-top:20px;max-width:620px">' + esc(p.summary) + '</p>' +
       '<div class="row" style="margin-top:16px;gap:10px">' + trustMark(p, true) + (p.trustReason ? '<span class="muted">· ' + esc(p.trustReason) + '</span>' : '') + '</div>' +
       '<div class="install"><pre>' + esc(cmd) + '</pre><button class="btn" type="button" data-copy="' + esc(cmd) + '">Copy</button></div>' +
+      (readable ? '<p class="small" style="margin-top:8px"><a href="#read">Read the pack</a> <span class="muted">· every file, as published</span></p>' : '') +
       '<div class="facts">' + ratingMark(p) + shapeMark(p, true) + pulseMark(p.pulse, p.fetches, p.delta, p.fetches + ' fetches / 7 d') + sevMark(p) + '</div>' +
       '<p class="muted small" style="margin-top:12px">Updated ' + esc(p.updated) + ' · v' + esc(p.version) + ' · ' + esc(p.license) + ' · ' + src + '</p>' +
       '<div class="tabs" role="tablist" aria-label="Pack sections">' +
         ['readme', 'contents', 'versions', 'reviews', 'issues'].map(function (t, i) { return '<button type="button" role="tab" data-tab="' + t + '" aria-selected="' + (i === 0) + '">' + t.charAt(0).toUpperCase() + t.slice(1) + '</button>'; }).join('') +
       '</div>' +
       '<div class="tabpanel readme" data-panel="readme">' + p.readme.map(function (s) { return '<p>' + esc(s) + '</p>'; }).join('') + '</div>' +
-      '<div class="tabpanel" data-panel="contents" hidden>' + contents + '<p class="muted small" style="margin-top:12px">Inventory from validation run ' + esc(p.valId) + '.</p></div>' +
+      '<div class="tabpanel" data-panel="contents" hidden>' + contents + '<p class="muted small" style="margin-top:12px">Inventory from validation run ' + esc(p.valId) + '.' + (readable ? ' Each item opens in the reader.' : '') + '</p></div>' +
       '<div class="tabpanel" data-panel="versions" hidden>' + versions + '</div>' +
       '<div class="tabpanel" data-panel="reviews" hidden>' + reviews + '</div>' +
       '<div class="tabpanel" data-panel="issues" hidden>' + issues + '<p class="muted small" style="margin-top:12px">' + (p.repo ? 'Bugs are filed as GitHub issues; we open a pre-filled issue, you submit it.' : 'No public repo, so bugs are reported here.') + ' Security reports stay private.</p></div>';
@@ -768,6 +838,211 @@ jobs:
     document.getElementById('val-details').open = false;
   }
 
+  /* ---------- reader: files ---------- */
+  function filePath(type, name) {
+    if (type === 'skills') return 'skills/' + name + '/SKILL.md';
+    if (type === 'checks') return 'checks/' + name + '.yaml';
+    if (type === 'tasks') return 'tasks/' + name + '.md';
+    if (type === 'hooks') return 'hooks/' + name + '.sh';
+    if (type === 'commands') return 'commands/' + name.replace('/gcp:', 'gcp-') + '.md';
+    if (type === 'agents') return 'agents/' + name + '.md';
+    return 'mcp/' + name + '.json';
+  }
+  var FILE_TEXT = {
+    'skills/iam-audit/SKILL.md': [
+      '---',
+      'name: iam-audit',
+      'description: Audit IAM bindings in a Google Cloud project or folder. Flags over-broad primitive roles, stale service-account keys and custom roles that shadow primitives. Use when asked who can do what, or before a security review.',
+      'allowed-tools: Bash(gcloud:*), Read, Grep',
+      '---',
+      '',
+      '# IAM audit',
+      '',
+      'Use this skill when asked to review who can do what in a Google Cloud project, or before a change that grants new permissions. It reads policy only; it never edits a binding. If the user wants a fix applied, propose the exact `gcloud` command and stop.',
+      '',
+      'The audit is a read of the effective policy, not of the resource hierarchy: inherited bindings from the folder or organization are included, so the report says where each binding comes from.',
+      '',
+      '## When to use',
+      '',
+      '- Someone asks "who has access to project X" or "is this service account over-permissioned".',
+      '- Before granting `roles/owner`, `roles/editor` or any `*Admin` role.',
+      '- As the first step of `quarterly-iam-review` (a task in this pack).',
+      '',
+      'Do not use it for Workspace or Identity Platform users; those live outside IAM and the policy export will not show them.',
+      '',
+      '## Steps',
+      '',
+      '1. Confirm the project with the user and export the effective policy and custom roles.',
+      '2. Group bindings by principal and resolve groups one level deep.',
+      '3. Mark every binding to a primitive role (`owner`, `editor`, `viewer`) and every `allUsers` or `allAuthenticatedUsers` principal.',
+      '4. List service-account keys older than 90 days (`sa-key-age` check does this too).',
+      '5. Write the report in the shape under **Reporting**.',
+      '',
+      '```bash',
+      'PROJECT="$1"',
+      'gcloud projects get-iam-policy "$PROJECT" --format=json > policy.json',
+      'gcloud iam roles list --project "$PROJECT" --format=json > custom-roles.json',
+      'gcloud iam service-accounts list --project "$PROJECT" --format="value(email)" \\',
+      '  | xargs -I{} gcloud iam service-accounts keys list --iam-account={} --format=json',
+      '```',
+      '',
+      'Keep the exported files in the working directory; the task `quarterly-iam-review` diffs them against last quarter.',
+      '',
+      '## Custom roles',
+      '',
+      'A custom role that includes `resourcemanager.projects.setIamPolicy` or `iam.serviceAccountKeys.create` is treated as if it were `roles/owner`, because either permission lets its holder grant the rest. Report it under the same heading and say which permission triggered the escalation.',
+      '',
+      'Custom roles are compared by their permission list, not by name. Since 2.4.1 roles defined at the organization level are resolved too; earlier versions only read project-level roles.',
+      '',
+      '## Reporting',
+      '',
+      'Lead with the verdict: one sentence saying whether anything needs to change. Then one short list per finding: principal, role, where the binding comes from, and the one command that would fix it. Put everything that is fine in a single closing line ("41 other bindings look scoped").',
+      '',
+      'Never paste key material or full policy JSON into the report.'
+    ].join('\n'),
+    'skills/cloud-run-deploy/SKILL.md': [
+      '---', 'name: cloud-run-deploy', 'description: Deploy a container to Cloud Run with a dry run first, traffic kept on the previous revision until health checks pass.', 'allowed-tools: Bash(gcloud:*), Read', '---', '',
+      '# Cloud Run deploy', '', 'Deploy in two steps: a revision with no traffic, then a traffic shift once `/healthz` answers. The `pre-deploy-guard` hook refuses the first step on production projects unless a plan was approved.', '',
+      '## Steps', '', '1. Build or reference the image by digest, never by tag.', '2. `gcloud run deploy --no-traffic` and wait for the revision to be ready.', '3. Hit the revision URL until it returns 200 three times.', '4. `gcloud run services update-traffic --to-latest`.', '',
+      '```bash', 'gcloud run deploy "$SERVICE" --image "$IMAGE@$DIGEST" --region "$REGION" --no-traffic', 'gcloud run services update-traffic "$SERVICE" --region "$REGION" --to-latest', '```', '',
+      '## Rollback', '', 'Shift traffic back to the previous revision; do not delete the failed one until logs have been read.'
+    ].join('\n'),
+    'checks/no-public-buckets.yaml': ['id: no-public-buckets', 'severity: high', 'description: Fails when any bucket in the project grants allUsers or allAuthenticatedUsers.', 'kind: declared', 'applies_to: gcs.bucket', 'rule:', '  none_of:', '    - binding.member: allUsers', '    - binding.member: allAuthenticatedUsers', 'fix: gsutil iam ch -d allUsers gs://{bucket}', 'docs: https://cloud.google.com/storage/docs/access-control/making-data-public'].join('\n'),
+    'hooks/pre-deploy-guard.sh': ['#!/usr/bin/env bash', '# pre-deploy-guard: refuse Cloud Run deploys to production projects without an approved plan.', 'set -euo pipefail', 'input=$(cat)', 'cmd=$(printf "%s" "$input" | jq -r ".tool_input.command // empty")', 'case "$cmd" in', '  *"gcloud run deploy"*)', '    project=$(printf "%s" "$cmd" | grep -oE -- "--project[= ][^ ]+" | cut -d" " -f2 | cut -d= -f2 || true)', '    if [[ "$project" == *-prod ]] && [[ ! -f .packserver/plan.approved ]]; then', '      echo "pre-deploy-guard: $project is production and no approved plan was found" >&2', '      exit 2', '    fi ;;', 'esac', 'exit 0'].join('\n'),
+    'mcp/gcp-logs.json': ['{', '  "name": "gcp-logs",', '  "command": "npx",', '  "args": ["-y", "@google/mcp-cloud-logging@1.3.0"],', '  "env": { "GOOGLE_CLOUD_PROJECT": "${GOOGLE_CLOUD_PROJECT}" },', '  "tools": ["query_logs", "tail_logs", "list_log_names"]', '}'].join('\n')
+  };
+  function fileText(path) {
+    if (FILE_TEXT[path]) return FILE_TEXT[path];
+    var parts = path.split('/'), type = parts[0], base = parts[parts.length - 1].replace(/\.(md|yaml|sh|json)$/, '');
+    var name = type === 'skills' ? parts[1] : base;
+    if (type === 'checks') return ['id: ' + name, 'severity: medium', 'description: Declared check from the gcp-ops pack. The rule below is evaluated by the host; no code runs.', 'kind: declared', 'rule:', '  all_of:', '    - resource.exists: true'].join('\n');
+    if (type === 'hooks') return ['#!/usr/bin/env bash', '# ' + name + ': hook from the gcp-ops pack.', 'set -euo pipefail', 'exit 0'].join('\n');
+    if (type === 'mcp') return ['{', '  "name": "' + name + '",', '  "command": "npx",', '  "args": ["-y", "@google/mcp-' + name + '"]', '}'].join('\n');
+    var title = name.replace(/-/g, ' ').replace(/^gcp /, '/gcp:');
+    if (type === 'commands') return ['---', 'name: ' + base.replace(/^gcp-/, '/gcp:'), 'description: Slash command from the gcp-ops pack; delegates to the matching skill.', '---', '', '# ' + title, '', 'Runs the matching skill with the arguments given on the command line. Confirms the project with the user before anything that costs money.'].join('\n');
+    if (type === 'agents') return ['---', 'name: ' + name, 'description: Subagent from the gcp-ops pack. Loads the skills it needs on demand.', 'skills: iam-audit, log-triage', '---', '', '# ' + title, '', 'A focused agent for one kind of Google Cloud work. It reads before it writes and asks before anything irreversible.', '', '## Scope', '', 'Only the project named in the request. It never changes organization policy.'].join('\n');
+    if (type === 'tasks') return ['---', 'name: ' + name, 'description: Scheduled runbook from the gcp-ops pack.', 'schedule: monthly', '---', '', '# ' + title, '', 'A runbook an agent can run unattended. Each step is idempotent and logs what it did.', '', '## Steps', '', '1. Export the current state.', '2. Compare with the previous run.', '3. Report differences; take no action without approval.'].join('\n');
+    return ['---', 'name: ' + name, 'description: Skill from the gcp-ops pack. Use when the request is about ' + title + '.', '---', '', '# ' + title, '', 'Explains how to do this kind of work on Google Cloud safely: read first, propose the command, apply only on confirmation.', '', '## When to use', '', 'When the user asks about ' + title + ' or a task in this pack calls for it.', '', '## Steps', '', '1. Confirm the project.', '2. Read the current state with `gcloud`.', '3. Propose the change as one command and wait.'].join('\n');
+  }
+  function inline(s) { return esc(s).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>'); }
+  function renderDoc(path, text) {
+    if (!/\.md$/.test(path)) return [{ title: 'File', html: '<pre><code>' + esc(text) + '</code></pre>' }];
+    var lines = text.split('\n'), i = 0, sections = [], cur = { title: 'Top', html: '' }, para = [], list = null;
+    if (lines[0] === '---') {
+      var j = 1, fm = [];
+      while (j < lines.length && lines[j] !== '---') { fm.push(lines[j]); j++; }
+      cur.html += '<div class="fm">' + fm.map(function (l) { var m = l.match(/^([\w-]+):\s*(.*)$/); return m ? '<div><b>' + esc(m[1]) + '</b> ' + esc(m[2]) + '</div>' : '<div>' + esc(l) + '</div>'; }).join('') + '</div>';
+      i = j + 1;
+    }
+    function flush() {
+      if (para.length) { cur.html += '<p>' + inline(para.join(' ')) + '</p>'; para = []; }
+      if (list) { cur.html += '<' + list.tag + '>' + list.items.map(function (x) { return '<li>' + inline(x) + '</li>'; }).join('') + '</' + list.tag + '>'; list = null; }
+    }
+    for (; i < lines.length; i++) {
+      var l = lines[i], h = l.match(/^(#{1,3})\s+(.*)$/);
+      if (h) { flush(); sections.push(cur); cur = { title: h[2], level: h[1].length, html: '' }; continue; }
+      if (/^```/.test(l)) { flush(); var code = []; i++; while (i < lines.length && !/^```/.test(lines[i])) { code.push(lines[i]); i++; } cur.html += '<pre><code>' + esc(code.join('\n')) + '</code></pre>'; continue; }
+      var li = l.match(/^\s*([-*]|\d+\.)\s+(.*)$/);
+      if (li) { if (para.length) flush(); var tag = /\d/.test(li[1]) ? 'ol' : 'ul'; if (!list || list.tag !== tag) { if (list) flush(); list = { tag: tag, items: [] }; } list.items.push(li[2]); continue; }
+      if (!l.trim()) { flush(); continue; }
+      para.push(l);
+    }
+    flush(); sections.push(cur);
+    return sections.filter(function (s) { return s.html || s.level; });
+  }
+  function fmtBytes(n) { return n < 1024 ? n + ' B' : (n / 1024).toFixed(1) + ' KB'; }
+  function fmtNum(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+
+  /* ---------- reader: comments ---------- */
+  var IAM = 'skills/iam-audit/SKILL.md';
+  var COMMENTS = [
+    { id: 'c1', file: IAM, sec: 'Steps', by: 'devops_nina', days: 2, score: 4, text: 'Step 4 is the one people skip. We found three keys from 2024 on the first run; the fix command in the report was copy-paste ready.' },
+    { id: 'c2', file: IAM, sec: 'Steps', by: 'google-cloud', pub: true, days: 1, score: 2, text: 'Thanks. 2.4.2 will export keys per service account into one file so step 4 stops depending on xargs.' },
+    { id: 'c3', file: IAM, sec: 'Steps', by: 'mt_builds', days: 1, score: -2, text: 'Why not just open the console and look at the IAM page? This is a lot of ceremony for a list.' },
+    { id: 'c4', file: IAM, sec: 'Custom roles', by: 'anon_k', days: 6, score: -3, text: 'nobody audits custom roles lol, delete this section' },
+    { id: 'c5', file: IAM, sec: 'Custom roles', by: 'ariel', days: 4, score: 3, text: 'The escalation rule (setIamPolicy or keys.create means owner) is the most useful sentence in the pack. Worth repeating in the report template.' },
+    { id: 'c6', file: IAM, sec: 'When to use', by: 'sre_ok', days: 0.2, score: 1, text: 'Add: before granting any role on a folder, since inherited bindings show up in every child project.' },
+    { id: 'c7', file: IAM, sec: 'Reporting', by: 'jdoe', days: 9, score: 0, text: 'Would be good to say which format the task expects, markdown or JSON.' },
+    { id: 'c8', file: 'skills/cloud-run-deploy/SKILL.md', sec: 'Steps', by: 'devops_nina', days: 3, score: 2, text: 'Three 200s in a row is not enough for a cold-start heavy service; we use ten.' }
+  ];
+  var HIDE_DAYS = 3, votes = {}, hiddenByMe = {}, revealed = {};
+  try { hiddenByMe = JSON.parse(localStorage.getItem('ps-hidden') || '{}') || {}; } catch (e) { hiddenByMe = {}; }
+  function saveHidden() { try { localStorage.setItem('ps-hidden', JSON.stringify(hiddenByMe)); } catch (e) { /* ignore */ } }
+  function net(c) { return c.score + (votes[c.id] || 0); }
+  function strongHidden(c) { return net(c) < 0 && c.days >= HIDE_DAYS; }
+  function ageText(d) { if (d < 1) return Math.max(1, Math.round(d * 24)) + ' h ago'; return Math.round(d) + ' d ago'; }
+  function commentsFor(file, sec) { return COMMENTS.filter(function (c) { return c.file === file && (sec === undefined || c.sec === sec); }); }
+
+  var readerFile = IAM, commentsOn = false, thread = null;
+  try { commentsOn = localStorage.getItem('ps-comments') === '1'; } catch (e) { commentsOn = false; }
+  function commentHtml(c) {
+    var dim = net(c) < 0, young = dim && c.days < HIDE_DAYS, v = votes[c.id] || 0, left = Math.max(1, Math.ceil(HIDE_DAYS - c.days));
+    return '<div class="cmt' + (dim ? ' dim' : '') + '" data-cmt-id="' + c.id + '">' +
+      '<div class="ch"><b>' + esc(c.by) + '</b>' + (c.pub ? '<span class="plabel">publisher</span>' : '') + '<span>' + ageText(c.days) + '</span></div>' +
+      '<p class="ct">' + esc(c.text) + '</p>' +
+      '<div class="cf"><span class="vote"><button type="button" data-auth="vote" data-vote="' + c.id + ':1" aria-pressed="' + (v === 1) + '" aria-label="Vote up">▲</button><span class="sc">' + net(c) + '</span><button type="button" data-auth="vote" data-vote="' + c.id + ':-1" aria-pressed="' + (v === -1) + '" aria-label="Vote down">▼</button></span>' +
+      '<span class="cmenu"><button type="button" class="btn icon" aria-label="More" data-menu="cm-' + c.id + '"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.5" fill="currentColor"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/><circle cx="13" cy="8" r="1.5" fill="currentColor"/></svg></button><div class="menu" id="cm-' + c.id + '" hidden><button type="button" data-auth="hide" data-hide="' + c.id + '">Hide for me</button><button type="button" data-auth="report" data-toast="Flagged for moderators">Flag</button></div></span></div>' +
+      (young ? '<p class="hint">Hidden in ' + left + ' day' + (left === 1 ? '' : 's') + ' unless votes improve</p>' : (dim ? '<p class="hint">Hidden for low score; shown because you asked</p>' : '')) +
+      '</div>';
+  }
+  function threadHtml(file, sec) {
+    var list = commentsFor(file, sec).sort(function (a, b) { return net(b) - net(a) || a.days - b.days; });
+    var out = '', strong = [], key = file + '|' + sec;
+    list.forEach(function (c) {
+      if (hiddenByMe[c.id]) out += '<div class="hid">Hidden by you · <button type="button" class="linkbtn" data-unhide="' + c.id + '">Undo</button></div>';
+      else if (strongHidden(c) && !revealed[key]) strong.push(c);
+      else out += commentHtml(c);
+    });
+    if (strong.length) out += '<div class="hid">' + strong.length + ' hidden comment' + (strong.length === 1 ? '' : 's') + ' (low score) · <button type="button" class="linkbtn" data-reveal-sec="' + esc(key) + '">Show</button></div>';
+    if (!list.length) out = '<p class="muted">No comments on this section yet.</p>';
+    return '<p class="muted small" style="margin-bottom:16px">' + esc(sec) + ' · <span class="mono">' + esc(file) + '</span></p>' + out +
+      '<form class="cform only-signed" data-cmt="' + esc(key) + '"><label class="lbl" for="cm-text">Add a comment</label><textarea id="cm-text" placeholder="Something specific to this section"></textarea><div class="row" style="margin-top:8px"><button class="btn primary" type="submit">Comment</button><span class="muted small">A comment below zero after ' + HIDE_DAYS + ' days is hidden.</span></div></form>' +
+      '<p class="muted small only-anon" style="margin-top:20px">Reading is open to everyone. <a href="#signin">Sign in</a> to comment or vote.</p>';
+  }
+  function refreshThread() {
+    if (!thread || drawer.hidden) return;
+    var top = drawer.scrollTop;
+    document.getElementById('drawer-body').innerHTML = threadHtml(thread.file, thread.sec);
+    drawer.scrollTop = top;
+  }
+  function openThread(file, sec) { thread = { file: file, sec: sec }; openDrawer('Comments', threadHtml(file, sec)); }
+
+  /* ---------- reader: page ---------- */
+  function marginHtml(file, title) {
+    var n = commentsFor(file, title).filter(function (c) { return !hiddenByMe[c.id] && !strongHidden(c); }).length;
+    return '<span class="mg">' + (n ? '<button type="button" class="cnt" data-thread="' + esc(title) + '" aria-label="' + n + ' comment' + (n === 1 ? '' : 's') + ' on ' + esc(title) + '"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>' + n + '</button>' : '') +
+      '<button type="button" class="add" data-auth="comment" data-thread="' + esc(title) + '" aria-label="Comment on ' + esc(title) + '">+</button></span>';
+  }
+  function readerHtml() {
+    var p = PACKS.pack, text = fileText(readerFile), secs = renderDoc(readerFile, text);
+    var bytes = text.length, tokens = Math.round(bytes / 4);
+    var total = commentsFor(readerFile).filter(function (c) { return !hiddenByMe[c.id]; }).length;
+    var files = TYPES.map(function (t) { var items = p.contents[t]; return items.length ? '<h3>' + t + '</h3><ul>' + items.map(function (n) { var f = filePath(t, n); return '<li><button type="button" data-file="' + esc(f) + '" aria-current="' + (f === readerFile) + '">' + esc(f.replace(/^[^/]+\//, '')) + '</button></li>'; }).join('') + '</ul>' : ''; }).join('');
+    var sel = '<label class="rd-sel"><span class="sr">File</span><select id="rd-sel">' + TYPES.map(function (t) { var items = p.contents[t]; return items.length ? '<optgroup label="' + t + '">' + items.map(function (n) { var f = filePath(t, n); return '<option value="' + esc(f) + '"' + (f === readerFile ? ' selected' : '') + '>' + esc(f) + '</option>'; }).join('') + '</optgroup>' : ''; }).join('') + '</select></label>';
+    var body = secs.map(function (s) {
+      var head = s.level ? '<h2 class="h' + s.level + '">' + esc(s.title) + '</h2>' : '';
+      return '<div class="sec" data-sec="' + esc(s.title) + '">' + head + marginHtml(readerFile, s.title) + s.html + '</div>';
+    }).join('');
+    return '<div class="rd-top"><a href="#pack">← ' + esc(p.name) + ' <span class="muted">· ' + esc(p.version) + '</span></a>' +
+      '<button type="button" class="textbtn" id="cm-toggle" aria-pressed="' + commentsOn + '">Comments · ' + total + '</button></div>' +
+      '<div class="reader' + (commentsOn ? ' comments-on' : '') + '" id="reader"><nav class="files" aria-label="Files">' + files + '</nav>' +
+      '<div class="doc">' + sel + '<h1>' + esc(readerFile) + '</h1><p class="muted small" style="margin-top:4px">' + fmtBytes(bytes) + ' · about ' + fmtNum(tokens) + ' tokens · as published in ' + esc(p.version) + '</p><div class="body">' + body + '</div></div></div>';
+  }
+  function renderReader() { document.getElementById('view-read').innerHTML = readerHtml(); }
+  function setComments(on) {
+    commentsOn = on;
+    try { localStorage.setItem('ps-comments', on ? '1' : '0'); } catch (e) { /* ignore */ }
+    var r = document.getElementById('reader'), t = document.getElementById('cm-toggle');
+    if (r) r.classList.toggle('comments-on', on);
+    if (t) t.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+  function refreshMargins() {
+    if (document.getElementById('view-read').hidden) return;
+    document.querySelectorAll('#reader .sec').forEach(function (s) { var mg = s.querySelector('.mg'); if (mg) mg.outerHTML = marginHtml(readerFile, s.getAttribute('data-sec')); });
+    var t = document.getElementById('cm-toggle');
+    if (t) t.textContent = 'Comments · ' + commentsFor(readerFile).filter(function (c) { return !hiddenByMe[c.id]; }).length;
+  }
+
   /* ---------- drawer ---------- */
   var drawer = document.getElementById('drawer'), scrim = document.getElementById('scrim'), lastFocus = null;
   function mq(q) { try { return !!(window.matchMedia && window.matchMedia(q).matches); } catch (e) { return false; } }
@@ -791,12 +1066,13 @@ jobs:
     return '<p class="row" style="gap:10px;margin-bottom:16px"><span class="mark word">' + trustSvg(p.trust) + '<span>' + esc(p.trustWord) + '</span></span>' + (p.trustReason ? '<span class="muted">· ' + esc(p.trustReason) + '</span>' : '') + '</p>' +
       '<ul class="rows" style="margin-bottom:20px;display:grid;gap:4px">' + p.trustRows.map(function (r) { return '<li style="display:flex;gap:8px"><span class="mono" style="color:var(--' + (r[0] === 'y' ? 'ok' : 'muted') + ')">' + (r[0] === 'y' ? '✓' : '–') + '</span><span>' + esc(r[1]) + '</span></li>'; }).join('') + '</ul>' +
       kv([['Validation', esc(p.valId) + ' · passed' + (p.trustRows[0][1].indexOf('warning') > -1 ? ' · 1 warning' : '') + ' · <a href="#validation" data-val="' + p.valRun + '">Full report</a>'], ['SHA-256', esc(p.sha), 'mono small'], ['Signature', esc(p.signed), 'small'], ['Source', p.repo ? '<a href="#' + p.token + '">' + esc(p.repo) + '</a> · built from tag v' + esc(p.version) : 'No public repo. Uploaded as an archive; every file is readable in Contents.', 'small'], ['Publisher', esc(p.verifiedHow), 'small']]) +
-      '<p class="muted small" style="margin-top:20px">What this does not prove: that the pack is safe for your environment. Validation checks structure, secrets, known-bad patterns and the pack\'s own tests.</p>';
+      '<p class="muted small" style="margin-top:20px">What this does not prove: that the pack is safe for your environment. Validation checks structure, secrets, known-bad patterns and the pack\'s own tests.</p>' +
+      '<p class="muted small" style="margin-top:12px">Pack score: coming soon (measured against size, token cost, provenance and Anthropic guidelines).</p>';
   }
   function sheet(key) {
     var parts = key.split(':'), kind = parts[0], p = PACKS[parts[1]], i = Number(parts[2]);
     if (kind === 'trust') return openDrawer('Trust', trustDrawer(p));
-    if (kind === 'version') { var v = p.versions[i]; return openDrawer(p.name.split('/')[1] + ' ' + v[0], '<p class="ink2">' + esc(v[3]) + '</p>' + kv([['Released', v[1], 'mono small'], ['Validation', v[2] === 'yanked' ? 'Yanked · advisory PS-2026-014' : 'Passed · <a href="#validation" data-val="gcp">report</a>'], ['Install', 'claude packs add ' + esc(p.name) + '@' + esc(v[0]), 'mono small']]) + '<div class="actions"><button class="btn" type="button" data-copy="claude packs add ' + esc(p.name) + '@' + esc(v[0]) + '">Copy install command</button></div>'); }
+    if (kind === 'version') { var v = p.versions[i]; return openDrawer(p.name.split('/')[1] + ' ' + v[0], '<p class="ink2">' + esc(v[3]) + '</p>' + kv([['Released', v[1], 'mono small'], ['Validation', v[2] === 'yanked' ? 'Yanked · advisory PS-2026-014' : 'Passed · <a href="#validation" data-val="gcp">report</a>'], ['Install', 'cn adopt ' + esc(p.name) + '@' + esc(v[0]), 'mono small']]) + '<div class="actions"><button class="btn" type="button" data-copy="cn adopt ' + esc(p.name) + '@' + esc(v[0]) + '">Copy install command</button></div>'); }
     if (kind === 'review') { var r = p.reviews[i]; return openDrawer('Review', '<p class="muted small">' + stars(r[0]) + ' · ' + esc(r[1]) + ' · v' + esc(r[2]) + ' · ' + esc(r[3]) + '</p><h3 style="margin-top:12px">' + esc(r[4]) + '</h3><p class="ink2" style="margin-top:8px">' + esc(r[5]) + '</p><div class="actions"><button class="btn quiet" type="button" data-auth="mark helpful" data-toast="Marked helpful">Helpful · ' + r[6] + '</button><button class="btn quiet" type="button" data-auth="flag" data-toast="Flagged for moderators">Flag</button></div>'); }
     if (kind === 'contents-gcp') return openDrawer('Contents', '<table class="ctable">' + TYPES.map(function (t) { var items = PACKS.pack.contents[t]; return items.length ? '<tr><td>' + t + ' · ' + items.length + '</td><td class="mono small">' + items.map(esc).join(', ') + '</td></tr>' : ''; }).join('') + '</table>');
     if (kind === 'agents') return openDrawer('For agents', '<p class="ink2">Agents discover packs over MCP. Point your client at the endpoint and call search_packs with a category of work.</p><div class="install"><pre>https://packs.example/mcp</pre><button class="btn" type="button" data-copy="https://packs.example/mcp">Copy</button></div>' + kv([['Tools', 'search_packs · get_pack · list_categories · fetch_pack', 'mono small'], ['Auth', 'None for public packs; a scoped read token for private packs', 'small'], ['Limits', '120 calls / min anonymous · 1,000 with a token', 'small']]));
@@ -856,7 +1132,7 @@ jobs:
   }
 
   /* ---------- routing ---------- */
-  var VIEWS = ['home', 'browse', 'pack', 'pack2', 'publisher', 'signin', 'dashboard', 'publish', 'validation'];
+  var VIEWS = ['home', 'browse', 'pack', 'pack2', 'read', 'publisher', 'signin', 'dashboard', 'publish', 'validation'];
   var jump = document.getElementById('screen-jump'), lastRoute = null, pendingTab = null;
   function route() {
     var raw = (location.hash || '#home').slice(1);
@@ -865,6 +1141,7 @@ jobs:
     document.querySelectorAll('.view').forEach(function (v) { v.hidden = v.getAttribute('data-view') !== viewName; });
     if (viewName === 'pack') { document.getElementById('view-pack').innerHTML = packHtml(PACKS[token]); if (pendingTab) { activateTab(pendingTab); pendingTab = null; } }
     if (viewName === 'validation') renderVal();
+    if (viewName === 'read') { thread = null; renderReader(); }
     document.querySelectorAll('[data-nav]').forEach(function (a) { if (a.getAttribute('data-nav') === token) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
     document.getElementById('cur-route').textContent = token;
     if (jump.value !== token) jump.value = token;
@@ -932,12 +1209,12 @@ jobs:
   }
 
   function updateCount() {
-    var on = document.querySelectorAll('[data-ftog][aria-pressed="true"]').length + (document.getElementById('f-target').selectedIndex ? 1 : 0) + (document.getElementById('f-contains').selectedIndex ? 1 : 0);
+    var on = document.querySelectorAll('[data-ftog][aria-pressed="true"]').length + (document.getElementById('f-contains').selectedIndex ? 1 : 0);
     var n = [6, 4, 3, 2, 2, 1][Math.min(on, 5)];
     document.getElementById('b-count').innerHTML = n + ' result' + (n === 1 ? '' : 's') + ' for <span class="ink2">gcp</span>';
   }
-  document.getElementById('f-target').addEventListener('change', updateCount);
   document.getElementById('f-contains').addEventListener('change', updateCount);
+  document.addEventListener('change', function (e) { if (e.target.id === 'rd-sel') { readerFile = e.target.value; renderReader(); window.scrollTo(0, 0); } });
 
   /* ---------- delegated clicks ---------- */
   document.addEventListener('click', function (e) {
@@ -975,8 +1252,24 @@ jobs:
     var val = t.closest('[data-val]');
     if (val) { valRun = val.getAttribute('data-val'); }
 
+    var fileEl = t.closest('[data-file]');
+    if (fileEl) { readerFile = fileEl.getAttribute('data-file'); if (fileEl.tagName !== 'A') { renderReader(); window.scrollTo(0, 0); } return; }
+    var cmToggle = t.closest('#cm-toggle');
+    if (cmToggle) { setComments(cmToggle.getAttribute('aria-pressed') !== 'true'); return; }
+
     var authEl = t.closest('[data-auth]');
     if (authEl && isAnon()) { e.preventDefault(); closeMenus(); openDrawer('Sign in', '<p class="ink2">Starring, reviewing and reporting are tied to an account so publishers can trust the signal.</p><div class="actions"><a class="btn primary" href="#signin">Sign in</a><button class="btn quiet" type="button" data-close-drawer>Not now</button></div>'); return; }
+
+    var th = t.closest('[data-thread]');
+    if (th) { openThread(readerFile, th.getAttribute('data-thread')); return; }
+    var vb = t.closest('[data-vote]');
+    if (vb) { var vp = vb.getAttribute('data-vote').split(':'), dir = Number(vp[1]); votes[vp[0]] = votes[vp[0]] === dir ? 0 : dir; refreshThread(); refreshMargins(); return; }
+    var hb = t.closest('[data-hide]');
+    if (hb) { hiddenByMe[hb.getAttribute('data-hide')] = true; saveHidden(); closeMenus(); refreshThread(); refreshMargins(); return; }
+    var ub = t.closest('[data-unhide]');
+    if (ub) { delete hiddenByMe[ub.getAttribute('data-unhide')]; saveHidden(); refreshThread(); refreshMargins(); return; }
+    var rv = t.closest('[data-reveal-sec]');
+    if (rv) { revealed[rv.getAttribute('data-reveal-sec')] = true; refreshThread(); return; }
 
     var star = t.closest('[data-star]');
     if (star) { var on = star.getAttribute('aria-pressed') !== 'true'; star.setAttribute('aria-pressed', on ? 'true' : 'false'); star.querySelector('path').setAttribute('fill', on ? 'currentColor' : 'none'); toast(on ? 'Starred' : 'Star removed'); return; }
@@ -1014,6 +1307,13 @@ jobs:
   document.addEventListener('submit', function (e) {
     e.preventDefault();
     var f = e.target;
+    if (f.getAttribute('data-cmt')) {
+      var ta = f.querySelector('textarea'), txt = (ta.value || '').trim();
+      if (!txt) { ta.focus(); return; }
+      var kp = f.getAttribute('data-cmt').split('|');
+      COMMENTS.push({ id: 'c' + (COMMENTS.length + 1), file: kp[0], sec: kp[1], by: 'ariel', pub: document.body.getAttribute('data-persona') === 'publisher', days: 0, score: 0, text: txt });
+      refreshThread(); refreshMargins(); toast('Comment posted'); return;
+    }
     if (f.getAttribute('data-toast')) toast(f.getAttribute('data-toast'));
     var go = f.getAttribute('data-go');
     if (go) { if (location.hash === '#' + go) route(); else location.hash = '#' + go; }

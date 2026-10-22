@@ -124,7 +124,7 @@ Format: **Visible** (default) · **Hover** · **Click** · **Removed**.
   Updated) as text.
 - Hover: the three marks.
 - Visible: one quiet row of filter toggles under the query (Trusted only, Verified publisher, Public repo,
-  Works with Claude/Ant, Contains…). Outline pills, filled only when on; no counts, no sidebar.
+  Contains…). Outline pills, filled only when on; no counts, no sidebar.
   (Ariel, 2026-10-22: hiding filters in a sheet went too far; search filters stay on the page.)
 - Removed: always-visible filter sidebar, "public repo / validated" pills on cards, seven counts per card,
   star glyph rows, `v2.4.1` on cards (version belongs to the pack page).
@@ -190,6 +190,27 @@ Format: **Visible** (default) · **Hover** · **Click** · **Removed**.
 - Click: MFA setup, recovery codes, tokens each open as a sheet from their one-line row.
 - Removed: Enabled/Not-enabled pills, "this device" pill (becomes italic "this device"), hint text under
   every field, Create-account marketing copy, per-section panels.
+
+### Reader and comments
+
+- Visible: once a version is published, every file is readable by anyone at `#read` (from "Read the pack"
+  under the Install block, or any item in the Contents tab). Left: a quiet file list grouped by type (a
+  select on phones). Right: the rendered file, split into sections at each heading, with one muted line for
+  size and token estimate. Nothing else; comments are **off by default**.
+- Click: one text toggle in the reader header, `Comments · 7` (count for the current file), remembered per
+  viewer in localStorage. When on, a section that has comments shows a small count in the right margin
+  (after the heading on narrow screens); hovering or focusing a section reveals a `+` to add one (members
+  only; anonymous gets the sign-in sheet). Both open the section's thread in the right drawer.
+- Thread: handle, age, text, and a compact `▲ n ▼` vote control with one net number; voting toggles. Sorted
+  by score. Publisher replies carry a small outline `publisher` label. A `…` menu per comment: "Hide for me"
+  (per-viewer, stored locally, undoable) and "Flag".
+- Hiding rule: a comment whose net score is negative is shown dimmed, with a hover hint "Hidden in 2 days
+  unless votes improve". Once it is 3 days old and still negative it is *strongly* hidden: collapsed to one
+  muted line "1 hidden comment (low score) · Show". No colored boxes, no badges, no counts shown unless the
+  viewer turned comments on.
+- Pack score: not designed yet. The Trust drawer carries one muted line, "Pack score: coming soon
+  (measured against size, token cost, provenance and Anthropic guidelines)", and nothing else changes until
+  the measurements are defined.
 
 ## 4. Visual language
 

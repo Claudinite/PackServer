@@ -131,7 +131,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <ol>
 <li><code>pack</code>: click Star → toggles immediately (optimistic), count updates. Anonymous click → <code>signin</code> with return URL.</li>
 <li>Click &quot;Rate&quot; or &quot;Write a review&quot; → <code>review</code>.</li>
-<li>Choose version (default latest), 1-5 stars, optional title/body, &quot;used with&quot; (Claude / Ant).</li>
+<li>Choose version (default latest), 1-5 stars, optional title/body.</li>
 <li>Submit → stored; pack rating recomputed (Bayesian average with prior to avoid 1-review 5-star packs ranking first).</li>
 <li>Review appears in <code>pack</code> &gt; Reviews with &quot;verified fetch&quot; badge if the account fetched the pack (optional, decision #8).</li>
 <li>Publisher may reply once per review and flag for moderation.</li>
@@ -487,7 +487,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 </ul>
 <hr>
 <h2 id="f-11-agent-discovering-amp-fetching-a-pack-via-mcp">11. Agent discovering &amp; fetching a pack via MCP</h2>
-<p><strong>Goal</strong>: an agent (Claude / Ant) asks what packs exist for a kind of work and installs one. Documented on <code>agents</code>.</p>
+<p><strong>Goal</strong>: an agent asks what packs exist for a kind of work and installs one. Documented on <code>agents</code>.</p>
 <p>Tools: <code>list_categories()</code>, <code>search_packs(query, category?, feature_type?, verified_only?, limit)</code>, <code>get_pack(id, version?)</code> → metadata + contents summary + install instructions, <code>get_pack_manifest(id, version)</code>, <code>download_pack(id, version)</code> → signed URL or inline archive (size-capped).</p>
 <p>Public:</p>
 <ol>
@@ -726,7 +726,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <td><code>/agents</code></td>
 <td>MCP endpoint docs</td>
 <td>Anon+</td>
-<td>Endpoint URL; tool reference: <code>search_packs</code>, <code>get_pack</code>, <code>list_categories</code>, <code>get_pack_manifest</code>, <code>download_pack</code>; auth section (public = none, private = scoped read token in <code>Authorization</code>); example transcripts; config snippet for Claude / Ant; rate limits</td>
+<td>Endpoint URL; tool reference: <code>search_packs</code>, <code>get_pack</code>, <code>list_categories</code>, <code>get_pack_manifest</code>, <code>download_pack</code>; auth section (public = none, private = scoped read token in <code>Authorization</code>); example transcripts; MCP client config snippet; rate limits</td>
 <td>Copy config, create token (-&gt; <code>account</code>)</td>
 </tr>
 <tr>
@@ -750,7 +750,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <td><code>/packs/{p}/{pack}/review</code></td>
 <td>Rate + write review</td>
 <td>Member</td>
-<td>Version selector (defaults latest); 1-5 star input; title; body (markdown); &quot;I used this with&quot; checkboxes (Claude / Ant); edit existing review notice</td>
+<td>Version selector (defaults latest); 1-5 star input; title; body (markdown); edit existing review notice</td>
 <td>Submit, edit, delete own review</td>
 </tr>
 <tr>
