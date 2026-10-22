@@ -78,11 +78,10 @@ with the exact version.
 
 ## REQ-SEARCH-007 Unknown category suggests list_categories
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: agent
-- source: FLOW 11
-- decision: SITE-D 11
+- source: FLOW 11; Ariel, 2026-10-22 (sitemap decision 11, PR #4 commit 79e7900)
 - coverage: scenario
 
 Asking for an unknown category returns an error that suggests `list_categories`.

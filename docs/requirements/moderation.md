@@ -82,18 +82,17 @@ the reporter is notified of each change.
 When a private security report is fixed or its timer expires, an advisory can be attached to the
 affected versions and is returned by MCP for those versions.
 
-## REQ-MOD-008 Anyone can report abuse with a category
+## REQ-MOD-008 A signed-in user can report abuse with a category
 
-- status: provisional
+- status: active
 - since: 2026-10
-- actor: anonymous visitor
-- source: FLOW 13
-- decision: SITE-D 10
+- actor: signed-in user
+- source: FLOW 13; Ariel, 2026-10-22 (sitemap decision 10, PR #4 commit 79e7900)
 - coverage: scenario
 
-Anyone, including anonymous visitors passing a human check, can report abuse on a pack, a review
-or a profile, choosing a category (malware, prompt injection, secrets leak, impersonation, spam,
-IP infringement, other).
+A signed-in user can report abuse on a pack, a review or a profile, choosing a category (malware,
+prompt injection, secrets leak, impersonation, spam, IP infringement, other). There is no
+anonymous report path: a visitor who is not signed in is sent to sign in first.
 
 ## REQ-MOD-009 Independent high-severity reports auto-quarantine
 

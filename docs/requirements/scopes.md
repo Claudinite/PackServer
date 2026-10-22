@@ -101,17 +101,17 @@ the proof is refused.
 Uninstalling the GitHub App revokes the GitHub-org proof after a 7-day grace period, with an
 alert to the owners.
 
-## REQ-SCOPE-010 Verified Publisher requires all four proofs
+## REQ-SCOPE-010 Verified Publisher needs a domain or GitHub org proof, MFA and a manual review
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: admin
-- source: ARCH §4
-- decision: CLN-REV 7 (the research says "bound to a GitHub org or DNS domain"; requiring both excludes the OSS maintainer with no domain)
+- source: ARCH §4; Ariel, 2026-10-22 (sitemap decision 12, PR #4 commit 79e7900)
 - coverage: scenario
 
-"Verified Publisher" is granted only when domain proof, linked GitHub org, scope-wide MFA
-enforcement and a manual admin review are all present.
+"Verified Publisher" is granted only when the scope has a domain proof or a linked GitHub org
+proof (either suffices), enforces MFA scope-wide, and has passed a manual admin review. Pages show
+which proof the verification rests on (REQ-VAL-041).
 
 ## REQ-SCOPE-011 First proof claims a scope; squatting can be disputed
 

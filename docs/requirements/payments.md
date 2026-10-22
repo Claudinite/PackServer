@@ -34,11 +34,10 @@ public pack consume nothing.
 
 ## REQ-PAY-003 A credit is charged after validation and bound to the sha256
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH §6 step 6, §9; FLOW 8
-- decision: SITE-D 3
+- source: ARCH §6 step 6, §9; FLOW 8; Ariel, 2026-10-22 (sitemap decision 3, PR #4 commit 79e7900)
 - coverage: scenario
 
 A credit is charged only after validation passes and is bound to the validated archive's sha256;

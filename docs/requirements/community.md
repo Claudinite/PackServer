@@ -25,11 +25,10 @@ publicly.
 
 ## REQ-COMM-003 One rating and review per member per pack, editable
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: member
-- source: ARCH §10; FLOW 3
-- decision: SITE-D 8
+- source: ARCH §10; FLOW 3; Ariel, 2026-10-22 (sitemap decision 8, PR #4 commit 79e7900)
 - coverage: scenario
 
 A member can rate a pack 1–5 with an optional review, once per pack; a second submission edits
@@ -57,11 +56,10 @@ An account younger than 24 h cannot review; an account is limited to 10 reviews 
 
 ## REQ-COMM-006 Verified-fetch reviews weigh fully
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: anonymous visitor
-- source: ARCH §10; FLOW 3
-- decision: SITE-D 8
+- source: ARCH §10; FLOW 3; Ariel, 2026-10-22 (sitemap decision 8, PR #4 commit 79e7900)
 - coverage: scenario
 
 A review from an account that fetched the pack is marked "verified fetch" and weighs fully in
@@ -69,11 +67,10 @@ ranking; others weigh less.
 
 ## REQ-COMM-007 Publishers reply once and flag, never delete
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH §10; FLOW 3
-- decision: SITE-D 9
+- source: ARCH §10; FLOW 3; Ariel, 2026-10-22 (sitemap decision 9, PR #4 commit 79e7900)
 - coverage: scenario
 
 A publisher can reply once per review and can flag a review for moderation, but cannot delete

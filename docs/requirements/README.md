@@ -63,7 +63,7 @@ One file per area, in the order a user meets them:
 | [telemetry.md](telemetry.md) | `REQ-TELEM` | 7 | counters and the dashboard |
 | [operations.md](operations.md) | `REQ-OPS` | 12 | synthetic scopes, probes, the self-test contract, recorded-traffic redaction, the production configuration |
 
-283 entries: 197 derived from the design documents, 29 from the security review, 8 from the release plan (the self-test contract and the redaction rule), 31 from the validation-flow review (three of them from its prose-screen decision), 1 from the Claudinite alignment review, 5 from Ariel's decisions of 2026-10-22 (the GitHub org allowlist and Trending) 10 from the architecture thread's pack-score proposal and 2 from its Polar billing design. 245 are active, 30 provisional and 8 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. The totals were recounted from the files on 2026-10-22, after Ariel's decisions of that day were applied (PR #3 commits `99457a2`, `2ff18f5`, `5b1ac94`, `07b211d`, `6995682`, `1ca52e1` and `21f0105`).
+283 entries: 197 derived from the design documents, 29 from the security review, 8 from the release plan (the self-test contract and the redaction rule), 31 from the validation-flow review (three of them from its prose-screen decision), 1 from the Claudinite alignment review, 5 from Ariel's decisions of 2026-10-22 (the GitHub org allowlist and Trending) 10 from the architecture thread's pack-score proposal and 2 from its Polar billing design. 263 are active, 12 provisional and 8 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. The totals were recounted from the files on 2026-10-22, after Ariel's decisions of that day were applied (PR #3 commits `99457a2`, `2ff18f5`, `5b1ac94`, `07b211d`, `6995682`, `1ca52e1`, `21f0105` and `359f3c6`; PR #4 commit `79e7900`).
 
 ## Entry format
 
@@ -180,7 +180,7 @@ Its nine owner decisions are Ariel's and were not answered here; the affected en
 | CLN-REV 4 (the capability set as the pre-install manifest: hooks added, tool calls guarded, tasks and cadence, forced skills, declared GitHub actions) | **folded into O8**: the set itself is decided (REQ-VAL-027); whether it is also signed into the index is the open part | — |
 | CLN-REV 5 (channels and the soak) | **resolved** (Ariel, 2026-10-22): no channels and no cooldown; when to take a version is a cn or repository setting. REQ-DELIV-019 and 020 retired; REQ-SEARCH-004 exposes `published_at` | — |
 | CLN-REV 6 (the top tier's name) | **withdrawn**: there are no tiers (ARCH-VAL §7-4 below) | — |
-| CLN-REV 7 (Verified Publisher: domain proof and GitHub org, or either) | REQ-SCOPE-010 | which proofs the grant needs |
+| CLN-REV 7 (Verified Publisher proofs) | **decided** (Ariel, 2026-10-22; PR #4 commit `79e7900`): a domain or a GitHub org proof, plus MFA and manual review; REQ-SCOPE-010 active | — |
 | CLN-REV 8 (ranking by how many members hold a pack, or by stars) | **resolved** with the row below: every signal is kept | — |
 | CLN-REV 9 (the `client` dimension) | none: the dimension was dropped from REQ-SEARCH-003, REQ-COMM-008 and REQ-TELEM-001, since Claudinite is Claude Code only; the telemetry field now names the fetcher (`cn adopt`, the update task or MCP) | a decision to keep a client axis would restore one field in three entries |
 
@@ -241,8 +241,8 @@ The ones that touch the most entries:
 | ARCH-Q 1 (who decides private access) | **resolved** (Ariel, 2026-10-22): an allowlist of GitHub orgs per private pack, proven by the Actions OIDC token (REQ-PRIV-016 to 019); the other access entries are active, named by their architecture §11 phase | — |
 | ARCH-Q 2 (fee per pack or per version) | **resolved** (Ariel, 2026-10-22): $1 per new pack for everyone, open-source included, waived for Verified Publishers; REQ-PAY-001 and 002 are active | — |
 | ARCH-Q 3 (review depth at launch; now only which model screens pack prose) | static checks, the sandboxed load and the human review of holds are settled, so the entries that waited only on the queue are active; the screen model is cited as ARCH-SCREEN | — |
-| SITE-D 4 (MFA required for which actions) | REQ-ACC-008, 009, 018 | the refusal matrix in the accounts scenarios (which actions need a factor at all; which actions need a per-action assertion is REQ-ACC-010 and is decided) |
-| SITE-D 6, 7 (which checks fail vs warn; what the public page shows) | REQ-VAL-005, 006, 007, 009, 015 | verdict expectations in the validation scenarios |
+| SITE-D 3, 4, 8, 9, 11 (charge timing, MFA scope, rating eligibility, review moderation, categories) | **decided** (Ariel, 2026-10-22; PR #4 commit `79e7900`) as proposed; their entries are active | — |
+| SITE-D 6, 7, 10 (gate, report detail, abuse reports) | **decided** (Ariel, 2026-10-22; PR #4 commit `79e7900`), differing from the proposals: prompt-injection heuristics block with manual review on request (REQ-VAL-009); the full report, logs included, is public once published (REQ-VAL-015, 042); abuse reports need sign-in (REQ-MOD-008) | — |
 | SITE-D 2 (private pack plans) | REQ-PAY-010, 011, REQ-AUDIT-003 | plan limits |
 | ARCH-VAL §7-1 (capabilities) | **decided** (Ariel, 2026-10-22; PR #3 commits `1ca52e1`, `21f0105`): extracted and shown, new ones marked, never held; REQ-VAL-028 retired, REQ-VAL-027, 029, 031 active | — |
 | ARCH-VAL §7-2 (load gate) | **decided** (Ariel, 2026-10-22; PR #3 commits `1ca52e1`, `21f0105`): loading under cn blocks for everyone, coded checks compile and declared checks parse; fixture tests are out of v1 (REQ-VAL-010 restated, REQ-VAL-032 active) | — |

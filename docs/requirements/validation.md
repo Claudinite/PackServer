@@ -64,11 +64,10 @@ three-part engine version, or a `requires` entry naming a pack the registry does
 
 ## REQ-VAL-005 A detected secret hard-fails without revealing the value
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH §6; FLOW 7
-- decision: SITE-D 6
+- source: ARCH §6; FLOW 7; Ariel, 2026-10-22 (sitemap decision 6, PR #4 commit 79e7900)
 - coverage: scenario
 
 A detected secret hard-fails; the report shows rule, file and line but never the secret value,
@@ -76,11 +75,10 @@ and reminds the publisher to rotate it.
 
 ## REQ-VAL-006 Disallowed files, foreign imports and undeclared GitHub actions hard-fail
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH §6; FLOW 7; ARCH-VAL §6 (PR #3 commit 7a01329: absorbs the import allowlists of the retired REQ-VAL-030)
-- decision: SITE-D 6
+- source: ARCH §6; FLOW 7; ARCH-VAL §6 (PR #3 commit 7a01329: absorbs the import allowlists of the retired REQ-VAL-030); Ariel, 2026-10-22 (sitemap decision 6, PR #4 commit 79e7900)
 - coverage: scenario
 
 Disallowed file types / binaries and path traversal hard-fail. A coded check that imports
@@ -91,11 +89,10 @@ fail under REQ-VAL-029.
 
 ## REQ-VAL-007 A missing license warns
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH §6; FLOW 7
-- decision: SITE-D 6
+- source: ARCH §6; FLOW 7; Ariel, 2026-10-22 (sitemap decision 6, PR #4 commit 79e7900)
 - coverage: scenario
 
 A missing license produces a warning, not a failure.
@@ -111,19 +108,20 @@ A missing license produces a warning, not a failure.
 The inventory shown on the site and over MCP (counts, names, per-skill context cost in tokens)
 is the one extracted from the archive, not the one the manifest declares.
 
-## REQ-VAL-009 Prompt-injection heuristics hold reviewer-addressed text and warn otherwise
+## REQ-VAL-009 Prompt-injection heuristics block, with manual review on request
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH §6; FLOW 7; ARCH-VAL §6 (PR #3 commit 7a01329)
-- decision: SITE-D 6
+- source: ARCH §6; FLOW 7; ARCH-VAL §6 (PR #3 commit 7a01329); Ariel, 2026-10-22 (sitemap decision 6, PR #4 commit 79e7900)
 - coverage: scenario
 
 Prompt-injection / tool-poisoning heuristics run on `RULES.md`, `SKILL.md` files, the what, why
-and fix text of findings, and task agentic-phase prompts. Reviewer-addressed text holds the
-version; every other heuristic produces a warning with a human-readable excerpt. These are
-static heuristics; the Jev prose screen (REQ-VAL-034 to 037) runs as well.
+and fix text of findings, and task agentic-phase prompts. A finding blocks the version, with a
+human-readable excerpt in the report; the publisher can request a manual review of a false
+positive, which puts the version in the human queue (REQ-VAL-013), and only an admin's approval
+lets it through. These are static heuristics; the Jev prose screen (REQ-VAL-034 to 037) runs as
+well.
 
 ## REQ-VAL-010 Every coded check compiles and every declared check parses
 
@@ -197,17 +195,17 @@ is a hard fail with reason `archive.bomb` or `archive.unsafe` (REQ-VAL-022), is 
 offers no re-run, and costs no credit and no prose-screen call. A run that crashes at any other step
 resumes from the last completed step.
 
-## REQ-VAL-015 Warnings do not block; public page names warned checks only
+## REQ-VAL-015 Warnings do not block; the full report is public once the version is published
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: anonymous visitor / publisher
-- source: FLOW 7; SITE-D 7
-- decision: SITE-D 7
+- source: FLOW 7; SITE-D 7; Ariel, 2026-10-22 (sitemap decision 7, PR #4 commit 79e7900)
 - coverage: scenario
 
-Warnings do not block publishing; the public pack page shows "Published with warnings" with the
-names of warned checks only, and full logs are visible to the publisher alone.
+Warnings do not block publishing, and the public pack page shows "Published with warnings". Once a
+version is published its full validation report, logs included, is public; before that only the
+publisher (and admins) can read it, and the publisher can choose not to publish.
 
 ## REQ-VAL-016 Reports list failures first with file, line, rule and hint
 
@@ -322,11 +320,10 @@ prose-screen call.
 
 ## REQ-VAL-024 Every rule has one verdict class, and security findings never only warn
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH-VAL §6, §3.1
-- decision: SITE-D 6 (which checks fail vs warn)
+- source: ARCH-VAL §6, §3.1; Ariel, 2026-10-22 (sitemap decision 6, PR #4 commit 79e7900)
 - coverage: scenario
 
 Every validation rule has exactly one class, `fail` (never promotable), `hold` (promotable only
@@ -486,8 +483,7 @@ probabilities compared with those thresholds, never from any other part of the r
 Pack content reaches Jev only as delimited data in `state`, each chunk carrying a per-run nonce and
 its file and line range; publisher notes, appeal text and previous reports are never in the same
 call as pack content. Text addressed to a reviewer, validator or AI evaluator that the static
-heuristic finds holds the version by itself, independently of the prose screen, and that hold
-never resolves by timeout. A Jev answer over threshold on the reviewer-addressed question is a
+heuristic finds blocks the version by itself, independently of the prose screen (REQ-VAL-009). A Jev answer over threshold on the reviewer-addressed question is a
 prose-screen flag and holds under REQ-VAL-037.
 
 ## REQ-VAL-036 All pack text is screened in chunks; nothing is truncated
@@ -531,11 +527,10 @@ setting.
 
 ## REQ-VAL-039 A credit is reserved before the prose screen and consumed only at promotion
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH-VAL §6, §4 steps 9 and 14; ARCH §9 (PR #3 commit 6995682)
-- decision: SITE-D 3 (the same decision as REQ-PAY-003)
+- source: ARCH-VAL §6, §4 steps 9 and 14; ARCH §9 (PR #3 commit 6995682); Ariel, 2026-10-22 (sitemap decision 3, PR #4 commit 79e7900)
 - coverage: scenario
 
 For a new public pack a credit is reserved, not consumed, before the prose screen runs, and
@@ -577,21 +572,20 @@ slot because of them; cn's repository policy (an allowlist of verified publisher
 reads them. Versions of the `@claudinite` scope carry `verified: true` and `verified_domain:
 claudinite.com` like any other verified scope.
 
-## REQ-VAL-042 The public view shows the publisher's verification facts, capabilities, provenance and hashes, never finding text
+## REQ-VAL-042 The public view shows the publisher's verification facts, capabilities, provenance, hashes and the full report
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: anonymous visitor / agent
-- source: ARCH-VAL §6, §3.13
-- decision: SITE-D 7
+- source: ARCH-VAL §6, §3.13; Ariel, 2026-10-22 (sitemap decision 7, PR #4 commit 79e7900)
 - coverage: scenario
 
-The public pack page and the MCP pack view show the version's publisher verification facts (`verified`, `verified_domain`,
-`verified_github_org`), pre-install manifest, provenance,
-upload and canonical hashes, the validation date and rules version, the count of warnings by
-category name, and which capabilities the latest version marked new. Finding excerpts, rule
-internals, secret locations and reviewer text are shown only to the publisher and to admins
-(whose reads are audited, REQ-ADMIN-009); the publisher never sees the second screen's raw text.
+The public pack page and the MCP pack view show the version's publisher verification facts
+(`verified`, `verified_domain`, `verified_github_org`), pre-install manifest, provenance, upload
+and canonical hashes, the validation date and rules version, the count of warnings by category
+name, which capabilities the latest version marked new, and the full validation report of the
+published version (REQ-VAL-015). The report of a version that was never published is shown only
+to its publisher and to admins (whose reads are audited, REQ-ADMIN-009).
 
 ## REQ-VAL-043 A dry-run validates an archive without creating a version or spending a credit
 

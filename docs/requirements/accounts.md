@@ -90,11 +90,10 @@ the set.
 
 ## REQ-ACC-008 Publishing and management actions require MFA
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: member
-- source: ARCH §4; FLOW 2; SITE matrix
-- decision: SITE-D 4
+- source: ARCH §4; FLOW 2; SITE matrix; Ariel, 2026-10-22 (sitemap decision 4, PR #4 commit 79e7900)
 - coverage: scenario
 
 A member without MFA cannot publish, manage a scope, mint a token, change pack visibility or
@@ -102,11 +101,10 @@ transfer ownership; attempting any of these redirects to MFA enrolment.
 
 ## REQ-ACC-009 Community actions need only a verified email
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: member
-- source: ARCH §4
-- decision: SITE-D 4
+- source: ARCH §4; Ariel, 2026-10-22 (sitemap decision 4, PR #4 commit 79e7900)
 - coverage: scenario
 
 A member with only a verified email can star, vote works-for-me and file bug reports without
@@ -212,11 +210,10 @@ Removing an MFA factor requires step-up.
 
 ## REQ-ACC-018 A scope can require MFA or passkeys only
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: org owner / member
-- source: ARCH §4
-- decision: SITE-D 4
+- source: ARCH §4; Ariel, 2026-10-22 (sitemap decision 4, PR #4 commit 79e7900)
 - coverage: scenario
 
 A scope can require MFA, or passkeys only, for all its members; a member of such a scope who

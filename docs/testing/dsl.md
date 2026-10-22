@@ -201,14 +201,15 @@ await version.uploadSha256();  await version.canonicalSha256()   // the two hash
 await version.capabilities();  await version.manifest();  await version.verification()   // the capability set, the pre-install manifest and { verified, verifiedDomain, verifiedGithubOrg }, each signed into the index entry (REQ-VAL-027, 046, 041)
 await run.verdict()                        // 'pass' | 'warn' | 'hold' | 'fail' | 'rejected' | 'error'
 await run.findings()                       // Finding[]: { rule, class: 'fail' | 'hold' | 'warn', file, line, quote?, hint }
-await run.holdReasons()                    // why a held version waits: 'reviewer-addressed' | 'prose-screen' | 'budget' | 'name-near-miss' | 'install-url'
+await run.holdReasons()                    // why a held version waits: 'review-requested' | 'prose-screen' | 'budget' | 'name-near-miss' | 'install-url'
+await run.requestReview()                  // the publisher asks for a manual review of a blocked prompt-injection finding (REQ-VAL-009)
 await run.urls()                           // the URL inventory with each domain's class (REQ-VAL-026)
 await run.capabilities();  await run.manifest()   // the extracted set and manifest, before promotion
 await run.screened()                       // per chunk: { file, lines, probabilities, thresholds, model, questionSet } (REQ-VAL-036, 047, REQ-ADMIN-006)
 await world.rules.list()                   // the published rule list: { id, class }[] (REQ-VAL-024)
 await admin.queue.list()                   // QueueItem[] in queue order; each has .diff, .capabilityChanges, .findings, .holdReasons
 await agent.get(pack)                      // .verification, .capabilities, .newCapabilities, .warningCounts, and never .findings (REQ-VAL-042)
-await visitor.open(pack)                   // the same public fields on the page: .verification, .capabilities, .newCapabilities, .hashes, .validatedOn, .rulesVersion
+await visitor.open(pack)                   // the same public fields on the page, plus the published version's full .report (REQ-VAL-015): .verification, .capabilities, .newCapabilities, .hashes, .validatedOn, .rulesVersion
 await publisher.credits.balance()
 await publisher.dashboard()                // .alerts, .drafts, .packs
 await agent.tools()
@@ -571,10 +572,12 @@ scenario('REQ-MOD-011 REQ-DELIV-005 REQ-DELIV-008 a yanked version leaves latest
 
 ```ts
 // tests/scenarios/validation/holds.scenario.ts
-scenario('REQ-VAL-013 a held version stays held until an admin decides, however long that takes', async (world) => {
+scenario('REQ-VAL-013 REQ-VAL-009 a held version stays held until an admin decides, however long that takes', async (world) => {
   const publisher = await world.publishers.create({ credits: 5 });
   const version = await publisher.publish(world.archive('with-reviewer-note')).as('@me/notes@1.0.0');
   const run = await world.validation.completes(version);
+  expect(await run.verdict()).toBe('fail');                           // a prompt-injection finding blocks (REQ-VAL-009)
+  await run.requestReview();
   expect(await run.verdict()).toBe('hold');
 
   await world.clock.advance('90d');
