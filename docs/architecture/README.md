@@ -126,7 +126,7 @@ pack_versions(id, pack_id, version, sha256, size, r2_key, state, repo_commit, in
                                     -- in R2 meta.json
 trusted_publishers(pack_id | pending_name, provider='github', repository_owner_id, repository, workflow,
                    environment, path)
-grants(resource_type[pack|scope], resource_id, principal_type[user|team|scope|token|domain|github_org],
+grants(resource_type[pack|scope], resource_id, principal_type[user|team|scope|token|domain|github_account],
        principal_id, action[read|publish|yank|manage], created_by, expires_at)   -- JFrog-style permission rows
 effective_access(pack_id, user_id)                                                -- materialised from grants
 tokens(id, owner_user_id, prefix, hash, scopes, restrict_pack_id, restrict_scope_id, expires_at, last_used_at)
@@ -316,14 +316,14 @@ Billing runs on [Polar](https://polar.sh) as merchant of record (decided by Arie
 |---|---|---|
 | Publish credits: 5 / 12 / 25 | $5 / $10 / $20 | $0.75 (15%) / $1.00 (10%) / $1.50 (7.5%) |
 | Verified Publisher, per scope | $99/year | $5.45 (5.5%) |
-| Private packs, Solo / Team | $5/month / $7 per seat per month | $0.75 (15%) / $0.85 for one seat, falling with seats |
+| Private packs, Solo / Team | $1 per new pack (a credit) / $7 per seat per month | as credit bundles above / $0.85 for one seat, falling with seats |
 
 - **Public publish fee:** $1 per new public pack, for everyone, open-source packs included (decided by Ariel 2026-10-22). A credit is consumed when a new public pack is first published; new versions of an existing pack are free but rate-limited (e.g. 20 per pack per day). If validation fails, the credit is not consumed. A single $1 sale would lose 55% to Polar, so the smallest bundle is 5 credits for $5. The fee is a spam deterrent, not revenue.
 - **Refunds:** a refunded credit order removes its unused credits from the ledger. Credits already consumed stay consumed, and the packs they published stay up.
 - **Disputes:** Polar handles chargebacks as merchant of record and sends no dispute event (its webhook list has orders, refunds and subscriptions only), so PackServer can't react to a dispute directly. It reacts to what it does see: `order.refunded` and `refund.created`. A scope with two or more refunded credit orders in 30 days is flagged for review and its new-pack publishing is paused until an admin clears it.
 - **Purchase limits:** Polar exposes no card or payment-method fingerprint, so limits are per PackServer account and per Polar customer id: at most $100 of credits a day and 3 credit orders a day per account, with Turnstile on the checkout button. New-pack daily caps per scope (§10) remain the main spam control.
 - **Verified Publisher subscription: $99 a year** (decided by Ariel 2026-10-22), per scope. It covers the manual review and the badge, and makes public publishing in that scope credit-free. If the subscription lapses (`subscription.revoked`), the badge is removed after a 30-day grace period. The scope, its packs and its domain or GitHub proofs stay, and new packs need credits again.
-- **Private packs** are a seat-based subscription, not per upload, priced like npm and Docker: Solo $5/month (10 private packs), Team $7/seat/month (unlimited packs, teams, audit log), Enterprise custom (SSO, domain access). A seat is a human who can read private packs. Repos reading through an allowlisted GitHub org (§11) don't use seats. Packs are tiny and R2 egress is free, so cost of goods is near zero.
+- **Private packs** (decided by Ariel 2026-10-22): **Solo** has no subscription; creating a private pack costs the same $1 credit as a public one, and its owner grants access to individual GitHub accounts (§11). **Team** is $7 per seat per month and adds scope teams, team grants and the audit log UI; a seat is a GitHub account granted access to the scope's private packs. Enterprise is custom (SSO, domain access). Packs are tiny and R2 egress is free, so cost of goods is near zero.
 
 ## 10. Community signals and ranking
 
@@ -341,12 +341,12 @@ Ariel decided (2026-10-22) to keep every signal side by side: the [pack score](p
 
 ## 11. Private packs and access control
 
-The permission model is JFrog-style rows of (resource, principal, action) in `grants`, materialised into `effective_access` on every change so a read check is one indexed lookup. Every grant change is audited. Access at launch was decided by Ariel on 2026-10-22: **each private pack has an allowlist of GitHub orgs.**
+The permission model is JFrog-style rows of (resource, principal, action) in `grants`, materialised into `effective_access` on every change so a read check is one indexed lookup. Every grant change is audited. Access at launch was decided by Ariel on 2026-10-22: **each private pack has an allowlist of GitHub accounts**, granted one account at a time, not by org.
 
-- **Repos (cn in GitHub Actions):** the update workflow requests a GitHub Actions OIDC token with audience `registry.claudinite.com` and presents it to the registry. The `web` Worker verifies it against GitHub's cached JWKS and reads `repository_owner_id`. If that org id is on the pack's allowlist, it returns the per-caller index and short-lived download URLs. Repos store no secret. The org id, not the login, is matched, so a renamed or re-registered org can't inherit access.
-- **People (site and MCP):** a member signs in with GitHub, and the registry checks their membership of an allowlisted org through the GitHub API at sign-in and again hourly while the session lasts. `cn adopt` on a laptop uses the same sign-in through a device-code flow and gets a token that expires with the session.
+- **Repos (cn in GitHub Actions):** the update workflow requests a GitHub Actions OIDC token with audience `registry.claudinite.com` and presents it to the registry. The `web` Worker verifies it against GitHub's cached JWKS and reads `repository_owner_id`, the numeric id of the account that owns the repo. If that account is on the pack's allowlist, it returns the per-caller index and short-lived download URLs. Repos store no secret. The numeric id, not the login, is matched, so a renamed or re-registered account can't inherit access. For a repo owned by an organisation, the organisation's own account must be granted, which is a Team-plan grant.
+- **People (site and MCP):** a person signs in with GitHub, and the registry matches their GitHub account id against the allowlist; no org membership lookup is needed. `cn adopt` on a laptop uses the same sign-in through a device-code flow and gets a token that expires with the session.
 - **Elsewhere:** `psr_` read tokens remain for CI that is not GitHub Actions, scoped to one pack or scope, and they are the only stored secret.
-- An allowlist row is a `grants` row with `principal_type = github_org` and the numeric org id; adding or removing an org is audited and needs a passkey assertion.
+- An allowlist row is a `grants` row with `principal_type = github_account` and the numeric account id; adding or removing an account is audited and needs a passkey assertion.
 
 Later phases, in order:
 
@@ -397,7 +397,7 @@ Later phases, in order:
 
 ## 15. Open questions for Ariel
 
-1. ~~Who decides access to private packs?~~ Decided: an allowlist of GitHub orgs per private pack, proven by GitHub Actions OIDC (§11).
+1. ~~Who decides access to private packs?~~ Decided: an allowlist of GitHub accounts per private pack, proven by GitHub Actions OIDC for repos and GitHub sign-in for people (§11). Solo private packs cost $1 to create; Team is $7 per seat per month.
 2. ~~Is the $1 fee per new pack or per version?~~ Decided: $1 per new pack for everyone, open-source included, waived for Verified Publishers ($99/year).
 3. ~~Which model screens pack prose?~~ Decided: Jev on Workers AI (`typesafe/jev`), with no agentic step anywhere in validation. Code compares its probabilities with versioned thresholds, an over-threshold answer holds the version for a human, and the model never fails or rejects a version on its own; about $40/month at 40k versions ([validation.md](validation.md) §3.6, [pack-score.md](pack-score.md) §3).
 4. ~~Non-GitHub trusted publishing at launch?~~ Decided: GitHub OIDC only at launch; GitLab and other sources publish by direct upload or a CLI token, and GitLab OIDC can come later.
