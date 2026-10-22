@@ -45,6 +45,12 @@ importers:
         specifier: 'catalog:'
         version: 4.6.7
 
+  packages/schema:
+    dependencies:
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
+
 packages:
 
   '@cacheable/memory@2.2.0':
