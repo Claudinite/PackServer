@@ -52,8 +52,8 @@ and the pack page shows the rules version the score was computed with.
 - decision: ARCH-SCORE (weights, caps and thresholds tuned on the canon packs)
 - coverage: scenario
 
-Caps apply after the sum: an open security report caps the score at 40, the third-party tier at
-60, no linked public source repository at 70, and a warned check (a missing fixture) at 80. The
+Caps apply after the sum: an open security report caps the score at 40, and no linked public
+source repository at 70. The
 lowest applicable cap wins and is shown as the reason.
 
 ## REQ-SCORE-005 A pack with no public source repository carries a "no public source" label
@@ -68,7 +68,7 @@ lowest applicable cap wins and is shown as the reason.
 A pack with no linked public source repository shows a "no public source" label on its page and
 in search results; it can still be published by upload (REQ-PUB-016).
 
-## REQ-SCORE-006 The score never hides a pack or changes a verdict or tier
+## REQ-SCORE-006 The score never hides a pack or changes a verdict
 
 - status: provisional
 - since: 2026-10
@@ -77,7 +77,7 @@ in search results; it can still be published by upload (REQ-PUB-016).
 - decision: ARCH-SCORE (weights, caps and thresholds tuned on the canon packs)
 - coverage: scenario
 
-The score never hides a pack, and never changes a validation verdict or a tier.
+The score never hides a pack and never changes a validation verdict.
 
 ## REQ-SCORE-007 The page shows the score with its largest improvement; MCP returns the parts
 

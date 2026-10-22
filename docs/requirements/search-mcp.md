@@ -22,7 +22,8 @@ An agent can connect to the MCP endpoint without authentication and call `search
 - coverage: scenario
 
 `search_packs` returns ranked compact cards (id, pitch ≤ 1024 chars, inventory counts by part
-(rules, skills, checks, tasks), context cost, trust signals, latest version) and never
+(rules, skills, checks, tasks), context cost, trust signals (`verified`, `verified_domain`, `verified_github_org`, validation,
+linked repo, works-for-me and rating), latest version) and never
 full contents.
 
 ## REQ-SEARCH-003 Task-phrased queries match by meaning; filters apply
@@ -34,7 +35,8 @@ full contents.
 - coverage: scenario
 
 A task-phrased query ("deploy to GCP Cloud Run") finds packs by meaning as well as by keyword;
-results can be filtered by category, part (rules, skills, checks, tasks) and verified-only.
+results can be filtered by category, part (rules, skills, checks, tasks), `verified_only` and
+`verified_domains`, on MCP and on the site alike.
 
 ## REQ-SEARCH-004 Search shows every promoted version at once, with its publish time
 
@@ -44,10 +46,12 @@ results can be filtered by category, part (rules, skills, checks, tasks) and ver
 - source: ARCH §8 (PR #3 commit 99457a2); Ariel, 2026-10-22 (no freshness filter: when to take a version is the member's setting)
 - coverage: scenario
 
-`search_packs(query, category?, include_unreviewed?, limit?)` has no fresh or staging flag: each
-card carries the newest promoted version with its `published_at`, `min_engine_version` and tier,
-and third-party-tier versions appear only with `include_unreviewed`. `get_pack` lists the versions
-with their `published_at`.
+`search_packs(query, category?, verified_only?, verified_domains?, limit?)` has no fresh or staging
+flag and excludes nothing by default: each card carries the newest promoted version with its
+`published_at` and `min_engine_version`, and the publisher's `verified`, `verified_domain` and
+`verified_github_org`. `verified_only` keeps only versions whose publisher is verified;
+`verified_domains`, a list, keeps only versions whose publisher is verified and whose
+`verified_domain` is in the list. `get_pack` lists the versions with their `published_at`.
 
 ## REQ-SEARCH-005 get_pack returns the full public view of a version
 
@@ -58,7 +62,8 @@ with their `published_at`.
 - coverage: scenario
 
 `get_pack` returns manifest, extracted inventory, README excerpt, versions, status, provenance,
-validation verdict and any advisory for the version.
+validation verdict, any advisory, and the publisher verification facts (`verified`,
+`verified_domain`, `verified_github_org`) for the version.
 
 ## REQ-SEARCH-006 get_download returns URL, sha256 and attestation
 
@@ -209,12 +214,12 @@ executed.
 
 ## REQ-SEARCH-019 Third-party versions leave default results and the exploration slot
 
-- status: provisional
+- status: retired
 - since: 2026-10
 - actor: agent / anonymous visitor
 - source: ARCH-VAL §6, §3.10
-- decision: ARCH-VAL §7-4
-- coverage: scenario
+- retired: Ariel, 2026-10-22 (ARCH-VAL §7-4): there are no tiers, so no version leaves default results or the exploration slot and no page carries a tier warning; the caller filters by verification instead (REQ-SEARCH-003, 004)
+- coverage: manual (never built; no scenario may name this ID)
 
 Search over MCP and on the site excludes packs whose latest version is third-party tier
 (REQ-VAL-041) unless the caller opts in with `include_unreviewed`; the exploration slot

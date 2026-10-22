@@ -125,22 +125,18 @@ and fix text of findings, and task agentic-phase prompts. Reviewer-addressed tex
 version; every other heuristic produces a warning with a human-readable excerpt. These are
 static heuristics; the Jev prose screen (REQ-VAL-034 to 037) runs as well.
 
-## REQ-VAL-010 Every shipped declared check, coded check and guard is proven against a firing and a silent fixture
+## REQ-VAL-010 Every coded check compiles and every declared check parses
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH-VAL §6 (replaces the "run the pack's declared tests" statement of ARCH §6 step 3; FLOW 7; PR #3 commit 7a01329)
-- decision: ARCH-VAL §7-2 (the load-and-prove gate); ARCH-VAL §7-4 (which tier a missing fixture holds)
+- source: ARCH-VAL §6 (replaces the "run the pack's declared tests" statement of ARCH §6 step 3; FLOW 7; PR #3 commit 7a01329); Ariel, 2026-10-22 (ARCH-VAL §7, decided; PR #3 commits 1ca52e1 and 21f0105)
 - coverage: scenario
 
-For every declared check, coded check and guard the pack ships, the pack provides a firing
-fixture and a silent fixture, and the validator runs it against both in the sandbox: one that
-stays silent on the firing fixture or fires on the silent one hard-fails the version. Missing
-fixtures hold a community-tier version for human review and only warn a third-party one. Task
-workers and env setup are run once with egress off and their exit status recorded; rules and
-skills are prose and are never executed. The pack's own declared tests are no longer what decides
-the verdict.
+Every coded check the pack ships compiles and every declared check parses in the sandbox; one that
+does not hard-fails the version. Task workers and env setup are run once with egress off and their
+exit status recorded; rules and skills are prose and are never executed. Firing and silent fixture
+tests are out of v1, and the pack's own declared tests do not decide the verdict.
 
 ## REQ-VAL-011 Pack content runs only in a fresh, pinned, offline sandbox whose output is untrusted
 
@@ -172,21 +168,19 @@ when the diff touches more than 30 % of the text, when a capability changes, whe
 publisher-change event (REQ-VAL-038) occurred since the previous version, and at least every tenth
 version. No earlier model output is passed to the screen.
 
-## REQ-VAL-013 Held versions wait in a human queue ordered by standing; only uncertainty holds time out
+## REQ-VAL-013 Held versions wait in a human queue ordered by standing until an admin decides
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: admin
-- source: ARCH §6 step 5; ARCH-VAL §6
-- decision: ARCH-VAL §7-4 (the timeout to third-party tier)
+- source: ARCH §6 step 5; ARCH-VAL §6; Ariel, 2026-10-22 (ARCH-VAL §7, decided; PR #3 commits 1ca52e1 and 21f0105)
 - coverage: scenario
 
 A version held by any rule waits in the human review queue and is not promoted until an admin
-approves it. The queue lists items ordered by the publisher's verified status, then the number
-of members holding the pack, then age. A hold for uncertainty, which includes every prose-screen flag, that is still unresolved after 7
-days resolves by itself to the third-party tier with a warning (REQ-VAL-041); a hold for a new capability
-(REQ-VAL-028) or for reviewer-addressed text found by the static heuristic (REQ-VAL-035) never
-resolves by timeout.
+approves it. The queue lists items ordered by the publisher's verified status, then the number of
+members holding the pack, then age. No hold resolves by timeout, whatever its cause; the hold
+volume is kept within the budget of about 10 a day only by changing thresholds in a new rules
+version (REQ-VAL-048).
 
 ## REQ-VAL-014 Infrastructure errors retry and cost nothing; an extraction failure is final
 
@@ -238,11 +232,10 @@ A publisher whose runs fail 10 or more times in a day is soft-rate-limited on fu
 
 ## REQ-VAL-018 Live versions are rescanned on rule and screen changes and their domains weekly; a finding quarantines
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: system
-- source: ARCH §6 "Ongoing"; ARCH-VAL §6 (PR #3 commit 7a01329: packs have no package dependencies, so the dependency re-resolution is gone)
-- decision: ARCH-Q 6; ARCH-VAL §7-3 (what a revocation does in cn)
+- source: ARCH §6 "Ongoing"; ARCH-VAL §6 (PR #3 commit 7a01329: packs have no package dependencies, so the dependency re-resolution is gone); Ariel, 2026-10-22 (ARCH-VAL §7, decided; PR #3 commits 1ca52e1 and 21f0105)
 - coverage: scenario
 
 Every live latest version is rescanned with the static rules whenever a rule changes and with
@@ -365,13 +358,12 @@ Every URL in the archive is extracted into the version's URL inventory, which th
 read in the report. Prose that instructs the agent to install something from a URL holds the
 version for human review; code or prose that fetches an executable from a URL hard-fails.
 
-## REQ-VAL-027 A version's capabilities are computed from the archive and signed into the index
+## REQ-VAL-027 A version's capabilities are extracted from the archive, and new ones are marked, not held
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher / anonymous visitor / agent
-- source: ARCH-VAL §6, §3.2 (PR #3 commit 99457a2)
-- decision: ARCH-VAL §7-1 (the extracted capability model)
+- source: ARCH-VAL §6, §3.2 (PR #3 commit 99457a2); Ariel, 2026-10-22 (ARCH-VAL §7, decided; PR #3 commits 1ca52e1 and 21f0105)
 - coverage: scenario
 
 The validator computes the version's capability set from the archive, not from a declaration.
@@ -379,16 +371,18 @@ The set is: `guard` (a PreToolUse judge that can deny a tool call), `coded-check
 its cadence, and whether it is `opens-pr` or has an `agentic-phase`), `env-setup`,
 `forced-skill`, and `github-action:<name>` for each named GitHub action the pack declares in
 `pack.json`. Its detailed form is the pre-install manifest (REQ-VAL-046). The set is stored in
-`meta.json`, signed into the index, and shown on the pack page and over MCP. A prose-only pack has
-an empty set.
+`meta.json`, signed into the index, and shown on the pack page and over MCP; a capability the
+previous promoted version lacked is marked "new" there and in cn's update PR, and never holds the
+version by itself. A prose-only pack has an empty set.
 
 ## REQ-VAL-028 A version that widens the manifest is held and needs passkey approval
 
-- status: active
+- status: retired
 - since: 2026-10
 - actor: publisher
 - source: ARCH-VAL §6, §3.2, §4 step 15; Ariel, 2026-10-22 (new capability = hold, as the manifest's widening rule of REQ-VAL-046)
-- coverage: scenario
+- retired: Ariel, 2026-10-22 (ARCH-VAL §7-1: extract and show, do not hold): a new capability is marked, not held (REQ-VAL-027, 046)
+- coverage: manual (never built; no scenario may name this ID)
 
 A version whose manifest widens the previous promoted version's (a new guard, task, forced skill or
 GitHub action, or a faster task cadence) is held for human review and, once approved, is staged
@@ -397,11 +391,10 @@ presents the diff summary and the widening. The hold never resolves by timeout.
 
 ## REQ-VAL-029 Executable content may not reach the network at all
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher (security)
-- source: ARCH-VAL §6, §3.3 (PR #3 commit 7a01329: no declared-domains exception)
-- decision: ARCH-VAL §7-1
+- source: ARCH-VAL §6, §3.3 (PR #3 commit 7a01329: no declared-domains exception); Ariel, 2026-10-22 (ARCH-VAL §7, decided; PR #3 commits 1ca52e1 and 21f0105)
 - coverage: scenario+contract (the in-process scenario uses the Sandbox port's recorded egress attempts; the real egress recording is proven by the nightly sandbox contract suite)
 
 Checks, guards, task workers and env setup may not open network connections at all; there is no
@@ -428,11 +421,10 @@ reads (REQ-SCOPE-017).
 
 ## REQ-VAL-031 Floating versions and pipe-to-shell fail wherever they appear
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher (security)
-- source: ARCH-VAL §6, §3.3, §1 T5 (unchanged by PR #3 commit 7a01329)
-- decision: ARCH-VAL §7-1
+- source: ARCH-VAL §6, §3.3, §1 T5 (unchanged by PR #3 commit 7a01329); Ariel, 2026-10-22 (ARCH-VAL §7, decided; PR #3 commits 1ca52e1 and 21f0105)
 - coverage: scenario
 
 A floating dependency version (`latest`, a range, an unpinned git ref) or a pipe-to-shell pattern
@@ -441,11 +433,10 @@ tells the agent to run it.
 
 ## REQ-VAL-032 A pack that the pinned cn engine cannot load fails validation
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH-VAL §6, §3.5 (PR #3 commit 7a01329)
-- decision: ARCH-VAL §7-2
+- source: ARCH-VAL §6, §3.5 (PR #3 commit 7a01329); Ariel, 2026-10-22 (ARCH-VAL §7, decided; PR #3 commits 1ca52e1 and 21f0105)
 - coverage: scenario+contract (the Sandbox port's scripted load result in-process; the real pinned cn inside the sandbox image in the nightly contract suite)
 
 The sandbox (a pinned cn, Go 1.24+ with `GOPROXY=off`, Node 22+) loads the extracted pack into an
@@ -457,11 +448,10 @@ than the pack's newest version, its `minEngineVersion` a three-part engine versi
 
 ## REQ-VAL-033 The promoted archive is a canonical re-pack that round-trips to the validated tree
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: cn engine / publisher
-- source: ARCH-VAL §6, §3.16, §4 step 8
-- decision: ARCH-VAL §7-5
+- source: ARCH-VAL §6, §3.16, §4 step 8; Ariel, 2026-10-22 (ARCH-VAL §7, decided; PR #3 commits 1ca52e1 and 21f0105)
 - coverage: scenario+contract (the in-process scenario proves which bytes are promoted and the infrastructure-error path; the deterministic re-pack and the round-trip are proven against the real sandbox image)
 
 The archive promoted and served for a version is a deterministic re-pack of the validated tree
@@ -567,35 +557,39 @@ text; the text is shown to the admin next to the report and is never sent to a r
 the version stays failed while the appeal is open; a denied appeal is final, and an upheld one
 resumes the run at the payment step without re-validating.
 
-## REQ-VAL-041 Every promoted version carries a tier that search, the index and cn honour
+## REQ-VAL-041 Every promoted version carries its publisher's verification facts, and the caller applies its own policy
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: anonymous visitor / agent / cn engine
-- source: ARCH-VAL §6, §3.10 (PR #3 commit 99457a2)
-- decision: ARCH-VAL §7-4; CLN-REV 6 (the top tier's name: `reviewed` is a placeholder, since `canon` already names Claudinite's central pack set)
+- source: ARCH-VAL §6, §3.10 (PR #3 commit 99457a2); Ariel, 2026-10-22 (ARCH-VAL §7, decided; PR #3 commits 1ca52e1 and 21f0105)
 - coverage: scenario
 
-Each promoted version carries one tier, `reviewed`, `community` or `third-party`, stored in
-`meta.json`, in the signed index entry (`tier`), and shown in search and on the pack page; cn adds a
-`minTier` repository setting that reads it. A community version has passed every fail rule, loaded
-under cn, proven its fixtures and been found benign by both screens or a human. A third-party
-version (missing fixtures, or resolved from an uncertainty hold by timeout) carries a persistent
-warning on the pack page and in cn, is excluded from default MCP results unless the caller opts in
-with `include_unreviewed` (REQ-SEARCH-019), and never fills an exploration slot.
+Each promoted version carries `verified`, `verified_domain` and `verified_github_org`, copied from
+its scope into `meta.json` at promotion and carried in the signed index entry. `verified` is true
+only while the scope holds Verified Publisher status; `verified_domain` and `verified_github_org`
+are present whenever the scope has that proof, even without the badge. When a scope gains or
+loses the badge or a proof (a lapsed subscription after its grace period, a domain that fails its
+monthly re-check), the scope index is re-signed with the new values. The facts are shown on the
+pack page, in search cards and in `get_pack`. PackServer applies no trust policy on them: no
+version carries a warning, is excluded from default results or is barred from the exploration
+slot because of them; cn's repository policy (an allowlist of verified publishers or domains)
+reads them. Versions of the `@claudinite` scope carry `verified: true` and `verified_domain:
+claudinite.com` like any other verified scope.
 
-## REQ-VAL-042 The public view shows tier, capabilities, provenance and hashes, never finding text
+## REQ-VAL-042 The public view shows the publisher's verification facts, capabilities, provenance and hashes, never finding text
 
 - status: provisional
 - since: 2026-10
 - actor: anonymous visitor / agent
 - source: ARCH-VAL §6, §3.13
-- decision: SITE-D 7; ARCH-VAL §7-4, §7-5 (the fields that exist only with those decisions); CLN-REV 6 (the top tier's name)
+- decision: SITE-D 7
 - coverage: scenario
 
-The public pack page and the MCP pack view show the version's tier, pre-install manifest, provenance,
+The public pack page and the MCP pack view show the version's publisher verification facts (`verified`, `verified_domain`,
+`verified_github_org`), pre-install manifest, provenance,
 upload and canonical hashes, the validation date and rules version, the count of warnings by
-category name, and whether the latest version widened the manifest. Finding excerpts, rule
+category name, and which capabilities the latest version marked new. Finding excerpts, rule
 internals, secret locations and reviewer text are shown only to the publisher and to admins
 (whose reads are audited, REQ-ADMIN-009); the publisher never sees the second screen's raw text.
 
@@ -642,7 +636,7 @@ or fixture that hits its limit fails the version with the reason `sandbox.timeou
 extraction timeout, which fails it with `archive.unsafe` and is final: no retry, no credit, no
 prose screen. A dry-run therefore answers within the promised 4 minutes or with a timeout verdict.
 
-## REQ-VAL-046 Each version carries a pre-install manifest; widening it holds the version
+## REQ-VAL-046 Each version carries a pre-install manifest that marks new capabilities
 
 - status: active
 - since: 2026-10
@@ -655,9 +649,9 @@ module, from the `checks/*.go` tags, `declared-checks.json`, `task.json` and `pa
 and the tool calls it judges, each scheduled task with its cadence and whether it opens PRs or has
 an agentic phase, the forced skills, and the GitHub actions requested. It is stored in
 `meta.json`, carried in the signed index entry, and shown above the README on the pack page and in
-MCP `get_pack`. A version that widens it (a new guard, task or forced skill, a faster cadence, or a
-new GitHub action) is held under "new capability = hold" and needs passkey approval
-(REQ-VAL-028).
+MCP `get_pack`. An entry that widens the previous promoted version's manifest (a new guard, task or
+forced skill, a faster cadence, or a new GitHub action) is marked "new" on the page, in `get_pack`
+and in cn's update PR; it does not hold the version (Ariel, 2026-10-22, ARCH-VAL §7-1).
 
 ## REQ-VAL-047 The report records the model and question-set versions, and a change rescans
 

@@ -123,7 +123,7 @@ the bottom or excluded from ranking.
 - coverage: scenario
 
 Raw signals (stars, works/fails, verified fetches, members holding the pack if cn reports it,
-rating, validation, verified flag, repo) are exposed over MCP so an agent can apply its own
+rating, validation, `verified`, `verified_domain`, `verified_github_org`, repo) are exposed over MCP so an agent can apply its own
 policy.
 
 ## REQ-COMM-012 A removed review's author is told why

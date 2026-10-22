@@ -9,11 +9,10 @@ repo links, OIDC claims, App repo fetches and inbound webhooks.
 
 ## REQ-PUB-001 Register a trusted publisher, reserving a pending name
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH §5.1; FLOW 6
-- decision: ARCH-Q 4
+- source: ARCH §5.1; FLOW 6; Ariel, 2026-10-22 (ARCH-Q 4: GitHub OIDC only at launch; direct upload covers every other source)
 - coverage: scenario
 
 A publisher can register a trusted publisher for a pack: GitHub repository, workflow file,
@@ -242,11 +241,10 @@ re-uploaded and re-validated. A dry-run upload (REQ-VAL-043) lives in its own st
 
 ## REQ-PUB-021 Every version carries a registry-signed attestation over both hashes
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher / cn engine
-- source: ARCH §5.1, §7; ARCH-VAL §6, §3.16
-- decision: ARCH-VAL §7-5 (without the canonical re-pack the attestation covers one sha256, as before)
+- source: ARCH §5.1, §7; ARCH-VAL §6, §3.16; Ariel, 2026-10-22 (ARCH-VAL §7, decided; PR #3 commits 1ca52e1 and 21f0105)
 - coverage: scenario
 
 Each published version carries an attestation signed by the registry over the uploaded archive's

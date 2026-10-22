@@ -10,17 +10,17 @@ taking a version is a cn or repository setting.
 
 ## REQ-DELIV-001 Public versions download from write-once URLs that cn verifies against PackServer's signed index
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: anonymous visitor / cn engine
-- source: ARCH §7; ARCH-VAL §6, §3.16 (PR #3 commit 99457a2)
-- decision: ARCH-VAL §7-5 (without the canonical re-pack the served archive is the uploaded one)
+- source: ARCH §7; ARCH-VAL §6, §3.16 (PR #3 commit 99457a2); Ariel, 2026-10-22 (ARCH-VAL §7, decided; PR #3 commits 1ca52e1 and 21f0105)
 - coverage: scenario
 
 A public pack version downloads from `packs.claudinite.com/@scope/name/<version>/pack.tar.zst`,
 written once, with its `.sha256`, `.attestation.json` and `meta.json` beside it. Each version entry
-in the signed index carries sha256, size, `published_at`, status, tier, `min_engine_version`,
-`requires`, `source_commit` and the pre-install manifest. cn verifies the index signature and the
+in the signed index carries sha256, size, `published_at`, status, `verified`, `verified_domain`,
+`verified_github_org`, `min_engine_version`, `requires`, `source_commit` and the pre-install
+manifest; a change to the scope's badge or proofs re-signs that scope's index. cn verifies the index signature and the
 archive's sha256 from the index; the attestation (upload and canonical sha256) is extra provenance
 shown on the site.
 
@@ -114,11 +114,10 @@ de-index.
 
 ## REQ-DELIV-010 Quarantined downloads are held with a reason
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: agent
-- source: ARCH §5.4; FLOW 13
-- decision: ARCH-Q 6
+- source: ARCH §5.4; FLOW 13; Ariel, 2026-10-22 (ARCH-VAL §7, decided; PR #3 commits 1ca52e1 and 21f0105)
 - coverage: scenario
 
 A quarantined version's download is held (451-style) with a reason; `get_pack` reports
@@ -196,11 +195,10 @@ path.
 
 ## REQ-DELIV-017 cn accepts only canonical-form archives from the registry
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: cn engine
-- source: ARCH-VAL §6, §3.16 (PR #3 commit 99457a2)
-- decision: ARCH-VAL §7-5
+- source: ARCH-VAL §6, §3.16 (PR #3 commit 99457a2); Ariel, 2026-10-22 (ARCH-VAL §7, decided; PR #3 commits 1ca52e1 and 21f0105)
 - coverage: scenario+unit (the scenario proves the refusal of a tampered or mis-served archive through the member handle; the canonical grammar is a unit test in the engine's extractor)
 
 cn extracts an archive from the registry only when it is in PackServer's canonical form
@@ -210,11 +208,10 @@ extractor would accept, is refused with a verification error and nothing is vend
 
 ## REQ-DELIV-018 A security revocation disables the version's executable parts in cn; other statuses only report
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: cn engine
-- source: ARCH-VAL §6, §3.12 (PR #3 commit 99457a2)
-- decision: ARCH-VAL §7-3
+- source: ARCH-VAL §6, §3.12 (PR #3 commit 99457a2); Ariel, 2026-10-22 (ARCH-VAL §7, decided; PR #3 commits 1ca52e1 and 21f0105)
 - coverage: scenario
 
 When a version's status in the signed index becomes `revoked` with a security reason, a member
