@@ -9,7 +9,7 @@ Status: proposal, 2026-10-22, revised the same day after a practice review, a se
 > - All seven Workers run as production bundles in one local `workerd`; D1, R2, KV, Durable Objects, Workflows and Queues are the real local implementations; everything else is faked at a port and an unfaked outbound call fails the test.
 > - Coverage = every active requirement in [../requirements/](../requirements/README.md) has at least one green scenario naming its ID. That is a traceability measure, not proof that the scenario proves the statement; review and the see-it-fail job are the defence.
 > - PR lane ~10 minutes wall-clock; ~$25–30/month of CI on a private repo. The tooling bet is proven by [a spike](../../spike/test-dsl/RESULTS.md): harness, MSW, DSL, http driver, Recorder and N/N-1 all ran.
-> - Decisions still open (§14): repo visibility and browser test scope. The architecture/UI conflicts and the security-review requirements are settled.
+> - Decision still open (§14): browser test scope. The architecture/UI conflicts and the security-review requirements are settled.
 
 Companion documents: [dsl.md](dsl.md) (the World DSL and example scenarios), [stability-checks.md](stability-checks.md) (the gate and the hatches), [../requirements/](../requirements/README.md) (the register), [research/tooling.md](research/tooling.md) and [research/dsl-patterns.md](research/dsl-patterns.md) (sources for every tool claim), [../../spike/test-dsl/](../../spike/test-dsl/README.md) (the runnable proof and its measured numbers). The sibling plans are cited by path until they merge; the agreements with them are restated here where they bind this plan.
 
@@ -332,10 +332,9 @@ The default day-to-day flow under agents: Ariel names the requirement ID (or ask
 
 ## 14. Open questions for Ariel
 
-Decided on 2026-10-22: all six architecture/UI conflicts ([../requirements/README.md](../requirements/README.md#conflicts-between-the-architecture-and-the-ui-flows)); the 29 security-review requirements are confirmed; Cloudflare stays one account, with tests reaching `staging` only through an Access token scoped to its hostnames (§6).
+Decided on 2026-10-22: all six architecture/UI conflicts ([../requirements/README.md](../requirements/README.md#conflicts-between-the-architecture-and-the-ui-flows)); the 29 security-review requirements are confirmed; Cloudflare stays one account, with tests reaching `staging` only through an Access token scoped to its hostnames (§6); the repository stays private for now, so the Actions cost in §11 applies.
 
-1. **Public or private repository?** It removes the Actions cost and changes nothing else.
-2. **Playwright scope.** `ui` scenarios only for flows that are about the page (passkey ceremonies, the wizard, step-up, Turnstile). Driving every flow in `docs/ui/flows.md` through a browser nightly grows the lane from ~6 to ~25 minutes.
+1. **Playwright scope.** `ui` scenarios only for flows that are about the page (passkey ceremonies, the wizard, step-up, Turnstile). Driving every flow in `docs/ui/flows.md` through a browser nightly grows the lane from ~6 to ~25 minutes.
 
 ## 15. Sources
 
