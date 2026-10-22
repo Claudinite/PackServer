@@ -1106,11 +1106,9 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
     <h2>5 · Pay</h2>
     <div class="layout right" style="max-width:800px">
       <div>
-        <div class="field"><label class="lbl" for="pay-card">Card</label><input type="text" id="pay-card" placeholder="4242 4242 4242 4242" class="mono"></div>
-        <div class="grid2"><div class="field"><label class="lbl" for="pay-exp">Expiry</label><input type="text" id="pay-exp" placeholder="MM / YY" class="mono"></div><div class="field"><label class="lbl" for="pay-cvc">CVC</label><input type="text" id="pay-cvc" placeholder="123" class="mono"></div></div>
-        <div class="field"><label class="lbl" for="pay-country">Country</label><select id="pay-country"><option>Israel</option><option>United States</option><option>Germany</option></select></div>
-        <label class="check"><input type="checkbox" id="pay-save" checked> Save as the organization's payment method</label>
-        <div class="wire-note">Stripe Elements / Checkout would replace this form. Card data never touches our servers.</div>
+        <p class="small">Payment runs on Polar's hosted checkout. Polar is the merchant of record: it shows and collects sales tax or VAT for your country, keeps your card, and emails the receipt and invoice.</p>
+        <button class="btn primary mt2" type="button" data-toast="Polar checkout would open; you return here once the order is paid">Continue to Polar checkout</button>
+        <div class="wire-note">Card data never touches our servers. Step 6 unlocks when Polar's signed <code>order.paid</code> webhook arrives.</div>
       </div>
       <aside class="panel">
         <h3>Order summary</h3>
@@ -1435,9 +1433,9 @@ jobs:
             <button class="btn primary" type="submit">Request access</button>
           </form>
         </div>
-        <div class="note mt2 small"><b>Paid packs:</b> a Stripe checkout can replace the form — the <code>checkout.session.completed</code> webhook grants access to the paying account automatically, and a refund webhook revokes it.</div>
+        <div class="note mt2 small"><b>Paid packs:</b> a Polar checkout can replace the form — the <code>order.paid</code> webhook grants access to the paying account automatically, and a refund webhook revokes it.</div>
       </div>
-      <aside class="panel small"><h4>Trade-offs</h4><b class="ok">+</b> Discoverable while still controlled; owner learns who wants the pack and why.<br><b class="ok">+</b> Natural hook for paid access via Stripe.<br><b class="ok">+</b> Composes with C: approved users mint their own read tokens.<br><b class="fail">–</b> Manual review queue unless auto-approve rules are good.<br><b class="fail">–</b> Pack existence and summary are public even when contents are not.</aside>
+      <aside class="panel small"><h4>Trade-offs</h4><b class="ok">+</b> Discoverable while still controlled; owner learns who wants the pack and why.<br><b class="ok">+</b> Natural hook for paid access via Polar.<br><b class="ok">+</b> Composes with C: approved users mint their own read tokens.<br><b class="fail">–</b> Manual review queue unless auto-approve rules are good.<br><b class="fail">–</b> Pack existence and summary are public even when contents are not.</aside>
     </div>
   </div>
 </section>
@@ -1466,9 +1464,9 @@ jobs:
     </div>
     <aside class="stack">
       <div class="panel">
-        <h3>Payment method</h3>
+        <h3>Payment method <span class="tiny muted">· held by Polar</span></h3>
         <div class="row between"><span class="mono">Visa •••• 4242</span><span class="tiny muted">exp 08/28</span></div>
-        <div class="row mt2"><button class="btn sm" type="button" data-stepup="Change payment method" data-toast="Stripe portal would open">Update</button><button class="btn sm ghost" type="button" data-toast="Removed">Remove</button></div>
+        <div class="row mt2"><button class="btn sm" type="button" data-stepup="Change payment method" data-toast="Polar customer portal would open">Update</button><button class="btn sm ghost" type="button" data-toast="Removed">Remove</button></div>
       </div>
       <div class="panel">
         <h3>Billing details</h3>

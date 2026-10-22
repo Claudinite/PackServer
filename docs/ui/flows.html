@@ -42,7 +42,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <header class="top"><span class="tag">PackServer · UI scheme</span>
 <p class="lede">Action flows and sitemap for the pack registry. Source: <code>docs/ui/flows.md</code> and <code>docs/ui/sitemap.md</code> in PR #4.</p></header>
 <div class="layout">
-<nav class="toc" aria-label="Contents"><h4>Action flows</h4><ol><li><a href="#f-1-sign-up-mfa-enrollment">1. Sign-up + MFA enrollment</a></li><li><a href="#f-2-sign-in-and-per-action-confirmation">2. Sign-in and per-action confirmation</a></li><li><a href="#f-3-star-rate-review">3. Star, rate, review</a></li><li><a href="#f-4-file-bug-report-incl-private-security-report">4. File bug report (incl. private security report)</a></li><li><a href="#f-5-publish-via-upload">5. Publish via upload</a></li><li><a href="#f-6-publish-via-github-path-with-trusted-publishing">6. Publish via GitHub path with trusted publishing</a></li><li><a href="#f-7-validation-failure-and-resubmit">7. Validation failure and resubmit</a></li><li><a href="#f-8-payment-via-stripe-checkout">8. Payment via Stripe Checkout</a></li><li><a href="#f-9-verify-organization">9. Verify organization</a></li><li><a href="#f-10-private-pack-access">10. Private pack access</a></li><li><a href="#f-11-a-claude-code-session-discovering-a-pack-via-mcp">11. A Claude Code session discovering a pack via MCP</a></li><li><a href="#f-12-revoke-a-version">12. Revoke a version</a></li><li><a href="#f-13-report-abuse-moderation">13. Report abuse / moderation</a></li></ol><h4>Sitemap</h4><ol><li><a href="#s-roles">Roles</a></li><li><a href="#s-sitemap-tree">Sitemap tree</a></li><li><a href="#s-page-by-page">Page-by-page</a></li><li><a href="#s-navigation-header-states">Navigation / header states</a></li><li><a href="#s-permission-matrix">Permission matrix</a></li><li><a href="#s-private-pack-access">Private pack access</a></li><li><a href="#s-open-decisions">Open decisions</a></li></ol></nav>
+<nav class="toc" aria-label="Contents"><h4>Action flows</h4><ol><li><a href="#f-1-sign-up-mfa-enrollment">1. Sign-up + MFA enrollment</a></li><li><a href="#f-2-sign-in-and-per-action-confirmation">2. Sign-in and per-action confirmation</a></li><li><a href="#f-3-star-rate-review">3. Star, rate, review</a></li><li><a href="#f-4-file-bug-report-incl-private-security-report">4. File bug report (incl. private security report)</a></li><li><a href="#f-5-publish-via-upload">5. Publish via upload</a></li><li><a href="#f-6-publish-via-github-path-with-trusted-publishing">6. Publish via GitHub path with trusted publishing</a></li><li><a href="#f-7-validation-failure-and-resubmit">7. Validation failure and resubmit</a></li><li><a href="#f-8-payment-via-polar">8. Payment via Polar</a></li><li><a href="#f-9-verify-organization">9. Verify organization</a></li><li><a href="#f-10-private-pack-access">10. Private pack access</a></li><li><a href="#f-11-a-claude-code-session-discovering-a-pack-via-mcp">11. A Claude Code session discovering a pack via MCP</a></li><li><a href="#f-12-revoke-a-version">12. Revoke a version</a></li><li><a href="#f-13-report-abuse-moderation">13. Report abuse / moderation</a></li></ol><h4>Sitemap</h4><ol><li><a href="#s-roles">Roles</a></li><li><a href="#s-sitemap-tree">Sitemap tree</a></li><li><a href="#s-page-by-page">Page-by-page</a></li><li><a href="#s-navigation-header-states">Navigation / header states</a></li><li><a href="#s-permission-matrix">Permission matrix</a></li><li><a href="#s-private-pack-access">Private pack access</a></li><li><a href="#s-open-decisions">Open decisions</a></li></ol></nav>
 <main class="doc"><article id="flows"><h1>PackServer Action Flows</h1>
 <p>Each flow: goal, steps, diagram, failure/edge states. Page IDs refer to <code>sitemap.md</code>. PackServer serves Claudinite packs; vocabulary and pack anatomy follow <code>/mnt/project-files/claudinite/claudinite-primer.md</code>. &quot;Confirm with passkey&quot; = a per-action confirmation: a fresh passkey assertion whose challenge is bound to that one action (or, for TOTP-only accounts, a fresh TOTP code typed into that action&#39;s dialog). There is no re-auth window: every sensitive action asks again.</p>
 <p>Shared conventions:</p>
@@ -203,7 +203,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <li>Step 2 Validate → Worker enqueues validation job; UI streams progress; links to <code>validation</code>.</li>
 <li>On pass/warn → step 3 Listing details, pre-filled from <code>pack.json</code> (name, <code>pitch</code> as summary, category, repo URL if declared). Publisher confirms &quot;No public repo&quot; if none.</li>
 <li>Step 4 Visibility → Public or Private (add the GitHub orgs allowed to adopt it). A new pack costs $1 either way, waived for Verified Publishers.</li>
-<li>Step 5 Pay → Stripe Checkout (or one-click with saved method). See flow 8.</li>
+<li>Step 5 Pay → Polar checkout (Polar is merchant of record). See flow 8.</li>
 <li>Step 6 Publish → confirm with passkey → Worker copies the archive from the upload bucket to the public (or private) packs bucket as <code>packs/&lt;id&gt;/&lt;version&gt;.tar.gz</code> (never overwritten), rewrites and signs <code>packs/&lt;id&gt;/index.json</code> (versions, sha256, size, publishedAt, revoked, minEngineVersion, requires, sourceCommit, serial), then rewrites and signs <code>packs/catalog.json</code> as the last write; invalidates cache, emits &quot;published&quot; event. The version is served from that moment.</li>
 </ol>
 <div class="diagram"><pre class="mermaid">sequenceDiagram
@@ -213,7 +213,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
   participant R2s as R2 upload bucket
   participant Q as Queue
   participant V as Worker (validator)
-  participant St as Stripe
+  participant Po as Polar
   participant R2 as R2 packs
   Pu-&gt;&gt;Wz: choose Upload archive
   Wz-&gt;&gt;W: request presigned upload
@@ -225,8 +225,8 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
   V-&gt;&gt;W: report (pass/warn/fail)
   W--&gt;&gt;Wz: SSE progress + verdict
   Pu-&gt;&gt;Wz: listing, visibility
-  Wz-&gt;&gt;St: Checkout session
-  St--&gt;&gt;W: webhook payment_intent.succeeded
+  Wz-&gt;&gt;Po: Polar checkout
+  Po--&gt;&gt;W: webhook order.paid
   Pu-&gt;&gt;Wz: Publish (passkey tap)
   W-&gt;&gt;R2: write packs/id/version.tar.gz once
   W-&gt;&gt;R2: rewrite and sign packs/id/index.json
@@ -378,41 +378,42 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <li>Repeated fails (≥10/day) → soft rate limit on validation runs to protect capacity.</li>
 </ul>
 <hr>
-<h2 id="f-8-payment-via-stripe-checkout">8. Payment via Stripe Checkout</h2>
+<h2 id="f-8-payment-via-polar">8. Payment via Polar</h2>
 <p><strong>Goal</strong>: collect $1 per new pack (anti-spam), from every publisher including open source, waived for Verified Publishers ($99/year), without charging for packs that cannot be published.</p>
-<p><strong>Decision: charge after validation passes, before publish.</strong> Rationale: the fee is anti-spam, not revenue; charging on submit would require refunds for every failed run (Stripe keeps fees on refunds, support burden, bad first impression). Validation is cheap and rate-limited by account age + MFA + CAPTCHA, which already deters bulk spam. Payment is tied to the validated artifact hash, so a different archive cannot reuse it.</p>
+<p><strong>Decision: charge after validation passes, before publish.</strong> Rationale: the fee is anti-spam, not revenue; charging on submit would require refunds for every failed run (processing fees on refunds, support burden, bad first impression). Validation is cheap and rate-limited by account age + MFA + CAPTCHA, which already deters bulk spam. Payment is tied to the validated artifact hash, so a different archive cannot reuse it.</p>
+<p><strong>Polar is merchant of record</strong> (owner decision, 2026-10-22): Polar sells to the publisher, collects and remits sales tax and VAT, issues receipts and invoices, and handles disputes. PackServer never sees card data and keeps no tax logic; it reacts to Polar&#39;s signed webhooks.</p>
 <ol>
 <li><code>publish</code> step 5: show line item (New pack: $1.00 one-time), pack name, artifact hash. Verified Publishers skip this step.</li>
-<li>Click Pay → Worker creates Stripe Checkout Session with <code>client_reference_id = validation_run_id</code>, metadata <code>{pack, version, hash, user}</code>; redirect.</li>
-<li>Stripe hosted page; card saved for future (optional &quot;save for one-click&quot;).</li>
-<li>Return URL → wizard step 5 shows &quot;Confirming…&quot; until webhook <code>checkout.session.completed</code> arrives (Durable Object notifies).</li>
+<li>Click Pay → Worker creates a Polar checkout session for the &quot;New pack&quot; product, with metadata <code>{validation_run_id, pack, version, hash, user}</code> and the account&#39;s Polar customer; redirect.</li>
+<li>Polar hosted checkout; Polar computes and shows tax for the publisher&#39;s country.</li>
+<li>Success URL → wizard step 5 shows &quot;Confirming…&quot; until the signed webhook <code>order.paid</code> arrives (Durable Object notifies).</li>
 <li><code>payment</code> row marked paid; step 6 unlocked.</li>
-<li>Receipt listed in <code>billing</code>; Stripe email receipt.</li>
+<li>Order listed in <code>billing</code> with a link to Polar&#39;s invoice; Polar emails the receipt.</li>
 </ol>
 <div class="diagram"><pre class="mermaid">sequenceDiagram
   participant Pu as Publisher
   participant Wz as publish step 5
   participant W as Worker (api)
-  participant St as Stripe
+  participant Po as Polar
   participant DO as Durable Object (run)
   Pu-&gt;&gt;Wz: Pay $1
   Wz-&gt;&gt;W: POST /checkout run_id
-  W-&gt;&gt;St: create Checkout Session (metadata run, hash)
-  St--&gt;&gt;W: session url
+  W-&gt;&gt;Po: create checkout (metadata run, hash)
+  Po--&gt;&gt;W: checkout url
   W--&gt;&gt;Wz: redirect
-  Pu-&gt;&gt;St: pay
-  St--&gt;&gt;Pu: redirect to return url
-  St-&gt;&gt;W: webhook checkout.session.completed (signed)
+  Pu-&gt;&gt;Po: pay (Polar handles tax)
+  Po--&gt;&gt;Pu: redirect to success url
+  Po-&gt;&gt;W: webhook order.paid (signed)
   W-&gt;&gt;W: verify signature, mark payment paid
   W-&gt;&gt;DO: notify paid
   DO--&gt;&gt;Wz: unlock step 6</pre></div><p>Failure / edge states:</p>
 <ul>
 <li>Webhook delayed &gt; 60s → wizard shows &quot;Still confirming, we&#39;ll email you&quot;; draft stays; alert on <code>dashboard</code>.</li>
 <li>Payment succeeded, publish never completed → credit tied to hash valid 30 days; after that, refunded automatically.</li>
-<li>Chargeback → version revoked, publisher account flagged, further publishes require manual review.</li>
+<li>Dispute (handled by Polar as merchant of record) → version revoked, publisher account flagged, further publishes require manual review.</li>
 <li>Re-publishing a new version of an already-paid public pack: free (decision). Alternative considered: $1 per version — rejected as it taxes good maintenance.</li>
-<li>Verified Publishers ($99/year) pay nothing per pack (owner decision, 2026-10-22); open-source publishers pay the $1 like everyone else.</li>
-<li>Publish credits (backend design): $1 buys one credit; bundles of credits can be bought up front so CI publishes of new packs don&#39;t stall on checkout. One credit is consumed per new pack, never per version.</li>
+<li>Verified Publishers ($99/year, a Polar subscription) pay nothing per pack (owner decision, 2026-10-22); open-source publishers pay the $1 like everyone else. A lapsed subscription (<code>subscription.revoked</code>) brings the per-pack fee back for new packs only.</li>
+<li>Publish credits (backend design): $1 buys one credit (a Polar product); bundles of credits can be bought up front so CI publishes of new packs don&#39;t stall on checkout. One credit is consumed per new pack, never per version.</li>
 </ul>
 <hr>
 <h2 id="f-9-verify-organization">9. Verify organization</h2>
@@ -769,7 +770,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <td><code>/publish</code></td>
 <td>6-step wizard</td>
 <td>Publisher</td>
-<td>Stepper: 1 Source (GitHub repo + path, read from the repo (trusted publishing workflow running <code>cn vendor</code>, or the read-only GitHub App), or upload archive drag-drop with size limit; an upload is marked &quot;No public repo&quot;, decision 14) → 2 Validate (live log, links to <code>validation</code>) → 3 Listing details (name, slug, category, tags, summary, README preview, repo link / &quot;no public repo&quot; confirm, icon) → 4 Visibility (Public / Private with its GitHub org allowlist) → 5 Pay ($1 per new pack, skipped for Verified Publishers; Stripe Checkout redirect, or &quot;payment method on file&quot; one-click) → 6 Publish (confirm with passkey)</td>
+<td>Stepper: 1 Source (GitHub repo + path, read from the repo (trusted publishing workflow running <code>cn vendor</code>, or the read-only GitHub App), or upload archive drag-drop with size limit; an upload is marked &quot;No public repo&quot;, decision 14) → 2 Validate (live log, links to <code>validation</code>) → 3 Listing details (name, slug, category, tags, summary, README preview, repo link / &quot;no public repo&quot; confirm, icon) → 4 Visibility (Public / Private with its GitHub org allowlist) → 5 Pay ($1 per new pack, skipped for Verified Publishers; Polar checkout redirect; Polar is merchant of record) → 6 Publish (confirm with passkey)</td>
 <td>Next/back, save draft, cancel</td>
 </tr>
 <tr>
@@ -809,7 +810,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <td><code>/billing</code></td>
 <td>Payments</td>
 <td>Publisher</td>
-<td>Plan (Publisher: $1 per new pack / Verified Publisher: $99 per year, no per-pack fee); payment method via Stripe (customer portal link); receipts table (date, item, pack, amount, invoice PDF); upcoming charges</td>
+<td>Plan (Publisher: $1 per new pack / Verified Publisher: $99 per year, no per-pack fee); payment methods and invoices via Polar (merchant of record; customer portal link); orders table (date, item, pack, amount, Polar invoice link); upcoming charges</td>
 <td>Update card, download receipt, cancel plan</td>
 </tr>
 </tbody></table>

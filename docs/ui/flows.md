@@ -181,7 +181,7 @@ Failure / edge states:
 2. Step 2 Validate → Worker enqueues validation job; UI streams progress; links to `validation`.
 3. On pass/warn → step 3 Listing details, pre-filled from `pack.json` (name, `pitch` as summary, category, repo URL if declared). Publisher confirms "No public repo" if none.
 4. Step 4 Visibility → Public or Private (add the GitHub orgs allowed to adopt it). A new pack costs $1 either way, waived for Verified Publishers.
-5. Step 5 Pay → Stripe Checkout (or one-click with saved method). See flow 8.
+5. Step 5 Pay → Polar checkout (Polar is merchant of record). See flow 8.
 6. Step 6 Publish → confirm with passkey → Worker copies the archive from the upload bucket to the public (or private) packs bucket as `packs/<id>/<version>.tar.gz` (never overwritten), rewrites and signs `packs/<id>/index.json` (versions, sha256, size, publishedAt, revoked, minEngineVersion, requires, sourceCommit, serial), then rewrites and signs `packs/catalog.json` as the last write; invalidates cache, emits "published" event. The version is served from that moment.
 
 ```mermaid
@@ -192,7 +192,7 @@ sequenceDiagram
   participant R2s as R2 upload bucket
   participant Q as Queue
   participant V as Worker (validator)
-  participant St as Stripe
+  participant Po as Polar
   participant R2 as R2 packs
   Pu->>Wz: choose Upload archive
   Wz->>W: request presigned upload
@@ -204,8 +204,8 @@ sequenceDiagram
   V->>W: report (pass/warn/fail)
   W-->>Wz: SSE progress + verdict
   Pu->>Wz: listing, visibility
-  Wz->>St: Checkout session
-  St-->>W: webhook payment_intent.succeeded
+  Wz->>Po: Polar checkout
+  Po-->>W: webhook order.paid
   Pu->>Wz: Publish (passkey tap)
   W->>R2: write packs/id/version.tar.gz once
   W->>R2: rewrite and sign packs/id/index.json
@@ -330,34 +330,36 @@ Failure / edge states:
 
 ---
 
-## 8. Payment via Stripe Checkout
+## 8. Payment via Polar
 
 **Goal**: collect $1 per new pack (anti-spam), from every publisher including open source, waived for Verified Publishers ($99/year), without charging for packs that cannot be published.
 
-**Decision: charge after validation passes, before publish.** Rationale: the fee is anti-spam, not revenue; charging on submit would require refunds for every failed run (Stripe keeps fees on refunds, support burden, bad first impression). Validation is cheap and rate-limited by account age + MFA + CAPTCHA, which already deters bulk spam. Payment is tied to the validated artifact hash, so a different archive cannot reuse it.
+**Decision: charge after validation passes, before publish.** Rationale: the fee is anti-spam, not revenue; charging on submit would require refunds for every failed run (processing fees on refunds, support burden, bad first impression). Validation is cheap and rate-limited by account age + MFA + CAPTCHA, which already deters bulk spam. Payment is tied to the validated artifact hash, so a different archive cannot reuse it.
+
+**Polar is merchant of record** (owner decision, 2026-10-22): Polar sells to the publisher, collects and remits sales tax and VAT, issues receipts and invoices, and handles disputes. PackServer never sees card data and keeps no tax logic; it reacts to Polar's signed webhooks.
 
 1. `publish` step 5: show line item (New pack: $1.00 one-time), pack name, artifact hash. Verified Publishers skip this step.
-2. Click Pay → Worker creates Stripe Checkout Session with `client_reference_id = validation_run_id`, metadata `{pack, version, hash, user}`; redirect.
-3. Stripe hosted page; card saved for future (optional "save for one-click").
-4. Return URL → wizard step 5 shows "Confirming…" until webhook `checkout.session.completed` arrives (Durable Object notifies).
+2. Click Pay → Worker creates a Polar checkout session for the "New pack" product, with metadata `{validation_run_id, pack, version, hash, user}` and the account's Polar customer; redirect.
+3. Polar hosted checkout; Polar computes and shows tax for the publisher's country.
+4. Success URL → wizard step 5 shows "Confirming…" until the signed webhook `order.paid` arrives (Durable Object notifies).
 5. `payment` row marked paid; step 6 unlocked.
-6. Receipt listed in `billing`; Stripe email receipt.
+6. Order listed in `billing` with a link to Polar's invoice; Polar emails the receipt.
 
 ```mermaid
 sequenceDiagram
   participant Pu as Publisher
   participant Wz as publish step 5
   participant W as Worker (api)
-  participant St as Stripe
+  participant Po as Polar
   participant DO as Durable Object (run)
   Pu->>Wz: Pay $1
   Wz->>W: POST /checkout run_id
-  W->>St: create Checkout Session (metadata run, hash)
-  St-->>W: session url
+  W->>Po: create checkout (metadata run, hash)
+  Po-->>W: checkout url
   W-->>Wz: redirect
-  Pu->>St: pay
-  St-->>Pu: redirect to return url
-  St->>W: webhook checkout.session.completed (signed)
+  Pu->>Po: pay (Polar handles tax)
+  Po-->>Pu: redirect to success url
+  Po->>W: webhook order.paid (signed)
   W->>W: verify signature, mark payment paid
   W->>DO: notify paid
   DO-->>Wz: unlock step 6
@@ -366,10 +368,10 @@ sequenceDiagram
 Failure / edge states:
 - Webhook delayed > 60s → wizard shows "Still confirming, we'll email you"; draft stays; alert on `dashboard`.
 - Payment succeeded, publish never completed → credit tied to hash valid 30 days; after that, refunded automatically.
-- Chargeback → version revoked, publisher account flagged, further publishes require manual review.
+- Dispute (handled by Polar as merchant of record) → version revoked, publisher account flagged, further publishes require manual review.
 - Re-publishing a new version of an already-paid public pack: free (decision). Alternative considered: $1 per version — rejected as it taxes good maintenance.
-- Verified Publishers ($99/year) pay nothing per pack (owner decision, 2026-10-22); open-source publishers pay the $1 like everyone else.
-- Publish credits (backend design): $1 buys one credit; bundles of credits can be bought up front so CI publishes of new packs don't stall on checkout. One credit is consumed per new pack, never per version.
+- Verified Publishers ($99/year, a Polar subscription) pay nothing per pack (owner decision, 2026-10-22); open-source publishers pay the $1 like everyone else. A lapsed subscription (`subscription.revoked`) brings the per-pack fee back for new packs only.
+- Publish credits (backend design): $1 buys one credit (a Polar product); bundles of credits can be bought up front so CI publishes of new packs don't stall on checkout. One credit is consumed per new pack, never per version.
 
 ---
 
