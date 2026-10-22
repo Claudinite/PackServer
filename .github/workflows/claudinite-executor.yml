@@ -1,6 +1,7 @@
 # Claudinite's task executor, written by cn init. cn execute loop claims
 # each ready work item, runs it and converges it; continue-the-chain starts
-# a fresh run after one dies, and past three says so on an issue. It
+# a fresh run after one dies, and past three says so on an issue; its
+# last step keeps the usage record the fold leaves as an artifact. It
 # carries no cron: the scheduler's drain is the delivery and a label event
 # is latency. No update changes this file; cn init adds a declared task's
 # secrets beneath the marker line.
@@ -62,6 +63,17 @@ jobs:
           # claudinite:secrets
           CLAUDINITE_MANAGER_TOKEN: ${{ secrets.CLAUDINITE_MANAGER_TOKEN }}
         run: .claudinite/bin/cn execute loop
+      # The usage fold leaves its record here; a run that folded nothing
+      # leaves the folder empty and uploads nothing.
+      - name: keep the usage record
+        if: always() && hashFiles('.claudinite/temp/usage-record/*.json') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: claudinite-usage
+          path: .claudinite/temp/usage-record/
+          retention-days: 90
+          include-hidden-files: true
+          if-no-files-found: ignore
 
   continue-the-chain:
     needs: execute
