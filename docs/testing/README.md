@@ -8,7 +8,7 @@ Status: proposal, 2026-10-22, revised the same day after a practice review, a se
 > - One invariant: **what a scenario asserts changes only when its requirement changes.** Everything else (DSL, drivers, fakes, production code) changes freely. [stability-checks.md](stability-checks.md) enforces it in CI, from the base branch, so a PR cannot switch the gate off.
 > - All seven Workers run as production bundles in one local `workerd`; D1, R2, KV, Durable Objects, Workflows and Queues are the real local implementations; everything else is faked at a port and an unfaked outbound call fails the test.
 > - Coverage = every active requirement in [../requirements/](../requirements/README.md) has at least one green scenario naming its ID. That is a traceability measure, not proof that the scenario proves the statement; review and the see-it-fail job are the defence.
-> - PR lane under 10 minutes wall-clock; CI fits inside the free Actions minutes of a private repo (~$0–2/month, §11). The tooling bet is proven by [a spike](../../spike/test-dsl/RESULTS.md): harness, MSW, DSL, http driver, Recorder and N/N-1 all ran.
+> - Every push runs unit tests and the in-process scenarios in under 2 minutes; nightly and pre-release jobs finish within 15–20 minutes; CI fits inside the free Actions minutes of a private repo (~$0–2/month, §11). The tooling bet is proven by [a spike](../../spike/test-dsl/RESULTS.md): harness, MSW, DSL, http driver, Recorder and N/N-1 all ran.
 > - Every open question is decided (§14).
 
 Companion documents: [dsl.md](dsl.md) (the World DSL and example scenarios), [stability-checks.md](stability-checks.md) (the gate and the hatches), [../requirements/](../requirements/README.md) (the register), [research/tooling.md](research/tooling.md) and [research/dsl-patterns.md](research/dsl-patterns.md) (sources for every tool claim), [../../spike/test-dsl/](../../spike/test-dsl/README.md) (the runnable proof and its measured numbers). The sibling plans are cited by path until they merge; the agreements with them are restated here where they bind this plan.
@@ -25,7 +25,7 @@ Ariel's brief, verbatim: "mainly integration tests for a complete system, with a
 | G4 | Scenario files rarely change unless a requirement changes | scenario churn is gated against the register; a mechanical-refactor lane exists for DSL renames so the DSL can evolve without loosening the gate | [stability-checks.md](stability-checks.md) |
 | G5 | Integration scenarios carry full coverage of requirements | a register with stable IDs; every scenario names its IDs; a matrix per run; a watermark that only ratchets up. "Covered" means "at least one green scenario names the ID"; whether the scenario proves the statement is a review question, helped by see-it-fail | §8 |
 | G6 | Unit tests are free and unlimited | `packages/core` is plain functions; unit tests live beside them and are gated by nothing but review | §2 |
-| G7 | Fast, deterministic, cheap | injected clock and RNG, no sleeps, hermetic per-test state, one-runner CI under 10 min per PR, inside the free Actions minutes | §7, §9, §11 |
+| G7 | Fast, deterministic, cheap | injected clock and RNG, no sleeps, hermetic per-test state, push CI under 2 minutes, nightly under 20, inside the free Actions minutes | §7, §9, §11 |
 
 Non-goals: load testing (release plan, canary stage), penetration testing (a separate review), testing Cloudflare's own products (we test our use of them).
 
@@ -36,11 +36,11 @@ The suite is a honeycomb, not a pyramid: integration scenarios are the widest la
 | Kind | What it proves | Carries coverage | Runs | Who writes it |
 |---|---|---|---|---|
 | Integration scenario (`tests/scenarios/**/*.scenario.ts`) | an actor observes the behaviour a requirement promises, through the whole system | yes | every PR, in-process driver | whoever changes the requirement |
-| Browser flow (scenario tagged `ui`) | the page does what the scenario says, including passkey ceremonies | yes, for requirements with `coverage: scenario+ui`, counted from the nightly browser run | nightly and on `apps/web` changes | same |
+| Browser flow (scenario tagged `ui`) | the page does what the scenario says, including passkey ceremonies | yes, for requirements with `coverage: scenario+ui`, counted from the nightly browser run | nightly | same |
 | Unit test (`packages/*/src/**/*.test.ts`, `apps/*/src/**/*.test.ts`) | a function or a Durable Object does what its author meant | no | every PR | whoever writes the code |
 | Contract test (`tests/contracts/<port>/*.contract.ts`) | a fake and the real service behave the same for the calls we make | no | fake on every PR, real weekly | whoever writes a fake |
 | Probe (scenario tagged `probe-safe`) | a deployed version answers correctly before it gets traffic | no (a subset, not new coverage) | pre-traffic in the release flow; periodically by monitoring | same as scenarios |
-| Mutation run (StrykerJS on `packages/core` unit tests) | the unit tests would notice if `core` logic were wrong | no; a strength report | weekly, incremental on PRs | nobody; it is a report |
+| Mutation run (StrykerJS on `packages/core` unit tests) | the unit tests would notice if `core` logic were wrong | no; a strength report | nightly, in a 15-minute slice | nobody; it is a report |
 
 Unit tests are for pure logic with a large input space (version ranges, the risk score, archive path checks, OIDC claim matching, the CSP string), Durable Object internals through `runInDurableObject`, Workflow step bodies, and anything a scenario would need thirty variants of. A unit test never stands in for a scenario: a requirement with only unit tests says `coverage: unit-only` with a reason, and that is reviewed.
 
@@ -251,29 +251,41 @@ The Claudinite `cloudflare-workers` pack's `wire-bindings-seam` rule says D1, R2
 
 ## 9. CI pipeline
 
-The default is lean: the whole plan fits inside the free GitHub Actions minutes of a private repository (Ariel, 2026-10-22). Parallelism is added only when a measured run gets slow, never up front.
+Two time budgets, set by Ariel on 2026-10-22, and the plan is shaped around them:
 
-Per pull request, one job on one hosted Linux 2-core runner, steps in sequence (timings at ~500 scenarios, extrapolated from the spike; at launch the suite is a fraction of that):
+- **Every push: under 2 minutes wall-clock**, and only the light set: lint and typecheck, unit tests, and the in-process integration scenarios.
+- **Nightly and pre-release: at most 15–20 minutes wall-clock**, as parallel jobs, each with a hard `timeout-minutes`.
 
-| Step | What | Time |
+Both budgets are enforced, not hoped for: every job has a timeout just above its share of the budget, and the summary job fails the run when the push workflow's wall-clock passes 2 minutes, so a slow suite is noticed the day it happens rather than after it has become normal. The CI must also stay inside the free Actions minutes of a private repository (§11).
+
+**Every push** (pull requests and `main`), parallel jobs on hosted Linux 2-core runners, dependencies and the Wrangler bundle cached by lockfile and source hash:
+
+| Job | What | Time |
 |---|---|---|
-| 1 lint + checks | ESLint (incl. the scenario override), typecheck, `requirements:matrix` static pass; `scenario-gate` runs as its own small job from the base branch (stability-checks.md §4) | ~1–2 min |
-| 2 build | `wrangler deploy --dry-run --outdir dist` for seven Workers, cached by lockfile + source hash; the production-seam grep (§5) | ~1 min |
-| 3 unit | Vitest per Worker project with `@cloudflare/vitest-plugin` plus plain Node for `core` | ~1 min |
-| 4 scenarios, in-process | `vitest --project scenarios`, unsharded; reset-per-file and alias isolation keep ~500 scenarios to a few minutes of bodies plus ~2.4 s boot per file (spike timings) | ~3–4 min |
-| 5 contracts, fake backend | | <1 min |
-| 6 matrix + summary | publish the matrix, enforce the watermark | <1 min |
+| checks | ESLint (incl. the scenario override), typecheck, the production-seam grep (§5), `requirements:matrix` static pass; `scenario-gate` runs as its own small job from the base branch (stability-checks.md §4). These are seconds-long checks, not tests | ~1 min |
+| unit | Vitest: `core` in plain Node, Durable Object and Workflow white-box tests with `@cloudflare/vitest-plugin`, contract tests against the fakes | ~1 min |
+| scenarios × n | `vitest --project scenarios --shard=i/n`, in-process driver; reset-per-file and alias isolation (spike: ~2.4 s harness boot per file, scenario bodies 1–440 ms) | ~1.5 min each |
+| summary | joins the JUnit files, publishes the requirements matrix, enforces the coverage watermark and the 2-minute budget | <15 s |
 
-Conditional jobs, only when their trigger holds: see-it-fail (a new scenario file, ~2 min), browser (`apps/web/**` or the browser driver changed, ~4 min), incremental mutation (changed `core` files, ~3 min).
+`n` starts at 1 and grows by one whenever the scenario job's 90th-percentile time passes 90 seconds for a week; at ~500 scenarios that is about 3–4 shards. Shards cost billed minutes, not wall-clock, so the budget holds as the suite grows.
 
-Rules that keep minutes down: `paths-ignore` for docs-only changes (`docs/**`, `*.md`); `concurrency` with `cancel-in-progress`, so a newer push to the same PR cancels the older run; dependency and build caches; draft PRs run nothing until marked ready. The suite is sharded (`--shard=i/n`) only if step 4 alone passes 10 minutes for a week.
+Nothing else runs on a push. Docs-only changes (`docs/**`, `*.md`) skip the workflow, a newer push to the same PR cancels the older run, and draft PRs run nothing until marked ready.
 
-Target: ~7–8 billable minutes per PR run, under 10 minutes wall-clock. The release plan's compat stage (§4.5) runs only when a release candidate is cut and on PRs that touch a service-binding contract (`core/contracts/`, the `X-PackServer-*` headers, queue message schemas); the self-test scenarios (REQ-OPS-005..011: full and shallow on every Worker through `world.operator.selfTest()`; a shallow run must make no outbound or service-binding call, asserted through the Recorder) run in the release pipeline against the 0% candidate (release plan §3.3–3.4), not on every merge.
+**Nightly** (skipped when `main` has not changed since the last successful run), parallel jobs, the slowest about 15 minutes:
 
-Scheduled runs, each skipped when `main` has not changed since the last successful run:
+| Job | What | Timeout |
+|---|---|---|
+| browser | the page-specific `ui` scenarios (passkey ceremonies, the publish wizard, step-up dialogs, Turnstile; Ariel chose this scope on 2026-10-22) | 10 min |
+| probes | `http` probe-safe scenarios against `staging` | 5 min |
+| see-it-fail | scenarios added since the last nightly, run against the build before they were added; each must fail there (stability-checks.md C5) | 10 min |
+| mutation | StrykerJS over `packages/core` unit tests, incremental, with a 15-minute time budget that works through the files changed most recently first and resumes where it stopped the next night | 17 min |
+| slow | the `slow`-tagged scenarios | 15 min |
+| sandbox | the real validator image on Docker with the bomb corpus and isolation checks (§6); only when the image changed | 15 min |
+| fixture drift | refresh recorded fixtures, open a drift PR if any changed | 5 min |
 
-- **Nightly (~10 min):** `http` probes against `staging` (~3 min) and the page-specific `ui` scenarios (passkey ceremonies, the publish wizard, step-up dialogs, Turnstile; ~6 min; Ariel chose this scope on 2026-10-22), plus the fixture-drift PR (~1 min).
-- **Weekly (~55 min):** the real-backend suites (§6, ~20 min), the `slow` lane (~10 min), the full StrykerJS run over `packages/core` unit tests with the ratcheting watermark (~20 min), and the Docker sandbox job (~5 min; also on every PR that changes the validator image).
+**Weekly**, the same limits: the real-backend suites of §6, split into jobs of at most 15 minutes each (Cloudflare `staging`, Stripe, GitHub, AI Gateway, mail and DNS, Rekor).
+
+**Pre-release** (when a release candidate is cut; the release plan owns the stage): the probe-safe scenarios against the 0% candidate, the self-test scenarios (REQ-OPS-005..011: full and shallow on every Worker through `world.operator.selfTest()`; a shallow run must make no outbound or service-binding call, asserted through the Recorder), and the N/N-1 compat run (§4.5), which also runs on PRs that touch a service-binding contract (`core/contracts/`, the `X-PackServer-*` headers, queue message schemas). Parallel jobs, under 15 minutes in total (release plan §3.3–3.4).
 
 **Budget guard.** A monthly job reads the repository's Actions usage and opens an issue when the month passes 80% of the included minutes, naming the workflows that used them, so nothing is billed by surprise.
 
@@ -294,16 +306,15 @@ Assumptions: a private repository on an organisation plan with 2,000 (Free) or 3
 
 | Item | Minutes/month | Notes |
 |---|---|---|
-| PR runs: ~7.5 min × 150 | ~1,100 | one runner, no shards (§9) |
-| Conditional PR jobs | ~150 | see-it-fail, browser, incremental mutation, only when triggered |
+| Push runs: ~6 billed min × 150 | ~900 | checks, unit and 1–4 scenario shards; each job bills at least a minute (§9) |
 | Compat runs: release candidates and contract-touching PRs, ~13 min × ~6 | ~80 | the release plan's line (§3.3–3.4); listed so the total is honest |
-| Nightly: ~10 min × ~20 changed days | ~200 | |
-| Weekly: ~55 min × 4 | ~220 | |
-| **GitHub Actions total** | **~1,750** | **$0** on Free (2,000 included) or Team (3,000); $0 on a public repo |
+| Nightly: ~35 billed min × ~20 changed days | ~700 | parallel jobs; mutation's 15-minute slice is the largest |
+| Weekly real-backend jobs: ~40 min × 4 | ~160 | |
+| **GitHub Actions total** | **~1,850** | **$0** on Free (2,000 included, tight) or Team (3,000); $0 on a public repo |
 
 Other costs: Cloudflare traffic to `staging` is cents inside the Paid plan's quota (no second account); Anthropic via AI Gateway in the weekly suite is capped at $1; Stripe Sandbox, the GitHub test org and mail test mode are free; the DNS test domain is about $1 a month.
 
-**Total: about $0–2 a month** (the DNS test domain and capped AI spend). If the budget guard (§9) fires, the first lever is running the PR scenarios only when code under `apps/`, `packages/` or `tests/` changed.
+**Total: about $0–2 a month** (the DNS test domain and capped AI spend). If the budget guard fires, the levers are running the nightly mutation slice only when `packages/core` changed (−~250 min) and running the push scenarios only when code under `apps/`, `packages/` or `tests/` changed.
 
 An earlier draft of this plan estimated ~$25–35 a month. That came from pessimistic assumptions, not the tooling: 300 runs a month, three shards per run, and a 60-minute nightly that included mutation testing and the real-backend suites every night.
 

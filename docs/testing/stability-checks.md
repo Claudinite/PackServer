@@ -22,7 +22,7 @@ The invariant this document enforces is narrower and checkable: **the set of ass
 
 1. The entry in `docs/requirements/<area>.md` is edited: statement, status, `decision` removed, or `status: retired` with a `retired:` line.
 2. The scenarios naming that ID change in the same PR. New World verbs are added in the same PR (free).
-3. CI: the gate (C1) passes because the ID appears inside that entry's block in the register diff; C3/C4 pass because the ID is still known and still has a scenario, or is retired and has none; C5 runs for new scenarios.
+3. CI: the gate (C1) passes because the ID appears inside that entry's block in the register diff; C3/C4 pass because the ID is still known and still has a scenario, or is retired and has none; C5 checks new scenarios in the next nightly run.
 4. Ariel reviews (the agent's PR comes from the bot identity, so Ariel is a distinct reviewer) and merges.
 
 **A scenario is rewritten under an unchanged requirement** (a better verb, a split, a tag): the PR body carries `Requirement-Change: REQ-…` for each ID and says why; the matrix lists the ID as "by trailer".
@@ -51,9 +51,9 @@ Nothing bypasses the required checks or Ariel's review; a trailer is a declarati
 | C2 | scenario-vocabulary | endpoint language in scenarios, code or comments | ESLint override + a comment regex pass in the same script | block |
 | C3 | scenario-names-known-requirement | no ID, an unknown ID, a retired ID | `tests/tooling/requirements-matrix.ts`; Vitest strict tags at collection | block |
 | C4 | requirement-coverage-regression | an ID that had a scenario on base and has none on head | same script | block; never-covered IDs go to the watermark |
-| C5 | new-scenario-seen-red | a new scenario that also passes on the base build | conditional CI job | block |
+| C5 | new-scenario-seen-red | a new scenario that also passes on the build before it was added | nightly job (kept off the 2-minute push run) | opens an issue naming the scenario; the next PR that touches it must fix it |
 | C6 | assertion-strength | loose matchers, `.skip`/`.only`/`.todo`, `try`/`catch` | part of the C2 ESLint override | block |
-| C7 | mutation score | `core` unit tests that stay green when `core` is broken | weekly StrykerJS over `packages/core` with the unit runner; incremental on PRs | ratcheting watermark |
+| C7 | mutation score | `core` unit tests that stay green when `core` is broken | nightly StrykerJS slice over `packages/core` with the unit runner, 15-minute budget | ratcheting watermark |
 | C8 | repository rules | a merge without the checks or without Ariel | a ruleset on `main`; CODEOWNERS for routing | block |
 | C9 | agent guard | an agent editing a scenario without being asked to | Claudinite action check (§7); heuristic | block in session |
 | C10 | probe-safe purity | a `probe-safe` scenario that needs a fake, the clock, the sink, or writes outside the tenant | ESLint rule | block |
@@ -126,11 +126,11 @@ Comments: `scenario-gate.ts` runs a second pass over comment text with the regex
 
 ### C5 new-scenario-seen-red
 
-Conditional on the diff adding `*.scenario.ts` files or `scenario(` blocks: build the base commit's Workers into `dist-base/` (cached by base SHA); run the new scenarios by title with the **head** World and drivers against the base build; every new scenario must fail. `Scenario-Already-Green: REQ-… <reason>` in the PR body admits one that passes (existing behaviour being registered, or a negative test whose red was shown by a `mutation:` in a sibling commit). An `InfrastructureError` (a verb the base system lacks) is not counted as red.
+Runs nightly, off the 2-minute push budget, for every `*.scenario.ts` file or `scenario(` block added to `main` since the last nightly: build the Workers of the commit before the addition into `dist-base/` (cached by base SHA); run the new scenarios by title with the **head** World and drivers against the base build; every new scenario must fail. A scenario that passes there gets an issue naming it, unless `Scenario-Already-Green: REQ-… <reason>` in its PR body admits it (existing behaviour being registered, or a negative test whose red was shown by a `mutation:` in a sibling commit). An `InfrastructureError` (a verb the base system lacks) is not counted as red.
 
 ### C7 mutation score (`core` unit tests)
 
-StrykerJS, Vitest runner, incremental mode ([docs](https://stryker-mutator.io/docs/stryker-js/incremental/)), over `packages/core/src/**` with the `core` unit project as the runner. Weekly full run; PR incremental on changed files, report only. `stryker.watermark.json` ratchets like coverage; `break` starts at the first full run minus 5 points and is bumped by hand. Scenarios run the built bundles inside `workerd`, where Stryker's active-mutant switch does not reach, so a scenario-killed score is a research item (it needs a `buildCommand` plus a mutant-id bridge into the Workers, and hours per run); C5 and C6 are the scenario-strength checks.
+StrykerJS, Vitest runner, incremental mode ([docs](https://stryker-mutator.io/docs/stryker-js/incremental/)), over `packages/core/src/**` with the `core` unit project as the runner. Nightly incremental run with a 15-minute time budget, most recently changed files first, resuming where it stopped; report only, never on a push. `stryker.watermark.json` ratchets like coverage; `break` starts at the first full run minus 5 points and is bumped by hand. Scenarios run the built bundles inside `workerd`, where Stryker's active-mutant switch does not reach, so a scenario-killed score is a research item (it needs a `buildCommand` plus a mutant-id bridge into the Workers, and hours per run); C5 and C6 are the scenario-strength checks.
 
 ### C8 repository rules (solo repo)
 
