@@ -167,7 +167,7 @@ world.operator.deployedVersion()           // the version id under test (the har
 world.operator.observedVersions()          // every version id seen on a response in this scenario (REQ-OPS-006)
 await world.storage.fingerprint()          // a digest of D1, R2, KV and queue state, canary objects excluded (REQ-OPS-008)
 await world.staging.objects()
-await world.recorder.invocations({ kind?, target?, effect? })
+await world.recorder.invocations({ kind?, target?, effect? })   // kind: one or a list of the release plan's kinds, plus 'service' for a service-binding call
 await world.telemetry.recorded()           // signals, see §7
 await pack.versions();  await pack.latest();  await pack.index()
 await version.status();  await version.sha256();  await version.attestation()
@@ -662,7 +662,7 @@ scenario('REQ-OPS-007 a check that hangs is reported as failed inside the overal
   expect(result.check('config')).toMatchObject({ ok: true });
 });
 
-scenario('REQ-OPS-008 REQ-OPS-010 a self-test leaves no trace, and a shallow one touches nothing', async (world) => {
+scenario('REQ-OPS-008 REQ-OPS-010 a self-test leaves no trace, and a shallow one never calls out', async (world) => {
   const before = await world.storage.fingerprint();
 
   await world.operator.selfTest();
@@ -670,7 +670,7 @@ scenario('REQ-OPS-008 REQ-OPS-010 a self-test leaves no trace, and a shallow one
   await expect(world.telemetry).not.toHaveRecorded('download');
 
   await world.operator.selfTest({ shallow: true });
-  await expect(world.recorder.invocations()).resolves.toHaveLength(0);               // no binding, service or outbound call at all
+  await expect(world.recorder.invocations({ kind: ['http', 'service'] })).resolves.toHaveLength(0);   // local bindings only
 });
 
 scenario('REQ-OPS-009 outsiders cannot spend the self-test budget', async (world) => {

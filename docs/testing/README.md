@@ -263,7 +263,7 @@ Per pull request (GitHub Actions, hosted Linux 2-core; stage 4 is extrapolated f
 | 8 mutation, incremental (conditional) | StrykerJS on changed `core` files, unit-test runner, report only | 4 | ~3 min |
 | 9 matrix + summary | join JUnit from 4 and the latest nightly 6, publish the matrix, enforce the watermark | after 4 | <1 min |
 
-Wall-clock target under 10 minutes; roughly 15–20 billable minutes per run. On `main` after a merge the release plan's compat stage (§4.5) and the self-test scenarios (REQ-OPS-005..011: full and shallow on every Worker through `world.operator.selfTest()`; a shallow run must make no binding, service or outbound call, asserted through the Recorder) add ~13 minutes.
+Wall-clock target under 10 minutes; roughly 15–20 billable minutes per run. On `main` after a merge the release plan's compat stage (§4.5) and the self-test scenarios (REQ-OPS-005..011: full and shallow on every Worker through `world.operator.selfTest()`; a shallow run must make no outbound or service-binding call, asserted through the Recorder) add ~13 minutes.
 
 Nightly, one scheduled workflow with `workflow_dispatch` for reruns: the real-backend suites (§6, ~20 min), `http` probes against the CI-only account's deployment (~3 min), every `ui` scenario (~6 min), the `slow` lane (~10 min), the full StrykerJS run over `packages/core` unit tests with the ratcheting watermark (~20 min), and the fixture-drift PR (~1 min).
 

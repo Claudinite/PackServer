@@ -121,18 +121,19 @@ authentication: unauthenticated calls are answered as an unknown path (REQ-OPS-0
 consuming any of the budget, so an outsider cannot exhaust it and block the release flow or the
 synthetic prober.
 
-## REQ-OPS-010 Shallow mode checks only configuration and the presence of secrets
+## REQ-OPS-010 Shallow mode runs the local checks and never calls out
 
 - status: active
 - since: 2026-10
 - actor: operator
 - source: release plan §5 (PR #8, `docs/release/README.md`); `docs/testing/README.md` §9
-- coverage: scenario (the Recorder proves that a shallow run makes no binding, service or outbound call)
+- coverage: scenario (the Recorder proves that a shallow run makes no outbound or service-binding call)
 
-A shallow self-test reports only the configuration check (version id present, environment and
-compatibility date as compiled) and the secrets check (every secret the Worker needs is present,
-by name, never by value); it calls no binding, no other Worker and no outside host, and it
-answers in the same shape as a full run with `version_id` set.
+A shallow self-test runs every local check (configuration, presence of secrets by name never by
+value, and the Worker's own bindings) but skips the `outbound.*` and `service.*` checks, so it
+makes no call to an outside host or to another Worker. A caller can therefore verify a callee
+across a service binding without the check fanning out further. It answers in the same shape as
+a full run, with `version_id` set.
 
 ## REQ-OPS-011 A schema outside the version's supported range fails the self-test
 
