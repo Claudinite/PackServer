@@ -170,6 +170,7 @@ Replace or add; existing ids that change are noted.
 - Floating versions (`latest`, ranges, unpinned git refs) and pipe-to-shell patterns fail wherever they appear.
 - The sandbox loads the pack with the pinned cn engine; a pack that fails to load fails validation.
 - Every shipped check or hook runs against a firing fixture and a silent fixture in the sandbox; a check that stays silent on the firing fixture or fires on the silent one fails; missing fixtures hold a community-tier version and warn a third-party one. (replaces VAL-010)
+- One sandbox run (steps 3-8) has a 5-minute wall-clock cap; extraction is capped at 60 seconds and each check or hook fixture run at 30 seconds; exceeding a cap fails the version with reason `sandbox.timeout` (extraction: `archive.unsafe`, final). (replaces the 10-minute cap in VAL-010)
 - The sandbox image is pinned by digest, runs with internet off and no registry binding, is destroyed after the run, and its output is schema-validated and size-capped by the Worker before any other step reads it. (extends VAL-011)
 - The promoted archive is a canonical re-pack of the validated tree (deterministic order, metadata and single frame); the sandbox re-extracts it and compares tree hashes before promotion; a mismatch is an infrastructure error and nothing is promoted.
 - The attestation covers the upload SHA-256 and the canonical SHA-256 with the pack, version, provenance, rules version and signing key id; the signed index and download responses carry the canonical hash. (extends PUB-021, DELIV-001)
