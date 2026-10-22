@@ -133,7 +133,8 @@ Format: **Visible** (default) · **Hover** · **Click** · **Removed**.
 - Visible: one sentence tagline ("Rules, checks and tasks for your repos, from the people who build the
   stack."), a search field, and one row of six pack cards ("Trending"). That is the whole first viewport.
 - Hover: card marks (Trust, shape, rating) as in §2.
-- Click: "For Claude Code" and "Publish" are two plain text links under the search field, not sections.
+- Click: "Publish" is one plain text link under the search field. The MCP endpoint for agents is a muted line at
+  the foot of the page: every visitor already uses Claude Code, so it is not a headline choice.
 - Removed: stat-row (1,284 packs / 312 publishers / fetches per day), "Verified publishers" section,
   "For agents" explainer block, "Publish a pack" promo panel. Hero copy reduced to one line.
 
@@ -285,7 +286,7 @@ to approve vpc-review 1.61020.1 · Approve").
 | Card: star row + number + ☆ count | Number only (`4.6 · 212`); distribution on hover |
 | Card: version `v2.4.1` | Removed from cards; dated version (`1.61021.1`) in the muted line on the pack page |
 | Home stat-row (packs / publishers / fetches per day) | Removed |
-| Home "Verified publishers", "For agents", "Publish" sections | Two text links under search ("For Claude Code", "Publish") |
+| Home "Verified publishers", "For agents", "Publish" sections | One text link under search ("Publish"); MCP endpoint as a muted footer line |
 | Pack page Trust panel (Validation, Signed, SHA-256, Source, Targets) | Trust drawer, opened from the mark |
 | Pack page "What's inside" count row + table | Manifest of effects (guards, tasks, forced skills, actions) above the README; shape glyph; table lives in Contents tab |
 | Pack page Install block (`cn adopt name@version`, MCP config) | Adopt block: `cn adopt <id>` plus the settings.yaml declaration with an optional `version:` freeze |

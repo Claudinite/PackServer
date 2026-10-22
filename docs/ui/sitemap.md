@@ -32,7 +32,7 @@ Pattern sources: npm (user vs. publisher with 2FA levels), PyPI (trusted publish
 │   ├── ?tab=reviews               pack.reviews
 │   └── ?tab=issues                pack.issues
 ├── /@{publisher}                  publisher (user or org profile)
-├── /claude-code                   claude-code ("For Claude Code": MCP endpoint docs)
+├── /claude-code                   claude-code (MCP endpoint docs, linked from the home footer)
 ├── /signin                        signin (sign in / sign up)
 │
 ├── /account                       account  [signed-in]
@@ -89,11 +89,11 @@ flowchart TD
 
 | ID | URL | Purpose | Role | Key components | Key actions |
 |---|---|---|---|---|---|
-| `home` | `/` | Entry point: search, discovery; the pitch leads with checks ("the Stripe pack exists and I can pin it") | Anon+ | Hero search box; category grid (e.g. Cloud, Data, Testing, Security, Docs, DevOps); Recently published / Verified publishers rails and a "Trending" rail; "For Claude Code" panel with the MCP endpoint URL and the one-line adoption (`cn adopt <id>`, lands as a PR); footer | Search, pick category, open pack, open `claude-code`, sign in |
+| `home` | `/` | Entry point: search, discovery; the pitch leads with checks ("the Stripe pack exists and I can pin it") | Anon+ | Hero search box; category grid (e.g. Cloud, Data, Testing, Security, Docs, DevOps); Recently published / Verified publishers rails and a "Trending" rail; footer with a muted line pointing agents to the MCP endpoint | Search, pick category, open pack, open `claude-code`, sign in |
 | `browse` | `/browse?q=&category=&feature=&verified=&repo=&sort=` | Search results | Anon+ | Left filter rail: category (multi), contains pack content type (rules / skills / checks / guards / tasks), "checks only (no tasks, no skills)", verified publisher toggle, has public repo toggle; sort: relevance / age / verified first; result cards (name, publisher + verified seal with its source (e.g. google.com), one-liner, manifest line "4 checks · 1 guard · 4 tasks (monthly) · 6 skills", updated); pagination | Filter, sort, open pack. URL is the state (crates.io / npm pattern) |
 | `pack` | `/packs/{publisher}/{pack}` | Pack detail | Anon+ (actions gated) | Header: name, publisher + verified badge, newest version + publish date + visibility chip, star button + count, rating stars + count; **Manifest of effects** (above the README): guards added, tool calls guarded, tasks and cadence, forced skills, GitHub actions requested, `minEngineVersion`, `requires`; **Adopt panel**: `cn adopt <id>` and the Claudinite settings declaration (`packs.declared`, with optional `version:` freeze), muted line "Lands as a pull request; updates arrive the same way" (copy); **Repo link** or prominent **"No public repo"** badge; **Contents summary** by pack content type with counts (rules, skills, declared / coded checks, guards, tasks); **Validation status** chip (passed / warnings) linking to public summary; tabs: Overview (README), Contents (tree by content type, each with name + description; every file readable), Versions (list, publish date, revoked marker, sha256, minEngineVersion, requires, changelog), Reviews (rating histogram + reviews), Issues (bug reports, severity, status) | Star, rate/review (-> `review`), report (-> `report`), copy adopt snippet, switch version, publisher-only: Manage menu (edit listing, access, revoke, new version) |
 | `publisher` | `/@{handle}` | User or org public profile | Anon+ | Avatar, display name, handle, verified badge with list of verified domains / GitHub org; publishing since; pack list with status; links | Open packs, (owner) edit profile |
-| `claude-code` | `/claude-code` | "For Claude Code": MCP endpoint docs | Anon+ | Endpoint URL; tool reference: `search_packs`, `get_pack`, `list_categories`, `get_pack_manifest`, `fetch_pack`; how a session uses them (discover and inspect, then propose `cn adopt <id>`, which lands a PR; nothing is fetched at session time); auth section (none: MCP lists public packs only; a private pack is fetched from the member repo's GitHub Actions workflow with its OIDC token, see Private pack access); example transcripts; MCP client config snippet; rate limits | Copy config |
+| `claude-code` | `/claude-code` | MCP endpoint docs (linked from a muted line at the foot of `home`) | Anon+ | Endpoint URL; tool reference: `search_packs`, `get_pack`, `list_categories`, `get_pack_manifest`, `fetch_pack`; how a session uses them (discover and inspect, then propose `cn adopt <id>`, which lands a PR; nothing is fetched at session time); auth section (none: MCP lists public packs only; a private pack is fetched from the member repo's GitHub Actions workflow with its OIDC token, see Private pack access); example transcripts; MCP client config snippet; rate limits | Copy config |
 | `signin` | `/signin` | Sign in or sign up | Anon | Buttons: Sign in with a passkey (default), Sign in with GitHub; email one-time code for sign-up and "Lost your passkey?" recovery only; "What you get" blurb; after first login: handle + display name step | Sign in, sign up, continue to `mfa` if required |
 | `mfa` | `/account/mfa` | MFA enrollment & management | Signed-in | Passkey (WebAuthn) primary; TOTP fallback with QR + manual key; recovery codes (download/print once); list of enrolled factors with last-used; "MFA required for publishers" banner | Add passkey, add TOTP, regenerate recovery codes, remove factor (confirm with passkey) |
 | `review` | `/packs/{p}/{pack}/review` | Rate + write review | Signed-in | Version selector (defaults to newest version); 1-5 star input; title; body (markdown); edit existing review notice | Submit, edit, delete own review |
@@ -111,9 +111,9 @@ flowchart TD
 
 | State | Left | Center | Right |
 |---|---|---|---|
-| Anonymous | Logo | Search box | `Browse` · `For Claude Code` · **Sign in** button |
-| Signed-in | Logo | Search box | `Browse` · `For Claude Code` · `Become a publisher` · avatar menu: Account, Starred, My reviews, My reports, Security, Sign out |
-| Publisher | Logo | Search box | `Browse` · `For Claude Code` · **New pack** (primary) · avatar menu: Dashboard, Account, Billing, Orgs (list), Security, Sign out |
+| Anonymous | Logo | Search box | `Browse` · **Sign in** button |
+| Signed-in | Logo | Search box | `Browse` · `Become a publisher` · avatar menu: Account, Starred, My reviews, My reports, Security, Sign out |
+| Publisher | Logo | Search box | `Browse` · **New pack** (primary) · avatar menu: Dashboard, Account, Billing, Orgs (list), Security, Sign out |
 | Publisher inside dashboard pages | Logo + context switcher (personal / org) | Search box | same as Publisher; secondary sidebar: Packs, Drafts, GitHub, Org settings, Access, Billing |
 
 Mobile: hamburger with the same items; search collapses to icon. Alert badge on avatar when `dashboard` has alerts.

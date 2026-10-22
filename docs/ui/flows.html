@@ -617,7 +617,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 │   ├── ?tab=reviews               pack.reviews
 │   └── ?tab=issues                pack.issues
 ├── /@{publisher}                  publisher (user or org profile)
-├── /claude-code                   claude-code (&quot;For Claude Code&quot;: MCP endpoint docs)
+├── /claude-code                   claude-code (MCP endpoint docs, linked from the home footer)
 ├── /signin                        signin (sign in / sign up)
 │
 ├── /account                       account  [signed-in]
@@ -682,7 +682,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <td><code>/</code></td>
 <td>Entry point: search, discovery; the pitch leads with checks (&quot;the Stripe pack exists and I can pin it&quot;)</td>
 <td>Anon+</td>
-<td>Hero search box; category grid (e.g. Cloud, Data, Testing, Security, Docs, DevOps); Recently published / Verified publishers rails and a &quot;Trending&quot; rail; &quot;For Claude Code&quot; panel with the MCP endpoint URL and the one-line adoption (<code>cn adopt &lt;id&gt;</code>, lands as a PR); footer</td>
+<td>Hero search box; category grid (e.g. Cloud, Data, Testing, Security, Docs, DevOps); Recently published / Verified publishers rails and a &quot;Trending&quot; rail; footer with a muted line pointing agents to the MCP endpoint</td>
 <td>Search, pick category, open pack, open <code>claude-code</code>, sign in</td>
 </tr>
 <tr>
@@ -712,7 +712,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <tr>
 <td><code>claude-code</code></td>
 <td><code>/claude-code</code></td>
-<td>&quot;For Claude Code&quot;: MCP endpoint docs</td>
+<td>MCP endpoint docs (linked from a muted line at the foot of <code>home</code>)</td>
 <td>Anon+</td>
 <td>Endpoint URL; tool reference: <code>search_packs</code>, <code>get_pack</code>, <code>list_categories</code>, <code>get_pack_manifest</code>, <code>fetch_pack</code>; how a session uses them (discover and inspect, then propose <code>cn adopt &lt;id&gt;</code>, which lands a PR; nothing is fetched at session time); auth section (none: MCP lists public packs only; a private pack is fetched from the member repo&#39;s GitHub Actions workflow with its OIDC token, see Private pack access); example transcripts; MCP client config snippet; rate limits</td>
 <td>Copy config</td>
@@ -828,19 +828,19 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <td>Anonymous</td>
 <td>Logo</td>
 <td>Search box</td>
-<td><code>Browse</code> · <code>For Claude Code</code> · <strong>Sign in</strong> button</td>
+<td><code>Browse</code> · <strong>Sign in</strong> button</td>
 </tr>
 <tr>
 <td>Signed-in</td>
 <td>Logo</td>
 <td>Search box</td>
-<td><code>Browse</code> · <code>For Claude Code</code> · <code>Become a publisher</code> · avatar menu: Account, Starred, My reviews, My reports, Security, Sign out</td>
+<td><code>Browse</code> · <code>Become a publisher</code> · avatar menu: Account, Starred, My reviews, My reports, Security, Sign out</td>
 </tr>
 <tr>
 <td>Publisher</td>
 <td>Logo</td>
 <td>Search box</td>
-<td><code>Browse</code> · <code>For Claude Code</code> · <strong>New pack</strong> (primary) · avatar menu: Dashboard, Account, Billing, Orgs (list), Security, Sign out</td>
+<td><code>Browse</code> · <strong>New pack</strong> (primary) · avatar menu: Dashboard, Account, Billing, Orgs (list), Security, Sign out</td>
 </tr>
 <tr>
 <td>Publisher inside dashboard pages</td>
