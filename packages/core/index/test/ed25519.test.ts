@@ -1,3 +1,4 @@
+import * as noble from "@noble/ed25519";
 import { beforeAll, describe, expect, it } from "vitest";
 import { type Ed25519, fromBase64Url, noblePure, selectEd25519, utf8 } from "../index";
 import { seedA, seedB } from "./fixtures";
@@ -11,9 +12,37 @@ describe("Ed25519 backends", () => {
     expect(noblePure.backend).toBe("noble");
   });
 
-  it("falls back to noble when the runtime refuses Ed25519", async () => {
+  it("falls back to noble when the runtime refuses Ed25519, and says why", async () => {
     const refusing = { importKey: () => Promise.reject(new Error("unsupported")) } as unknown as typeof globalThis.crypto.subtle;
-    expect((await selectEd25519(refusing)).backend).toBe("noble");
+    const ed = await selectEd25519(refusing);
+    expect(ed.backend).toBe("noble");
+    expect(ed.selection).toMatch(/fallback.*probe/i);
+    expect((await selectEd25519()).selection).toMatch(/webcrypto/i);
+  });
+
+  it("falls back when WebCrypto imports keys but signs something other than the known answer", async () => {
+    const real = globalThis.crypto.subtle;
+    const lying = {
+      importKey: real.importKey.bind(real),
+      sign: async () => new ArrayBuffer(64),
+      verify: real.verify.bind(real),
+    } as unknown as typeof globalThis.crypto.subtle;
+    const ed = await selectEd25519(lying);
+    expect(ed.backend).toBe("noble");
+    expect(ed.selection).toMatch(/probe/i);
+  });
+
+  it("does not depend on a runtime accepting the identity point to use WebCrypto", async () => {
+    const real = globalThis.crypto.subtle;
+    const picky = {
+      importKey: (format: string, key: Uint8Array, ...rest: unknown[]) => {
+        if (format === "raw" && key[0] === 1 && key.slice(1).every((b) => b === 0)) return Promise.reject(new Error("small order"));
+        return (real.importKey as (...a: unknown[]) => Promise<unknown>)(format, key, ...rest);
+      },
+      sign: real.sign.bind(real),
+      verify: real.verify.bind(real),
+    } as unknown as typeof globalThis.crypto.subtle;
+    expect((await selectEd25519(picky)).backend).toBe("webcrypto");
   });
 
   it("produces byte-identical deterministic signatures on both backends, each verifying the other", async () => {
@@ -67,6 +96,35 @@ describe("Ed25519 backends", () => {
         const sig = new Uint8Array(64);
         sig[0] = 1;
         expect(await ed.verify(identityNonCanonical, sig, message)).toBe(false);
+      });
+
+      it("refuses a mixed-order public key (honest key plus an order-2 point) even with a signature crafted to satisfy the equation", async () => {
+        const L = 0x1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3edn;
+        const le = (bytes: Uint8Array) => bytes.reduceRight((acc, b) => (acc << 8n) | BigInt(b), 0n);
+        const orderTwo = noble.Point.fromBytes(Uint8Array.from([0xec, ...new Array(30).fill(0xff), 0x7f]), false);
+        const extended = await noble.utils.getExtendedPublicKeyAsync(seedA);
+        const mixed = extended.point.add(orderTwo).toBytes();
+        // With k even the order-2 component vanishes, so S*B = R + k*A holds for the mixed key.
+        let forged: Uint8Array | undefined;
+        const m = utf8("forge me");
+        for (let r = 1n; r < 64n && !forged; r++) {
+          const R = noble.Point.BASE.multiply(r).toBytes();
+          const input = new Uint8Array([...R, ...mixed, ...m]);
+          const k = le(await noble.hashes.sha512Async(input)) % L;
+          if (k % 2n !== 0n) continue;
+          const S = (r + k * extended.scalar) % L;
+          const sBytes = Uint8Array.from({ length: 32 }, (_, i) => Number((S >> BigInt(8 * i)) & 0xffn));
+          forged = new Uint8Array([...R, ...sBytes]);
+        }
+        expect(forged).toBeDefined();
+        expect(await ed.verify(mixed, forged!, m)).toBe(false);
+      });
+
+      it("refuses a signature whose R is not a canonical point encoding", async () => {
+        const pub = await ed.publicKey(seedA);
+        const sig = Uint8Array.from(await ed.sign(seedA, message));
+        sig.set(new Uint8Array(32).fill(0xff), 0);
+        expect(await ed.verify(pub, sig, message)).toBe(false);
       });
 
       it("refuses wrong-sized keys and seeds", async () => {

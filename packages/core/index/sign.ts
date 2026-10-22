@@ -23,7 +23,18 @@ export async function signDocument<T extends object>(unsigned: T, signer: Signer
 /** `signature`, `unknown-kid`, `revoked-kid` all surface to a user as the `signature` refusal; `index.*` are refusal words as they stand. */
 export type VerifyFailureCode = "malformed" | "unknown-kid" | "revoked-kid" | "signature" | "mismatch" | "index.stale" | "index.rollback";
 
-export type VerifyResult<T> = { ok: true; doc: T; kid: string } | { ok: false; code: VerifyFailureCode; detail: string };
+declare const verifiedBrand: unique symbol;
+/** A document that passed `verifySigned`; the only way to hold one is to have verified it. */
+export type Verified<T> = T & { readonly [verifiedBrand]: true };
+
+/** cn keeps vendoring pinned versions past `expires` and treats every status as unknown a further 7 days on (REQ-CN-002). */
+export const STALE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+
+export type Freshness = "fresh" | "stale" | "status-unknown";
+
+export type VerifyResult<T> =
+  | { ok: true; doc: T; kid: string; freshness: Freshness; backend: Ed25519["backend"] }
+  | { ok: false; code: VerifyFailureCode; detail: string };
 
 export interface VerifyOptions {
   keys: readonly RegistryKey[];
@@ -31,6 +42,12 @@ export interface VerifyOptions {
   /** The highest serial already verified for this document; a lower one is a rollback. */
   lastSerial?: number | undefined;
   ed25519?: Ed25519 | undefined;
+  /**
+   * `refuse` (default) fails a document past `expires` as `index.stale`. `report` returns it
+   * with `freshness` set, so a caller can honour the grace window: `stale` until `expires` + 7
+   * days, `status-unknown` after. The signature and rollback checks apply either way.
+   */
+  staleness?: "refuse" | "report" | undefined;
 }
 
 const fail = (code: VerifyFailureCode, detail: string): { ok: false; code: VerifyFailureCode; detail: string } => ({ ok: false, code, detail });
@@ -45,7 +62,7 @@ export async function verifySigned<S extends z.ZodType<{ kid: string; signature:
   schema: S,
   raw: unknown,
   options: VerifyOptions,
-): Promise<VerifyResult<z.output<S>>> {
+): Promise<VerifyResult<Verified<z.output<S>>>> {
   const parsed = schema.safeParse(raw);
   if (!parsed.success) return fail("malformed", parsed.error.issues[0]?.message ?? "does not match its schema");
   const doc = parsed.data;
@@ -67,11 +84,13 @@ export async function verifySigned<S extends z.ZodType<{ kid: string; signature:
     return fail("signature", "signature does not verify");
   }
 
-  if (options.now.getTime() >= Date.parse(doc.expires)) return fail("index.stale", doc.expires);
+  const pastExpiry = options.now.getTime() - Date.parse(doc.expires);
+  if (pastExpiry >= 0 && options.staleness !== "report") return fail("index.stale", doc.expires);
   if (options.lastSerial !== undefined && doc.serial < options.lastSerial) {
     return fail("index.rollback", `serial ${doc.serial} is below ${options.lastSerial}`);
   }
-  return { ok: true, doc, kid: doc.kid };
+  const freshness: Freshness = pastExpiry < 0 ? "fresh" : pastExpiry > STALE_GRACE_MS ? "status-unknown" : "stale";
+  return { ok: true, doc: doc as Verified<z.output<S>>, kid: doc.kid, freshness, backend: ed.backend };
 }
 
 /** `.attestation.json`: the attestation fields with the signature beside them. */
@@ -85,16 +104,19 @@ export async function signAttestation(attestation: Attestation, signer: Signer):
 }
 
 export interface AttestationExpectation {
-  pack?: string;
-  version?: string;
+  pack: string;
+  version: string;
+  canonical_sha256: string;
   upload_sha256?: string;
-  canonical_sha256?: string;
 }
 
-/** An attestation has no expiry; it is bound to what it attests, so callers pass what they expect. */
+/**
+ * An attestation has no expiry; it is bound to what it attests, so the caller must say which pack,
+ * version and canonical archive hash it is checking, or a valid attestation for another artifact passes.
+ */
 export async function verifyAttestation(
   raw: unknown,
-  options: { keys: readonly RegistryKey[]; expect?: AttestationExpectation; ed25519?: Ed25519 },
+  options: { keys: readonly RegistryKey[]; expect: AttestationExpectation; ed25519?: Ed25519 },
 ): Promise<VerifyResult<SignedAttestation>> {
   if (typeof raw !== "object" || raw === null || typeof (raw as { signature?: unknown }).signature !== "string") {
     return fail("malformed", "no signature");
@@ -120,12 +142,14 @@ export async function verifyAttestation(
   const ed = options.ed25519 ?? (await selectEd25519());
   if (!(await ed.verify(publicKey, signature, canonicalBytes(attestation)))) return fail("signature", "signature does not verify");
 
-  for (const [field, expected] of Object.entries(options.expect ?? {})) {
-    if (expected !== undefined && attestation[field as keyof AttestationExpectation] !== expected) {
-      return fail("mismatch", `${field} is not the one expected`);
-    }
+  const expected: Partial<AttestationExpectation> = options.expect ?? {};
+  for (const field of ["pack", "version", "canonical_sha256"] as const) {
+    if (!expected[field] || attestation[field] !== expected[field]) return fail("mismatch", `${field} is not the one expected`);
   }
-  return { ok: true, doc: { ...attestation, signature: signatureText }, kid: attestation.kid };
+  if (expected.upload_sha256 !== undefined && attestation.upload_sha256 !== expected.upload_sha256) {
+    return fail("mismatch", "upload_sha256 is not the one expected");
+  }
+  return { ok: true, doc: { ...attestation, signature: signatureText }, kid: attestation.kid, freshness: "fresh", backend: ed.backend };
 }
 
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {

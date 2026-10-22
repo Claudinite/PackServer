@@ -1,12 +1,14 @@
-import { RegistryKey, SIGNED_DOCUMENT_TTL_MS } from "@packserver/schema";
+import { RegistryKey, SIGNED_DOCUMENT_TTL_MS, type KeysDocument } from "@packserver/schema";
 import { fromBase64Url, toBase64Url } from "./bytes";
 import { PUBLIC_KEY_BYTES, selectEd25519, type Ed25519 } from "./ed25519";
+import type { Verified } from "./sign";
 
 export type { RegistryKey };
 
 /** The private half arrives as a 32-byte seed; this module never creates, stores or logs one. */
 export interface Signer {
   readonly kid: string;
+  readonly backend: Ed25519["backend"];
   sign(message: Uint8Array): Promise<Uint8Array>;
 }
 
@@ -14,7 +16,7 @@ export async function createSigner(params: { kid: string; seed: Uint8Array; ed25
   if (params.kid.length === 0) throw new Error("a signer needs a kid");
   const ed = params.ed25519 ?? (await selectEd25519());
   const seed = Uint8Array.from(params.seed);
-  return { kid: params.kid, sign: (message) => ed.sign(seed, message) };
+  return { kid: params.kid, backend: ed.backend, sign: (message) => ed.sign(seed, message) };
 }
 
 /** The public half of a seed, spelled as `keys.json` spells it. */
@@ -79,7 +81,7 @@ export function promoteStandby(
  * trusted set for good. It never adds a key (new keys arrive with an engine release) and never
  * restores a revoked one.
  */
-export function applyRevocations(trusted: readonly RegistryKey[], keysDocument: { keys: readonly RegistryKey[] }): RegistryKey[] {
+export function applyRevocations(trusted: readonly RegistryKey[], keysDocument: Verified<KeysDocument>): RegistryKey[] {
   const revoked = new Map(keysDocument.keys.filter((k) => k.status === "revoked").map((k) => [k.kid, k.revoked_at]));
   return trusted.map((k) => {
     const at = revoked.get(k.kid);

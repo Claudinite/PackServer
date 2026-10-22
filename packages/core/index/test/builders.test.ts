@@ -54,6 +54,18 @@ describe("scope index version selection (IT-DELIV-003, ARCH-REV M11)", () => {
     expect(() => selectListedVersions({ name: "@acme/x", versions: [v(1), v(1)] }, NOW)).toThrow();
   });
 
+  it("refuses an unparseable status_changed_at instead of silently dropping the version", () => {
+    for (const bad of ["yesterday", "", "2026-13-45T00:00:00Z"]) {
+      expect(() => selectListedVersions({ name: "@acme/x", versions: [v(1, { status: "yanked", reason: "r", status_changed_at: bad })] }, NOW)).toThrow(/status_changed_at/);
+    }
+    expect(() => selectListedVersions({ name: "@acme/x", versions: [v(1, { status_changed_at: "nope" })] }, NOW)).toThrow(/status_changed_at/);
+  });
+
+  it("uses the most recent status change: a version un-yanked long ago and re-yanked yesterday is inside the window", () => {
+    const versions = [...Array.from({ length: 22 }, (_, i) => v(i + 10)), v(1, { status: "yanked", reason: "again", status_changed_at: minusDays(1) })];
+    expect(selectListedVersions({ name: "@acme/x", versions }, NOW).map((x) => x.version)).toContain("1.1.0");
+  });
+
   it("does not leak status_changed_at into the signed entry", () => {
     const scope = buildScopeIndex({ scope: "acme", serial: 1, now: NOW, packs: [{ name: "@acme/x", versions: [v(1)] }] });
     expect(JSON.stringify(scope)).not.toContain("status_changed_at");
@@ -111,6 +123,17 @@ describe("every status and every per-version field reaches the index", () => {
 
   it("refuses a pack outside the scope", () => {
     expect(() => buildScopeIndex({ scope: "acme", serial: 1, now: NOW, packs: [{ name: "@other/x", versions: [v(1)] }] })).toThrow();
+  });
+});
+
+describe("ordering is by code unit, never by locale", () => {
+  it("orders packs and scopes the way canonical JSON orders keys", () => {
+    const names = ["@acme/a_b", "@acme/a-b", "@acme/a.b", "@acme/a0", "@acme/ab"];
+    const scope = buildScopeIndex({ scope: "acme", serial: 1, now: NOW, packs: names.map((name) => ({ name, versions: [v(1)] })) });
+    expect(scope.packs.map((p) => p.name)).toEqual([...names].sort());
+    const s = { sha256: "a".repeat(64), serial: 1 };
+    const scopes = ["a_b", "a-b", "a.b", "a0", "ab"];
+    expect(buildRoot({ serial: 1, now: NOW, scopes: scopes.map((scope) => ({ scope, ...s })) }).scopes.map((x) => x.scope)).toEqual([...scopes].sort());
   });
 });
 

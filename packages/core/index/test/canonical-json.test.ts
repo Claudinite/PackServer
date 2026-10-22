@@ -17,6 +17,13 @@ describe("canonicalJson", () => {
     expect(() => canonicalJson({ a: 1n })).toThrow();
     expect(() => canonicalJson({ a: () => 1 })).toThrow();
   });
+  it("refuses lone surrogates in values and in keys, accepts a real pair", () => {
+    expect(() => canonicalJson({ a: "\ud800" })).toThrow();
+    expect(() => canonicalJson({ a: "x\udc00y" })).toThrow();
+    expect(() => canonicalJson({ ["\ud800"]: 1 })).toThrow();
+    expect(() => canonicalJson(["\udbff"])).toThrow();
+    expect(canonicalJson({ a: "\ud83d\ude00" })).toBe('{"a":"\ud83d\ude00"}');
+  });
   it("escapes strings as JSON does", () => {
     expect(canonicalJson({ a: 'q"\n ' })).toBe(JSON.stringify({ a: 'q"\n ' }));
   });

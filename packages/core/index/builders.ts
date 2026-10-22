@@ -5,6 +5,7 @@ import {
   RootIndex,
   ScopeIndex,
   SIGNED_DOCUMENT_TTL_MS,
+  Timestamp,
   UnsignedKeysDocument,
   UnsignedPrivateEntry,
   UnsignedRoot,
@@ -53,11 +54,14 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
+/** The order canonical JSON sorts keys in; locale collation would make the bytes depend on the host. */
+export const codeUnitCompare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
 const byNewest = (a: { version: string }, b: { version: string }) => compareVersions(b.version, a.version);
 
 /** A published version as the builders take it, with when its status last left `active`. */
 export type VersionRecord = IndexVersion & {
-  /** null only for a version that has always been active. */
+  /** When the version's status most recently changed (ISO timestamp); null only for a version that has never changed. */
   status_changed_at: string | null;
 };
 
@@ -80,6 +84,9 @@ function assertUniqueVersions(pack: PackRecord) {
     seen.add(v.version);
     if (v.status !== "active" && v.status_changed_at === null) {
       throw new Error(`${pack.name}@${v.version} is ${v.status} with no status_changed_at`);
+    }
+    if (v.status_changed_at !== null && !Timestamp.safeParse(v.status_changed_at).success) {
+      throw new Error(`${pack.name}@${v.version} has an unparseable status_changed_at`);
     }
   }
 }
@@ -112,7 +119,7 @@ export function selectListedVersions(pack: PackRecord, now: Date): VersionRecord
 export function buildScopeIndex(input: DocumentHead & { scope: string; packs: readonly PackRecord[] }) {
   const names = new Set<string>();
   const packs = [...input.packs]
-    .sort((a, b) => a.name.localeCompare(b.name))
+    .sort((a, b) => codeUnitCompare(a.name, b.name))
     .map((pack) => {
       if (names.has(pack.name)) throw new Error(`${pack.name} listed twice`);
       names.add(pack.name);
@@ -145,7 +152,7 @@ export function buildRoot(input: DocumentHead & { scopes: readonly { scope: stri
     if (seen.has(s.scope)) throw new Error(`scope ${s.scope} listed twice`);
     seen.add(s.scope);
   }
-  const scopes = [...input.scopes].sort((a, b) => a.scope.localeCompare(b.scope)).map(({ scope, sha256, serial }) => ({ scope, sha256, serial }));
+  const scopes = [...input.scopes].sort((a, b) => codeUnitCompare(a.scope, b.scope)).map(({ scope, sha256, serial }) => ({ scope, sha256, serial }));
   return UnsignedRoot.parse({ kind: "root", ...head(input), scopes });
 }
 

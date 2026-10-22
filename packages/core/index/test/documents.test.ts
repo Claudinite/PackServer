@@ -17,10 +17,12 @@ import {
   signRoot,
   signScopeIndex,
   signVersionsDocument,
+  STALE_GRACE_MS,
   verifySigned,
   type RegistryKey,
+  type Verified,
 } from "../index";
-import { NOW, keySet, nextStandby, plusDays, privateVersion, seedB, signerA, signerB, version } from "./fixtures";
+import { DAY, NOW, keySet, nextStandby, plusDays, privateVersion, seedB, signerA, signerB, version } from "./fixtures";
 
 const pack = { name: "@acme/gcp", versions: [version("1.0.0"), version("1.1.0")] };
 
@@ -29,6 +31,9 @@ async function signedScope(serial = 3, now = NOW) {
 }
 
 type Json = ReturnType<typeof JSON.parse>;
+
+// A stand-in for what verifySigned returns; production code only gets this brand from verification.
+const verifiedKeysDoc = (keys: RegistryKey[]) => ({ keys }) as unknown as Verified<KeysDocument>;
 
 describe("every signed document carries kid, generated_at, expires = +7d and a serial (IT-DELIV-003)", () => {
   it("root, scope index, versions.json, private entry and keys.json verify under the registry key", async () => {
@@ -152,6 +157,30 @@ describe("expiry and rollback (REQ-CN-002 library half)", () => {
     expect(await verifySigned(ScopeIndex, doc, { keys, now: plusDays(30) })).toMatchObject({ ok: false, code: "index.stale" });
   });
 
+  it("in report mode returns a stale document flagged, still requiring a valid signature, and marks it unknown-status after the 7-day grace", async () => {
+    const keys = await keySet();
+    const doc = (await signedScope()).doc;
+    const expires = Date.parse(doc.expires);
+    const fresh = await verifySigned(ScopeIndex, doc, { keys, now: NOW, staleness: "report" });
+    expect(fresh).toMatchObject({ ok: true, freshness: "fresh" });
+    const stale = await verifySigned(ScopeIndex, doc, { keys, now: new Date(expires + 3 * DAY), staleness: "report" });
+    expect(stale).toMatchObject({ ok: true, freshness: "stale" });
+    const grace = await verifySigned(ScopeIndex, doc, { keys, now: new Date(expires + STALE_GRACE_MS), staleness: "report" });
+    expect(grace).toMatchObject({ ok: true, freshness: "stale" });
+    const unknown = await verifySigned(ScopeIndex, doc, { keys, now: new Date(expires + STALE_GRACE_MS + 1), staleness: "report" });
+    expect(unknown).toMatchObject({ ok: true, freshness: "status-unknown" });
+    const forged = { ...doc, serial: 77 };
+    expect(await verifySigned(ScopeIndex, forged, { keys, now: new Date(expires + DAY), staleness: "report" })).toMatchObject({ ok: false, code: "signature" });
+    expect(await verifySigned(ScopeIndex, doc, { keys, now: new Date(expires + DAY), staleness: "report", lastSerial: 9 })).toMatchObject({ ok: false, code: "index.rollback" });
+  });
+
+  it("reports the backend that verified", async () => {
+    const keys = await keySet();
+    const doc = (await signedScope()).doc;
+    expect(await verifySigned(ScopeIndex, doc, { keys, now: NOW })).toMatchObject({ ok: true, backend: "webcrypto" });
+    expect(await verifySigned(ScopeIndex, doc, { keys, now: NOW, ed25519: noblePure })).toMatchObject({ ok: true, backend: "noble" });
+  });
+
   it("refuses a lower serial than the last verified as index.rollback, accepts an equal or higher one", async () => {
     const keys = await keySet();
     const doc = (await signedScope(5)).doc;
@@ -232,7 +261,8 @@ describe("key set, promotion and keys.json (IT-DELIV-016)", () => {
     // cn holds the embedded set (old active, standby) and reads the keys document signed by the standby.
     const verifiedKeys = await verifySigned(KeysDocument, keysDoc.doc, { keys: before, now: promotedAt });
     expect(verifiedKeys.ok).toBe(true);
-    const trusted = applyRevocations(before, keysDoc.doc);
+    if (!verifiedKeys.ok) throw new Error("keys document must verify");
+    const trusted = applyRevocations(before, verifiedKeys.doc);
     expect(trusted.find((k) => k.kid === "2026-10")?.status).toBe("revoked");
 
     expect(await verifySigned(ScopeIndex, oldScope.doc, { keys: trusted, now: promotedAt })).toMatchObject({ ok: false, code: "revoked-kid" });
@@ -246,9 +276,20 @@ describe("key set, promotion and keys.json (IT-DELIV-016)", () => {
     expect(await verifySigned(KeysDocument, doc.doc, { keys, now: NOW })).toMatchObject({ ok: false, code: "revoked-kid" });
   });
 
+  it("applyRevocations takes only a verified keys document", async () => {
+    const trusted = await keySet();
+    const rotated = promoteStandby(trusted, { now: NOW, nextStandby: await nextStandby() });
+    const signed = await signKeysDocument(buildKeysDocument({ serial: 2, now: NOW, keys: rotated }), await signerB());
+    // @ts-expect-error a parsed but unverified document is not accepted by type
+    applyRevocations(trusted, signed.doc);
+    const verified = await verifySigned(KeysDocument, signed.doc, { keys: trusted, now: NOW });
+    if (!verified.ok) throw new Error("expected a verified keys document");
+    expect(applyRevocations(trusted, verified.doc).find((k) => k.kid === "2026-10")?.status).toBe("revoked");
+  });
+
   it("applyRevocations never adds a key and never un-revokes one", async () => {
     const trusted = await keySet();
-    const doc = { keys: [{ kid: "rogue", public_key: trusted[0]!.public_key, status: "active" as const }, { ...trusted[0]!, status: "active" as const }] };
+    const doc = verifiedKeysDoc([{ kid: "rogue", public_key: trusted[0]!.public_key, status: "active" }, { ...trusted[0]!, status: "active" }]);
     expect(applyRevocations(trusted, doc).map((k) => k.kid)).toEqual(["2026-10", "2027-04"]);
     const revoked: RegistryKey[] = [{ ...trusted[0]!, status: "revoked", revoked_at: NOW.toISOString() }];
     expect(applyRevocations(revoked, doc)[0]?.status).toBe("revoked");

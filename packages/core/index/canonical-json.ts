@@ -6,11 +6,18 @@ import { utf8 } from "./bytes";
  * anything JSON cannot carry (NaN, Infinity, bigint, functions, symbols) throws rather than being
  * signed as something else.
  */
+const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+
+function jsonString(text: string): string {
+  if (LONE_SURROGATE.test(text)) throw new Error("canonical JSON cannot carry a lone surrogate");
+  return JSON.stringify(text);
+}
+
 export function canonicalJson(value: unknown): string {
   if (value === null) return "null";
   switch (typeof value) {
     case "string":
-      return JSON.stringify(value);
+      return jsonString(value);
     case "boolean":
       return value ? "true" : "false";
     case "number":
@@ -28,7 +35,7 @@ export function canonicalJson(value: unknown): string {
   const members = Object.keys(record)
     .filter((key) => record[key] !== undefined)
     .sort()
-    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`);
+    .map((key) => `${jsonString(key)}:${canonicalJson(record[key])}`);
   return `{${members.join(",")}}`;
 }
 
