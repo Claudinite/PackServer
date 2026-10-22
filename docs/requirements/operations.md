@@ -1,8 +1,8 @@
 # Operations: probes, self-test and the production configuration
 
-Area `OPS`, 11 requirements. Format and rules: [README.md](README.md).
+Area `OPS`, 12 requirements. Format and rules: [README.md](README.md).
 
-REQ-OPS-001..004 come from the security review of the test plan (2026-10-22) and bind the test plan to the release plan (PR #8, `docs/release/README.md`) and the monitoring plan (`docs/operations/monitoring.md`). REQ-OPS-005..011 are the self-test contract from the release plan §5, added 2026-10-22. The actor for the self-test entries is the operator (the release flow, the synthetic prober, or a person with the probe credential), so endpoint detail is acceptable in their statements; a scenario observes them through `world.operator.selfTest(...)` ([../testing/dsl.md](../testing/dsl.md) §2.4), never through a path.
+REQ-OPS-001..004 come from the security review of the test plan (2026-10-22) and bind the test plan to the release plan (PR #8, `docs/release/README.md`) and the monitoring plan (`docs/operations/monitoring.md`). REQ-OPS-005..011 are the self-test contract from the release plan §5, added 2026-10-22; REQ-OPS-012 is the release plan's redaction rule for recorded traffic (`docs/release/shadow-traffic.md` §5.1, Ariel's decision), added the same day. The actor for the self-test entries is the operator (the release flow, the synthetic prober, or a person with the probe credential), so endpoint detail is acceptable in their statements; a scenario observes them through `world.operator.selfTest(...)` ([../testing/dsl.md](../testing/dsl.md) §2.4), never through a path.
 
 ## REQ-OPS-001 A synthetic scope is invisible outside itself
 
@@ -147,3 +147,18 @@ Each version is compiled with the range of registry schema migrations it can run
 (`SCHEMA_MIN`..`SCHEMA_MAX`). When the registry's applied migration head is outside that range,
 the full self-test reports `ok: false` with the schema check failed and names the head it found
 and the range it supports; inside the range the schema check passes.
+
+## REQ-OPS-012 A recorded invocation never holds a personal, customer-content or secret value in clear
+
+- status: active
+- since: 2026-10
+- actor: operator
+- source: release plan, `docs/release/shadow-traffic.md` §5.1 (PR #8; Ariel's decision, 2026-10-22)
+- coverage: scenario+unit (the scenario proves the placeholders on a recorded outbound call through the World; the classification table and the check that fails CI on an unclassified field are the release plan's, tested where the Recorder lives)
+
+Every value the Recorder stores, from a database column, a request or response body, a bucket or
+namespace key or an outbound client field, is classified as public, operational, personal,
+secret or customer-content, and the record is redacted before anything reads it: a personal or
+customer-content value appears only as a keyed hash behind a placeholder, a secret is dropped,
+and a value with no class is treated as customer-content. The same redaction applies to every
+record a test double emits, so what a scenario asserts on is what production stores.

@@ -66,7 +66,7 @@ previous holder is renamed and notified.
 - since: 2026-10
 - actor: admin
 - source: ARCH §7 (validation-reports)
-- decision: ARCH-SCORE (whether the LLM screens stay at all)
+- decision: ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
 - coverage: scenario
 
 An admin can view the full validation report and LLM review of any version.

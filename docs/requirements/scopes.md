@@ -8,7 +8,7 @@ Area `SCOPE`, 17 requirements. Format and rules: [README.md](README.md).
 - since: 2026-10
 - actor: publisher
 - source: ARCH §4
-- decision: ARCH-Q 5, SITE-D 5; CLN-REV 2 (Claudinite ids are bare lowercase, vendored at `.claudinite/shared/packs/<id>/`, with `local/`, `fleet/` and `temp` reserved; how a scoped registry name maps to a declared id and a vendored directory)
+- decision: ARCH-Q 5, SITE-D 5; CLN-REV 2 and O4 (Claudinite ids are bare lowercase, vendored under the member's shared packs directory as `<id>/`, with `local/`, `fleet/` and `temp` reserved; how a scoped registry name maps to a declared id, a vendored directory and the `packs/<id>/` serving path)
 - coverage: scenario
 
 Every pack is named `@<scope>/<pack>`; a scope belongs to exactly one user or organisation.
@@ -182,17 +182,14 @@ another org's pack or member by id; a grant on one pack does not read another; t
 resource the caller may not manage is "not found" where the resource is private and "forbidden"
 otherwise, consistently.
 
-## REQ-SCOPE-017 The domain-proof fetch is narrow and the registry fetches nothing else but allowlisted package-registry lookups
+## REQ-SCOPE-017 The domain-proof fetch is narrow and the registry fetches nothing else
 
 - status: active
 - since: 2026-10
 - actor: org owner (security)
-- source: SEC (security review, 2026-10-22); ARCH §4; ARCH-VAL §6, §3.4 (amended for package-registry lookups)
-- coverage: scenario+unit (the fake DNS/HTTP and the fake package registries prove the observable refusals; the fetch rules themselves are a unit test over the proof checker and the lookup client)
+- source: SEC (security review, 2026-10-22); ARCH §4; ARCH-VAL §6 (PR #3 commit 7a01329: the package-registry carve-out left with REQ-VAL-030)
+- coverage: scenario+unit (the fake DNS/HTTP proves the observable refusals; the fetch rules themselves are a unit test over the proof checker)
 
 The `.well-known` domain check fetches only `https://<claimed-host>/.well-known/packserver-auth`,
 follows no redirects, caps the body size, and the registry never fetches `repo_url` or manifest
-links server-side. The only other server-side fetches the registry makes on a user's behalf are
-the package-registry lookups of REQ-VAL-030: to a fixed allowlist of package-registry hosts, with
-only the package name taken from the pack, through the validator's egress handler, following no
-redirects and with the body capped; a host outside the allowlist is never contacted.
+links server-side. The registry makes no other server-side fetch on a user's behalf.

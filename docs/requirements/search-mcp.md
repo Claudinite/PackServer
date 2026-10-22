@@ -37,17 +37,17 @@ A task-phrased query ("deploy to GCP Cloud Run") finds packs by meaning as well 
 results can be filtered by category, part (rules, skills, checks, tasks), channel and
 verified-only.
 
-## REQ-SEARCH-004 Search hides versions younger than 24 hours unless include_fresh
+## REQ-SEARCH-004 Search hides staging versions unless include_staging
 
 - status: provisional
 - since: 2026-10
 - actor: agent
-- source: ARCH §6 cooldown, §8
-- decision: CLN-REV 5 (a 24-hour hide approximates the engine's `staging` channel; with channels, this becomes "staging versions unless asked for", REQ-DELIV-020)
+- source: ARCH §8 (as of PR #3 commit 7a01329: `include_fresh` became `include_staging`, and a `channel` filter was added); ARCH-VAL §6, §3.11
+- decision: O7 (who promotes `staging` → `stable`, and so when a version leaves the default results; the soak lengths are REQ-DELIV-019)
 - coverage: scenario
 
-By default `search_packs` excludes versions published less than 24 hours ago; `include_fresh`
-opts in.
+By default `search_packs` excludes versions still on the `staging` channel; `include_staging`
+opts in, and a `channel` filter selects one channel outright.
 
 ## REQ-SEARCH-005 get_pack returns the full public view of a version
 
@@ -161,8 +161,8 @@ state.
 - coverage: scenario
 
 A pack page shows name, publisher and badges, latest version, visibility, stars, rating,
-downloads, an adopt panel (the `cn adopt <id>` line, the `packs.declared` entry for
-`.claudinite/settings.yaml`, and the MCP tool call), a repo link or a prominent "No public repo"
+downloads, an adopt panel (the `cn adopt <id>` line, the `packs.declared` line for the member's
+Claudinite settings, and the MCP tool call), a repo link or a prominent "No public repo"
 badge, contents summary and validation status.
 
 ## REQ-SEARCH-015 One browse result in ten is an exploration slot

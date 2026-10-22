@@ -1,13 +1,17 @@
 # Validation pipeline
 
-Area `VAL`, 45 requirements. Format and rules: [README.md](README.md).
+Area `VAL`, 45 requirements (1 retired). Format and rules: [README.md](README.md).
 
 Entries REQ-VAL-024 onwards, and the amended statements of REQ-VAL-002, 010, 011, 012, 013,
 014, 018, 021, 022 and 023, come from the architecture thread's validation-flow review
 (`ARCH-VAL`, see the README's sources table). Entries that depend on one of that review's five
-open decisions are provisional and name the item (`ARCH-VAL §7-n`). The Claudinite alignment
-review (`CLN-REV`, 2026-10-22) corrected the pack vocabulary here to the pack's real parts and
-the date-form version, and its open items are cited as `CLN-REV n`.
+open decisions are provisional and name the item (`ARCH-VAL §7-n`); the ones that depend on an
+engine or registry item left open after the review's Claudinite alignment (PR #3 commits
+`7a01329` and `c410590`) name it as `O n`. The Claudinite alignment review (`CLN-REV`,
+2026-10-22) corrected the pack vocabulary here to the pack's real parts and the date-form
+version, and its open items are cited as `CLN-REV n`. REQ-VAL-030 was retired by the alignment:
+a Claudinite pack carries no MCP server config. The entries that exist only with a prose-screen
+model (012, 034–037, 039) are provisional on `ARCH-SCORE` and `ARCH-SCREEN`.
 
 ## REQ-VAL-001 Every upload is validated with live progress
 
@@ -69,17 +73,20 @@ that form, or a `requires` entry naming a pack the registry does not serve) hard
 A detected secret hard-fails; the report shows rule, file and line but never the secret value,
 and reminds the publisher to rotate it.
 
-## REQ-VAL-006 Disallowed files hard-fail; network-calling judges, checks and workers warn
+## REQ-VAL-006 Disallowed files, foreign imports and undeclared GitHub actions hard-fail
 
 - status: provisional
 - since: 2026-10
 - actor: publisher
-- source: ARCH §6; FLOW 7
+- source: ARCH §6; FLOW 7; ARCH-VAL §6 (PR #3 commit 7a01329: absorbs the import allowlists of the retired REQ-VAL-030)
 - decision: SITE-D 6
 - coverage: scenario
 
-Disallowed file types / binaries and path traversal hard-fail; hook judges, coded checks or task
-workers that make network calls produce a warning.
+Disallowed file types / binaries and path traversal hard-fail. A coded check that imports
+anything other than the public check SDK and the Go standard library, a `worker.mjs` that
+imports anything other than `@claudinite/sdk`, or use of a GitHub action not declared in
+`pack.json` fails the version. Network-calling checks, guards and workers no longer warn: they
+fail under REQ-VAL-029.
 
 ## REQ-VAL-007 A missing license warns
 
@@ -103,32 +110,35 @@ A missing license produces a warning, not a failure.
 The inventory shown on the site and over MCP (counts, names, per-skill context cost in tokens)
 is the one extracted from the archive, not the one the manifest declares.
 
-## REQ-VAL-009 Prompt-injection heuristics warn with an excerpt
+## REQ-VAL-009 Prompt-injection heuristics hold reviewer-addressed text and warn otherwise
 
 - status: provisional
 - since: 2026-10
 - actor: publisher
-- source: ARCH §6; FLOW 7
-- decision: SITE-D 6, ARCH-Q 3
+- source: ARCH §6; FLOW 7; ARCH-VAL §6 (PR #3 commit 7a01329)
+- decision: SITE-D 6, ARCH-Q 3 (a hold needs the human queue)
 - coverage: scenario
 
-Prompt-injection / tool-poisoning heuristics on `RULES.md`, `SKILL.md` files and task
-descriptions produce a warning with a human-readable excerpt.
+Prompt-injection / tool-poisoning heuristics run on `RULES.md`, `SKILL.md` files, the what, why
+and fix text of findings, and task agentic-phase prompts. Reviewer-addressed text holds the
+version; every other heuristic produces a warning with a human-readable excerpt. These are
+static heuristics; whether a model screen runs as well is a separate decision (`ARCH-SCREEN`),
+and the entries that exist only with one name it.
 
-## REQ-VAL-010 Every shipped check or hook is proven against a firing and a silent fixture
+## REQ-VAL-010 Every shipped declared check, coded check and guard is proven against a firing and a silent fixture
 
 - status: provisional
 - since: 2026-10
 - actor: publisher
-- source: ARCH-VAL §6 (replaces the "run the pack's declared tests" statement of ARCH §6 step 3; FLOW 7)
+- source: ARCH-VAL §6 (replaces the "run the pack's declared tests" statement of ARCH §6 step 3; FLOW 7; PR #3 commit 7a01329)
 - decision: ARCH-VAL §7-2 (the load-and-prove gate); ARCH-VAL §7-4 (which tier a missing fixture holds)
 - coverage: scenario
 
-For every check or hook the pack ships, the pack provides a firing fixture and a silent fixture,
-and the validator runs the check against both in the sandbox: a check that stays silent on the
-firing fixture or fires on the silent one hard-fails the version. Missing fixtures hold a
-community-tier version for human review and only warn a third-party one. Task workers and
-precondition scripts are run once with egress off and their exit status recorded; rules and
+For every declared check, coded check and guard the pack ships, the pack provides a firing
+fixture and a silent fixture, and the validator runs it against both in the sandbox: one that
+stays silent on the firing fixture or fires on the silent one hard-fails the version. Missing
+fixtures hold a community-tier version for human review and only warn a third-party one. Task
+workers and env setup are run once with egress off and their exit status recorded; rules and
 skills are prose and are never executed. The pack's own declared tests are no longer what decides
 the verdict.
 
@@ -153,7 +163,7 @@ verdict. Results are written by the registry, never by the sandbox.
 - since: 2026-10
 - actor: system
 - source: ARCH §6 step 4; ARCH-VAL §6
-- decision: ARCH-Q 3; ARCH-SCORE (whether the LLM screens stay at all)
+- decision: ARCH-Q 3; ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
 - coverage: scenario
 
 An LLM review runs only after every cheaper step has passed and a credit has been reserved (or the
@@ -227,22 +237,21 @@ previous runs stay listed for comparison.
 
 A publisher whose runs fail 10 or more times in a day is soft-rate-limited on further runs.
 
-## REQ-VAL-018 Live versions are rescanned on rule, prompt and dependency changes; a finding quarantines
+## REQ-VAL-018 Live versions are rescanned on rule and screen changes and their domains weekly; a finding quarantines
 
 - status: provisional
 - since: 2026-10
 - actor: system
-- source: ARCH §6 "Ongoing"; ARCH-VAL §6
-- decision: ARCH-Q 7; ARCH-VAL §7-1 (the weekly dependency re-resolution exists only with the capability model); ARCH-VAL §7-3 (what a revocation does in cn)
+- source: ARCH §6 "Ongoing"; ARCH-VAL §6 (PR #3 commit 7a01329: packs have no package dependencies, so the dependency re-resolution is gone)
+- decision: ARCH-Q 7; O5 (what a revocation does in cn); ARCH-SCREEN (the prose-screen rescan exists only with a screen)
 - coverage: scenario
 
-Every live `latest` version is rescanned with the static rules whenever a rule changes, with the
-screening reviewer whenever its prompt or model changes, and its MCP packages and URL domains are
-re-resolved weekly; the thousand packs held by the most members get the full pipeline weekly
-regardless. A
-rescan finding moves the version to `quarantined` with a reason (`dependency-drift` when a
-package or domain no longer resolves as validated) in the signed index and in MCP status;
-quarantine is reversible, and only a human can move a version to `revoked`.
+Every live latest version is rescanned with the static rules whenever a rule changes and with
+the prose screen whenever the screen model or its question changes; the URL domains found in
+its prose are re-resolved weekly; the thousand packs held by the most members get the full
+pipeline weekly regardless. A rescan finding moves the version to `quarantined` with a reason
+(`domain-drift` when a domain no longer resolves as validated) in the signed index and in MCP
+status; quarantine is reversible, and only a human can move a version to `revoked`.
 
 ## REQ-VAL-019 Promotion is idempotent per version
 
@@ -362,17 +371,17 @@ version for human review; code or prose that fetches an executable from a URL ha
 - status: provisional
 - since: 2026-10
 - actor: publisher / anonymous visitor / agent
-- source: ARCH-VAL §6, §3.2
-- decision: ARCH-VAL §7-1; CLN-REV 4 (whether the capability set is the pre-install manifest)
+- source: ARCH-VAL §6, §3.2 (PR #3 commit 7a01329)
+- decision: ARCH-VAL §7-1 (the extracted capability model); O8 (whether the set is carried in the signed index as the pre-install manifest, or the engine produces it)
 - coverage: scenario
 
-The validator computes the version's capability set (hook judges and the hook events they run on,
-tool calls guarded, coded-check execution, task execution with its cadence, task-worker Node
-execution, GitHub actions declared in `pack.json`, forced skills, network with its domain list,
-filesystem outside the repo, reads of secrets) from the archive, not from a declaration. A
-manifest that declares fewer capabilities than were extracted hard-fails. The set is stored with
-the version, signed into the index, and shown on the pack page and over MCP; a prose-only pack has
-an empty set.
+The validator computes the version's capability set from the archive, not from a declaration.
+The set is: `guard` (a PreToolUse judge that can deny a tool call), `coded-check`, `task` (with
+its cadence, and whether it is `opens-pr` or has an `agentic-phase`), `env-setup`,
+`forced-skill`, and `github-action:<name>` for each named GitHub action the pack declares in
+`pack.json`. A manifest that declares fewer capabilities than were extracted hard-fails. The set
+is stored in `meta.json` with the version and shown on the pack page and over MCP; it is not
+signed into the index, which has no such field. A prose-only pack has an empty set.
 
 ## REQ-VAL-028 A new capability holds the version and forces passkey approval
 
@@ -388,29 +397,28 @@ is held for human review and, once approved, is staged for the owner's passkey a
 regardless of the pack's staged-publishing setting; the approval presents the diff summary and
 the new capabilities. The hold never resolves by timeout.
 
-## REQ-VAL-029 Executable content may not reach the network unless the pack declares the domains
+## REQ-VAL-029 Executable content may not reach the network at all
 
 - status: provisional
 - since: 2026-10
 - actor: publisher (security)
-- source: ARCH-VAL §6, §3.3
+- source: ARCH-VAL §6, §3.3 (PR #3 commit 7a01329: no declared-domains exception)
 - decision: ARCH-VAL §7-1
 - coverage: scenario+contract (the in-process scenario uses the Sandbox port's recorded egress attempts; the real egress recording is proven by the nightly sandbox contract suite)
 
-Hook judges, coded checks and task workers may not open network connections unless the pack
-declares a network capability with a domain list. An egress attempt recorded during the sandbox
-run to a destination outside the declared domains hard-fails the version, and so does a static
-network pattern in that content when no network capability is declared. Declared domains are
-listed publicly with the capability set and re-checked at rescan (REQ-VAL-018).
+Checks, guards, task workers and env setup may not open network connections at all; there is no
+declared-domains exception. An egress attempt recorded during the sandbox run hard-fails the
+version, and so does a static network pattern in that content. GitHub access is only through
+the named actions declared in `pack.json` (REQ-VAL-006).
 
 ## REQ-VAL-030 An MCP server config is pinned, allowlisted and looked up in its registry
 
-- status: provisional
+- status: retired
 - since: 2026-10
 - actor: publisher (security)
-- source: ARCH-VAL §6, §3.4, §1 T4
-- decision: ARCH-VAL §7-1; CLN-REV 3 (a Claudinite pack carries no MCP server config; if pack JavaScript imports only `@claudinite/sdk`, this reduces to an import allowlist on task workers)
-- coverage: scenario+contract (the fake package registries prove the refusals; the fixed-host allowlist, no-redirect and body-cap rules of the lookup are contract tests on the port)
+- source: ARCH-VAL §6, §3.4, §1 T4 (earlier draft)
+- retired: PR #3 commit 7a01329 (the architecture's Claudinite alignment), confirmed by `CLN-REV 3`: a Claudinite pack carries no MCP server config; the import allowlist this reduced to is in REQ-VAL-006, and the package-registry lookups and the REQ-SCOPE-017 carve-out they needed are gone with it
+- coverage: manual (never built; no scenario may name this ID)
 
 An MCP server config hard-fails unless its launcher is one of the allowlisted commands, its
 package is pinned to an exact version with an integrity hash, the package exists in its registry
@@ -425,38 +433,42 @@ reads (REQ-SCOPE-017).
 - status: provisional
 - since: 2026-10
 - actor: publisher (security)
-- source: ARCH-VAL §6, §3.3, §1 T5
+- source: ARCH-VAL §6, §3.3, §1 T5 (unchanged by PR #3 commit 7a01329)
 - decision: ARCH-VAL §7-1
 - coverage: scenario
 
 A floating dependency version (`latest`, a range, an unpinned git ref) or a pipe-to-shell pattern
-hard-fails whether it appears in a hook judge, a check, a task worker or in prose that tells the
-agent to run it.
+hard-fails wherever it appears: in a guard, a check, a task worker, env setup or in prose that
+tells the agent to run it.
 
 ## REQ-VAL-032 A pack that the pinned cn engine cannot load fails validation
 
 - status: provisional
 - since: 2026-10
 - actor: publisher
-- source: ARCH-VAL §6, §3.5
+- source: ARCH-VAL §6, §3.5 (PR #3 commit 7a01329)
 - decision: ARCH-VAL §7-2
 - coverage: scenario+contract (the Sandbox port's scripted load result in-process; the real pinned cn inside the sandbox image in the nightly contract suite)
 
-The sandbox loads the extracted pack into an empty fixture repository with a pinned cn engine; a
-pack that fails to load hard-fails validation with the loader's message located by file.
+The sandbox (a pinned cn, Go 1.24+ with `GOPROXY=off`, Node 22+) loads the extracted pack into an
+empty fixture repository twice: with the newest engine and with the lowest engine its
+`minEngineVersion` allows; a load failure in either hard-fails validation with the loader's
+message located by file. The manifest's `version` must be in the form `1.YMMDD.n` and greater
+than the pack's newest version, its `minEngineVersion` a three-part engine version, and every
+`requires` entry must name a published pack.
 
 ## REQ-VAL-033 The promoted archive is a canonical re-pack that round-trips to the validated tree
 
 - status: provisional
 - since: 2026-10
 - actor: cn engine / publisher
-- source: ARCH-VAL §6, §3.16, §4 step 8
-- decision: ARCH-VAL §7-5
+- source: ARCH-VAL §6, §3.16, §4 step 8 (PR #3 commit 7a01329)
+- decision: ARCH-VAL §7-5; O3 (the archive format: the canonical form is the `.tar.gz` that `cn vendor` produces)
 - coverage: scenario+contract (the in-process scenario proves which bytes are promoted and the infrastructure-error path; the deterministic re-pack and the round-trip are proven against the real sandbox image)
 
 The archive promoted and served for a version is a deterministic re-pack of the validated tree
 (sorted paths, fixed metadata, plain entry names, a single compression frame within the window
-limit), not the uploaded bytes. Before promotion the sandbox re-extracts the canonical archive
+limit), not the uploaded bytes, and is the `.tar.gz` that `cn vendor` would produce. Before promotion the sandbox re-extracts the canonical archive
 with the same bounded decoder and compares its tree hash with the validated tree; a mismatch is
 an infrastructure error and nothing is promoted. The uploaded bytes stay in staging for the
 staging lifetime (REQ-PUB-020) so a disputed re-pack can be re-examined, and a publisher can
@@ -469,7 +481,7 @@ workflow already uses to build a version's archive.
 - since: 2026-10
 - actor: publisher
 - source: ARCH-VAL §6, §3.6
-- decision: ARCH-Q 3; ARCH-SCORE (whether the LLM screens stay at all)
+- decision: ARCH-Q 3; ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
 - coverage: scenario
 
 Every LLM finding carries a rule id, severity, file, line and a quote from the archive; the
@@ -484,7 +496,7 @@ admins can see in the report.
 - since: 2026-10
 - actor: publisher (security)
 - source: ARCH-VAL §6, §3.6, §1 T13
-- decision: ARCH-Q 3; ARCH-SCORE (whether the LLM screens stay at all)
+- decision: ARCH-Q 3; ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
 - coverage: scenario+contract (the scenario proves the hold and the separation of calls through the LLM port's recorded requests; the delimiter contract is a contract test on the port)
 
 Pack content is passed to the reviewer inside delimiters carrying a per-run random nonce and
@@ -498,7 +510,7 @@ reviewing this") holds the version by itself, and that hold never resolves by ti
 - since: 2026-10
 - actor: system
 - source: ARCH-VAL §6, §3.6
-- decision: ARCH-Q 3; ARCH-VAL §7-4 (the accepted spend for two screens); ARCH-SCORE (whether the LLM screens stay at all)
+- decision: ARCH-Q 3; ARCH-VAL §7-4 (the accepted spend for two screens); ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
 - coverage: scenario
 
 Two independent screening reviews with different framings run on every version that reaches the
@@ -512,7 +524,7 @@ never partially reviewed.
 - since: 2026-10
 - actor: publisher
 - source: ARCH-VAL §6, §3.7, §4 step 11
-- decision: ARCH-Q 3; ARCH-SCORE (whether the LLM screens stay at all)
+- decision: ARCH-Q 3; ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
 - coverage: scenario
 
 When the deep review finds the version malicious with high confidence and every quoted piece of
@@ -539,7 +551,7 @@ setting.
 - since: 2026-10
 - actor: publisher
 - source: ARCH-VAL §6, §4 steps 9 and 14; ARCH §9
-- decision: SITE-D 3 (the same decision as REQ-PAY-003); ARCH-SCORE (whether the LLM screens stay at all)
+- decision: SITE-D 3 (the same decision as REQ-PAY-003); ARCH-SCORE (whether the LLM screens stay at all); ARCH-SCREEN (which prose-screen model, if any)
 - coverage: scenario
 
 For a new public pack a credit is reserved, not consumed, before the LLM step runs, and consumed
@@ -566,16 +578,18 @@ resumes the run at the payment step without re-validating.
 - status: provisional
 - since: 2026-10
 - actor: anonymous visitor / agent / cn engine
-- source: ARCH-VAL §6, §3.10
-- decision: ARCH-VAL §7-4; CLN-REV 6 (the top tier's name: `reviewed` is a placeholder, since `canon` already names Claudinite's central pack set)
+- source: ARCH-VAL §6, §3.10 (PR #3 commit 7a01329)
+- decision: ARCH-VAL §7-4; O6 (the tier reaches the signed index only once the engine has a `tier` field and a `minTier` setting); O7 (third-party versions stay on the `staging` channel); CLN-REV 6 (the top tier's name: `reviewed` is a placeholder, since `canon` already names Claudinite's central pack set)
 - coverage: scenario
 
-Each promoted version carries one tier, `reviewed`, `community` or `third-party`, stored with the
-version and signed into the index. A community version has passed every fail rule, loaded under
-cn, proven its fixtures and been found benign by both screens or a human. A third-party version
-(missing fixtures, or resolved from an uncertainty hold by timeout) carries a persistent warning
-on the pack page and in cn, is excluded from default MCP results unless the caller opts in
-(REQ-SEARCH-019), and never fills an exploration slot. cn can enforce a per-repo minimum tier.
+Each promoted version carries one tier, `reviewed`, `community` or `third-party`, stored in
+`meta.json` with the version and shown in search and on the pack page; it is in the signed index
+only once the engine has a `tier` field. A community version has passed every fail rule, loaded
+under cn, proven its fixtures and been found benign by both screens or a human. A third-party
+version (missing fixtures, or resolved from an uncertainty hold by timeout) carries a persistent
+warning on the pack page and in cn, is excluded from default MCP results unless the caller opts
+in (REQ-SEARCH-019), never fills an exploration slot, and stays on the `staging` channel
+(REQ-DELIV-019). cn can enforce a per-repo minimum tier once the index carries the field.
 
 ## REQ-VAL-042 The public view shows tier, capabilities, provenance and hashes, never finding text
 
@@ -583,7 +597,7 @@ on the pack page and in cn, is excluded from default MCP results unless the call
 - since: 2026-10
 - actor: anonymous visitor / agent
 - source: ARCH-VAL §6, §3.13
-- decision: SITE-D 7; ARCH-VAL §7-1, §7-4, §7-5 (the fields that exist only with those decisions); CLN-REV 4 (whether the capability list is the pre-install manifest), CLN-REV 6 (the top tier's name)
+- decision: SITE-D 7; ARCH-VAL §7-1, §7-4, §7-5 (the fields that exist only with those decisions); O8 (whether the capability list is also the signed pre-install manifest), CLN-REV 6 (the top tier's name)
 - coverage: scenario
 
 The public pack page and the MCP pack view show the version's tier, capability list, provenance,
@@ -626,11 +640,11 @@ and not the other is a defect.
 - status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH-VAL §6 (PR #3 commit cf69b20; replaces the 10-minute cap of ARCH §6 step 3)
+- source: ARCH-VAL §6 (PR #3 commit cf69b20; replaces the 10-minute cap of ARCH §6 step 3; unchanged by 7a01329)
 - coverage: scenario+contract (the in-process scenario proves the verdicts against the faked sandbox; the real limits are proven by the sandbox contract corpus)
 
 A sandbox run (validation steps 3 to 8) stops after 5 minutes of wall-clock time. Inside it,
-extraction stops after 60 seconds and each check or hook fixture after 30 seconds. A run, check
+extraction stops after 60 seconds and each check or guard fixture after 30 seconds. A run, check
 or fixture that hits its limit fails the version with the reason `sandbox.timeout`, except an
 extraction timeout, which fails it with `archive.unsafe` and is final: no retry, no credit, no
 LLM review. A dry-run therefore answers within the promised 4 minutes or with a timeout verdict.

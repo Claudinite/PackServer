@@ -7,20 +7,24 @@ status; the pinned `cn` today reads `packs/<id>/index.json` and `packs/catalog.j
 `channel`, `revoked`, `minEngineVersion`, `requires` and a serial per version. Which layout
 PackServer serves is `CLN-REV 1`, so those entries are provisional and keep their original
 statements until Ariel decides. REQ-DELIV-020 is the channel entry the Claudinite alignment
-review found missing (`CLN-REV 5`).
+review found missing; the architecture thread's alignment (PR #3 commits `7a01329` and
+`c410590`) made channels the model for REQ-DELIV-019 and 020 too, leaving who promotes
+`staging` → `stable` open as `O7`, and replaced the revocation split of REQ-DELIV-018 with the
+engine's report-only model (`O5`).
 
-## REQ-DELIV-001 Public versions download from immutable URLs with both hashes and the attestation
+## REQ-DELIV-001 Public versions download from write-once URLs that cn verifies against the signed index
 
 - status: provisional
 - since: 2026-10
 - actor: anonymous visitor / cn engine
-- source: ARCH §7; ARCH-VAL §6, §3.16
-- decision: ARCH-VAL §7-5 (without the canonical re-pack a download carries one sha256, as before)
+- source: ARCH §7; ARCH-VAL §6, §3.16 (PR #3 commit 7a01329)
+- decision: ARCH-VAL §7-5 (without the canonical re-pack a download carries one sha256, as before); O1 (which roots certify the index key); O3 (the archive format); O4 (how a registry name maps onto the bare pack id in the path)
 - coverage: scenario
 
-A public pack version is downloadable at an immutable, versioned URL and every download response
-carries the canonical archive's SHA-256 (the bytes being served), the uploaded archive's SHA-256
-and the attestation URL; the signed index carries the canonical hash for every version.
+A public pack version is downloadable at `packs/<id>/<version>.tar.gz`, written once and never
+changed. cn verifies the per-pack index signature and the archive's sha256 from that index; the
+attestation, which covers the upload and canonical sha256, is extra provenance shown on the
+site, not something cn needs to adopt the version.
 
 ## REQ-DELIV-002 Served bytes never change after publication
 
@@ -189,7 +193,7 @@ Neither bucket is listable or reachable except through the custom domain (public
 - since: 2026-10
 - actor: cn
 - source: SEC (security review, 2026-10-22); ARCH §7
-- decision: SEC-1 (no rotation story exists in ARCH; the key id format and the window length are undecided)
+- decision: SEC-1 (no rotation story exists in ARCH; the key id format and the window length are undecided); O1 (whether the packs index key is certified by cn's embedded roots or cn gains a second root, which decides what a key id and a rotation mean to cn)
 - coverage: scenario
 
 The index and attestation signing key carries a key id; cn accepts a published successor key
@@ -200,50 +204,50 @@ during a rotation window, so a compromised key has a recovery path.
 - status: provisional
 - since: 2026-10
 - actor: cn engine
-- source: ARCH-VAL §6, §3.16
-- decision: ARCH-VAL §7-5
+- source: ARCH-VAL §6, §3.16 (PR #3 commit 7a01329)
+- decision: O3 (an engine change; if PackServer canonicalises to exactly what `cn vendor` emits, cn's existing sha256 check is enough and this entry retires)
 - coverage: scenario+unit (the scenario proves the refusal of a tampered or mis-served archive through the member handle; the canonical grammar is a unit test in the engine's extractor)
 
 cn extracts an archive from the registry only when it is in canonical form (REQ-VAL-033) and its
 bytes match the canonical hash in the attestation; any other archive, including one that a lenient
 extractor would accept, is refused with a verification error and nothing is vendored.
 
-## REQ-DELIV-018 A security revocation disables the version's executable surface in cn; other statuses only report
+## REQ-DELIV-018 A revoked version is never selected by cn and is reported on every update run
 
 - status: provisional
 - since: 2026-10
 - actor: cn engine
-- source: ARCH-VAL §6, §3.12
-- decision: ARCH-VAL §7-3
+- source: ARCH-VAL §6, §3.12 (PR #3 commit 7a01329: the engine's revoked model replaces the revocation split)
+- decision: O5 (whether a security revocation goes further than reporting: removal in the update PR, or a session-time disable, both engine changes)
 - coverage: scenario
 
-When a version's status in the signed index becomes `revoked` with a security reason, a member
-holding that version disables its hook judges, coded and declared checks and tasks at the next
-session start and keeps its rules and skills loaded behind a banner, until a person in that
-member acknowledges it. A member can opt out per repo into report-only handling; `yanked`,
-`deprecated` and `quarantined` only report and never disable anything.
+A revoked version is marked `revoked: true` in the signed per-pack index. cn never selects it,
+and a member that holds it sees it reported on every update run. Nothing happens at session
+start: sessions never read the registry. `yanked`, `deprecated` and `quarantined` likewise only
+report.
 
-## REQ-DELIV-019 The update task opens a PR for a new version only after a tier-aware cooldown
+## REQ-DELIV-019 A new version is published to staging and promoted to stable after the soak
 
 - status: provisional
 - since: 2026-10
 - actor: cn engine
-- source: ARCH-VAL §6, §3.11; ARCH §6 cooldown
-- decision: ARCH-VAL §7-4; CLN-REV 5 (a time-based cooldown approximates the engine's `staging` → `stable` soak, which cn already selects on)
+- source: ARCH-VAL §6, §3.11 (PR #3 commit 7a01329: channels replace the time-based cooldown of ARCH §6)
+- decision: O7 (who promotes `staging` → `stable`); ARCH-VAL §7-4 (the third-party tier, which never leaves `staging`)
 - coverage: scenario
 
-The scheduled update task opens a PR for a new community-tier version only once it is 24 hours
-old when its publisher is a Verified Publisher and 72 hours old otherwise, and never for a
-third-party version. A PR for a version that introduced new capabilities carries the capability
-diff in its description.
+A new version is published to the `staging` channel and promoted to `stable` after a soak of 24
+hours when its publisher is a Verified Publisher and 72 hours otherwise; a third-party version
+stays on `staging`. cn selects by the member's channel, so a member on `stable` is offered the
+version only once it is promoted. An update PR for a version that introduced new capabilities
+carries the capability diff in its description.
 
 ## REQ-DELIV-020 Every version is published to staging first and reaches stable after the soak
 
 - status: provisional
 - since: 2026-10
 - actor: cn engine
-- source: CLN-REV (the primer's "Serving layout today": channels `staging` and `stable`; engine selection is on the member's channel)
-- decision: CLN-REV 5 (whether PackServer publishes the channel field cn selects on, and what promotes `staging` → `stable`)
+- source: CLN-REV (the primer's "Serving layout today": channels `staging` and `stable`; engine selection is on the member's channel); ARCH-VAL §6, §3.11 (PR #3 commit 7a01329)
+- decision: O7 (who promotes `staging` → `stable`; the soak lengths are REQ-DELIV-019)
 - coverage: scenario
 
 Every version is published to the `staging` channel first and reaches `stable` only after the
