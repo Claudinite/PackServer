@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { loadRules, RULES_VERSIONS } from "../src/index";
 
 const checkTool = new URL("../../../tools/check-rules.mjs", import.meta.url).pathname;
@@ -51,8 +51,14 @@ describe("check-rules", () => {
     return spawnSync("node", [checkTool, dir], { encoding: "utf8" });
   }
 
-  function mutated(edit: (rules: { rules: Array<Record<string, unknown>> }) => void) {
+  const tempDirs: string[] = [];
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  function mutated(edit: (rules: { security_categories?: string[]; rules: Array<Record<string, unknown>> }) => void) {
     const dir = mkdtempSync(join(tmpdir(), "rules-"));
+    tempDirs.push(dir);
     cpSync(join(rulesDir, "2026.10.1"), join(dir, "2026.10.1"), { recursive: true });
     const file = join(dir, "2026.10.1", "static-rules.json");
     const data = JSON.parse(readFileSync(file, "utf8"));
@@ -86,5 +92,27 @@ describe("check-rules", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/class/);
     expect(result.stderr).toMatch(/duplicate/);
+  });
+
+  it("rejects a dropped security category even when its rule is warn", () => {
+    const dir = mutated((d) => {
+      d.security_categories = d.security_categories!.filter((c) => c !== "network");
+      for (const r of d.rules) if (r.category === "network") r.class = "warn";
+    });
+    const result = run(dir);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/security_categories/);
+    expect(result.stderr).toMatch(/never warn/);
+  });
+
+  it("reports missing fields as findings rather than crashing", () => {
+    const dir = mutated((d) => {
+      delete d.security_categories;
+      delete (d.rules[0] as Record<string, unknown>).id;
+    });
+    const result = run(dir);
+    expect(result.status).toBe(1);
+    expect(result.stderr).not.toMatch(/TypeError/);
+    expect(result.stderr).toMatch(/security_categories/);
   });
 });

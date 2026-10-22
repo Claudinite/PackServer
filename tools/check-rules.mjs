@@ -8,6 +8,8 @@ const CLASSES = ["fail", "hold", "warn"];
 const PARTS = ["context_cost", "skill_structure", "checks", "source", "footprint"];
 const CAPS = ["published_advisory", "no_public_repo"];
 const PROSE_SCREENS = ["static-only"];
+// REQ-VAL-024: findings in these categories are never warnings. Pinned here so the data cannot redefine them.
+const SECURITY_CATEGORIES = ["credentials", "network", "process-execution", "archive-safety", "reviewer-addressed"];
 
 function read(version, name) {
   try {
@@ -33,27 +35,34 @@ for (const v of versions) {
 
   const sr = files["static-rules"];
   if (sr) {
-    const ids = new Set();
-    const security = new Set(sr.security_categories);
-    for (const r of sr.rules) {
-      if (ids.has(r.id)) problems.push(`${v}: duplicate rule id ${r.id}`);
-      ids.add(r.id);
-      if (!CLASSES.includes(r.class)) problems.push(`${v}: rule ${r.id} has class ${r.class}, not one of ${CLASSES}`);
-      if (security.has(r.category) && r.class === "warn") {
-        problems.push(`${v}: rule ${r.id} is in security category ${r.category} and is never warn`);
-      }
-      if (!r.description) problems.push(`${v}: rule ${r.id} has no description`);
+    if (JSON.stringify([...(sr.security_categories ?? [])].sort()) !== JSON.stringify([...SECURITY_CATEGORIES].sort())) {
+      problems.push(`${v}: security_categories must be exactly ${SECURITY_CATEGORIES}`);
     }
-    for (const c of security) {
-      if (!sr.rules.some((r) => r.category === c)) problems.push(`${v}: security category ${c} has no rule`);
+    const ids = new Set();
+    const rules = Array.isArray(sr.rules) ? sr.rules : [];
+    if (rules.length === 0) problems.push(`${v}: static-rules.json has no rules`);
+    for (const [i, r] of rules.entries()) {
+      const name = r?.id ?? `#${i}`;
+      if (typeof r?.id !== "string" || !r.id) problems.push(`${v}: rule #${i} has no id`);
+      else if (ids.has(r.id)) problems.push(`${v}: duplicate rule id ${r.id}`);
+      else ids.add(r.id);
+      if (!CLASSES.includes(r?.class)) problems.push(`${v}: rule ${name} has class ${r?.class}, not one of ${CLASSES}`);
+      if (typeof r?.category !== "string" || !r.category) problems.push(`${v}: rule ${name} has no category`);
+      else if (SECURITY_CATEGORIES.includes(r.category) && r.class === "warn") {
+        problems.push(`${v}: rule ${name} is in security category ${r.category} and is never warn`);
+      }
+      if (!r?.description) problems.push(`${v}: rule ${name} has no description`);
+    }
+    for (const c of SECURITY_CATEGORIES) {
+      if (!rules.some((r) => r?.category === c)) problems.push(`${v}: security category ${c} has no rule`);
     }
   }
 
   const sc = files.score;
   if (sc) {
-    if (JSON.stringify(Object.keys(sc.parts).sort()) !== JSON.stringify([...PARTS].sort())) {
+    if (JSON.stringify(Object.keys(sc.parts ?? {}).sort()) !== JSON.stringify([...PARTS].sort())) {
       problems.push(`${v}: score parts must be exactly ${PARTS}`);
-    } else if (PARTS.reduce((n, p) => n + sc.parts[p], 0) !== 100) {
+    } else if (PARTS.reduce((n, p) => n + Number(sc.parts[p]), 0) !== 100) {
       problems.push(`${v}: score part weights must sum to 100`);
     }
     for (const c of CAPS) {
@@ -64,10 +73,10 @@ for (const v of versions) {
   const q = files.questions;
   const t = files.thresholds;
   if (q && t) {
-    const qids = q.questions.map((x) => x.id).sort();
-    const tids = Object.keys(t.questions).sort();
+    const qids = (q.questions ?? []).map((x) => x?.id).sort();
+    const tids = Object.keys(t.questions ?? {}).sort();
     if (JSON.stringify(qids) !== JSON.stringify(tids)) problems.push(`${v}: thresholds must cover exactly the question ids`);
-    for (const [id, n] of Object.entries(t.questions)) {
+    for (const [id, n] of Object.entries(t.questions ?? {})) {
       if (typeof n !== "number" || n < 0 || n > 1) problems.push(`${v}: threshold ${id} must be a probability`);
     }
   }

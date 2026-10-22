@@ -180,7 +180,7 @@
       "id": "fixtures.missing",
       "class": "warn",
       "category": "docs",
-      "description": "A pack with coded checks has no fixtures."
+      "description": "A prose-only pack has no fixtures."
     },
     {
       "id": "style.markdown",
