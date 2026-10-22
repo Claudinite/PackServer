@@ -334,8 +334,8 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 </tr>
 <tr>
 <td>Prompt-injection heuristics on <code>RULES.md</code> and <code>SKILL.md</code> (prose scanned as code)</td>
+<td>✓ (manual review on request for a false positive)</td>
 <td></td>
-<td>✓ (human-readable excerpt)</td>
 </tr>
 <tr>
 <td>Manifest of effects derived and shown (guards and the tool calls they judge, tasks and cadence, forced skills, GitHub actions requested)</td>
@@ -358,7 +358,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <li>Publisher fixes source.</li>
 <li>Upload path: re-upload in <code>publish</code> step 1 (draft retains listing fields). GitHub path: push a new tag (immutable tags; a tag cannot be reused; bump the build number on the same day: <code>1.61021.2</code>).</li>
 <li>New run; previous runs listed on <code>validation</code> for comparison.</li>
-<li>Advisory findings do not block publish but are shown on <code>pack</code> as &quot;Published with warnings&quot; (public: names of warned checks only).</li>
+<li>Advisory findings do not block publish but are shown on <code>pack</code> as &quot;Published with warnings&quot;. The whole report, logs included, becomes public when the version is published; before that only the publisher sees it and can choose not to publish.</li>
 </ol>
 <div class="diagram"><pre class="mermaid">flowchart TD
   A["Validation run"] --&gt; B{"Blocking checks pass?"}
@@ -539,7 +539,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <h2 id="f-13-report-abuse-moderation">13. Report abuse / moderation</h2>
 <p><strong>Goal</strong>: anyone can flag malicious or infringing packs, reviews or users; moderators act quickly with an audit trail.</p>
 <ol>
-<li>&quot;Report abuse&quot; link in <code>pack</code> header menu, on each review, on <code>publisher</code> profile. Anonymous allowed with Turnstile; signed-in users pre-filled.</li>
+<li>&quot;Report abuse&quot; link in <code>pack</code> header menu, on each review, on <code>publisher</code> profile. Sign-in required (owner, 2026-10-22); an anonymous click opens <code>signin</code> and returns to the form.</li>
 <li>Form: category (malware / prompt injection / secrets leak / impersonation / spam / IP infringement / other), details, evidence URL.</li>
 <li>Severity routing: malware / prompt injection / secrets → auto-quarantine if ≥3 independent reports or 1 report from a verified org → pack shows &quot;Under review&quot;, <code>fetch_pack</code> and the archive URL return a 451-style hold with reason; moderators notified immediately.</li>
 <li>Moderator reviews (admin UI, out of scope): dismiss, hide pack/review, revoke versions, suspend publisher, revoke verification.</li>
@@ -777,7 +777,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <td><code>validation</code></td>
 <td><code>/validation/{run_id}</code></td>
 <td>Validation report</td>
-<td>Publisher (public summary visible on <code>pack</code>)</td>
+<td>Publisher until published; public with the published version</td>
 <td>Overall verdict (pass / warn / fail); check list with status + expandable detail: schema, manifest (version is semver <code>x.y.z</code>, <code>minEngineVersion</code>, <code>requires</code>), effects manifest (derived), security scan, SDK-only imports, secret scan, prompt-injection heuristics on <code>RULES.md</code> and <code>SKILL.md</code>, test run (logs), size limits, license; duration; &quot;Re-run&quot; / &quot;Resubmit&quot; buttons; link to source commit/archive hash</td>
 <td>Re-run, resubmit, download log</td>
 </tr>
@@ -921,7 +921,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 </tr>
 <tr>
 <td>Report abuse</td>
-<td>✓ (captcha)</td>
+<td>✗</td>
 <td>✓</td>
 <td>✓</td>
 <td>✓</td>
@@ -1055,16 +1055,16 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <ol>
 <li><strong>Stars vs. rankings</strong>: proposal is stars (bookmark/popularity) + 1-5 rating with written review (VS Code Marketplace / Docker Hub pattern). Alternative: stars only (crates.io / npm) or thumbs-up/down. Input from the persona study: never rank by stars or installs; a score is accepted only from verifiable facts with a published formula. See decision 15.</li>
 <li><strong>Private pack access model</strong> (settled, owner 2026-10-22): an allowlist of GitHub orgs per private pack, proven by the GitHub Actions OIDC token; see Private pack access.</li>
-<li><strong>Charge timing</strong>: proposal is charge-after-validation-passes (see <code>flows.md</code> &gt; Payment). Alternative: charge-on-submit with refund on fail.</li>
-<li><strong>MFA scope</strong>: proposal is required for publishers, optional for signed-in users. Decide whether org owners must re-verify MFA for all org members (npm &quot;enforce 2FA&quot; style).</li>
+<li><strong>Charge timing</strong> (settled, owner 2026-10-22): a credit is reserved after validation passes and consumed on publish; a failed run never costs anything (<code>flows.md</code> §8).</li>
+<li><strong>MFA scope</strong> (settled, owner 2026-10-22): required for publishers, optional for other signed-in users; an org owner can require it for every org member (npm &quot;enforce 2FA&quot; style).</li>
 <li><strong>Namespace model</strong>: scoped <code>@&lt;scope&gt;/&lt;pack&gt;</code>, matching the backend design. A scope belongs to a user or an org; its badge states what was proven (GitHub org, domain). Names are never recycled. Scoped names remove name-squatting disputes. See decision 13.</li>
-<li><strong>Validation gate strictness</strong>: which checks are blocking (schema, secrets, size) vs. advisory (prompt-injection heuristics, missing tests). Proposal in <code>validation</code> page.</li>
-<li><strong>Public validation detail</strong>: show full report publicly vs. only verdict + check names. Proposal: verdict + check list public, logs publisher-only.</li>
-<li><strong>Rating eligibility</strong>: anyone signed-in vs. only accounts whose repos hold the pack. Proposal: any signed-in user, with &quot;verified adoption&quot; badge on reviews from accounts whose repos fetched the pack.</li>
-<li><strong>Review moderation</strong>: publisher reply only vs. publisher can flag; proposal: reply + flag, never delete.</li>
-<li><strong>Anonymous abuse reports</strong>: allow with captcha vs. require sign-in. Proposal: allow with captcha (Turnstile).</li>
-<li><strong>Category taxonomy</strong>: fixed curated list vs. free tags. Proposal: fixed top-level categories + free tags.</li>
-<li><strong>Org verification method</strong> (settled by the backend design): GitHub org proof (read-only App install or GitHub sign-in as org admin) and domain proof (DNS TXT or <code>.well-known</code> file) each give their own badge; Verified Publisher needs both plus scope-wide MFA and manual review.</li>
+<li><strong>Validation gate strictness</strong> (settled, owner 2026-10-22): schema, secrets, size and prompt-injection heuristics all block; a blocked injection finding can go to manual review for a false positive. Missing tests and a missing license only warn.</li>
+<li><strong>Public validation detail</strong> (settled, owner 2026-10-22): the full report, logs included, is public once its version is published. Until then only the publisher sees it and can decide not to publish.</li>
+<li><strong>Rating eligibility</strong> (settled, owner 2026-10-22): any signed-in user can rate; a &quot;verified adoption&quot; badge marks reviews from accounts whose repos fetched the pack.</li>
+<li><strong>Review moderation</strong> (settled, owner 2026-10-22): publishers reply and flag; only moderators remove a review, and publishers never delete one.</li>
+<li><strong>Abuse reports</strong> (settled, owner 2026-10-22): sign-in required; no anonymous reports.</li>
+<li><strong>Category taxonomy</strong> (settled, owner 2026-10-22): fixed top-level categories plus free tags.</li>
+<li><strong>Org verification method</strong> (settled by the backend design): GitHub org proof (read-only App install or GitHub sign-in as org admin) and domain proof (DNS TXT or <code>.well-known</code> file) each give their own badge; Verified Publisher needs either one (owner, 2026-10-22) plus scope-wide MFA and manual review, and pages show which proof it rests on.</li>
 </ol>
 <p>Raised by the Claudinite alignment review (<code>/mnt/project-files/claudinite/reviews/ui.md</code>). PackServer replaces the engine&#39;s current repo-and-R2 pack serving, so the engine&#39;s layout, channels and <code>packs.sources</code> are prior art, not constraints; <code>cn adopt</code> will adapt to PackServer&#39;s ids.</p>
 <ol start="13">

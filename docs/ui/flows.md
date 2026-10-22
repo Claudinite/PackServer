@@ -297,7 +297,7 @@ Check stages, in order (fail-fast on blocking checks):
 | Manifest consistency (declared items exist on disk; version is semver `x.y.z`; `minEngineVersion` is a `cn` version; `requires` names published packs) | ✓ | |
 | Secret scan (gitleaks-style rules) | ✓ | |
 | Security scan (executables, path traversal; Go checks import only the check SDK and the standard library; task workers import only `@claudinite/sdk`) | ✓ for traversal / binaries / foreign imports | |
-| Prompt-injection heuristics on `RULES.md` and `SKILL.md` (prose scanned as code) | | ✓ (human-readable excerpt) |
+| Prompt-injection heuristics on `RULES.md` and `SKILL.md` (prose scanned as code) | ✓ (manual review on request for a false positive) | |
 | Manifest of effects derived and shown (guards and the tool calls they judge, tasks and cadence, forced skills, GitHub actions requested) | ✓ if it cannot be derived | |
 | Test run (the pack's `test/` folder, in a container; Go checks need Go, 10-min cap) | ✓ if declared tests fail | ✓ if no tests |
 | License present | | ✓ |
@@ -306,7 +306,7 @@ Check stages, in order (fail-fast on blocking checks):
 2. Publisher fixes source.
 3. Upload path: re-upload in `publish` step 1 (draft retains listing fields). GitHub path: push a new tag (immutable tags; a tag cannot be reused; bump the build number on the same day: `1.61021.2`).
 4. New run; previous runs listed on `validation` for comparison.
-5. Advisory findings do not block publish but are shown on `pack` as "Published with warnings" (public: names of warned checks only).
+5. Advisory findings do not block publish but are shown on `pack` as "Published with warnings". The whole report, logs included, becomes public when the version is published; before that only the publisher sees it and can choose not to publish.
 
 ```mermaid
 flowchart TD
@@ -521,7 +521,7 @@ Failure / edge states:
 
 **Goal**: anyone can flag malicious or infringing packs, reviews or users; moderators act quickly with an audit trail.
 
-1. "Report abuse" link in `pack` header menu, on each review, on `publisher` profile. Anonymous allowed with Turnstile; signed-in users pre-filled.
+1. "Report abuse" link in `pack` header menu, on each review, on `publisher` profile. Sign-in required (owner, 2026-10-22); an anonymous click opens `signin` and returns to the form.
 2. Form: category (malware / prompt injection / secrets leak / impersonation / spam / IP infringement / other), details, evidence URL.
 3. Severity routing: malware / prompt injection / secrets → auto-quarantine if ≥3 independent reports or 1 report from a verified org → pack shows "Under review", `fetch_pack` and the archive URL return a 451-style hold with reason; moderators notified immediately.
 4. Moderator reviews (admin UI, out of scope): dismiss, hide pack/review, revoke versions, suspend publisher, revoke verification.
