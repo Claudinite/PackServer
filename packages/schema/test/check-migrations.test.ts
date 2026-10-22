@@ -126,6 +126,28 @@ describe("check-migrations", () => {
     expect(run({ ...base, "20260102000000_foundation_more.sql": alter }).ok).toBe(true);
   });
 
+  it.each([
+    ["DROP TABLE", "DROP TABLE packs;"],
+    ["RENAME", "ALTER TABLE packs RENAME TO packs_old;"],
+  ])("rejects another area's %s of a foundation table even with a contract marker", (_label, statement) => {
+    const files = {
+      ...base,
+      "20260102000000_tokens_create.sql": "CREATE TABLE tokens (id text);",
+    };
+    const r = run({ ...files, "20260103000000_tokens_drop.sql": `-- contract-of: 20260102000000_tokens_create.sql\n${statement}` });
+    expect(r.ok).toBe(false);
+    expect(r.out).toMatch(/foundation tables are altered only by foundation/);
+  });
+
+  it.each([
+    ["renamed onto a new name", "CREATE TABLE `__new_extra` (id text);\n--> statement-breakpoint\nALTER TABLE `__new_extra` RENAME TO `extra`;"],
+    ["never renamed", "CREATE TABLE `__new_extra` (id text);"],
+  ])("counts a __new_ table %s as creating a foundation table", (_label, sql) => {
+    const r = run({ ...base, "20260102000000_foundation_more.sql": sql });
+    expect(r.ok).toBe(false);
+    expect(r.out).toMatch(/first foundation/);
+  });
+
   it("requires the contract's expand to have touched the same table", () => {
     const files = {
       ...base,
@@ -171,7 +193,7 @@ describe("check-migrations", () => {
       ...base,
       "20260101000000_foundation_tables.sql": base[FOUNDATION],
       "meta/20260101000000_snapshot.json": snapshot(["id", "name"]),
-      "20260102000000_packs_rebuild.sql": rebuild,
+      "20260102000000_foundation_rebuild.sql": rebuild,
       "meta/20260102000000_snapshot.json": snapshot(after),
     });
 
