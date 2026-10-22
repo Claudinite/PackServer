@@ -20,7 +20,7 @@ Vocabulary: a **version** is an uploaded Worker snapshot (code + bindings + comp
 |---|---|---|---|---|
 | **local** | `wrangler dev` with local D1/R2/KV/DO emulation; the integration-test harness with fakes behind the ports layer | Seeded fixtures | Developers | $0 |
 | **PR preview** | Worker Previews per branch (research §A.8): isolated DO namespaces and Containers; D1 pointed at the shared `previews` database; KV/R2 rebound to `*-preview` namespaces | `previews` D1 (synthetic), `*-preview` buckets | Reviewers via the preview URL (Access-protected, `noindex`) | $0 (inside quotas) |
-| **staging** | Wrangler environment `staging` in the production account: `web-staging`, `mcp-staging`, … on `registry-staging.claudinite.com` (site, API, MCP under `/mcp`), `packs-staging.claudinite.com` (archives and indexes); own D1 (`registry-staging`, `audit-staging`), own four R2 buckets, own KV, Queues, DO namespaces, Vectorize index, Workflows, own secrets (test-mode Stripe, a staging GitHub App) | Scrubbed copy of production D1 (§2.2), sample of public packs | Team via Access (IdP + MFA); CI via Access service token | ≈ $0–3/month (research §G.3) |
+| **staging** | Wrangler environment `staging` in the production account: `web-staging`, `mcp-staging`, … on `registry-staging.claudinite.com` (site, API, MCP under `/mcp`), `packs-staging.claudinite.com` (archives and indexes); own D1 (`registry-staging`, `audit-staging`), own four R2 buckets, own KV, Queues, DO namespaces, Vectorize index, Workflows, own secrets (a Polar sandbox (sandbox.polar.sh) organization, a staging GitHub App) | Scrubbed copy of production D1 (§2.2), sample of public packs | Team via Access (IdP + MFA); CI via Access service token | ≈ $0–3/month (research §G.3) |
 | **production** | The seven Workers on `registry.claudinite.com` (site, API, MCP under `/mcp`), `registry.claudinite.com` (archives and indexes, the host `cn` reads), `registry-admin.claudinite.com` | Real | Public; `admin` and `/__selftest` behind Access | baseline |
 
 **Hostnames.** PackServer lives in the `claudinite.com` zone next to the Claudinite website (Ariel, 2026-10-22), on the host layout owned by the architecture (PR #3): `registry.claudinite.com` for the site, API and MCP (under `/mcp`; also the passkey RP id and OIDC audience), `packs.claudinite.com` for archives and indexes (the host `cn` reads), `registry-admin.claudinite.com` behind Access. This plan adds `registry-internal` (internal self-tests) and the staging pair `registry-staging` / `packs-staging`. Every host is a single-level name, so the zone's free Universal SSL certificate (apex plus one level of subdomain) covers them all. A name like `mcp.registry.claudinite.com` would need an Advanced Certificate. Because the zone is shared, every zone-level rule this plan adds (header strip, version-key stickiness, Access applications, WAF, cache rules) is scoped by hostname to the `registry*` and `packs*` hosts and never applies to the website.
@@ -31,7 +31,7 @@ Staging is needed because the things that break on release are exactly the thing
 
 - **Migration rehearsal.** Every expand/contract migration runs on `registry-staging` (a scrubbed copy of production) before it runs on production, timed, so a `DROP COLUMN` rewrite on a large table is discovered at 2 GB and not on the single production writer.
 - **Lifecycle rehearsal.** DO class lifecycle changes, queue/bucket binding removals, compat-date bumps and Workflow step changes are not gradual and not rollback-able across (research §A.5–A.6, §A.9); they are rehearsed on staging with the same wrangler commands CI will run on production.
-- **Full-system scenario runs.** The whole scenario suite (not just `probe-safe`) runs against staging on every merge to `main`, including publish → validate → promote → index → MCP search, with the staging Sandbox, Stripe test mode and a staging GitHub App.
+- **Full-system scenario runs.** The whole scenario suite (not just `probe-safe`) runs against staging on every merge to `main`, including publish → validate → promote → index → MCP search, with the staging Sandbox, Polar's sandbox environment (sandbox.polar.sh) and a staging GitHub App.
 
 Same account rather than a separate account (research §D): $0 instead of $5–30/month, one zone, one wrangler config, one set of CI credentials. The risk a separate account removes (an operator running `wrangler deploy` against production by mistake) is mitigated instead by (a) humans never holding a production-deploy API token; only the GitHub Actions `production` environment has it, (b) wrangler profiles pinning the repo directory to the `staging` environment by default, (c) `wrangler.toml` requiring `--env production` explicitly for every production target. Revisit if an operator-error incident happens.
 
@@ -202,7 +202,7 @@ Bake: 24 h at 100% covering one full cron cycle (hourly rollups, nightly re-vali
 | Check name | Which Workers | What it does | Pass condition |
 |---|---|---|---|
 | `config` | all | Reads `CF_VERSION_METADATA`, compiled release id, compatibility date and flags, environment name | Version id present, environment = `production`/`staging` as expected, compat date equals the value compiled into the release |
-| `secrets` | all | For each secret the Worker needs (`STRIPE_SECRET`, `GITHUB_APP_KEY`, `INDEX_SIGNING_KEY`, `AI_GATEWAY_TOKEN`, `SELFTEST_HMAC_KEY`, …): present and non-empty; Secrets Store fetch succeeds | All present; values never returned (detail = key names only) |
+| `secrets` | all | For each secret the Worker needs (`POLAR_ACCESS_TOKEN`, `GITHUB_APP_KEY`, `INDEX_SIGNING_KEY`, `AI_GATEWAY_TOKEN`, `SELFTEST_HMAC_KEY`, …): present and non-empty; Secrets Store fetch succeeds | All present; values never returned (detail = key names only) |
 | `d1.registry` | web, mcp, publish, github, billing, validator, admin | `SELECT 1` with `first-primary`; read `d1_migrations` head | Query ok; head within `[min_schema, max_schema]` compiled into the code (§6.2) |
 | `d1.replica` | web, mcp | `SELECT 1` with `first-unconstrained` | Query ok; reports replica region in detail |
 | `d1.audit` | all that write audit | `SELECT 1`; migrations head in range | as above |
@@ -214,7 +214,7 @@ Bake: 24 h at 100% covering one full cron cycle (hourly rollups, nightly re-vali
 | `workflows` | publish, github, billing, web | `get(instanceId)` of the permanent canary instance | Status readable |
 | `analytics_engine` | web, mcp | Binding present (no write; AE writes are fire-and-forget and invisible) | Binding object exists |
 | `outbound.github` | publish, github | `GET https://token.actions.githubusercontent.com/.well-known/openid-configuration` (no auth, no side effect) | 200 within 2 s |
-| `outbound.stripe` | billing | `GET /v1/balance` with the restricted read-only key | 200 within 2 s |
+| `outbound.polar` | billing | a read-only Polar API call (fetch our own organization) with a read-scoped organization access token | 200 within 2 s |
 | `outbound.ai_gateway` | validator | `GET` gateway metadata endpoint, no model call | 200 |
 | `service.<binding>` | callers | `GET /__selftest?shallow=1` on each bound Worker, forwarding the inbound override header (so a candidate-to-candidate check is possible) | Callee answers `ok` with its own version id; shallow mode skips the callee's own outbound checks to bound total time |
 | `domain.read` | web, mcp | Load pack `@packserver-canary/ping` via the normal read path (D1 → R2 meta.json), run the ranking function on a fixed fixture | Expected pack returned; ranking output equals the stored expected value |
@@ -305,7 +305,7 @@ Anycast Workers in every location, free unlimited static asset requests, R2 behi
 | Access down (100% login failure in both 2025 outages) | Access protects only `admin`, staging and `/__selftest`. Nothing user-facing depends on it. `/__selftest` has the HMAC path (§5.2). `admin` has no bypass by design; moderation waits | admin |
 | Turnstile fails to load | Login and signup fall back to the stricter per-IP rate limit rather than refusing (research §C.2(c)) | web |
 | Regional DO incident | Publishing in affected scopes fails with 503 and a clear message; reads unaffected. No automatic DO relocation exists; accept | publish |
-| Stripe or GitHub unreachable | Webhooks retry on their side; our Workflows `waitForEvent` with long timeouts; the publish path does not call Stripe synchronously | billing, github |
+| Polar or GitHub unreachable | Webhooks retry on their side; our Workflows `waitForEvent` with long timeouts; the publish path does not call Polar synchronously | billing, github |
 | Cloudflare's own status page down (2025-11-18) | External synthetic monitoring (§7.4) from outside Cloudflare, alerting through a channel that is not behind Cloudflare | ops |
 | Our own release during a Cloudflare incident | Freeze rule (§7.3) | release captain |
 
