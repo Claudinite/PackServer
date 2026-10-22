@@ -4,12 +4,14 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./canonical": "./canonical/index.ts",
+    "./canonical/fixtures": "./canonical/fixtures.ts",
     "./index": "./index/index.ts",
     "./mail": "./mail/index.ts",
     "./mail/testing": "./mail/testing.ts"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p canonical/tsconfig.json",
     "test": "vitest run"
   },
   "dependencies": {

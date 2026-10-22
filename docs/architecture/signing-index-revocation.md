@@ -105,7 +105,7 @@ nothing is fetched at session time (docs/decisions.md D31).
 ## Canonical form
 
 The validator re-packs the validated tree deterministically in the first sandbox: sorted paths,
-fixed metadata, plain entry names, one zstd frame, window at most 8 MB, pinned compression level.
+fixed metadata, plain entry names, one zstd frame of raw blocks (D56), window at most 8 MB.
 The tree hash is committed to D1 before the second sandbox runs any pack code, and that sandbox
 re-extracts the canonical archive with the same bounded decoder and must find the same hash
 (REQ-VAL-051). cn extracts only this form and refuses anything a lenient extractor would also
