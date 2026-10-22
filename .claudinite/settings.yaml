@@ -1,7 +1,7 @@
 engine:
   channel: "staging"
-  version: "1.61021.4"
-  manifest: "sha512-2iAcZjrbVLrYYKyabnSGyh9Tz2BFeXuEl1ghAIIl+d7fTW4dCR2kANXFk2JleYSbYN8OPCbHgRKOJfnv8I0byQ=="
+  version: "1.61022.1"
+  manifest: "sha512-i5BVf/1ZZ7V72caB3LQeHH9kPE0CjmE0VDcypLFRmCO2oljavRtYCTTMRzbz8Cnf2xfoplEr2SG35NO10S3VXQ=="
 packs:
   channel: "canary"
   declared:
@@ -22,3 +22,5 @@ tasks:
       tokenSecret: "CCR_ROUTINE_TOKEN"
   frequency:
     "engine/update": "daily"
+  merge:
+    "engine/update": "merge-safe-changes"
