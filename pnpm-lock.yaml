@@ -12,6 +12,9 @@ catalogs:
     drizzle-orm:
       specifier: 0.45.4
       version: 0.45.4
+    hono:
+      specifier: 4.13.13
+      version: 4.13.13
     wrangler:
       specifier: 4.151.3
       version: 4.151.3
@@ -47,6 +50,18 @@ importers:
       vitest:
         specifier: 5.0.5
         version: 5.0.5(@types/node@22.20.5)(msw@3.0.3(@types/node@22.20.5)(typescript@5.9.3)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1)))(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/http:
+    dependencies:
+      '@packserver/ports':
+        specifier: workspace:*
+        version: link:../ports
+      '@packserver/schema':
+        specifier: workspace:*
+        version: link:../schema
+      hono:
+        specifier: 'catalog:'
+        version: 4.13.13
 
   packages/ports:
     dependencies:
@@ -1520,6 +1535,10 @@ packages:
 
   headers-polyfill@5.0.1:
     resolution: {integrity: sha512-1TJ6Fih/b8h5TIcv+1+Hw0PDQWJTKDKzFZzcKOiW1wJza3XoAQlkCuXLbymPYB8+ZQyw8mHvdw560e8zVFIWyA==}
+
+  hono@4.13.13:
+    resolution: {integrity: sha512-CQ46U0ZkAGmbT/4UxdzzGJpacP2IeKgY4a5/tOI9AABbpOMfK739wfDXmv1usCk+3RkKj1hQy4/fjhiwa2xlrA==}
+    engines: {node: '>=16.9.0'}
 
   hookified@1.15.1:
     resolution: {integrity: sha512-MvG/clsADq1GPM2KGo2nyfaWVyn9naPiXrqIe4jYjXNZQt238kWyOGrsyc/DmRAQ+Re6yeo6yX/yoNCG5KAEVg==}
@@ -3244,6 +3263,8 @@ snapshots:
       '@types/set-cookie-parser': 2.4.10
       set-cookie-parser: 3.2.1
     optional: true
+
+  hono@4.13.13: {}
 
   hookified@1.15.1: {}
 
