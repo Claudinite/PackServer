@@ -14,11 +14,11 @@ How this document reads that. Each line is an assumption that can be changed; th
 | A2 | A copy of the request runs on the **RC** in the background as a **dry run**: the user never sees or waits for its response. | If the RC should serve the user for some requests, that is the gradual rollout, which follows the shadow gate (§1). |
 | A3 | **Confirmed by Ariel 2026-10-22.** RC reads are **replayed from the live recording** by default, because the live version's writes have already landed and live data moves between the two runs. A read the RC makes that the live run did not make goes to the live stores **read-only** and is flagged `new-read`. | If Ariel prefers "RC reads real data", switch the default to `live-read` mode (§3.4); diffs get noisier and the noise baseline (§7.3) matters more. |
 | A4 | **Confirmed by Ariel 2026-10-22.** RC writes are **recorded, never applied**. Later reads inside the same RC request see the RC's pending writes through an in-memory overlay. Third-party side effects (Stripe, GitHub, email, Anthropic via AI Gateway) are never called by the RC; they are recorded with a stub response. | If Ariel wants RC writes to land somewhere real (a cloned database), that is the "mirror to staging" alternative (§11), rejected for cost and D1's lack of cloning. |
-| A5 | After enough samples, records are paired per request and diffed (response, reads, writes, side effects). Differences are clustered into **signatures**; a human marks each signature **by design**, **acceptable** or **prohibitive**. Unmarked or prohibitive signatures block promotion. | If Ariel wants fully automatic promotion, §7.7 shows the rule that could be relaxed (auto-pass when every signature is pre-classified). |
+| A5 | **Decided by Ariel 2026-10-22.** After enough samples, records are paired per request and diffed (response, reads, writes, side effects). Differences are clustered into **signatures**; a **classifier agent**, not a human, judges every signature on every release as **by design**, **acceptable** or **prohibitive** (§7.6). Earlier classifications are context for the agent, never a shortcut: nothing auto-passes because it was classified before. Prohibitive or unclassifiable signatures block promotion. | |
 | A6 | **Confirmed by Ariel 2026-10-22.** Shadow comparison is a **gate before the RC gets any live traffic**. The X% rollout (1 → 5 → 25 → 50 → 100) follows and is governed by the monitoring gates. "X%" in Ariel's sentence is read as the **sampling rate of shadowed requests**, not as RC live-traffic share. | If X% was meant as live share, the two are independent knobs and both exist. |
 | A7 | "Statistically significant" means per-route sample minimums and a noise floor measured by shadowing the live version against itself, not a single global number (§7.5). | |
 
-Highly probable to match intent: A1, A2, A5, A6. Worth confirming: A3 (replay vs live reads) and A4 (never apply RC writes, even to a scratch store). Both are listed in §12.
+A3, A4, A5 and A6 were confirmed or decided by Ariel on 2026-10-22.
 
 ### Goals
 
@@ -152,7 +152,7 @@ In `dry-replay`, each RC read is matched against the unmatched wet reads in this
 
 1. **Exact:** same `kind`, `target`, `op`, same normalized `request` hash (§4.3). Matched in recording order; a second identical read matches the next identical record (a repeated `SELECT` returns the same rows both times in the wet run too, since the overlay would have changed it otherwise).
 2. **Semantic (D1 only):** same `kind`/`target`, same **table set** and **bound parameter multiset**, different SQL text. The RC may select an extra column or reorder a join after a refactor. Serve the recorded rows; if the RC's statement names a column the recorded rows lack, fall through to 3. Record the match as `match: semantic` so the diff engine can show "same query, different SQL" as its own category (`read-set/sql-text`).
-3. **New read:** no candidate. Execute against the live store, read-only (the wrapper refuses anything but a SELECT / get / head / list / query), apply the overlay, record with `match: new-read`. These are expected whenever the RC adds a lookup, and they appear in the read-set diff for a human to classify.
+3. **New read:** no candidate. Execute against the live store, read-only (the wrapper refuses anything but a SELECT / get / head / list / query), apply the overlay, record with `match: new-read`. These are expected whenever the RC adds a lookup, and they appear in the read-set diff for the classifier agent (§7.6).
 
 Wet reads the RC never asked for become `dropped-read` entries in the diff. Writes and side effects are never "matched" for serving; they are only compared (§7.2).
 
@@ -284,7 +284,7 @@ Applied identically on both sides before hashing, by one function in `core/shado
 
 ### 4.4 Hashing versus storing bodies
 
-Store the normalized body when it is ≤ 4 KB (JSON) or ≤ 1 KB (KV values); store only `sha256` plus size above that. Response bodies up to 8 KB. Rationale: humans need to see the diff for the common small payloads (pack cards, grants, version rows); large payloads (indexes, READMEs, archives) are compared by hash and, when they differ, the triage tool re-fetches both from R2 by key for a side-by-side view. Envelope cap 96 KB (§2.3). Expected median ≈ 8 KB per side, the figure used in the cost model (research §G.2).
+Store the normalized body when it is ≤ 4 KB (JSON) or ≤ 1 KB (KV values); store only `sha256` plus size above that. Response bodies up to 8 KB. Rationale: the classifier agent and anyone reading the report need to see the diff for the common small payloads (pack cards, grants, version rows); large payloads (indexes, READMEs, archives) are compared by hash and, when they differ, the triage tool re-fetches both from R2 by key for a side-by-side view. Envelope cap 96 KB (§2.3). Expected median ≈ 8 KB per side, the figure used in the cost model (research §G.2).
 
 ## 5. Privacy and security of recordings
 
@@ -408,13 +408,15 @@ Per release, the Workflow writes `shadow-reports/<release_id>/report.json` and r
 5. Latency distribution per route (informational).
 6. Noise catalogue delta: new noise signatures since the previous release (normalizer to-dos).
 
-Classification workflow, stored in D1 `shadow_rules(signature, classification[by_design|acceptable|prohibitive|noise], reason, link, scope[release|forever], created_by, created_at)`:
+Classification is done by a **classifier agent** on every release, over every signature observed, including ones classified in earlier releases. There is no human approval step; people read the report and can override.
 
-- **by design** requires a link (PR, changelog entry, ticket); scope defaults to `forever` so the next release does not re-ask, unless the signature is specific to this release (a one-off migration).
-- **acceptable** requires a reason; scope defaults to `release` (ask again next time, because "acceptable" tends to describe a difference nobody intended).
-- **prohibitive** blocks the gate; the fix lands in a new RC, which starts a new shadow run (rules persist, so only new signatures need attention).
-- **noise** is set automatically from baseline pairs and can be set by hand with a reason; hand-set noise is always `forever` and should be paired with a normalizer change.
-- Every classification is an audit-log row.
+- **Run.** When the minimum duration and coverage are met (§7.5), the compare Workflow starts one classification run: a Claude model called through the same AI Gateway the validator uses, with tools that read this release's report, the redacted examples of any signature, the RC's diff against the incumbent (the release's merged PRs and changesets) and the `shadow_rules` history. It writes one verdict per signature: `by_design` (must cite the PR or changeset that intends the change), `acceptable` (must give a reason: the difference is real, unintended and harmless), `prohibitive` (with the reason), or `unclassifiable` (the agent cannot tell from the evidence).
+- **History is context, not a shortcut.** A signature classified before is shown with its previous verdicts, and the agent re-judges it against this release's code. A `by_design` from three releases ago does not pass a signature whose count, routes or shape moved.
+- **Noise** is still set mechanically from baseline pairs (§7.3) and is shown to the agent only as the noise floor; the agent cannot mark a signature as noise.
+- **Untrusted input.** Recorded bodies, SQL parameters and request paths are user-controlled. They reach the agent as quoted data inside the report, never as instructions, and the agent's tools are read-only except for writing its verdicts. Its verdict feeds `gate.shadow` only: it cannot deploy, change rules for later releases, or mark the wet-leak and misroute counters.
+- **Fail closed.** Any `prohibitive` or `unclassifiable` verdict, a run that errors or times out, or a `by_design` without a resolvable citation fails the gate. The release halts, and the report shows the agent's reasoning for each blocking signature.
+- **Record.** Verdicts are stored in D1 `shadow_rules(signature, release_id, classification, reason, link, model, run_id, created_at)`, one row per signature per release, with an audit-log row per run. A person can override a verdict from `admin` with a reason (also audited); the override applies to that release only.
+- **Cost.** About 100 signatures per release at a few thousand tokens each is roughly $1–3 per release on a mid-tier model, under $50 a month at the release cadence of the release plan.
 
 ### 7.7 Gate decision
 
@@ -423,11 +425,11 @@ Classification workflow, stored in D1 `shadow_rules(signature, classification[by
 1. `wet_leak == 0` and `shadow_misroute == 0` for the release.
 2. Every write route is `covered` or `waived` (with a name and reason).
 3. No signature with classification `prohibitive` observed in this release's pairs.
-4. No signature with no classification observed ≥ 20 times, and no unclassified `write-set/*`, `side-effect/*` or `response/error` signature at any count.
+4. The classifier agent's run for this release completed, and no signature got a verdict of `prohibitive` or `unclassifiable` (§7.6).
 5. `response/error` rate on RC not above live by more than the margin on any covered route.
 6. Minimum recording duration met.
 
-Rare unclassified signatures (< 20, read-side categories only) are listed but do not block; they roll into the next release where they either grow or stay rare. Auto-pass with no human in the loop is possible when every observed signature is already classified `by_design`/`noise` with `forever` scope; by default a human still clicks "promote" (assumption A5).
+Rare signatures (< 20, read-side categories only) are still sent to the classifier agent, which may verdict them `acceptable` pending more data. There is no auto-pass from earlier releases and no human "promote" click; the agent's run is the gate's classification step (§7.6, assumption A5).
 
 ## 8. Limits and edge cases
 
@@ -518,7 +520,7 @@ A release that shadows for 48 h at the recommended profile costs about **$0.30**
 
 1. **Replay vs real reads (A3).** Default is "RC reads are served from the live recording; new reads go live read-only". Alternative is "RC always reads live data" (noisier, simpler). Is replay-by-default what you intended by "run the same flow on the RC as a dry run"?
 2. **Never apply RC writes (A4), even to a scratch copy?** The design records them and compares the statements. If you wanted the RC's writes to produce an end state that can be inspected (for instance, "after the RC's publish, what would the version row look like"), that needs a scratch D1 and is a different, costlier design (§11 row 1).
-3. **Human in the loop at the gate (A5/A6).** Proposed: a human must classify every new signature and click "promote"; releases where every signature is already classified `by design`/`noise` may auto-pass. Do you want full auto-pass or always a human?
+3. ~~Human in the loop at the gate.~~ Decided: a classifier agent judges every signature on every release (§7.6).
 4. **"X%" meaning (A6).** Read as the shadow sampling rate with a per-route profile (recommended default ~5% effective); the live rollout percentages are a separate schedule in the release plan. Correct?
 5. **Statistical bar (A7).** Rule of three with 300 clean pairs per write route (≤ 1% undetected mismatch at 95%) and 100 per read route; two-proportion test against the live-vs-live baseline. Too strict, too loose?
 6. **Billing route sampling.** `/api/billing/*` and Stripe webhooks are shadowed with redaction (amounts and event types kept). Comfortable with that, or exclude billing entirely?
