@@ -1,0 +1,14 @@
+{
+  // Test side: Node + DOM types. Workers have their own tsconfig (workers/tsconfig.json).
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["tests/**/*.ts", "vitest.config.ts", "workers/shared-record.ts"]
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "web",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    // Real values point at GitHub / the AI Gateway; tests override them with fake hosts.
+    "OIDC_ISSUER": "https://token.actions.githubusercontent.com",
+    "OIDC_AUDIENCE": "packserver",
+    "LLM_URL": "https://gateway.ai.cloudflare.com/v1/acct/gw/anthropic/v1/messages"
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "packserver", "database_id": "00000000-0000-0000-0000-000000000001", "migrations_dir": "../../migrations" }
+  ],
+  "r2_buckets": [{ "binding": "ARCHIVES", "bucket_name": "packserver-archives" }],
+  "services": [{ "binding": "MCP", "service": "mcp" }]
+}

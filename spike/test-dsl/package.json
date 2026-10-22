@@ -1,0 +1,27 @@
+{
+  "name": "packserver-test-dsl-spike",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p workers && tsc --noEmit",
+    "pretest": "node scripts/check-scenarios.mjs",
+    "check": "node scripts/check-scenarios.mjs",
+    "dev": "node scripts/dev.mjs",
+    "test:http": "TEST_DRIVER=http vitest run",
+    "build:mcp": "wrangler deploy --dry-run -c workers/mcp/wrangler.jsonc --outdir \"$PWD/dist/mcp-current\" --define BUILD_ID:'\"current\"' && wrangler deploy --dry-run -c workers/mcp/wrangler.jsonc --outdir \"$PWD/dist/mcp-previous\" --define BUILD_ID:'\"previous\"'",
+    "test:compat": "npm run build:mcp && MCP_PREBUILT_DIR=dist/mcp-previous EXPECT_MCP_BUILD=previous vitest run",
+    "predev": "wrangler d1 migrations apply packserver --local --persist-to .wrangler/state-dev -c workers/web/wrangler.jsonc"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261022.1",
+    "@types/node": "^22.20.5",
+    "jose": "6.2.13",
+    "msw": "3.0.3",
+    "typescript": "5.9.3",
+    "undici": "^7.29.1",
+    "vitest": "5.0.5",
+    "wrangler": "4.151.3"
+  }
+}

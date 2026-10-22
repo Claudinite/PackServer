@@ -1,0 +1,12 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  // The harness dispatches by route: anything for mcp.test goes here, everything else to the primary (web).
+  "routes": [{ "pattern": "mcp.test/*", "zone_name": "mcp.test" }],
+  "d1_databases": [
+    { "binding": "DB", "database_name": "packserver", "database_id": "00000000-0000-0000-0000-000000000001", "migrations_dir": "../../migrations" }
+  ]
+}
