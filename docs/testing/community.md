@@ -2,14 +2,17 @@
 
 Mirrors [../requirements/community.md](../requirements/community.md): `IT-COMM-*`, `IT-MOD-*`,
 `IT-ABUSE-*` (`ABUSE-001`, the MCP limit, is in [mcp.md](mcp.md); `ABUSE-003`, the daily cap, is
-IT-PUB-026). The moderation journey is [JT-004](journeys.md).
+IT-PUB-026). "Verified adoption" (a linked GitHub identity owning a public repository the weekly
+scan found declaring the pack, or an authenticated `get_download`) replaces the former "verified
+fetch"; works-for-me votes and `report_outcome` are gone (Ariel B1 2026-10-22). The moderation
+journey is [JT-004](journeys.md).
 
 ## Stars, ratings and votes
 
 ### IT-COMM-001 Star and unstar; anonymous clicks redirect to sign-in and back
 - **Covers:** REQ-COMM-001
 - **Runs:** push
-- **Action:** a signed-in user (3 days old) stars and unstars; an anonymous visitor clicks star, signs in, and lands back.
+- **Action:** a signed-in person (3 days old) stars and unstars; an anonymous visitor clicks star, signs in, and lands back.
 - **Assert:** the count goes 0 → 1 → 0; the visitor's redirect returns to the pack page and the star is applied once signed in.
 
 ### IT-COMM-002 Young-account and self stars are not counted
@@ -27,8 +30,8 @@ IT-PUB-026). The moderation journey is [JT-004](journeys.md).
 ### IT-COMM-004 No reviewing your own or your org's packs
 - **Covers:** REQ-COMM-004
 - **Runs:** push
-- **Action:** the owner and an org maintainer review the org's pack; a left member reviews after removal.
-- **Assert:** owner and maintainer are refused; the former member's review lands.
+- **Action:** the owner and an org maintainer review the org's pack; a person removed from the org reviews after the removal.
+- **Assert:** owner and maintainer are refused; the removed person's review lands.
 
 ### IT-COMM-005 Young accounts cannot review; ten reviews a day
 - **Covers:** REQ-COMM-005
@@ -37,12 +40,12 @@ IT-PUB-026). The moderation journey is [JT-004](journeys.md).
 - **Faked:** clock.
 - **Assert:** refused, accepted, 10 accepted and the 11th refused, accepted.
 
-### IT-COMM-006 Verified-fetch reviews weigh fully
+### IT-COMM-006 Verified-adoption reviews weigh fully
 - **Covers:** REQ-COMM-006
 - **Runs:** push
-- **Setup:** user A downloaded the pack (recorded fetch); user B did not.
-- **Action:** both review 5; a third pack with equal text relevance receives one 5 from a non-fetcher.
-- **Assert:** A's review carries the "verified fetch" mark and B's does not; in ranking the pack with A's review outranks a comparator whose only review is B-like.
+- **Setup:** person A's linked GitHub identity owns a public repository the seeded weekly scan found declaring the pack; person C called `get_download` for the pack with an OAuth token; person B did neither; a comparator pack with equal text relevance whose only review is from a B-like account.
+- **Action:** A, B and C each review 5; search a term both packs match.
+- **Assert:** A's and C's reviews carry the "verified adoption" mark and B's does not; the pack outranks the comparator; after the next scan drops A's repository's declaration, A's existing mark stays and a new review by A on another pack carries none.
 
 ### IT-COMM-007 Publishers reply once and flag, never delete
 - **Covers:** REQ-COMM-007
@@ -50,31 +53,27 @@ IT-PUB-026). The moderation journey is [JT-004](journeys.md).
 - **Action:** the publisher replies, replies again, flags, and deletes a review.
 - **Assert:** one reply shown; the second refused; the flag lands in moderation; delete is refused and the review remains.
 
-### IT-COMM-008 Works-for-me votes weigh by verified fetch
-- **Covers:** REQ-COMM-008
-- **Runs:** push
-- **Action:** an agent with a recorded fetch of `1.0.0` reports `works`; a signed-in person without one reports `didn't work`.
-- **Assert:** `get_pack` shows the works weight 1.0 and the fails weight 0.25 for `1.0.0`.
-
-### IT-COMM-009 Rating aggregates use a prior
+### IT-COMM-009 Rating aggregates use the catalogue-mean prior with a weight of 10
 - **Covers:** REQ-COMM-009
-- **Runs:** push
-- **Setup:** pack E with 40 reviews averaging 4.5; pack N with one 5-star review; equal scores and relevance.
-- **Action:** read the shown ratings; search a term both match, sorted by rating.
-- **Assert:** N's shown aggregate is below 5 and below E's; E ranks above N.
+- **Runs:** push, needs reset
+- **Setup:** a catalogue whose ratings average 4.0 after the hourly recompute; pack E with 40 reviews averaging 4.5; pack N with one 5-star review; equal scores and relevance.
+- **Action:** run the hourly recompute; read the shown ratings; search a term both match, sorted by rating.
+- **Faked:** clock.
+- **Assert:** N's shown aggregate is (10 × 4.0 + 5) / 11 ≈ 4.09 and E's is (10 × 4.0 + 40 × 4.5) / 50 = 4.4; E ranks above N.
+- **Contrast:** after the catalogue mean moves to 4.5 and the hour passes, N's aggregate rises to (10 × 4.5 + 5) / 11 ≈ 4.55.
 
-### IT-COMM-010 Security reports, failed validation or holds demote a pack
+### IT-COMM-010 A published advisory, a failed newest validation or an abuse hold demotes a pack; a private report does not
 - **Covers:** REQ-COMM-010
 - **Runs:** push
 - **Setup:** three packs ranking 1–3 for a query; a fourth ranking last.
-- **Action:** open a security report on #1; fail the latest validation of #2; put #3 on an abuse hold.
-- **Assert:** the three drop below the fourth or leave the results; clearing each restores it.
+- **Action:** file a private security report on #1 and read the ranking; registry security publishes an advisory on #1's newest version; fail the latest validation of #2; put #3 on an abuse hold.
+- **Assert:** the private report changes nothing; after the advisory, the failure and the hold the three drop below the fourth or leave the results; clearing each restores it.
 
-### IT-COMM-011 Raw signals are exposed over MCP
+### IT-COMM-011 Raw signals are exposed over MCP as separate fields
 - **Covers:** REQ-COMM-011
 - **Runs:** push
-- **Action:** `get_pack` on a pack with stars, votes, verified fetches, a scan count, a rating, a verdict and a repository.
-- **Assert:** the response carries stars, works, fails, verified-fetch count, declaring-repository count, rating, validation verdict, `verified`, `verified_domain`, `verified_github_org` and the repository link as separate fields.
+- **Action:** `get_pack` on a pack with stars, verified-adoption reviews, a declaring-repo count from the seeded scan, a rating, a verdict, verification facts and a repository.
+- **Assert:** the response carries stars, verified-adoption count, declaring-repository count (labelled approximate, weekly), rating, validation verdict, `verified`, `verified_domain`, `verified_github_org` and the repository link as separate fields; every publisher-authored string sits under `publisher_text` (IT-MCP-023).
 
 ### IT-COMM-012 A removed review's author is told why
 - **Covers:** REQ-COMM-012
@@ -89,18 +88,19 @@ IT-PUB-026). The moderation journey is [JT-004](journeys.md).
 - **Action:** yank the only version of a reviewed pack; read the page.
 - **Assert:** the reviews are shown; the page says "unavailable".
 
-### IT-COMM-014 Trending ranks by recent growth with a minimum count
+### IT-COMM-014 Trending ranks by recent growth; 50 fetches and 5 stars are the floor, and the rail hides until a pack qualifies
 - **Covers:** REQ-COMM-014
 - **Runs:** push, needs reset
-- **Setup:** pack G: 10 fetches in the previous 28 days, 100 in the last 7; pack S: 1,000 and 1,010; pack T: 0 and 2.
-- **Action:** run the rollup; read Trending.
+- **Setup:** pack G: 10 fetches and 1 counted star in the previous 28 days, 100 fetches and 6 counted stars in the last 7; pack S: 1,000 fetches and 50 stars, then 1,010 and 51; pack F: 49 fetches and 20 stars in the last 7 days; pack T: 100 fetches and 4 counted stars.
+- **Action:** run the rollup with only F and T present; read the home page; add G and S, run the rollup, read Trending.
 - **Faked:** stats sink, clock.
-- **Assert:** G ranks above S; T is absent.
+- **Assert:** with only F and T the home page has no Trending rail; afterwards G ranks above S; F (under 50 fetches) and T (under 5 stars) are absent.
+- **Contrast:** F with one more fetch and T with one more counted star both appear.
 
 ### IT-COMM-015 Section comments and votes on pack contents
 - **Covers:** REQ-COMM-015
-- **Runs:** push
-- **Action:** a user comments on a `RULES.md` section; others vote it down to net −2; read at +2 d and +3 d 1 h; a 1-hour-old account comments; an account posts 11 comments.
+- **Runs:** push, nightly (browser for the collapse and disclosure)
+- **Action:** a person comments on a `RULES.md` section; others vote it down to net −2; read at +2 d and +3 d 1 h; a 1-hour-old account comments; an account posts 11 comments in a day.
 - **Faked:** clock.
 - **Assert:** the comment is collapsed by default; at +2 d it is visible behind the collapse; at +3 d 1 h it is behind a disclosure; the young account's comment is refused; the 11th comment is refused.
 
@@ -114,11 +114,12 @@ IT-PUB-026). The moderation journey is [JT-004](journeys.md).
 - **Assert:** the first returns a pre-filled new-issue URL and the report status follows the webhook to `closed`; the second lands in the publisher's inbox; `world.github.writes()` is empty.
 - **Contrast:** a 6 MB attachment is refused.
 
-### IT-MOD-002 Security reports are private with a 90-day timer
+### IT-MOD-002 Security reports are private with a 90-day timer and a 7-day reminder
 - **Covers:** REQ-MOD-002
 - **Runs:** push
-- **Action:** file a security report; read the Issues tab anonymously and as the maintainer; read the report as owner, maintainer, registry security and an outsider.
-- **Assert:** the Issues tab never lists it; owner, maintainer and security see it with a disclosure timer ending at +90 d; the outsider is not found.
+- **Action:** file a security report; read the Issues tab anonymously and as the maintainer; read the report as owner, maintainer, registry security and an outsider; read the pack's score and ranking; advance the clock to +83 d.
+- **Faked:** mail, clock.
+- **Assert:** the Issues tab never lists it; owner, maintainer and security see it with a disclosure timer ending at +90 d; the outsider is not found; the score and ranking are unchanged; at +83 d the publisher receives the reminder.
 
 ### IT-MOD-003 No security contact routes to registry security
 - **Covers:** REQ-MOD-003
@@ -146,40 +147,42 @@ IT-PUB-026). The moderation journey is [JT-004](journeys.md).
 - **Faked:** mail.
 - **Assert:** each change is shown and the reporter receives one notification per change.
 
-### IT-MOD-007 Advisories attach to versions and are returned by MCP
+### IT-MOD-007 Registry security publishes advisories that attach to versions and are returned by MCP
 - **Covers:** REQ-MOD-007
 - **Runs:** push
-- **Action:** mark a security report fixed in `1.0.2` and attach an advisory to `1.0.0`–`1.0.1`; a second report's timer expires at +90 d and an advisory is attached.
+- **Action:** the publisher marks a security report fixed in `1.0.2` and registry security publishes an advisory for `1.0.0`–`1.0.1`; a second report's timer expires at +90 d and an advisory is published.
 - **Faked:** clock.
-- **Assert:** `get_pack` for `1.0.0` and `1.0.1` returns the advisory; `1.0.2` returns none.
+- **Assert:** `get_pack` for `1.0.0` and `1.0.1` returns the advisory and `1.0.2` returns none; the advisory is the only public trace of either report; the capped score (IT-SCORE-004) and the demotion (IT-COMM-010) start with the advisory, not the report.
 
 ### IT-MOD-017 Signed-in people see their own reports
 - **Covers:** REQ-MOD-017
 - **Runs:** push
-- **Action:** a user files a bug and a security report; reads their account page; another user reads it.
-- **Assert:** both reports listed for the author; the other user sees neither.
+- **Action:** a person files a bug and a security report; reads their account page; another person reads it.
+- **Assert:** both reports listed for the author; the other person sees neither.
 
 ## Abuse reports and moderation
 
 ### IT-MOD-008 Report abuse with a category; anonymous visitors sign in first
 - **Covers:** REQ-MOD-008
 - **Runs:** push
-- **Action:** a signed-in user reports a pack as `spam`, a review as `impersonation`, a profile as `other`; an anonymous visitor clicks report.
+- **Action:** a signed-in person reports a pack as `spam`, a review as `impersonation`, a profile as `other`; an anonymous visitor clicks report.
 - **Faked:** Turnstile.
 - **Assert:** the three reports exist with their categories; the visitor is redirected to sign-in.
 
-### IT-MOD-009 Independent high-severity reports auto-quarantine
+### IT-MOD-009 A high-severity report labels and jumps the queue; downloads are held only on standing, the judge's timer, or an admin
 - **Covers:** REQ-MOD-009
 - **Runs:** push
-- **Action:** two 8-day-old accounts with distinct providers report `malware`; a third with a third provider reports; separately, one verified org reports `prompt injection` on another pack; two 3-day-old accounts report a third pack.
-- **Faked:** mail.
-- **Assert:** after the third independent report the first pack shows "Under review", downloads are held and moderators are notified; the verified org's single report quarantines the second pack; the third pack is untouched.
+- **Setup:** packs A, B, C, D and E; E declared by 101 public repositories in the seeded scan; reporters: R1 (owner of a Verified Publisher scope), R2 (owner of a scope with a GitHub-org proof only), S1–S3 (accounts 31 days old, each with a verified adoption of B or a promoted pack of their own), S4 (31 days old, no standing), Y1–Y3 (29 days old with verified adoption), D1 (a reporter whose last two reports were dismissed).
+- **Action:** S4 reports A as `malware` and nobody acts for 59 minutes, then 61; R1 reports B as `prompt injection`; R2 reports C as `malware`; S1, S2 and D1 report D; S3 then reports D; Y1–Y3 report E, then R1 reports E; the admin taps hold on E.
+- **Faked:** mail, clock.
+- **Assert:** A is marked "Reported, under review" on its page and in `get_pack`, sits at the front of the queue and still downloads at 59 minutes; at 61 minutes the judge's timer has quarantined it; R1's single report quarantines B at once; R2's report labels C and holds nothing (a GitHub-org proof alone is not standing); D is labelled after S1, S2 and D1 and quarantined only when S3 arrives (D1 has no standing for 90 days); E is labelled and never quarantined automatically, not even by R1, and the admin's tap holds it; moderators were notified for each.
+- **Contrast:** three reports on another pack from Y-like accounts (29 days old) label it and hold nothing.
 
 ### IT-MOD-010 Mass identical reports collapse into one
 - **Covers:** REQ-MOD-010
 - **Runs:** push
-- **Action:** 30 accounts created in one hour with the same provider submit the same `malware` text.
-- **Assert:** the queue shows one collapsed report with a count of 30; no quarantine.
+- **Action:** 30 accounts created in one hour submit the same `malware` text on one pack.
+- **Assert:** the queue shows one collapsed report with a count of 30; no quarantine and no standing counted.
 
 ### IT-MOD-014 Actioned publishers are notified and can appeal
 - **Covers:** REQ-MOD-014
@@ -244,11 +247,13 @@ IT-PUB-026). The moderation journey is [JT-004](journeys.md).
 - **Action:** with the fake Turnstile set to fail, submit sign-up, report abuse, access request, a review and a leak report; set it to pass and repeat.
 - **Assert:** the five failing submissions are refused with no effect; the five passing ones land.
 
-### IT-ABUSE-004 Star bursts trigger an anomaly hold
+### IT-ABUSE-004 A burst of 50 counted stars over ten times the daily average triggers an anomaly hold
 - **Covers:** REQ-ABUSE-004
 - **Runs:** push
-- **Action:** 200 stars from 2-day-old accounts in 5 minutes on a pack ranking 10th.
-- **Assert:** the pack is on an anomaly hold (`abuse.anomaly_hold`), its rank did not rise, and the page shows the count without the hold's reason to the public.
+- **Setup:** pack A ranking 10th, averaging 4 counted stars a day over the previous 7 days; pack B averaging 6 a day.
+- **Action:** 50 stars from 2-day-old accounts reach A within 24 hours; 49 reach a comparable pack; 50 reach B within 24 hours; read rankings at once and at +7 d 1 h.
+- **Faked:** clock.
+- **Assert:** A is on an anomaly hold (`abuse.anomaly_hold`): its rank does not rise for 7 days, it is queued for an admin, no star is removed, and the page shows the count without the hold's reason to the public; the 49-star pack is not held; B (50 is not more than 10 × 6) is not held; at +7 d 1 h A's rank reflects the stars.
 
 ### IT-ABUSE-005 Auth endpoints are rate-limited per IP and account
 - **Covers:** REQ-ABUSE-005
@@ -277,3 +282,8 @@ IT-PUB-026). The moderation journey is [JT-004](journeys.md).
 ## Not covered by an integration test
 
 (none in this area)
+
+## Retired tests
+
+Removed with the retired id it covered; the id is never reused: IT-COMM-008 (works-for-me votes,
+Ariel B1 2026-10-22).

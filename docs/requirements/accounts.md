@@ -22,7 +22,7 @@ one-time codes and magic links are a later phase (REQ-ACC-003).
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: FLOW 1; SEC-REV M4; PD-REV L7
 - coverage: scenario
 
@@ -37,7 +37,7 @@ until an admin clears it.
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: FLOW 1; docs/decisions.md D32
 - coverage: scenario
 
@@ -49,7 +49,7 @@ REQ-ACC-024.
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: FLOW 1
 - coverage: scenario
 
@@ -60,7 +60,7 @@ take over that account; the person is told to sign in with the original method a
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: ARCH §4; FLOW 1; SEC-REV C1; docs/decisions.md D32
 - coverage: scenario
 
@@ -76,7 +76,7 @@ phase; when it ships it follows the same rule.
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: ARCH §4; FLOW 1
 - coverage: scenario
 
@@ -87,7 +87,7 @@ they saved them, the account page shows a reminder.
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: FLOW 2
 - coverage: scenario
 
@@ -98,7 +98,7 @@ set (a sensitive action, REQ-ACC-005).
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: ARCH §4; FLOW 2; SITE matrix; Ariel, 2026-10-22 (sitemap decision 4, PR #4 commit 79e7900)
 - coverage: scenario
 
@@ -110,7 +110,7 @@ passkey (docs/decisions.md D32).
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: ARCH §4; Ariel, 2026-10-22 (sitemap decision 4, PR #4 commit 79e7900); Ariel B1 2026-10-22
 - coverage: scenario
 
@@ -138,7 +138,7 @@ a scope can refuse TOTP for its sensitive actions, and Verified Publisher scopes
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: FLOW 2
 - coverage: scenario
 
@@ -149,7 +149,7 @@ account.
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: ARCH §4; DATA decision 1 (decided with Ariel, 2026-10-22)
 - coverage: scenario
 
@@ -162,7 +162,7 @@ checked against `session_revocations` in D1.
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: ARCH §4; DATA decision 5; Ariel 2026-10-22 (CONFLICT-2 resolved)
 - coverage: scenario
 
@@ -174,7 +174,7 @@ hours of inactivity and never later than 12 hours after its last request.
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: FLOW 2
 - coverage: scenario
 
@@ -184,7 +184,7 @@ A sign-in from a new device or location sends an email notice to the account.
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: ARCH §4; FLOW 2; docs/decisions.md D32 (GitHub sign-in is the ordinary recovery path)
 - coverage: scenario
 
@@ -197,7 +197,7 @@ the account's packs cannot be published meanwhile.
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: SITE account page; ARCH §4
 - coverage: scenario
 
@@ -207,7 +207,7 @@ A person can delete their own account (per-action assertion); deleted handles ar
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: SITE mfa page
 - coverage: scenario
 
@@ -217,7 +217,7 @@ Removing an MFA factor requires a per-action assertion.
 
 - status: active
 - since: 2026-10
-- actor: org owner / member
+- actor: org owner / signed-in person
 - source: ARCH §4; Ariel, 2026-10-22 (sitemap decision 4, PR #4 commit 79e7900); PD-REV H7
 - coverage: scenario
 
@@ -240,7 +240,7 @@ registry sends at most 3 emails per destination address per hour.
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: FLOW 1; SEC-REV C1
 - coverage: scenario
 
@@ -251,7 +251,7 @@ signing in; linking is a sensitive action (REQ-ACC-010) and never happens implic
 
 - status: active
 - since: 2026-10
-- actor: member (security)
+- actor: signed-in person (security)
 - source: SEC (security review, 2026-10-22); ARCH §4
 - coverage: scenario (the driver observes the cookie attributes)
 
@@ -263,7 +263,7 @@ SameSite=Lax.
 
 - status: active
 - since: 2026-10
-- actor: member (security)
+- actor: signed-in person (security)
 - source: SEC (security review, 2026-10-22); ARCH §4
 - coverage: scenario
 
@@ -276,7 +276,7 @@ time-step) confirms one action, and recovery-code attempts are rate-limited like
 
 - status: active
 - since: 2026-10
-- actor: member (security)
+- actor: signed-in person (security)
 - source: SEC (security review, 2026-10-22); FLOW 1
 - coverage: scenario
 
@@ -297,7 +297,7 @@ address exists.
 
 - status: active
 - since: 2026-10
-- actor: member (security)
+- actor: signed-in person (security)
 - source: SEC (security review, 2026-10-22); ARCH §4
 - coverage: scenario
 

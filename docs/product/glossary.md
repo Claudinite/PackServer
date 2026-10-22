@@ -26,7 +26,7 @@ the end.
 ## PackServer
 
 - **Scope**: the namespace in `@scope/name`; owned by one signed-in person or one organisation.
-- **Signed in**: a person with a session. Roles: signed-in user, publisher, org owner, org
+- **Signed in**: a person with a session. Roles: signed-in person, publisher, org owner, org
   maintainer, admin. The people of an organisation are its owners and maintainers.
 - **Scope proof**: a GitHub org proof or a domain proof attached to a scope. The publisher mark
   shows the proof itself.

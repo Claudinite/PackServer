@@ -115,7 +115,7 @@ vanishes.
 
 - status: active
 - since: 2026-10
-- actor: cn engine / member
+- actor: cn engine / signed-in person repository
 - source: ARCH §7.1; ARCH-REV C2
 - coverage: scenario
 
@@ -126,7 +126,7 @@ entries after an access check (REQ-PRIV-020).
 
 - status: active
 - since: 2026-10
-- actor: member / agent
+- actor: signed-in person repository / agent
 - source: ARCH §7; FLOW 10; SEC-REV L12
 - coverage: scenario
 
@@ -138,7 +138,7 @@ the per-caller index only, never in a request log); there is no stable public UR
 
 - status: active
 - since: 2026-10
-- actor: member / agent (security)
+- actor: signed-in person repository / agent (security)
 - source: SEC (security review, 2026-10-22); ARCH §7
 - coverage: scenario+http (the Cache port's fake proves the caching intent in-process; the nightly http run observes the real CDN)
 
@@ -337,7 +337,7 @@ the registry marked "new".
 
 - status: active
 - since: 2026-10
-- actor: cn engine (GitHub Actions) / signed-in user
+- actor: cn engine (GitHub Actions) / signed-in person
 - source: Ariel, 2026-10-22 (A2; ARCH-Q 1: an allowlist of GitHub accounts proven by the Actions OIDC token); REQ-PRIV-016, 017, 018
 - coverage: scenario+contract (the scenario drives the engine fake through the member handle; the real engine is proven by the Claudinite repository's contract suite against PackServer's fakes)
 

@@ -12,7 +12,7 @@ earlier "verified fetch": a public fetch is an anonymous CDN hit, so no account 
 
 - status: active
 - since: 2026-10
-- actor: member / visitor
+- actor: signed-in person / anonymous visitor
 - source: ARCH §10; FLOW 3; Ariel, 2026-10-22 (SITE-D 1, settled by sitemap decision 15: every signal stays)
 - coverage: scenario
 
@@ -22,7 +22,7 @@ A signed-in person can star and unstar a pack; an anonymous click redirects to s
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: ARCH §10; PD-REV H7
 - coverage: scenario
 
@@ -33,7 +33,7 @@ not counted publicly.
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: ARCH §10; FLOW 3; Ariel, 2026-10-22 (sitemap decision 8, PR #4 commit 79e7900)
 - coverage: scenario
 
@@ -44,7 +44,7 @@ edits the first and records the version.
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: FLOW 3; SITE matrix
 - coverage: scenario
 
@@ -54,7 +54,7 @@ A person cannot review their own packs or the packs of an org they belong to.
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: FLOW 3
 - coverage: scenario
 
@@ -123,7 +123,7 @@ can apply its own policy; publisher-authored strings travel as data (REQ-SEARCH-
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: FLOW 3
 - coverage: scenario
 
@@ -156,7 +156,7 @@ qualifies.
 
 - status: active
 - since: 2026-10
-- actor: member / anonymous visitor
+- actor: signed-in person / anonymous visitor
 - source: Ariel, 2026-10-22; docs/decisions.md (section comments, off by default, with up and down votes; a net-negative section after 3 days is strongly hidden); Ariel B1 2026-10-22
 - coverage: scenario+ui (the collapsed default and the disclosure are observed in the browser driver)
 
@@ -170,7 +170,7 @@ hidden behind a disclosure. Comment and vote accounts follow REQ-COMM-002 and RE
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: ARCH §10; DATA decision 6; FLOW 4
 - coverage: scenario
 
@@ -184,7 +184,7 @@ GitHub.
 
 - status: active
 - since: 2026-10
-- actor: member / publisher
+- actor: signed-in person / publisher
 - source: ARCH §10; FLOW 4; PD-REV M8
 - coverage: scenario
 
@@ -207,7 +207,7 @@ shows "Add a security contact".
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: FLOW 4
 - coverage: scenario
 
@@ -218,7 +218,7 @@ An attachment containing a secret is blocked with an explanation; an attachment 
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: FLOW 4
 - coverage: scenario
 
@@ -228,7 +228,7 @@ Before submitting, the reporter is shown existing issues with similar titles.
 
 - status: active
 - since: 2026-10
-- actor: publisher / member
+- actor: publisher / signed-in person
 - source: FLOW 4
 - coverage: scenario
 
@@ -252,7 +252,7 @@ security report, it is returned by MCP for those versions, and it is what caps t
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: FLOW 4; SITE account
 - coverage: scenario
 
@@ -264,7 +264,7 @@ A signed-in person can see their own public and private reports on their account
 
 - status: active
 - since: 2026-10
-- actor: signed-in user
+- actor: signed-in person
 - source: FLOW 13; Ariel, 2026-10-22 (sitemap decision 10, PR #4 commit 79e7900)
 - coverage: scenario
 
@@ -315,7 +315,7 @@ restores the pack and a denied one is logged as final.
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: FLOW 13
 - coverage: scenario
 
@@ -382,7 +382,7 @@ Yanking the only version leaves the pack listed with "No available versions" and
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: FLOW 12; PD-REV L9
 - coverage: scenario
 
@@ -396,7 +396,7 @@ posted to GitHub.
 
 - status: active
 - since: 2026-10
-- actor: anonymous visitor / member
+- actor: anonymous visitor / signed-in person
 - source: ARCH §10
 - coverage: scenario
 
@@ -440,7 +440,7 @@ A client exceeding auth-endpoint rate limits per IP or per account is slowed or 
 
 - status: active
 - since: 2026-10
-- actor: member (security)
+- actor: signed-in person (security)
 - source: ARCH §4; FLOW preamble
 - coverage: scenario
 
@@ -477,7 +477,7 @@ A retired entry keeps its id and its last statement; no scenario may name it.
 
 - status: retired
 - since: 2026-10
-- actor: member / agent
+- actor: signed-in person / agent
 - source: ARCH §8, §10; PD-REV C3
 - retired: 2026-10-22 (Ariel B1 2026-10-22): a public fetch is an anonymous CDN hit, so the vote had no data source; the `report_outcome` MCP tool goes with it.
 - coverage: manual (never built; no scenario may name this ID)

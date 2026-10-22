@@ -168,7 +168,7 @@ unavailable, and nothing in the registry's bindings can edit or delete a batch.
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: DATA audit
 - coverage: scenario
 

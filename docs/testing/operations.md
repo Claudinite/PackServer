@@ -3,27 +3,28 @@
 Mirrors [../requirements/operations.md](../requirements/operations.md). The `Operator` actor holds
 the probe credential; `world.telemetry` is the fake stats sink; `world.operator.selfTest(worker,
 {shallow})` calls `/__selftest`. Self-test tests run on push in-process and again at pre-release
-against the 0% candidate through the `http` driver (the release flow's stage 2).
+against the candidate on the canary host through the `http` driver; in pre-launch mode that stage
+is the only gate before every Worker goes to 100% (Ariel B7 2026-10-22).
 
 ## The synthetic tenant
 
 ### IT-OPS-001 A synthetic scope is invisible outside itself
 - **Covers:** REQ-OPS-001
 - **Runs:** push, needs reset
-- **Action:** the probe publisher publishes `@probe/p@1.0.0`; search, browse, read root and the public indexes, run semantic search, read Trending and the exploration slot, the sitemap, run the rollup and read billing; advance the clock 24 h and run the expiry job; publish `@probe/p@1.0.0` again.
-- **Faked:** clock.
-- **Assert:** the pack appears on none of the surfaces and consumed no credit; its run made no prose call and entered no human queue and the queue's counts are unchanged (hold it with the static heuristic to prove the skip); after 24 h the version is gone and the republish succeeds.
+- **Action:** the probe repository publishes `@probe/p@1.0.0` by trusted publishing; search, browse, read root and the public indexes, run semantic search, read Trending and the exploration slot, the sitemap, run the rollup; advance the clock 24 h and run the expiry job; publish `@probe/p@1.0.0` again.
+- **Faked:** OIDC issuer, clock.
+- **Assert:** the pack appears on none of the surfaces; its run made no ProseScreen call and entered no human queue and the queue's counts are unchanged (give it an install-from-URL finding to prove the skip); after 24 h the version is gone and the republish succeeds.
 
 ### IT-OPS-002 A probe credential cannot act outside its scope
 - **Covers:** REQ-OPS-002
 - **Runs:** push, probe-safe (the refusals only)
-- **Action:** with the probe token: publish `@acme/x`, read a private pack, mint a token, list sessions, change an email, create a new pack in `@probe`.
-- **Assert:** every call is refused except `publish:update` on an existing `@probe` pack; the token is never accepted as a session on any page.
+- **Action:** with the probe repository's OIDC token and with the prober Worker's service-binding principal: publish `@acme/x`, read a private pack, mint a token, list sessions, change an email, create a new pack in `@probe`, publish a new version of the existing `@probe/p`; present each as a browser session.
+- **Assert:** every call is refused except the new version of the existing `@probe` pack; neither identity is ever accepted as a session on any page.
 
 ### IT-OPS-003 Production configuration rejects test issuers and bindings
 - **Covers:** REQ-OPS-003
 - **Runs:** push
-- **Action:** boot the publish and billing Workers with `env: production` configuration in the harness; exchange a token from the fake issuer `https://oidc.test`; deliver a Polar webhook signed with `whsec_test…`; grep every production bundle and `wrangler.json` for `oidc.test`, `fake-`, `whsec_test`, `TEST_MODE`, `fireAlarm` and the Turnstile always-pass keys.
+- **Action:** boot the publish and github Workers with `env: production` configuration in the harness; exchange a token from the fake issuer `https://oidc.test`; start the github Worker with a webhook secret of `whsec_test…`; grep every production bundle and `wrangler.jsonc` for `oidc.test`, `fake-`, `whsec_test`, `TEST_MODE`, `fireAlarm` and the Turnstile always-pass keys.
 - **Assert:** the exchange is refused as a wrong issuer before any JWKS fetch; the webhook secret is refused at startup; the grep has zero hits.
 
 ## The self-test
@@ -32,7 +33,7 @@ against the 0% candidate through the `http` driver (the release flow's stage 2).
 - **Covers:** REQ-OPS-004
 - **Runs:** push, release
 - **Action:** an anonymous visitor requests `/__selftest` on each host; the operator requests it with the probe credential and over a service binding; a full run executes.
-- **Assert:** the anonymous responses equal the unknown-path response; the credentialed calls answer; the recorder shows no Polar, GitHub, model or mail call and no write outside `@packserver-canary`; in the production-config boot the `detail` fields are enums only.
+- **Assert:** the anonymous responses equal the unknown-path response; the credentialed calls answer; the recorder shows no GitHub, model, mail or other paid or external call and no write outside `@packserver-canary`; in the production-config boot the `detail` fields are enums only.
 
 ### IT-OPS-005 The self-test reports in a fixed shape with the answering version
 - **Covers:** REQ-OPS-005
@@ -81,7 +82,7 @@ against the 0% candidate through the `http` driver (the release flow's stage 2).
 ### IT-OPS-012 Recorded invocations never hold a personal, customer-content or secret value in clear
 - **Covers:** REQ-OPS-012
 - **Runs:** push
-- **Action:** a signed-in user publishes a pack whose text contains a marker string and whose request carried an email and a token; read the shadow records the Recorder wrote and the fakes' records.
+- **Action:** a signed-in person publishes a pack whose text contains a marker string and whose request carried an email and a token; read the invocation records the Recorder wrote and the fakes' records.
 - **Assert:** the email appears only as a keyed hash behind a `personal` placeholder; the marker appears only as a `customer-content` placeholder; the token is absent; a field the test leaves unclassified in a fixture is treated as customer-content; the fakes' records carry the same placeholders.
 
 ## Telemetry
@@ -91,14 +92,14 @@ against the 0% candidate through the `http` driver (the release flow's stage 2).
 - **Runs:** push
 - **Action:** a private download and a private index fetch through the Worker by `cn adopt`, the update task and MCP; a public download recorded in the fake Logpush archive; run the rollup.
 - **Faked:** stats sink, Logpush archive.
-- **Assert:** points exist with pack, version, hashed caller and fetcher for each private fetch, written after the response (recorder order); the public download is counted from the archive and produced no Worker invocation.
+- **Assert:** points exist with pack, version, hashed principal and fetcher for each private fetch, written after the response (recorder order); the public download is counted from the archive with its /24 network and produced no Worker invocation.
 
-### IT-TELEM-002 A download counts once per caller, version and day
+### IT-TELEM-002 A public download counts once per network, version and day; a private one once per principal
 - **Covers:** REQ-TELEM-002
 - **Runs:** push
-- **Action:** one caller downloads a version 5 times today and once tomorrow; a second caller once today.
-- **Faked:** clock, stats sink.
-- **Assert:** after the rollup the version shows 2 for today and 1 for tomorrow.
+- **Action:** public downloads of one version from 198.51.100.7 five times and from 198.51.100.9 once today, and from 198.51.100.7 once tomorrow, recorded in the fake Logpush archive; one private principal downloads another version 5 times today; read the pack pages.
+- **Faked:** clock, stats sink, Logpush archive.
+- **Assert:** after the rollup the public version shows 1 for today (one /24 network) and 1 for tomorrow; the private version shows 1 for today; the pages say "about N fetches" and show no repository count from fetches.
 
 ### IT-TELEM-006 Telemetry never stores raw IPs
 - **Covers:** REQ-TELEM-006
@@ -111,7 +112,7 @@ against the 0% candidate through the `http` driver (the release flow's stage 2).
 - **Runs:** push
 - **Action:** the fake GitHub code search returns settings files from 7 public repos declaring `@acme/gcp` (two pinned to `1.0.0`), and one fewer than last week; run the scan; run it with the fake returning slowly past 10 minutes, then again.
 - **Faked:** GitHub code search, clock.
-- **Assert:** the pack shows 7 declaring repositories, the pinned versions and one dropped declaration, and the count feeds the page, ranking and Trending inputs; the slow run stops at 10 minutes and the next resumes from the cursor; the queries are split by pack id and repository creation date; every GitHub request used the read-only public token and none targeted a private repository endpoint.
+- **Assert:** the pack shows 7 declaring repositories labelled "approximate, weekly", the pinned versions and one dropped declaration, and the count feeds the page, ranking and Trending inputs; the slow run stops at 10 minutes and the next resumes from the cursor; the queries are split by pack id and repository creation date; every GitHub request used the read-only public token and none targeted a private repository endpoint.
 
 ### IT-TELEM-008 Fetch telemetry is kept 90 days and never identifies a repository publicly
 - **Covers:** REQ-TELEM-008
@@ -129,3 +130,4 @@ against the 0% candidate through the `http` driver (the release flow's stage 2).
 ## Not covered by an integration test
 
 - **REQ-TELEM-004** — policy: the sentence constrains the tests themselves ("a test asserts monotonic, order-of-magnitude behaviour, not exact totals"); it is enforced by review of IT-TELEM-003 and IT-COMM-014, not by a test.
+- **REQ-OPS-013** — manual: branch rulesets, write access and the owner's second factor are repository and account settings; the first-release checklist verifies them and the judge's `page.account_change` watch pages on drift.

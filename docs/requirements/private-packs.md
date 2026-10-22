@@ -11,7 +11,7 @@ index: [../architecture/signing-index-revocation.md](../architecture/signing-ind
 
 - status: active
 - since: 2026-10
-- actor: anonymous visitor / member / agent
+- actor: anonymous visitor / signed-in person / agent
 - source: ARCH §8; FLOW 10; PD-REV M3; SEC-REV L9, M2
 - coverage: scenario
 
@@ -38,7 +38,7 @@ as for a nonexistent pack (REQ-PRIV-001).
 
 - status: active
 - since: 2026-10
-- actor: member (security)
+- actor: signed-in person (security)
 - source: SEC (security review, 2026-10-22); ARCH §8
 - coverage: scenario
 
@@ -72,7 +72,7 @@ one gets `401` (REQ-PRIV-002).
 
 - status: active
 - since: 2026-10
-- actor: signed-in user
+- actor: signed-in person
 - source: ARCH §9, §11 (PR #3 commit c3a045e); Ariel, 2026-10-22 (an allowlist of GitHub accounts); SEC-REV L2
 - coverage: scenario
 
@@ -146,7 +146,7 @@ and repository.
 
 - status: active
 - since: 2026-10
-- actor: org maintainer / member
+- actor: org maintainer / signed-in person
 - source: SITE matrix; PD-REV H7
 - coverage: scenario
 
@@ -183,7 +183,7 @@ fetchable by exact version.
 
 - status: active
 - since: 2026-10
-- actor: publisher / member
+- actor: publisher / signed-in person
 - source: ARCH §11 phase 1; FLOW 10 B
 - coverage: scenario
 
@@ -215,7 +215,7 @@ downloads return `404` until access is granted.
 
 - status: active
 - since: 2026-10
-- actor: member / publisher
+- actor: signed-in person / publisher
 - source: ARCH §11 phase 2; FLOW 10 D
 - coverage: scenario
 
@@ -236,7 +236,7 @@ A grant API lets a completed payment grant access automatically.
 
 - status: active
 - since: 2026-10
-- actor: member / org owner
+- actor: signed-in person / org owner
 - source: ARCH §11 phase 3; FLOW 10 A; PD-REV H7
 - coverage: scenario
 
@@ -247,7 +247,7 @@ packs.
 
 - status: active
 - since: 2026-10
-- actor: member
+- actor: signed-in person
 - source: ARCH §11 phase 4; DATA
 - coverage: scenario
 
