@@ -59,7 +59,7 @@ export const codeUnitCompare = (a: string, b: string): number => (a < b ? -1 : a
 
 const byNewest = (a: { version: string }, b: { version: string }) => compareVersions(b.version, a.version);
 
-/** A published version as the builders take it, with when its status last left `active`. */
+/** A published version as the builders take it, with when its status last changed. */
 export type VersionRecord = IndexVersion & {
   /** When the version's status most recently changed (ISO timestamp); null only for a version that has never changed. */
   status_changed_at: string | null;
@@ -97,8 +97,8 @@ export function latestEligible(versions: readonly Pick<IndexVersion, "version" |
 }
 
 /**
- * The versions a scope index carries for one pack: the 20 newest eligible plus every version whose
- * status left `active` within the last 180 days, and every revoked version whatever its age, so cn
+ * The versions a scope index carries for one pack: the 20 newest eligible plus every non-active
+ * version whose status last changed within the last 180 days, and every revoked version whatever its age, so cn
  * sees a revocation without fetching `versions.json`. The rest live in the pack's `versions.json`.
  */
 export function selectListedVersions(pack: PackRecord, now: Date): VersionRecord[] {

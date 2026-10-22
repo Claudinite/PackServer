@@ -63,6 +63,16 @@ describe("attestation (IT-PUB-021)", () => {
     expect(await verifyAttestation(signed, { keys, expect: { ...expectOidc, upload_sha256: "0".repeat(64) } })).toMatchObject({ ok: false, code: "mismatch" });
   });
 
+  it("returns malformed, never throws, on a lone surrogate in a field or an unrecognised one", async () => {
+    const keys = await keySet();
+    const signed = await signAttestation(oidcAttestation, await signerA());
+    const inRules = { ...signed, rules_version: "2026\ud800" };
+    expect(await verifyAttestation(inRules, { keys, expect: expectOidc })).toMatchObject({ ok: false, code: "malformed" });
+    const inProvenance = structuredClone(signed) as Json;
+    inProvenance.provenance.extra = "\udfff";
+    expect(await verifyAttestation(inProvenance, { keys, expect: expectOidc })).toMatchObject({ ok: false, code: "malformed" });
+  });
+
   it("refuses unsigned, extra-field and non-attestation input", async () => {
     const keys = await keySet();
     const signed = await signAttestation(oidcAttestation, await signerA());

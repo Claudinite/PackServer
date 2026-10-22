@@ -79,8 +79,14 @@ export async function verifySigned<S extends z.ZodType<{ kid: string; signature:
   } catch {
     return fail("signature", "undecodable signature or key");
   }
+  let message: Uint8Array;
+  try {
+    message = signingBytes(raw as Record<string, unknown>);
+  } catch (error) {
+    return fail("malformed", error instanceof Error ? error.message : "cannot be canonicalised");
+  }
   const ed = options.ed25519 ?? (await selectEd25519());
-  if (!(await ed.verify(publicKey, signature, signingBytes(raw as Record<string, unknown>)))) {
+  if (!(await ed.verify(publicKey, signature, message))) {
     return fail("signature", "signature does not verify");
   }
 
@@ -125,7 +131,15 @@ export async function verifyAttestation(
   const parsed = Attestation.safeParse(body);
   if (!parsed.success) return fail("malformed", parsed.error.issues[0]?.message ?? "not an attestation");
   const attestation = parsed.data;
-  if (!bytesEqual(canonicalBytes(body), canonicalBytes(attestation))) return fail("malformed", "unrecognised fields");
+  let bodyBytes: Uint8Array;
+  let attestationBytes: Uint8Array;
+  try {
+    bodyBytes = canonicalBytes(body);
+    attestationBytes = canonicalBytes(attestation);
+  } catch (error) {
+    return fail("malformed", error instanceof Error ? error.message : "cannot be canonicalised");
+  }
+  if (!bytesEqual(bodyBytes, attestationBytes)) return fail("malformed", "unrecognised fields");
 
   const key = options.keys.find((k) => k.kid === attestation.kid);
   if (!key) return fail("unknown-kid", attestation.kid);
@@ -140,7 +154,7 @@ export async function verifyAttestation(
     return fail("signature", "undecodable signature or key");
   }
   const ed = options.ed25519 ?? (await selectEd25519());
-  if (!(await ed.verify(publicKey, signature, canonicalBytes(attestation)))) return fail("signature", "signature does not verify");
+  if (!(await ed.verify(publicKey, signature, attestationBytes))) return fail("signature", "signature does not verify");
 
   const expected: Partial<AttestationExpectation> = options.expect ?? {};
   for (const field of ["pack", "version", "canonical_sha256"] as const) {

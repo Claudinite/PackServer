@@ -105,6 +105,21 @@ describe("tamper negatives", () => {
     }
   });
 
+  it("returns malformed, never throws, on served input carrying a lone surrogate", async () => {
+    const keys = await keySet();
+    const good = parse((await signedScope()).bytes);
+    const stripped = structuredClone(good);
+    stripped.packs[0].versions[0].smuggled = "\ud800";
+    expect(await verifySigned(ScopeIndex, stripped, { keys, now: NOW })).toMatchObject({ ok: false, code: "malformed" });
+    const inReason = structuredClone(good);
+    inReason.packs[0].versions[0].status = "yanked";
+    inReason.packs[0].versions[0].reason = "bad \udc00 reason";
+    expect(await verifySigned(ScopeIndex, inReason, { keys, now: NOW })).toMatchObject({ ok: false, code: "malformed" });
+    const inKey = structuredClone(good);
+    inKey.packs[0].versions[0]["\ud800"] = 1;
+    expect(await verifySigned(ScopeIndex, inKey, { keys, now: NOW })).toMatchObject({ ok: false, code: "malformed" });
+  });
+
   it("refuses a flipped signature bit, a swapped kid, a missing signature and an unknown extra top-level field", async () => {
     const keys = await keySet();
     const good = parse((await signedScope()).bytes);

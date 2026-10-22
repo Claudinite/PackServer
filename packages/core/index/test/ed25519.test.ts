@@ -20,6 +20,15 @@ describe("Ed25519 backends", () => {
     expect((await selectEd25519()).selection).toMatch(/webcrypto/i);
   });
 
+  it("probes once per isolate when no backend is given, keeping the recorded reason", async () => {
+    const first = await selectEd25519();
+    const second = await selectEd25519();
+    expect(second).toBe(first);
+    expect(second.selection).toMatch(/probe passed/);
+    const refusing = { importKey: () => Promise.reject(new Error("unsupported")) } as unknown as typeof globalThis.crypto.subtle;
+    expect(await selectEd25519(refusing)).not.toBe(first);
+  });
+
   it("falls back when WebCrypto imports keys but signs something other than the known answer", async () => {
     const real = globalThis.crypto.subtle;
     const lying = {
@@ -118,6 +127,21 @@ describe("Ed25519 backends", () => {
         }
         expect(forged).toBeDefined();
         expect(await ed.verify(mixed, forged!, m)).toBe(false);
+      });
+
+      it("refuses a signature whose R carries a torsion component", async () => {
+        const L = 0x1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3edn;
+        const le = (bytes: Uint8Array) => bytes.reduceRight((acc, b) => (acc << 8n) | BigInt(b), 0n);
+        const orderTwo = noble.Point.fromBytes(Uint8Array.from([0xec, ...new Array(30).fill(0xff), 0x7f]), false);
+        const extended = await noble.utils.getExtendedPublicKeyAsync(seedA);
+        const pub = extended.pointBytes;
+        const m = utf8("torsion in R");
+        const r = 5n;
+        const R = noble.Point.BASE.multiply(r).add(orderTwo).toBytes();
+        const k = le(await noble.hashes.sha512Async(new Uint8Array([...R, ...pub, ...m]))) % L;
+        const S = (r + k * extended.scalar) % L;
+        const sBytes = Uint8Array.from({ length: 32 }, (_, i) => Number((S >> BigInt(8 * i)) & 0xffn));
+        expect(await ed.verify(pub, new Uint8Array([...R, ...sBytes]), m)).toBe(false);
       });
 
       it("refuses a signature whose R is not a canonical point encoding", async () => {

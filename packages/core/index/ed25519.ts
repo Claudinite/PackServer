@@ -26,8 +26,8 @@ function requireLength(name: string, bytes: Uint8Array, length: number) {
 const bs = (bytes: Uint8Array) => bytes as never;
 
 /**
- * Both backends only see keys and signature points that are canonical encodings, and keys that are
- * on the curve, not small order and torsion-free. Backends differ on the rest of the cofactor
+ * Both backends only see keys and signature points that are canonical encodings and torsion-free,
+ * and keys that are on the curve and not small order. Backends differ on the rest of the cofactor
  * edge cases (ZIP-215 versus RFC 8032 and OpenSSL), so rejecting those inputs up front is what
  * makes them agree on every key the registry could legitimately hold.
  */
@@ -42,8 +42,7 @@ function acceptablePublicKey(publicKey: Uint8Array): boolean {
 
 function canonicalR(signature: Uint8Array): boolean {
   try {
-    noble.Point.fromBytes(signature.subarray(0, 32), false);
-    return true;
+    return noble.Point.fromBytes(signature.subarray(0, 32), false).isTorsionFree();
   } catch {
     return false;
   }
@@ -121,7 +120,16 @@ async function probeWebCrypto(subtle: Subtle): Promise<string | null> {
 }
 
 /** WebCrypto when it passes the probe, `@noble/ed25519` otherwise, with the reason kept on the result. */
-export async function selectEd25519(subtle: Subtle | undefined = globalThis.crypto?.subtle): Promise<Ed25519> {
+export function selectEd25519(subtle?: Subtle): Promise<Ed25519> {
+  if (subtle) return selectFor(subtle);
+  // The runtime's own backend is probed once per isolate; the recorded selection travels with it.
+  defaultSelection ??= selectFor(globalThis.crypto?.subtle);
+  return defaultSelection;
+}
+
+let defaultSelection: Promise<Ed25519> | undefined;
+
+async function selectFor(subtle: Subtle | undefined): Promise<Ed25519> {
   if (!subtle) return nobleBackend("fallback: no WebCrypto in this runtime");
   const failure = await probeWebCrypto(subtle);
   return failure === null
