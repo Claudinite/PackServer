@@ -8,7 +8,7 @@ Area `SCOPE`, 17 requirements. Format and rules: [README.md](README.md).
 - since: 2026-10
 - actor: publisher
 - source: ARCH §4
-- decision: ARCH-Q 5, SITE-D 5
+- decision: ARCH-Q 5, SITE-D 5; CLN-REV 2 (Claudinite ids are bare lowercase, vendored at `.claudinite/shared/packs/<id>/`, with `local/`, `fleet/` and `temp` reserved; how a scoped registry name maps to a declared id and a vendored directory)
 - coverage: scenario
 
 Every pack is named `@<scope>/<pack>`; a scope belongs to exactly one user or organisation.
@@ -106,10 +106,11 @@ alert to the owners.
 
 ## REQ-SCOPE-010 Verified Publisher requires all four proofs
 
-- status: active
+- status: provisional
 - since: 2026-10
 - actor: admin
 - source: ARCH §4
+- decision: CLN-REV 7 (the research says "bound to a GitHub org or DNS domain"; requiring both excludes the OSS maintainer with no domain)
 - coverage: scenario
 
 "Verified Publisher" is granted only when domain proof, linked GitHub org, scope-wide MFA

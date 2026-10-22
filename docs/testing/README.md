@@ -42,7 +42,7 @@ The suite is a honeycomb, not a pyramid: integration scenarios are the widest la
 | Probe (scenario tagged `probe-safe`) | a deployed version answers correctly before it gets traffic | no (a subset, not new coverage) | pre-traffic in the release flow; periodically by monitoring | same as scenarios |
 | Mutation run (StrykerJS on `packages/core` unit tests) | the unit tests would notice if `core` logic were wrong | no; a strength report | nightly, in a 15-minute slice | nobody; it is a report |
 
-Unit tests are for pure logic with a large input space (version ranges, the risk score, archive path checks, OIDC claim matching, the CSP string), Durable Object internals through `runInDurableObject`, Workflow step bodies, and anything a scenario would need thirty variants of. A unit test never stands in for a scenario: a requirement with only unit tests says `coverage: unit-only` with a reason, and that is reviewed.
+Unit tests are for pure logic with a large input space (date-form version ordering and `minEngineVersion` comparison, the pack score, archive path checks, OIDC claim matching, the CSP string), Durable Object internals through `runInDurableObject`, Workflow step bodies, and anything a scenario would need thirty variants of. A unit test never stands in for a scenario: a requirement with only unit tests says `coverage: unit-only` with a reason, and that is reviewed.
 
 The suite does not snapshot pages or JSON responses. A scenario asserts the fields the requirement names and nothing else.
 
@@ -56,7 +56,7 @@ flowchart TB
     S["scenario('REQ-PUB-004 a fork cannot publish', async (world) => { … })"]
   end
   subgraph L2["Layer 2 · tests/world/**  (the DSL; changes freely)"]
-    W["World: users · publishers · orgs · agents · cn · admins · operator · github · stripe · llm · sandbox · registries · mail · dns · rekor · audit · clock · telemetry"]
+    W["World: users · publishers · orgs · agents · member · admins · operator · github · stripe · llm · sandbox · registries · mail · dns · rekor · audit · clock · telemetry"]
     M["handles and matchers"]
   end
   subgraph L3["Layer 3 · tests/drivers/**  (protocol drivers; change freely)"]
@@ -170,7 +170,7 @@ A gradual rollout has Workers of two builds talking to each other, so the releas
 
 `packages/core` does all I/O through ports: `Clock`, `Rng`, `Stripe`, `GitHub` (read-only by construction: the interface has no method that writes, so "PackServer never writes to GitHub" is a type, and the fake records any call that would), `OidcVerifier`, `VectorIndex`, `Embedder`, `Sandbox`, `LlmReviewer`, `PackageRegistry` (the existence and age lookups of REQ-VAL-030, allowlisted hosts only, so an unlisted host is unreachable by type), `Mail`, `Dns`, `Turnstile`, `AccessIdentity`, `Stats`, `Cache`, `Uploads`, `AuditSink` (the append-only batch writer to the audit bucket), `Transparency` (the Rekor client), and thin wrappers around the Cloudflare bindings. Production adapters are constructed from `env` in each Worker's entry; test doubles implement the same interfaces.
 
-The release plan's shadow-traffic design needs the same layer, and the two were agreed as one thing: every port call goes through one pluggable `Recorder`. The release thread's schema (`docs/release/shadow-traffic.md`, pending Ariel's confirmation) is the source of truth; restated so the test side cannot drift:
+The release plan's shadow-traffic design needs the same layer, and the two were agreed as one thing: every port call goes through one pluggable `Recorder`. The release thread's schema (`docs/release/shadow-traffic.md`, pending Ariel's confirmation) is authoritative; restated so the test side cannot drift:
 
 ```ts
 interface Invocation { seq: number; kind: 'd1' | 'r2' | 'kv' | 'do' | 'vectorize' | 'queue' | 'http'; target: string; op: string;
@@ -345,7 +345,7 @@ The remaining known upstream issues (DO RPC teardown noise, plugin snapshot size
 | M2 harness and World skeleton | the in-process driver booting whichever Workers exist, MSW fail-closed, the Clock/Rng ports and fake-clock Worker, the Recorder interface, `world.users`, `world.visitor()`, `world.agents.anonymous()`, `world.telemetry`, the first matchers, the production-seam grep | the first ten scenarios (REQ-SEARCH-001..007, REQ-PRIV-001, REQ-DELIV-001, REQ-TELEM-001) green and each seen red on base |
 | M3 http driver and probe-safe | the `http` driver with the env-var contract and the version assertion, JUnit output, `probe-safe` lint, a first probe set, `world.operator` and the self-test scenarios (REQ-OPS-005..011), REQ-OPS-* | the release plan's pre-traffic stage runs it against the RC and `staging`; monitoring runs it against production |
 | M4 identity | the fake GitHub login, the virtual authenticator in the World (used by every sensitive verb for its per-action assertion), TOTP, mail inbox, the `browser` driver, REQ-ACC-* incl. the session, revocation-bound and per-action-assertion negatives (ACC-010, 012, 021..025) | accounts area at 100%; passkey `ui` scenarios green twice |
-| M5 publish path | fake GitHub (OIDC, App, signed webhooks, read-only with a write-attempt recorder), fake Sandbox (with the bomb corpus generator), fake package registries, the per-screen LLM fake, Workflow introspection, the `Uploads` port, the dry-run verb, the cn repo handle with policies, REQ-PUB-*, REQ-VAL-*, REQ-DELIV-*, REQ-SCOPE-016/017 | publishing, validation, delivery areas at 100% of active + provisional; the weekly Docker sandbox job runs the contract corpus |
+| M5 publish path | fake GitHub (OIDC, App, signed webhooks, read-only with a write-attempt recorder), fake Sandbox (with the bomb corpus generator), fake package registries, the per-screen LLM fake, Workflow introspection, the `Uploads` port, the dry-run verb, the member handle with policies, REQ-PUB-*, REQ-VAL-*, REQ-DELIV-*, REQ-SCOPE-016/017 | publishing, validation, delivery areas at 100% of active + provisional; the weekly Docker sandbox job runs the contract corpus |
 | M6 payments and access | fake Stripe with signed webhooks, the billing contract suite, REQ-PAY-*, REQ-PRIV-* | payments and private areas at 100% |
 | M7 community, moderation, admin, abuse, audit | fake Access identity with signature checks, admin actor, abuse and quarantine scenarios, the local audit bucket with chain, `world.audit.tamper()`/`verify()` and the Rekor fake, REQ-COMM/MOD/ADMIN/ABUSE/AUDIT-* | matrix at 100% of active + provisional |
 | M8 honesty and strength | every real-backend suite wired with secrets in the `nightly` environment, redaction and drift PRs, the mutation watermark | a month of weekly real-backend runs with no unexplained drift |

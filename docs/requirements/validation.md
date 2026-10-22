@@ -5,7 +5,9 @@ Area `VAL`, 45 requirements. Format and rules: [README.md](README.md).
 Entries REQ-VAL-024 onwards, and the amended statements of REQ-VAL-002, 010, 011, 012, 013,
 014, 018, 021, 022 and 023, come from the architecture thread's validation-flow review
 (`ARCH-VAL`, see the README's sources table). Entries that depend on one of that review's five
-open decisions are provisional and name the item (`ARCH-VAL §7-n`).
+open decisions are provisional and name the item (`ARCH-VAL §7-n`). The Claudinite alignment
+review (`CLN-REV`, 2026-10-22) corrected the pack vocabulary here to the pack's real parts and
+the date-form version, and its open items are cited as `CLN-REV n`.
 
 ## REQ-VAL-001 Every upload is validated with live progress
 
@@ -52,7 +54,8 @@ REQ-VAL-022), or more than 5k files hard-fails.
 - coverage: scenario
 
 An archive whose `pack.json` is missing, malformed, or inconsistent with the files on disk
-(declared features absent, non-semver version) hard-fails.
+(a declared part absent, a version not in the date form `1.YMMDD.n`, a `minEngineVersion` not in
+that form, or a `requires` entry naming a pack the registry does not serve) hard-fails.
 
 ## REQ-VAL-005 A detected secret hard-fails without revealing the value
 
@@ -66,7 +69,7 @@ An archive whose `pack.json` is missing, malformed, or inconsistent with the fil
 A detected secret hard-fails; the report shows rule, file and line but never the secret value,
 and reminds the publisher to rotate it.
 
-## REQ-VAL-006 Disallowed files hard-fail; network-calling hooks warn
+## REQ-VAL-006 Disallowed files hard-fail; network-calling judges, checks and workers warn
 
 - status: provisional
 - since: 2026-10
@@ -75,8 +78,8 @@ and reminds the publisher to rotate it.
 - decision: SITE-D 6
 - coverage: scenario
 
-Disallowed file types / binaries and path traversal hard-fail; shell hooks that make network
-calls produce a warning.
+Disallowed file types / binaries and path traversal hard-fail; hook judges, coded checks or task
+workers that make network calls produce a warning.
 
 ## REQ-VAL-007 A missing license warns
 
@@ -109,8 +112,8 @@ is the one extracted from the archive, not the one the manifest declares.
 - decision: SITE-D 6, ARCH-Q 3
 - coverage: scenario
 
-Prompt-injection / tool-poisoning heuristics on skills, hooks and MCP tool descriptions produce
-a warning with a human-readable excerpt.
+Prompt-injection / tool-poisoning heuristics on `RULES.md`, `SKILL.md` files and task
+descriptions produce a warning with a human-readable excerpt.
 
 ## REQ-VAL-010 Every shipped check or hook is proven against a firing and a silent fixture
 
@@ -124,9 +127,10 @@ a warning with a human-readable excerpt.
 For every check or hook the pack ships, the pack provides a firing fixture and a silent fixture,
 and the validator runs the check against both in the sandbox: a check that stays silent on the
 firing fixture or fires on the silent one hard-fails the version. Missing fixtures hold a
-community-tier version for human review and only warn a third-party one. Tasks and session-start
-steps are run once with egress off and their exit status recorded; skills, commands and agents
-are never executed. The pack's own declared tests are no longer what decides the verdict.
+community-tier version for human review and only warn a third-party one. Task workers and
+precondition scripts are run once with egress off and their exit status recorded; rules and
+skills are prose and are never executed. The pack's own declared tests are no longer what decides
+the verdict.
 
 ## REQ-VAL-011 Pack content runs only in a fresh, pinned, offline sandbox whose output is untrusted
 
@@ -166,12 +170,12 @@ tenth version.
 - since: 2026-10
 - actor: admin
 - source: ARCH §6 step 5; ARCH-VAL §6
-- decision: ARCH-Q 3; ARCH-VAL §7-4 (the timeout to third-party tier)
+- decision: ARCH-Q 3; ARCH-VAL §7-4 (the timeout to third-party tier); CLN-REV 8 (whether a queue may be ordered by how many members hold a pack at all)
 - coverage: scenario
 
 A version held by any rule waits in the human review queue and is not promoted until an admin
-approves it. The queue lists items ordered by the publisher's verified status, then the pack's
-installs, then age. A hold for reviewer uncertainty that is still unresolved after 7 days resolves
+approves it. The queue lists items ordered by the publisher's verified status, then the number
+of members holding the pack, then age. A hold for reviewer uncertainty that is still unresolved after 7 days resolves
 by itself to the third-party tier with a warning (REQ-VAL-041); a hold for a new capability
 (REQ-VAL-028) or for reviewer-addressed text (REQ-VAL-035) never resolves by timeout.
 
@@ -234,7 +238,8 @@ A publisher whose runs fail 10 or more times in a day is soft-rate-limited on fu
 
 Every live `latest` version is rescanned with the static rules whenever a rule changes, with the
 screening reviewer whenever its prompt or model changes, and its MCP packages and URL domains are
-re-resolved weekly; the thousand most-installed packs get the full pipeline weekly regardless. A
+re-resolved weekly; the thousand packs held by the most members get the full pipeline weekly
+regardless. A
 rescan finding moves the version to `quarantined` with a reason (`dependency-drift` when a
 package or domain no longer resolves as validated) in the signed index and in MCP status;
 quarantine is reversible, and only a human can move a version to `revoked`.
@@ -358,12 +363,13 @@ version for human review; code or prose that fetches an executable from a URL ha
 - since: 2026-10
 - actor: publisher / anonymous visitor / agent
 - source: ARCH-VAL §6, §3.2
-- decision: ARCH-VAL §7-1
+- decision: ARCH-VAL §7-1; CLN-REV 4 (whether the capability set is the pre-install manifest)
 - coverage: scenario
 
-The validator computes the version's capability set (hook execution, check execution, task
-execution, session-start execution, local MCP process, remote MCP server, network with its domain
-list, filesystem outside the repo, reads of secrets) from the archive, not from a declaration. A
+The validator computes the version's capability set (hook judges and the hook events they run on,
+tool calls guarded, coded-check execution, task execution with its cadence, task-worker Node
+execution, GitHub actions declared in `pack.json`, forced skills, network with its domain list,
+filesystem outside the repo, reads of secrets) from the archive, not from a declaration. A
 manifest that declares fewer capabilities than were extracted hard-fails. The set is stored with
 the version, signed into the index, and shown on the pack page and over MCP; a prose-only pack has
 an empty set.
@@ -391,7 +397,7 @@ the new capabilities. The hold never resolves by timeout.
 - decision: ARCH-VAL §7-1
 - coverage: scenario+contract (the in-process scenario uses the Sandbox port's recorded egress attempts; the real egress recording is proven by the nightly sandbox contract suite)
 
-Hooks, checks, tasks and session-start steps may not open network connections unless the pack
+Hook judges, coded checks and task workers may not open network connections unless the pack
 declares a network capability with a domain list. An egress attempt recorded during the sandbox
 run to a destination outside the declared domains hard-fails the version, and so does a static
 network pattern in that content when no network capability is declared. Declared domains are
@@ -403,7 +409,7 @@ listed publicly with the capability set and re-checked at rescan (REQ-VAL-018).
 - since: 2026-10
 - actor: publisher (security)
 - source: ARCH-VAL §6, §3.4, §1 T4
-- decision: ARCH-VAL §7-1
+- decision: ARCH-VAL §7-1; CLN-REV 3 (a Claudinite pack carries no MCP server config; if pack JavaScript imports only `@claudinite/sdk`, this reduces to an import allowlist on task workers)
 - coverage: scenario+contract (the fake package registries prove the refusals; the fixed-host allowlist, no-redirect and body-cap rules of the lookup are contract tests on the port)
 
 An MCP server config hard-fails unless its launcher is one of the allowlisted commands, its
@@ -424,8 +430,8 @@ reads (REQ-SCOPE-017).
 - coverage: scenario
 
 A floating dependency version (`latest`, a range, an unpinned git ref) or a pipe-to-shell pattern
-hard-fails whether it appears in a hook, a check, a task, a session-start step, an MCP config or
-in prose that tells the agent to run it.
+hard-fails whether it appears in a hook judge, a check, a task worker or in prose that tells the
+agent to run it.
 
 ## REQ-VAL-032 A pack that the pinned cn engine cannot load fails validation
 
@@ -454,7 +460,8 @@ limit), not the uploaded bytes. Before promotion the sandbox re-extracts the can
 with the same bounded decoder and compares its tree hash with the validated tree; a mismatch is
 an infrastructure error and nothing is promoted. The uploaded bytes stay in staging for the
 staging lifetime (REQ-PUB-020) so a disputed re-pack can be re-examined, and a publisher can
-produce byte-identical canonical archives offline with the engine's canonicalise command.
+produce byte-identical canonical archives offline with `cn vendor`, the command the release
+workflow already uses to build a version's archive.
 
 ## REQ-VAL-034 The reviewer's findings are structured and evidenced; free text decides nothing
 
@@ -560,10 +567,10 @@ resumes the run at the payment step without re-validating.
 - since: 2026-10
 - actor: anonymous visitor / agent / cn engine
 - source: ARCH-VAL §6, §3.10
-- decision: ARCH-VAL §7-4
+- decision: ARCH-VAL §7-4; CLN-REV 6 (the top tier's name: `reviewed` is a placeholder, since `canon` already names Claudinite's central pack set)
 - coverage: scenario
 
-Each promoted version carries one tier, `canon`, `community` or `third-party`, stored with the
+Each promoted version carries one tier, `reviewed`, `community` or `third-party`, stored with the
 version and signed into the index. A community version has passed every fail rule, loaded under
 cn, proven its fixtures and been found benign by both screens or a human. A third-party version
 (missing fixtures, or resolved from an uncertainty hold by timeout) carries a persistent warning
@@ -576,7 +583,7 @@ on the pack page and in cn, is excluded from default MCP results unless the call
 - since: 2026-10
 - actor: anonymous visitor / agent
 - source: ARCH-VAL §6, §3.13
-- decision: SITE-D 7; ARCH-VAL §7-1, §7-4, §7-5 (the fields that exist only with those decisions)
+- decision: SITE-D 7; ARCH-VAL §7-1, §7-4, §7-5 (the fields that exist only with those decisions); CLN-REV 4 (whether the capability list is the pre-install manifest), CLN-REV 6 (the top tier's name)
 - coverage: scenario
 
 The public pack page and the MCP pack view show the version's tier, capability list, provenance,
@@ -610,7 +617,7 @@ path; and a dry-run against a private pack answers outsiders as nonexistent (REQ
 - source: ARCH-VAL §6, §3.14
 - coverage: scenario+unit (one scenario compares a dry-run report with the offline lint of the same fixture; the shared rule module is unit-tested)
 
-Running the engine's offline lint on an archive reports the same static rule ids, with the same
+Running the engine's offline lint (`cn lint`) on an archive reports the same static rule ids, with the same
 classes, files and lines, as a dry-run of that archive at the registry; a rule that exists in one
 and not the other is a defect.
 

@@ -2,7 +2,7 @@
 
 Area `TELEM`, 7 requirements. Format and rules: [README.md](README.md).
 
-The signals these entries name are asserted through `world.telemetry` ([../testing/dsl.md §7](../testing/dsl.md)). The names themselves are defined in `docs/operations/monitoring.md` §8 (branch `claude/project-thread-bwothd`, unmerged), which is the source of truth; a scenario for an entry here uses the name from that section (for example the download signal for REQ-TELEM-001 and REQ-TELEM-002, the rollup signal for REQ-TELEM-003). An entry here says what is counted; monitoring §8 says what the count is called.
+The signals these entries name are asserted through `world.telemetry` ([../testing/dsl.md §7](../testing/dsl.md)). The names themselves are defined in `docs/operations/monitoring.md` §8 (branch `claude/project-thread-bwothd`, unmerged), which is authoritative; a scenario for an entry here uses the name from that section (for example the download signal for REQ-TELEM-001 and REQ-TELEM-002, the rollup signal for REQ-TELEM-003). An entry here says what is counted; monitoring §8 says what the count is called.
 
 ## REQ-TELEM-001 Downloads and index fetches are counted without blocking
 
@@ -12,8 +12,8 @@ The signals these entries name are asserted through `world.telemetry` ([../testi
 - source: DATA Analytics Engine
 - coverage: scenario
 
-Each download and index fetch is counted (pack, version, hashed caller, client) without blocking
-the response.
+Each download and index fetch is counted (pack, version, hashed caller, fetcher: `cn adopt`, the
+update task or MCP) without blocking the response.
 
 ## REQ-TELEM-002 A download counts once per caller, version and day
 
@@ -25,7 +25,7 @@ the response.
 
 A download is counted once per (caller, version, day) toward the downloads metric.
 
-## REQ-TELEM-003 30-day installs and active repos roll up hourly
+## REQ-TELEM-003 30-day fetches and members holding a pack roll up hourly
 
 - status: active
 - since: 2026-10
@@ -33,8 +33,8 @@ A download is counted once per (caller, version, day) toward the downloads metri
 - source: ARCH §3, §10; DATA
 - coverage: scenario
 
-30-day install counts and active-repo counts per pack are rolled up at least hourly and shown on
-the pack page, browse cards and MCP cards.
+30-day fetch counts and, where cn reports it (REQ-TELEM-007), the members holding the pack are
+rolled up at least hourly and shown on the pack page, browse cards and MCP cards.
 
 ## REQ-TELEM-004 Counts are approximate; tests assert monotonic behaviour
 

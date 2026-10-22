@@ -29,7 +29,8 @@ identity presented to the sign-in endpoints is refused.
 - coverage: scenario
 
 On first login the new member must choose a unique handle; handles that are taken or reserved
-(`admin`, `claude`, `anthropic`, names of verified orgs) are rejected with an inline error.
+(`admin`, `claude`, `anthropic`, `claudinite`, `cn`, `fleet`, names of verified orgs) are
+rejected with an inline error.
 
 ## REQ-ACC-003 Email codes and magic links expire in 15 minutes and are single-use
 

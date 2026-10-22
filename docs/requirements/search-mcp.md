@@ -21,8 +21,9 @@ An agent can connect to the MCP endpoint without authentication and call `search
 - source: ARCH §8; FLOW 11
 - coverage: scenario
 
-`search_packs` returns ranked compact cards (name, summary ≤ 1024 chars, inventory counts,
-context cost, trust signals, latest stable version) and never full contents.
+`search_packs` returns ranked compact cards (id, pitch ≤ 1024 chars, inventory counts by part
+(rules, skills, checks, tasks), context cost, trust signals, latest stable version) and never
+full contents.
 
 ## REQ-SEARCH-003 Task-phrased queries match by meaning; filters apply
 
@@ -33,14 +34,16 @@ context cost, trust signals, latest stable version) and never full contents.
 - coverage: scenario
 
 A task-phrased query ("deploy to GCP Cloud Run") finds packs by meaning as well as by keyword;
-results can be filtered by category, feature type, client and verified-only.
+results can be filtered by category, part (rules, skills, checks, tasks), channel and
+verified-only.
 
 ## REQ-SEARCH-004 Search hides versions younger than 24 hours unless include_fresh
 
-- status: active
+- status: provisional
 - since: 2026-10
 - actor: agent
 - source: ARCH §6 cooldown, §8
+- decision: CLN-REV 5 (a 24-hour hide approximates the engine's `staging` channel; with channels, this becomes "staging versions unless asked for", REQ-DELIV-020)
 - coverage: scenario
 
 By default `search_packs` excludes versions published less than 24 hours ago; `include_fresh`
@@ -138,13 +141,14 @@ refresh at the latest.
 
 ## REQ-SEARCH-013 Website search and browse mirror MCP results and filters
 
-- status: active
+- status: provisional
 - since: 2026-10
 - actor: anonymous visitor
 - source: SITE browse
+- decision: CLN-REV 8 (ranking by stars or downloads: the research says never rank by installs or stars; a user-chosen sort may stay if the default order is the pack score)
 - coverage: scenario
 
-The website search and browse page expose the same results and filters (category, feature type,
+The website search and browse page expose the same results and filters (category, part,
 verified, has repo) and sorts (stars, rating, recent, downloads), with the URL carrying the
 state.
 
@@ -157,7 +161,8 @@ state.
 - coverage: scenario
 
 A pack page shows name, publisher and badges, latest version, visibility, stars, rating,
-downloads, an install panel (MCP / CLI / manifest), a repo link or a prominent "No public repo"
+downloads, an adopt panel (the `cn adopt <id>` line, the `packs.declared` entry for
+`.claudinite/settings.yaml`, and the MCP tool call), a repo link or a prominent "No public repo"
 badge, contents summary and validation status.
 
 ## REQ-SEARCH-015 One browse result in ten is an exploration slot

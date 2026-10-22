@@ -1,6 +1,13 @@
 # Delivery and the signed index
 
-Area `DELIV`, 19 requirements (1 retired). Format and rules: [README.md](README.md).
+Area `DELIV`, 20 requirements (1 retired). Format and rules: [README.md](README.md).
+
+REQ-DELIV-003, 004 and 005 describe a per-scope index with a `latest` pointer and a five-value
+status; the pinned `cn` today reads `packs/<id>/index.json` and `packs/catalog.json` with
+`channel`, `revoked`, `minEngineVersion`, `requires` and a serial per version. Which layout
+PackServer serves is `CLN-REV 1`, so those entries are provisional and keep their original
+statements until Ariel decides. REQ-DELIV-020 is the channel entry the Claudinite alignment
+review found missing (`CLN-REV 5`).
 
 ## REQ-DELIV-001 Public versions download from immutable URLs with both hashes and the attestation
 
@@ -28,10 +35,11 @@ SHA-256.
 
 ## REQ-DELIV-003 Signed per-scope and root indexes
 
-- status: active
+- status: provisional
 - since: 2026-10
 - actor: cn engine
 - source: ARCH §7.1
+- decision: CLN-REV 1 (index layout and status model: the engine's per-pack `index.json` + `catalog.json`, or this per-scope layout with an engine change)
 - coverage: scenario
 
 A per-scope index and a root index listing each scope index's hash are published and signed with
@@ -40,10 +48,11 @@ deprecated / yanked / quarantined / revoked).
 
 ## REQ-DELIV-004 Status changes reach the indexes within the TTL, signed
 
-- status: active
+- status: provisional
 - since: 2026-10
 - actor: cn engine
 - source: ARCH §7.1; DATA
+- decision: CLN-REV 1 (which indexes exist, and how yank, deprecate and quarantine map onto the engine's `revoked` flag)
 - coverage: scenario
 
 A promote, yank, deprecate, quarantine or revoke is reflected in the scope index and root index
@@ -51,10 +60,11 @@ shortly after (bounded by the short index TTL), with a valid signature.
 
 ## REQ-DELIV-005 latest never points at a yanked, quarantined or removed version
 
-- status: active
+- status: provisional
 - since: 2026-10
 - actor: cn engine
 - source: ARCH §5.4; FLOW 12
+- decision: CLN-REV 1 (the engine's index has no `latest` pointer; selection is the newest non-revoked version on the member's channel)
 - coverage: scenario
 
 An index entry's `latest` never points at a yanked, quarantined or removed version.
@@ -192,11 +202,11 @@ during a rotation window, so a compromised key has a recovery path.
 - actor: cn engine
 - source: ARCH-VAL §6, §3.16
 - decision: ARCH-VAL §7-5
-- coverage: scenario+unit (the scenario proves the refusal of a tampered or mis-served archive through the cn repo handle; the canonical grammar is a unit test in the engine's extractor)
+- coverage: scenario+unit (the scenario proves the refusal of a tampered or mis-served archive through the member handle; the canonical grammar is a unit test in the engine's extractor)
 
 cn extracts an archive from the registry only when it is in canonical form (REQ-VAL-033) and its
 bytes match the canonical hash in the attestation; any other archive, including one that a lenient
-extractor would accept, is refused with a verification error and nothing is installed.
+extractor would accept, is refused with a verification error and nothing is vendored.
 
 ## REQ-DELIV-018 A security revocation disables the version's executable surface in cn; other statuses only report
 
@@ -207,22 +217,35 @@ extractor would accept, is refused with a verification error and nothing is inst
 - decision: ARCH-VAL §7-3
 - coverage: scenario
 
-When a version's status in the signed index becomes `revoked` with a security reason, a cn repo
-that has the version installed disables its hooks, checks, tasks, session-start steps and MCP
-servers at the next session start and keeps its prose loaded behind a banner, until a person in
-that repo acknowledges it. A repo can opt out per repo into report-only handling; `yanked`,
+When a version's status in the signed index becomes `revoked` with a security reason, a member
+holding that version disables its hook judges, coded and declared checks and tasks at the next
+session start and keeps its rules and skills loaded behind a banner, until a person in that
+member acknowledges it. A member can opt out per repo into report-only handling; `yanked`,
 `deprecated` and `quarantined` only report and never disable anything.
 
-## REQ-DELIV-019 cn proposes updates only after a tier-aware cooldown
+## REQ-DELIV-019 The update task opens a PR for a new version only after a tier-aware cooldown
 
 - status: provisional
 - since: 2026-10
 - actor: cn engine
 - source: ARCH-VAL §6, §3.11; ARCH §6 cooldown
-- decision: ARCH-VAL §7-4
+- decision: ARCH-VAL §7-4; CLN-REV 5 (a time-based cooldown approximates the engine's `staging` → `stable` soak, which cn already selects on)
 - coverage: scenario
 
-A cn update check proposes a new community-tier version only once it is 24 hours old when its
-publisher is a Verified Publisher and 72 hours old otherwise; a third-party version is never
-proposed by an update check. A proposal for a version that introduced new capabilities carries
-the capability diff in its description.
+The scheduled update task opens a PR for a new community-tier version only once it is 24 hours
+old when its publisher is a Verified Publisher and 72 hours old otherwise, and never for a
+third-party version. A PR for a version that introduced new capabilities carries the capability
+diff in its description.
+
+## REQ-DELIV-020 Every version is published to staging first and reaches stable after the soak
+
+- status: provisional
+- since: 2026-10
+- actor: cn engine
+- source: CLN-REV (the primer's "Serving layout today": channels `staging` and `stable`; engine selection is on the member's channel)
+- decision: CLN-REV 5 (whether PackServer publishes the channel field cn selects on, and what promotes `staging` → `stable`)
+- coverage: scenario
+
+Every version is published to the `staging` channel first and reaches `stable` only after the
+soak; the index carries the channel per version and a member on `stable` never selects a
+`staging` version.

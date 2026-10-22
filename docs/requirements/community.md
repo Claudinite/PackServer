@@ -80,7 +80,7 @@ ranking; others weigh less.
 A publisher can reply once per review and can flag a review for moderation, but cannot delete
 it.
 
-## REQ-COMM-008 Works-for-me votes weigh by verified install
+## REQ-COMM-008 Works-for-me votes weigh by verified fetch
 
 - status: active
 - since: 2026-10
@@ -88,9 +88,8 @@ it.
 - source: ARCH §8, §10
 - coverage: scenario
 
-A member or agent can record "works for me" / "didn't work" per version and client; the vote
-counts as verified (weight 1.0 vs 0.25) only when the same principal has a recorded install of
-that pack.
+A member or agent can record "works for me" / "didn't work" per version; the vote counts as
+verified (weight 1.0 vs 0.25) only when the same principal has a recorded fetch of that pack.
 
 ## REQ-COMM-009 Rating aggregates use a prior
 
@@ -120,11 +119,12 @@ the bottom or excluded from ranking.
 - since: 2026-10
 - actor: agent
 - source: ARCH §10
-- decision: ARCH-Q 11
+- decision: ARCH-Q 11; CLN-REV 8 (stars and fetch counts are exposed as raw signals, never as the default rank)
 - coverage: scenario
 
-Raw signals (stars, works/fails, verified installs, rating, validation, verified flag, repo) are
-exposed over MCP so an agent can apply its own policy.
+Raw signals (stars, works/fails, verified fetches, members holding the pack if cn reports it,
+rating, validation, verified flag, repo) are exposed over MCP so an agent can apply its own
+policy.
 
 ## REQ-COMM-012 A removed review's author is told why
 

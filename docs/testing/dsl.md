@@ -27,24 +27,24 @@ Status: design, 2026-10-22. Layer 2 of the plan in [README.md](README.md). Packa
 | `OrgMember` | `await org.invite(user).as('maintainer')` | role `owner` \| `maintainer` (the UI's two roles; the architecture's four map onto them in the driver) |
 | `Agent` | `world.agents.anonymous()`, `await world.agents.withToken(token)`, `await world.agents.oauth(user)` | an MCP client; `anonymous` needs no await |
 | `CiWorkflow` | `world.github.workflow({ repo, workflowFile, environment?, ref?, forkOf? })` | a GitHub Actions run that can request OIDC tokens and run the publish action |
-| `CnRepo` | `world.cn.repo(policy?)` | a cn engine instance: fetches indexes, verifies signatures, downloads, installs, reports installs, starts sessions, checks for updates, lints and canonicalises offline; `policy` sets a minimum tier or report-only revocation handling |
+| `Member` | `world.member(policy?)` | a member repo running the pinned cn: fetches indexes, verifies signatures, downloads, vendors, reports what it holds, starts sessions, runs the update task, lints and builds the canonical archive offline (`cn lint`, `cn vendor`); `policy` sets a minimum tier or report-only revocation handling |
 | `Admin` | `await world.admins.create()` | a person with an Access identity on the admin host; `world.visitor().withForgedAccessHeader()` is the negative |
 | `Clock` | `world.clock` | `advance(duration)`, `set(iso)`, `now()` |
 | probe publisher | `await world.probe.publisher()` | the publisher of the synthetic scope (`@probe`); the only actor a `probe-safe` scenario may write as. In-process it is a synthetic scope like any other; under `http` it is the probe token |
 
-Acting as someone specific: `user.as(session)` returns the same `User` bound to one of its sessions (`user.as(phone).inbox()`); `pack.as(user)` returns the pack as seen and acted on by that user (`pack.as(mallory).version('1.0.0').yank(...)` for cross-scope negatives). Handle verbs without `as` act as the handle's owner's current session.
+Acting as someone specific: `user.as(session)` returns the same `User` bound to one of its sessions (`user.as(phone).inbox()`); `pack.as(user)` returns the pack as seen and acted on by that user (`pack.as(mallory).version('1.61004.1').yank(...)` for cross-scope negatives). Handle verbs without `as` act as the handle's owner's current session.
 
 Personas (object mothers) for states requirements name: `world.personas.verifiedPublisher('acme')` (org with domain + GitHub proof + MFA enforcement + Verified Publisher), `world.personas.youngUser()` (account 1 h old), `world.personas.suspendedPublisher()`.
 
 ### 2.2 Entities (handles)
 
-`Scope`, `Org`, `Pack`, `Version`, `Archive` (a fixture: `world.archive('gcp')`, `world.archive('with-secret')`, `world.archive('gcp', { version: '2.0.0', files: {...} })`), `Manifest`, `Inventory`, `Attestation`, `ScopeIndex`, `RootIndex`, `ValidationRun`, `Report`, `Finding`, `TrustedPublisher`, `Token`, `Assertion` (a per-action passkey assertion, for negatives), `CreditBalance`, `Subscription`, `Grant`, `Invite`, `AccessRequest`, `Review`, `BugReport`, `SecurityReport`, `AbuseReport`, `Advisory`, `AuditEntry`, `AuditBatch`, `AuditHead`, `Badge`, `DomainChallenge`, `SelfTest`, `Email`, `Notification`. There is no `CheckRun` and no mirror handle: PackServer writes nothing to GitHub, and `world.github.writes()` exists only to prove that.
+`Scope`, `Org`, `Pack`, `Version`, `Archive` (a fixture: `world.archive('gcp')`, `world.archive('with-secret')`, `world.archive('gcp', { version: '1.61005.1', files: {...} })`), `Manifest`, `Inventory`, `Attestation`, `ScopeIndex`, `RootIndex`, `ValidationRun`, `Report`, `Finding`, `TrustedPublisher`, `Token`, `Assertion` (a per-action passkey assertion, for negatives), `CreditBalance`, `Subscription`, `Grant`, `Invite`, `AccessRequest`, `Review`, `BugReport`, `SecurityReport`, `AbuseReport`, `Advisory`, `AuditEntry`, `AuditBatch`, `AuditHead`, `Badge`, `DomainChallenge`, `SelfTest`, `Email`, `Notification`. There is no `CheckRun` and no mirror handle: PackServer writes nothing to GitHub, and `world.github.writes()` exists only to prove that.
 
-Every handle knows its World and its driver; `pack.name` is the scenario's name (`@acme/gcp`), `pack.systemName` the aliased one. Handles are cheap views: `pack.version('1.1.0')` does not hit the system until a verb or observation does. `world.packs.get('@acme/gcp')` returns the handle for a pack created earlier in the scenario; `pack.owner()` returns its owning publisher.
+Every handle knows its World and its driver; `pack.name` is the scenario's name (`@acme/gcp`), `pack.systemName` the aliased one. Handles are cheap views: `pack.version('1.61005.1')` does not hit the system until a verb or observation does. `world.packs.get('@acme/gcp')` returns the handle for a pack created earlier in the scenario; `pack.owner()` returns its owning publisher.
 
 Archive fixtures: `'gcp'`, `'with-secret'`, `'with-symlink'`, `'with-hardlink'`, `'case-collision'`, `'nested-archive'`, `'with-html'`, and the decompression bombs of REQ-VAL-023: `'bomb-repetitive'`, `'bomb-many-files'`, `'bomb-header-lies'`, `'bomb-huge-window'`, `'bomb-concatenated-frames'`, `'bomb-entry-count'`, `'bomb-deep-nesting'`, `'bomb-quine'`, `'bomb-sparse-entry'`, `'bomb-oversized-size-field'`, `'bomb-unknown-entry-type'`, `'bomb-skippable-frames'`, `'bomb-long-path'` (each named after the property a validation requirement rejects or renders). Bomb fixtures are generated by the World at first use, never committed as files, so the repository never holds a live bomb. The same corpus, by the same names, is what the nightly sandbox contract suite feeds the real image ([README.md §6](README.md)), so a shape added here is added there.
 
-Content fixtures for the validation-flow requirements, each the smallest pack that trips one rule: `'with-hidden-unicode'` (REQ-VAL-025), `'with-install-url'` and `'with-executable-url'` (REQ-VAL-026), `'with-hook'` (ships a hook, declares nothing: REQ-VAL-027), `'with-network-hook'` (a hook that calls out; declared or not by `capabilities`), `'with-mcp-unpinned'`, `'with-mcp-typosquat'`, `'with-mcp-remote'` (REQ-VAL-030), `'with-floating-version'`, `'with-pipe-to-shell'` (REQ-VAL-031), `'fails-to-load'` (REQ-VAL-032), `'check-without-fixtures'`, `'check-silent-on-firing'`, `'check-fires-on-silent'` (REQ-VAL-010), `'with-reviewer-note'` (REQ-VAL-035), `'with-bidi'` is an alias of `'with-hidden-unicode'`. An archive takes options that shape the manifest without a new fixture: `world.archive('with-hook', { capabilities: ['exec:hook'] })` declares a capability set, `{ network: ['api.example.com'] }` declares network domains, `{ fixtures: false }` strips the firing and silent fixtures of every check, `{ version: '2.0.0' }` and `{ files: {...} }` as before.
+Content fixtures for the validation-flow requirements, each the smallest pack that trips one rule: `'with-hidden-unicode'` (REQ-VAL-025), `'with-install-url'` and `'with-executable-url'` (REQ-VAL-026), `'with-hook'` (ships a hook, declares nothing: REQ-VAL-027), `'with-network-hook'` (a hook that calls out; declared or not by `capabilities`), `'with-mcp-unpinned'`, `'with-mcp-typosquat'`, `'with-mcp-remote'` (REQ-VAL-030), `'with-floating-version'`, `'with-pipe-to-shell'` (REQ-VAL-031), `'fails-to-load'` (REQ-VAL-032), `'check-without-fixtures'`, `'check-silent-on-firing'`, `'check-fires-on-silent'` (REQ-VAL-010), `'with-reviewer-note'` (REQ-VAL-035), `'with-bidi'` is an alias of `'with-hidden-unicode'`. An archive takes options that shape the manifest without a new fixture: `world.archive('with-hook', { capabilities: ['exec:hook'] })` declares a capability set, `{ network: ['api.example.com'] }` declares network domains, `{ fixtures: false }` strips the firing and silent fixtures of every check, `{ version: '1.61005.1' }` and `{ files: {...} }` as before.
 
 ### 2.3 Verbs (commands), grouped by actor
 
@@ -60,7 +60,7 @@ await user.failAssertion({ times: 5 })                                   // n fa
 await user.sessions.list();  await user.sessions.revoke(session)
 await user.star(pack);  await user.unstar(pack)
 await user.review(pack, { rating: 4, body?: '...' })
-await user.vote(pack, '1.0.0', 'works', { client: 'claude-code' })
+await user.vote(pack, '1.61004.1', 'works')
 await user.report(pack).bug({ version, severity, repro, attachments? })
 await user.report(pack).security({ ... })
 await user.reportAbuse(pack | review | profile, { category, details })
@@ -80,7 +80,7 @@ await user.tokens.mint({ read: pack, assertion: 'replay' })             // the p
 await publisher.orgs.create('acme')
 await publisher.credits.buy(5)                                           // drives fake Stripe Checkout + webhook
 await publisher.credits.beginPurchase(5)                                 // -> Checkout handle; the webhook is delivered by the scenario
-await publisher.publish(archive).as('@acme/gcp@1.0.0', { visibility?: 'private', staged?: true })  // web upload path
+await publisher.publish(archive).as('@acme/gcp@1.61004.1', { visibility?: 'private', staged?: true })  // web upload path
 await publisher.dryRun(archive, { llm?: true })                         // -> Report; no version, no credit (REQ-VAL-043); as a publisher only
 await publisher.packs.reserve('@acme/gcp')                               // pending name
 await version.appeal('the quoted line is a code comment, not an instruction')   // once per rejected version (REQ-VAL-040)
@@ -95,7 +95,7 @@ await pack.access.grant(user);  await pack.access.invite(email);  await pack.acc
 await pack.access.revoke(user);  await pack.access.gate({ fields, terms, autoApprove? })
 await pack.access.approve(request);  await pack.access.deny(request)
 await review.reply('...');  await review.flag()
-await report.setStatus('fixed', { in: '1.0.1' })
+await report.setStatus('fixed', { in: '1.61005.1' })
 
 // Org
 await org.invite(user).as('maintainer');  await org.remove(user);  await org.setRole(user, 'owner')
@@ -107,29 +107,29 @@ await org.billing.subscribe('team', { seats: 3 })
 await org.delete()
 
 // Agent (MCP)
-await agent.search('deploy to GCP', { category?, includeFresh?, client?, verifiedOnly? })
+await agent.search('deploy to GCP', { category?, includeFresh?, channel?, verifiedOnly? })
 await agent.categories()
 await agent.get(pack, version?)
 await agent.download(pack, version)
 await agent.myPacks()
-await agent.reportOutcome(pack, version, 'works' | 'fails', { client })
+await agent.reportOutcome(pack, version, 'works' | 'fails')
 await agent.star(pack)
 await agent.tools()                                                      // names visible to this caller
 await agent.callUnlistedTool(name)                                       // a tool this caller was not shown (negative)
 await agent.authenticate({ redirectTo?, state?: false })                 // OAuth through the fake login; options for negatives
 
-// CI workflow / cn
-await workflow.run({ tag: 'v1.0.0' })                                    // -> { version?, refusal? }; the verdict is read from the dashboard and mail, never from GitHub
-await workflow.publishes(pack, '1.2.3')                                  // -> Version (or a refusal, for matchers)
+// CI workflow / member
+await workflow.run({ tag: 'gcp/1.61004.1' })                             // -> { version?, refusal? }; the verdict is read from the dashboard and mail, never from GitHub
+await workflow.publishes(pack, '1.61004.1')                                  // -> Version (or a refusal, for matchers)
 workflow.oidcToken({ aud?, iss?, exp?, nbf?, alg?, kid?, ...claims })    // minted with overrides, for negative tests
 await workflow.upload(archive, { reuse?: upload })                       // the 15-minute upload credential; reuse replays it
 world.github.webhook(event, { signature?: 'wrong' | 'missing', installation? })  // a delivery the World can send
-await cn.fetchIndex('acme');  await cn.fetchRoot();  await cn.download(pack, version);  await cn.reportInstall(pack, version)
-world.cn.repo({ minTier?: 'community', revocation?: 'reportOnly' })     // a repo with a policy (REQ-VAL-041, REQ-DELIV-018)
-await cn.install(pack, version)                                          // -> Installed | a verification refusal (REQ-DELIV-017)
-await cn.sessionStart()                                                  // -> { disabled: Surface[], banners } after a revocation (REQ-DELIV-018)
-await cn.updateCheck(pack)                                               // -> { proposed?: Version, capabilityDiff? } (REQ-DELIV-019)
-await cn.lint(archive);  await cn.canonicalize(archive)                  // the engine's offline rule set and re-pack (REQ-VAL-044, REQ-VAL-033)
+await member.fetchIndex('acme');  await member.fetchRoot();  await member.download(pack, version);  await member.reportHolding(pack, version)
+world.member({ minTier?: 'community', revocation?: 'reportOnly' })      // a member with a policy (REQ-VAL-041, REQ-DELIV-018)
+await member.adopt(pack, version)                                        // -> Vendored | a verification refusal (REQ-DELIV-017)
+await member.sessionStart()                                                  // -> { disabled: Surface[], banners } after a revocation (REQ-DELIV-018)
+await member.updateCheck(pack)                                               // -> { proposed?: Version, capabilityDiff? } (REQ-DELIV-019)
+await member.lint(archive);  await member.vendor(archive)                        // cn lint and cn vendor: the offline rule set and the canonical archive (REQ-VAL-044, REQ-VAL-033)
 
 // Admin
 await admin.queue.list();  await admin.queue.approve(version);  await admin.queue.reject(version, reason)
@@ -171,7 +171,7 @@ await world.database.setMigrationHead(n)                                 // move
 ### 2.4 Observations
 
 ```ts
-await visitor.open(pack)                   // -> PackPage | NotFound   (.status, .badges, .warnings, .latest, .installs)
+await visitor.open(pack)                   // -> PackPage | NotFound   (.status, .badges, .warnings, .latest, .fetches, .members)
 await visitor.browse({ q, category, sort })
 await visitor.profile(org)                 // -> ProfilePage (.badges, .packs)
 await user.inbox()                         // in-site notifications
@@ -228,7 +228,7 @@ Matchers hide protocol detail. Each works on a value or on a promise (Vitest's a
 | `toLookTheSameAs(other)` | two observations are identical in shape, body and the headers the World exposes (timing is out of scope in-process) | which headers |
 | `toBeRefusedWithClaimDiff({ repository })` | an OIDC refusal names the mismatched claims | the diff format |
 | `toBeHeld(reason?)` | a download is held for quarantine | 451 and body |
-| `toBeRefusedForVerification()` | cn refused to extract or install an archive that is not in canonical form or does not match its attestation | the engine's error |
+| `toBeRefusedForVerification()` | the member's cn refused to extract or vendor an archive that is not in canonical form or does not match its attestation | the engine's error |
 | `toBeLive()` | a version is promoted, downloadable, in the index | three endpoints |
 | `toHaveProvenance({ repo, ref, commit? })` | the version's provenance matches | where provenance is stored |
 | `toContainPack(pack)` / `toContainVersion(pack, v)` | a search result or index lists it | card shape |
@@ -258,7 +258,7 @@ export interface World {
   visitor(): Visitor;
   agents: { anonymous(): Agent; withToken(t: Token): Promise<Agent>; oauth(u: User): Promise<Agent> };
   admins: { create(): Promise<Admin>; notifications(): Promise<Notification[]> };
-  cn: { repo(policy?: { minTier?: Tier; revocation?: 'reportOnly' }): CnRepo };
+  member(policy?: { minTier?: Tier; revocation?: 'reportOnly' }): Member;
   packs: { public(name: string, opts?: { versions?: string[] }): Promise<Pack>; private(name: string): Promise<Pack>; nonexistent(name: string): Pack; get(name: string): Pack };
   probe: { publisher(): Promise<Publisher> };
   tokens: { leakReport(tokenOrPrefix: string): Promise<void> };
@@ -293,7 +293,7 @@ export interface User {
   mfa: Mfa;  sessions: Sessions;  tokens: UserTokens;  account: Account;  providers: Providers;
   star(p: Pack): Promise<void>;  unstar(p: Pack): Promise<void>;
   review(p: Pack, r: ReviewOpts): Promise<Review>;
-  vote(p: Pack, version: string, result: 'works' | 'fails', o: { client: string }): Promise<void>;
+  vote(p: Pack, version: string, result: 'works' | 'fails'): Promise<void>;
   report(p: Pack): ReportBuilder;
   reportAbuse(target: Pack | Review | Org, o: AbuseOpts): Promise<AbuseReport>;
   requestAccess(p: Pack, o: AccessRequestOpts): Promise<AccessRequest>;
@@ -324,15 +324,15 @@ export interface Version {
   appeal(text: string): Promise<Appeal>;
 }
 
-export type Tier = 'canon' | 'community' | 'third-party';
+export type Tier = 'reviewed' | 'community' | 'third-party';   // the top tier's name is CLN-REV 6
 
-export interface CnRepo {
+export interface Member {
   fetchIndex(scope: string): Promise<ScopeIndex>;  fetchRoot(): Promise<RootIndex>;
-  download(p: Pack, version: string): Promise<Download>;  reportInstall(p: Pack, version: string): Promise<void>;
-  install(p: Pack, version: string): Promise<Installed>;                 // refused for verification when the archive is not canonical (REQ-DELIV-017)
+  download(p: Pack, version: string): Promise<Download>;  reportHolding(p: Pack, version: string): Promise<void>;
+  adopt(p: Pack, version: string): Promise<Vendored>;                 // refused for verification when the archive is not canonical (REQ-DELIV-017)
   sessionStart(): Promise<{ disabled: ReadonlyArray<{ pack: string; surface: Surface }>; banners: string[] }>;
   updateCheck(p: Pack): Promise<{ proposed?: Version; capabilityDiff?: ReadonlyArray<Capability> }>;
-  lint(a: Archive): Promise<Finding[]>;  canonicalize(a: Archive): Promise<Archive>;
+  lint(a: Archive): Promise<Finding[]>;  vendor(a: Archive): Promise<Archive>;
 }
 
 // every sensitive verb accepts this; the default makes the action-bound assertion with the actor's passkey
@@ -406,7 +406,7 @@ Fixtures (`world.archive('gcp')`) are built from `tests/world/fixtures/<name>/` 
 
 ## 7. The telemetry sink
 
-Agreed with the monitoring plan: `docs/operations/monitoring.md` §8 (branch `claude/project-thread-bwothd`, unmerged; cited by path until it lands) is the source of truth for signal names, and a name used in a scenario that is not in that section is a bug in the scenario. The in-process driver exposes `world.telemetry`, a fake sink that captures logs, metrics and Analytics Engine writes made through the `Stats` and logging ports. A requirement that names a signal asserts it:
+Agreed with the monitoring plan: `docs/operations/monitoring.md` §8 (branch `claude/project-thread-bwothd`, unmerged; cited by path until it lands) defines the signal names, and a name used in a scenario that is not in that section is a bug in the scenario. The in-process driver exposes `world.telemetry`, a fake sink that captures logs, metrics and Analytics Engine writes made through the `Stats` and logging ports. A requirement that names a signal asserts it:
 
 ```ts
 await expect(world.telemetry).toHaveRecorded('publish.validated', { verdict: 'pass' });
@@ -430,7 +430,7 @@ import { scenario, expect } from '@packserver/world';
 
 scenario('REQ-PRIV-001 a private pack is indistinguishable from a nonexistent one', async (world) => {
   const owner = await world.publishers.create();
-  const secret = await owner.publish(world.archive('gcp')).as('@acme/internal@1.0.0', { visibility: 'private' });
+  const secret = await owner.publish(world.archive('gcp')).as('@acme/internal@1.61004.1', { visibility: 'private' });
   await world.validation.completes(secret);
 
   const outsider = await world.users.create();
@@ -442,7 +442,7 @@ scenario('REQ-PRIV-001 a private pack is indistinguishable from a nonexistent on
   await expect(outsider.open(secret.pack)).toBeNotFound();
   await expect(agent.get(secret.pack)).toBeNotFound();
   await expect(agent.search('internal')).not.toContainPack(secret.pack);
-  await expect(world.cn.repo().fetchIndex('acme')).not.toContainPack(secret.pack);
+  await expect(world.member().fetchIndex('acme')).not.toContainPack(secret.pack);
   expect(await world.visitor().open(secret.pack)).toLookTheSameAs(await world.visitor().open(nothing));
   await expect(outsider.star(secret.pack)).toBeNotFound();
 });
@@ -456,7 +456,7 @@ scenario('REQ-PUB-004 a fork cannot publish through trusted publishing', async (
   await publisher.trustedPublishers.add(pack, { repo: 'acme/packs', workflowFile: 'publish.yml', path: 'packs/gcp' });
   const fork = world.github.workflow({ repo: 'mallory/packs', forkOf: 'acme/packs', workflowFile: 'publish.yml' });
 
-  await expect(fork.publishes(pack, '1.0.0')).toBeRefusedWithClaimDiff({ repository: 'mallory/packs' });
+  await expect(fork.publishes(pack, '1.61004.1')).toBeRefusedWithClaimDiff({ repository: 'mallory/packs' });
 
   expect(await pack.versions()).toHaveLength(0);
   expect(await world.staging.objects()).toHaveLength(0);
@@ -470,7 +470,7 @@ scenario('REQ-PAY-003 a failed validation consumes no credit', async (world) => 
   const publisher = await world.publishers.create();
   await publisher.credits.buy(1);
 
-  const version = await publisher.publish(world.archive('with-secret')).as('@me/leaky@1.0.0');
+  const version = await publisher.publish(world.archive('with-secret')).as('@me/leaky@1.61004.1');
   const run = await world.validation.completes(version);
 
   expect(await run.verdict()).toBe('fail');
@@ -497,7 +497,7 @@ scenario('REQ-VAL-014 REQ-VAL-022 REQ-VAL-023 every decompression bomb is refuse
   } as const;
 
   for (const [bomb, reason] of Object.entries(bombs)) {
-    const version = await publisher.publish(world.archive(bomb)).as(`@me/${bomb}@1.0.0`);
+    const version = await publisher.publish(world.archive(bomb)).as(`@me/${bomb}@1.61004.1`);
     const run = await world.validation.completes(version);
 
     expect(await run.verdict()).toBe('fail');
@@ -535,19 +535,19 @@ scenario('REQ-ACC-010 minting a token needs a passkey assertion made for that ve
 ```ts
 // tests/scenarios/moderation/yank.scenario.ts
 scenario('REQ-MOD-011 REQ-DELIV-005 REQ-DELIV-008 a yanked version leaves latest and search but stays fetchable by exact version', async (world) => {
-  const pack = await world.packs.public('@acme/gcp', { versions: ['1.0.0', '1.1.0'] });
-  await pack.version('1.1.0').yank({ reason: 'breaks on cn 2.3' });                 // the owner's per-action assertion is inside the verb
+  const pack = await world.packs.public('@acme/gcp', { versions: ['1.61004.1', '1.61005.1'] });
+  await pack.version('1.61005.1').yank({ reason: 'breaks on cn 1.61004.1' });                 // the owner's per-action assertion is inside the verb
 
   const agent = world.agents.anonymous();
-  const cn = world.cn.repo();
+  const member = world.member();
 
-  expect((await agent.get(pack)).latest).toBe('1.0.0');
-  expect((await cn.fetchIndex('acme')).entry(pack).latest).toBe('1.0.0');
-  expect((await cn.fetchIndex('acme')).entry(pack).status).toBe('yanked');
-  await expect(cn.fetchIndex('acme')).resolves.toHaveValidSignature();
-  expect(await agent.download(pack, '1.1.0')).toMatchObject({ yanked: true, reason: 'breaks on cn 2.3' });
-  await expect(agent.search('gcp')).not.toContainVersion(pack, '1.1.0');
-  await expect(world.visitor().open(pack)).resolves.toMatchObject({ latest: '1.0.0' });
+  expect((await agent.get(pack)).latest).toBe('1.61004.1');
+  expect((await member.fetchIndex('acme')).entry(pack).latest).toBe('1.61004.1');
+  expect((await member.fetchIndex('acme')).entry(pack).status).toBe('yanked');
+  await expect(member.fetchIndex('acme')).resolves.toHaveValidSignature();
+  expect(await agent.download(pack, '1.61005.1')).toMatchObject({ yanked: true, reason: 'breaks on cn 1.61004.1' });
+  await expect(agent.search('gcp')).not.toContainVersion(pack, '1.61005.1');
+  await expect(world.visitor().open(pack)).resolves.toMatchObject({ latest: '1.61004.1' });
 });
 ```
 
@@ -566,9 +566,9 @@ scenario('REQ-MOD-009 three independent malware reports quarantine a pack', asyn
   }
 
   expect((await world.visitor().open(pack)).status).toBe('under_review');
-  await expect(world.agents.anonymous().download(pack, '1.0.0')).toBeHeld();
+  await expect(world.agents.anonymous().download(pack, '1.61004.1')).toBeHeld();
   expect((await world.agents.anonymous().get(pack)).status).toBe('under_review');
-  expect((await world.cn.repo().fetchIndex('acme')).entry(pack).status).toBe('quarantined');
+  expect((await world.member().fetchIndex('acme')).entry(pack).status).toBe('quarantined');
   await expect(world.admins.notifications()).resolves.toContainEqual(expect.objectContaining({ pack: pack.name, kind: 'quarantine' }));
   await expect(world.telemetry).toHaveRecorded('moderation.quarantined', { trigger: 'reports' });
 });
@@ -611,32 +611,32 @@ scenario('REQ-SCOPE-004 REQ-SCOPE-006 a domain proof is earned by DNS TXT and la
 ```ts
 // tests/scenarios/search/agent-search.scenario.ts
 scenario('REQ-SEARCH-003 an agent finds a pack by task phrasing and can narrow by category', async (world) => {
-  const gcp = await world.packs.public('@acme/gcp-deploy', { summary: 'Deploy services to Google Cloud Run', categories: ['deploy'] });
-  const aws = await world.packs.public('@acme/aws-lambda', { summary: 'Ship functions to AWS Lambda', categories: ['deploy'] });
-  const lint = await world.packs.public('@acme/prettier-hooks', { summary: 'Format on save', categories: ['quality'] });
+  const gcp = await world.packs.public('@acme/gcp-run', { pitch: 'Rules and checks for deploying to Cloud Run: a guard on destructive gcloud calls, a nightly cost task', categories: ['deploy'] });
+  const aws = await world.packs.public('@acme/aws-lambda', { pitch: 'Rules and checks for shipping functions to AWS Lambda', categories: ['deploy'] });
+  const lint = await world.packs.public('@acme/formatting', { pitch: 'A guard that denies a commit of unformatted files, with the rules behind it', categories: ['quality'] });
   const agent = world.agents.anonymous();
 
   const results = await agent.search('push my service to Cloud Run');
   expect(results.first()).toBePack(gcp);
   await expect(agent.search('push my service to Cloud Run', { category: 'quality' })).resolves.not.toContainPack(gcp);
   await expect(agent.search('format', { category: 'quality' })).resolves.toContainPack(lint);
-  expect(results.card(gcp)).toMatchObject({ latest: '1.0.0', contextCost: expect.any(Number) });
-  expect(results.card(gcp).summary.length).toBeLessThanOrEqual(1024);
+  expect(results.card(gcp)).toMatchObject({ latest: '1.61004.1', contextCost: expect.any(Number) });
+  expect(results.card(gcp).pitch.length).toBeLessThanOrEqual(1024);
 }, { tags: ['agent'] });
 
 scenario('REQ-SEARCH-004 agents do not see minutes-old versions unless they ask', async (world) => {
   const pack = await world.packs.public('@acme/gcp');                 // published at the epoch, long ago
   const owner = await pack.owner();
-  const fresh = await owner.publish(world.archive('gcp', { version: '2.0.0' })).as('@acme/gcp@2.0.0');
+  const fresh = await owner.publish(world.archive('gcp', { version: '1.61005.1' })).as('@acme/gcp@1.61005.1');
   await world.validation.completes(fresh);
   const agent = world.agents.anonymous();
 
-  expect((await agent.search('gcp')).card(pack).latest).toBe('1.0.0');
-  expect((await agent.search('gcp', { includeFresh: true })).card(pack).latest).toBe('2.0.0');
+  expect((await agent.search('gcp')).card(pack).latest).toBe('1.61004.1');
+  expect((await agent.search('gcp', { includeFresh: true })).card(pack).latest).toBe('1.61005.1');
   await world.clock.advance('24h');
-  expect((await agent.search('gcp')).card(pack).latest).toBe('1.0.0');
+  expect((await agent.search('gcp')).card(pack).latest).toBe('1.61004.1');
   await world.clock.advance('1s');
-  expect((await agent.search('gcp')).card(pack).latest).toBe('2.0.0');
+  expect((await agent.search('gcp')).card(pack).latest).toBe('1.61005.1');
 }, { tags: ['agent'] });
 ```
 
@@ -647,8 +647,8 @@ scenario('REQ-PUB-027 two concurrent publishes of one version produce one versio
   const archive = world.archive('gcp');
 
   const [first, second] = await Promise.allSettled([
-    publisher.publish(archive).as('@me/gcp@1.0.0'),
-    publisher.publish(archive).as('@me/gcp@1.0.0'),
+    publisher.publish(archive).as('@me/gcp@1.61004.1'),
+    publisher.publish(archive).as('@me/gcp@1.61004.1'),
   ]);
   const accepted = [first, second].filter(r => r.status === 'fulfilled');
   expect(accepted).toHaveLength(1);
@@ -780,8 +780,8 @@ The self-test scenarios run under the `inprocess` driver, where `world.operator`
 // tests/scenarios/delivery/download.scenario.ts
 scenario('REQ-DELIV-001 a public download carries its hash and attestation', async (world) => {
   const probe = await world.probe.publisher();
-  const version = await probe.publish(world.archive('gcp')).as('@probe/gcp@1.0.0');
-  const download = await world.cn.repo().download(version.pack, '1.0.0');
+  const version = await probe.publish(world.archive('gcp')).as('@probe/gcp@1.61004.1');
+  const download = await world.member().download(version.pack, '1.61004.1');
 
   expect(download.sha256).toBe(await version.sha256());
   await expect(download.attestation()).resolves.toVerifyAgainst(world.registryKey());
@@ -790,9 +790,9 @@ scenario('REQ-DELIV-001 a public download carries its hash and attestation', asy
 scenario('REQ-TELEM-001 a public download is counted', async (world) => {
   const pack = await world.packs.public('@acme/gcp');
 
-  await world.cn.repo().download(pack, '1.0.0');
+  await world.member().download(pack, '1.61004.1');
 
-  await expect(world.telemetry).toHaveRecorded('download', { pack: pack.name, version: '1.0.0' });
+  await expect(world.telemetry).toHaveRecorded('download', { pack: pack.name, version: '1.61004.1' });
 });
 ```
 
@@ -807,7 +807,7 @@ scenario('REQ-SCOPE-016 a maintainer of one org cannot act on another org\'s pac
   await rival.invite(mallory).as('maintainer');
   await mallory.signIn();
 
-  await expect(acme.as(mallory).version('1.0.0').yank({ reason: 'mine now' })).toBeRefused('forbidden');
+  await expect(acme.as(mallory).version('1.61004.1').yank({ reason: 'mine now' })).toBeRefused('forbidden');
   await expect(acme.as(mallory).access.grant(mallory)).toBeRefused('forbidden');
   expect(await acme.versions()).toHaveLength(1);
 });

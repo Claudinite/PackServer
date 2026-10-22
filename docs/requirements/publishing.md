@@ -130,7 +130,7 @@ queued → in progress → success / neutral "awaiting payment" / failure with f
 - coverage: scenario
 
 A GitHub-sourced publish whose manifest version differs from the tag fails (unless the mapping
-says the tag is the source of truth); a path without a manifest fails with a finding that names
+says the tag wins); a path without a manifest fails with a finding that names
 the expected file, shown on the publisher's dashboard and in the email, never on GitHub.
 
 ## REQ-PUB-012 Mint scoped, restricted, time-limited API tokens
@@ -212,8 +212,9 @@ same name and version always resolve to the same SHA-256.
 - source: FLOW 5
 - coverage: scenario
 
-A pack name that collides with a verified org's domain label or a reserved word is refused with
-a suggestion of a scoped name.
+A pack name that collides with a verified org's domain label or a reserved word (`fleet`,
+`local`, `global`, `canon`, `claudinite`, `cn`, `temp` among them) is refused with a suggestion
+of a scoped name.
 
 ## REQ-PUB-019 Staged publishing holds a validated version until approval
 
@@ -223,8 +224,8 @@ a suggestion of a scoped name.
 - source: ARCH §5.1 step 5, §6 step 7; FLOW 6
 - coverage: scenario
 
-Where staged publishing is on (default for verified publishers, for packs above an install
-threshold, and for token uploads), a validated version waits as "staged" and is not downloadable
+Where staged publishing is on (default for verified publishers, for packs held by more than a
+threshold number of members, and for token uploads), a validated version waits as "staged" and is not downloadable
 until an owner approves it with a passkey.
 
 ## REQ-PUB-020 Unpromoted staged objects expire after 14 days; dry-run uploads after an hour
@@ -273,10 +274,10 @@ visibility, transfer, delete or touch billing.
 - source: ARCH §5.4; FLOW 12
 - coverage: scenario
 
-A publisher can deprecate a version with a public reason (step-up); it stays installable and
-fetches show the warning.
+A publisher can deprecate a version with a public reason (step-up); it stays fetchable, `cn
+adopt` and the update task still accept it by exact version, and every fetch shows the warning.
 
-## REQ-PUB-024 Hard delete only within 72 h and with zero installs
+## REQ-PUB-024 Hard delete only within 72 h and with zero fetches
 
 - status: active
 - since: 2026-10
@@ -285,7 +286,7 @@ fetches show the warning.
 - coverage: scenario
 
 A public pack version can be hard-deleted only within 72 hours of publishing and only if no
-installs were recorded; otherwise delete is not offered.
+fetches were recorded; otherwise delete is not offered.
 
 ## REQ-PUB-025 Private packs delete any time with a 7-day soft window
 
