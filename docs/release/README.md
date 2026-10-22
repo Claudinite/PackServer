@@ -378,7 +378,7 @@ Not included: a separate Cloudflare account for staging (+$5–30, rejected in �
 ## 11. Open questions for Ariel
 
 1. ~~Approval model.~~ Decided: Ariel is the only approver; non-reversible changes add an agent review, a 30-minute wait timer and a passkey sign-in instead of a second person (§9.1).
-2. **Auto-rollback authority.** The plan lets CI roll back without a human at S1/S2 and on availability/error-rate breaches at S3+ (§4.3). Confirm you are comfortable with an automated rollback at 50%.
+2. ~~Auto-rollback authority.~~ Decided: CI rolls back automatically as proposed, including at 50% (§4.3).
 3. **Low-traffic mode.** Resolved with monitoring: synthetic load pinned to the candidate, counted with `source = all`, and a 25% → 100% ladder while real traffic is under 1 req/s (§4.3). Remaining question: is 25% an acceptable first exposure at launch, or do you want 10%?
 4. **KV fail-open for MCP public reads** during a KV outage (§7.2). The alternative is fail-closed for all authenticated MCP calls. Public packs are public either way; the question is whether a caller with a possibly-revoked token should still get public results.
 5. **Release throughput.** With a 24 h shadow window, ~6 h of stages and one release in flight at a time, the pipeline supports roughly 10–15 releases a month (§4.2). Is that enough, or should the shadow minimum be shorter (say 6 h, with a weaker statistical floor) for releases that touch only read paths?
