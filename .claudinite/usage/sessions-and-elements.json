@@ -1,0 +1,73 @@
+{
+  "version": 4,
+  "generated": "2026-10-22T13:22:46.875Z",
+  "foldedThrough": "2026-10-21",
+  "runsFoldedThrough": "2026-10-22T13:17:36Z",
+  "queueFoldedThrough": "2026-10-22T13:21:50Z",
+  "prsFoldedThrough": "2026-10-22T13:21:33Z",
+  "fields": {
+    "day": ["captures","merges","sessions","userMessages","userCommands","tokensIn","tokensOut","tokenSessions","commits","linesAdded","linesRemoved","releases","humanSeconds","agentSeconds"],
+    "week": ["days","captures","merges","sessionDays","userMessages","userCommands","tokensIn","tokensOut","tokenSessions","commits","linesAdded","linesRemoved","releases","humanSeconds","agentSeconds"],
+    "hour": ["scheduler","executor","agentic","failed"],
+    "checks": ["runs","failures","errors","blocking","advisory","ciRuns","ciFailures"],
+    "checkFindings": ["blocking","advisory","sessions","persisted","relent"],
+    "skillLoadsBy": ["voluntary","blockedEdit","blockedCall","resultTrigger","promptTrigger","command","read"],
+    "triggerFires": ["fired","followed"],
+    "guardFires": ["blocking","advisory"],
+    "checkTiming": ["runs","totalMs","maxMs"],
+    "buildSessions": ["cached","started","compiledMs","compiledOk","waits","waitMs","waitMaxMs"],
+    "buildWaits": ["waits","sessions","totalMs","maxMs","timeouts"],
+    "tokensByModel": ["input","cacheRead","cacheCreate","output"],
+    "prs": ["leadHours","issueLeadHours","sessionToMergeHours"],
+    "taskCost": ["sessions","tokensIn","tokensOut","userMessages"],
+    "parks": ["failure","action","decision","approval"],
+    "tasks": ["agent","code-work","skipped","failed","deferred"],
+    "taskExec": ["success","failed","task-gone","invalid"],
+    "queue": ["done","delivered","obsolete","none"]
+  },
+  "caps": {
+    "humanSeconds": 600
+  },
+  "hours": {
+    "2026-10-22T13": {"totals":[1,0,0,0]}
+  },
+  "days": {
+    "2026-09-23": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-09-24": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-09-25": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-09-26": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-09-27": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-09-28": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-09-29": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-09-30": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-10-01": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-10-02": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-10-03": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-10-04": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-10-05": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-10-06": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-10-07": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-10-08": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-10-09": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-10-10": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-10-11": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-10-12": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-10-13": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-10-14": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-10-15": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-10-16": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-10-17": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-10-18": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-10-19": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-10-20": {"totals":[0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-10-21": {"totals":[0,0,0,0,0,null,null,null,2,193,0,0,null,null],"prs":{"1":[6.6,null,null]}},
+    "2026-10-22": {"totals":[0,0,0,0,0,null,null,null,2,6253,3,0,null,null],"queue":{"basics/ci-performance":[1,0,0,0],"engine/update":[1,0,0,0]},"prs":{"6":[3.5,null,null],"19":[0,null,null]},"parks":{"basics/ci-performance":[0,0,0,0],"engine/update":[0,0,0,0]}}
+  },
+  "weeks": {
+    "2026-W39": {"totals":[5,0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-W40": {"totals":[7,0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-W41": {"totals":[7,0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-W42": {"totals":[7,0,0,0,0,0,null,null,null,0,0,0,0,null,null]},
+    "2026-W43": {"totals":[3,0,0,0,0,0,null,null,null,2,193,0,0,null,null],"prs":{"1":[6.6,null,null]}}
+  }
+}
