@@ -123,7 +123,7 @@ pack_versions(id, pack_id, version, sha256, size, r2_key, state, repo_commit, in
                                     -- R2 meta.json
 trusted_publishers(pack_id | pending_name, provider='github', repository_owner_id, repository, workflow,
                    environment, path)
-grants(resource_type[pack|scope], resource_id, principal_type[user|team|scope|token|domain],
+grants(resource_type[pack|scope], resource_id, principal_type[user|team|scope|token|domain|github_org],
        principal_id, action[read|publish|yank|manage], created_by, expires_at)   -- JFrog-style permission rows
 effective_access(pack_id, user_id)                                                -- materialised from grants
 tokens(id, owner_user_id, prefix, hash, scopes, restrict_pack_id, restrict_scope_id, expires_at, last_used_at)
@@ -298,13 +298,17 @@ Proven by the spike in `spike/mcp-worker` (stateless `createMcpHandler`, D1 FTS5
 
 - **Stripe Checkout Sessions** (hosted), not raw PaymentIntents: built-in Stripe Tax, receipts and wallets, and no card data ever touches our Workers. Subscriptions via Checkout `mode=subscription`; the Stripe Customer Portal for plan and card management.
 - **Webhooks** on the `billing` Worker: read the raw body with `request.text()`, verify with `stripe.webhooks.constructEventAsync` (SubtleCrypto), 300 s tolerance, idempotent on `event.id` (unique column in `credit_ledger`), acknowledge fast and do the work by sending an event to the waiting Workflow.
-- **Public upload fee:** a $1 charge loses 33% to card fees ($0.30 + 2.9%), and a single $15 dispute wipes out 22 uploads, so the fee is a spam deterrent, not revenue. We sell **publish credits**: 1 for $1, 5 for $5, 12 for $10, 25 for $20. A credit is consumed when a **new public pack** is first published; new versions of an existing pack are free but rate-limited (e.g. 20 per pack per day). Credits are waived for Verified Publishers. If validation fails, the credit is not consumed.
+- **Public upload fee:** a $1 charge loses 33% to card fees ($0.30 + 2.9%), and a single $15 dispute wipes out 22 uploads, so the fee is a spam deterrent, not revenue. We sell **publish credits**: 1 for $1, 5 for $5, 12 for $10, 25 for $20. A credit is consumed when a **new public pack** is first published, by everyone, open-source packs included (decided by Ariel 2026-10-22); new versions of an existing pack are free but rate-limited (e.g. 20 per pack per day). Credits are waived for Verified Publishers. If validation fails, the credit is not consumed.
 - **Verified Publisher subscription: $99 a year** (decided by Ariel 2026-10-22), billed per scope through Stripe Checkout `mode=subscription`. It covers the manual review and the badge, and makes public publishing in that scope credit-free. Organisations that want to be recognised as the real source of their packs are the ones most willing to pay, so the review cost lands on them rather than on hobby publishers. If the subscription lapses, the badge is removed after a 30-day grace period. The scope, its packs and its domain or GitHub proofs stay, and new packs need credits again. Private-pack seats are billed separately.
 - **Private packs** are a subscription, not per upload, priced per seat like npm and Docker: Solo $5/month (10 private packs), Team $7/seat/month (unlimited packs, teams, audit log), Enterprise custom (SSO, domain access). A seat is a human who can read private packs; agent read tokens hang off a seat. Packs are tiny and R2 egress is free, so cost of goods is near zero.
 
 ## 10. Community signals and ranking
 
+Ariel decided (2026-10-22) to keep every signal side by side: the [pack score](pack-score.md), stars, ratings and reviews, Trending, fetch counts, and the section comments and votes from the site design.
+
 - **Stars** (one click, login required, counted publicly after 24 h account age).
+- **Fetch counts:** adoptions and update fetches per pack and version, from the CDN request logs and the private-pack Worker (data-stores.md, download counts), shown as 30-day totals.
+- **Trending:** packs ranked by growth in verified adoptions and stars over the last 7 days against their previous 28, with a minimum count so one new pack with three fetches can't top it.
 - **Works for me / Didn't work** per version and engine version. This is the signal agents actually need, and it's weighted 1.0 when the voter has a recorded adoption of that pack (a fetch by `cn adopt` or the update) and 0.25 otherwise.
 - **Ratings and reviews:** 1–5 rating with an optional review, one per user per pack, one publisher reply per review (VS Code model). Reviews from accounts that actually fetched the pack carry a "verified fetch" marker and full weight in ranking. Reviews need moderation tooling from day one, so they go through the same admin queue as reports.
 - **Bug reports:** when a public repo is linked, "Report a bug" opens a pre-filled GitHub issue and we read its status back through the GitHub App's issue webhooks; otherwise an in-site inbox for the publisher. Security reports are always private.
@@ -313,9 +317,16 @@ Proven by the spike in `spike/mcp-worker` (stateless `createMcpHandler`, D1 FTS5
 
 ## 11. Private packs and access control
 
-The permission model is JFrog-style rows of (resource, principal, action) in `grants`, materialised into `effective_access` on every change so a read check is one indexed lookup. Every grant change is audited. Phasing, since how access is decided isn't settled yet:
+The permission model is JFrog-style rows of (resource, principal, action) in `grants`, materialised into `effective_access` on every change so a read check is one indexed lookup. Every grant change is audited. Access at launch was decided by Ariel on 2026-10-22: **each private pack has an allowlist of GitHub orgs.**
 
-1. **Launch:** owner + per-pack allowlist (by handle or email invite), expiring invite links, scoped `psr_` read tokens for agents and CI, OAuth on MCP.
+- **Repos (cn in GitHub Actions):** the update workflow requests a GitHub Actions OIDC token with audience `registry.claudinite.com` and presents it to the registry. The `web` Worker verifies it against GitHub's cached JWKS and reads `repository_owner_id`. If that org id is on the pack's allowlist, it returns the per-caller index and short-lived download URLs. Repos store no secret. The org id, not the login, is matched, so a renamed or re-registered org can't inherit access.
+- **People (site and MCP):** a member signs in with GitHub, and the registry checks their membership of an allowlisted org through the GitHub API at sign-in and again hourly while the session lasts. `cn adopt` on a laptop uses the same sign-in through a device-code flow and gets a token that expires with the session.
+- **Elsewhere:** `psr_` read tokens remain for CI that is not GitHub Actions, scoped to one pack or scope, and they are the only stored secret.
+- An allowlist row is a `grants` row with `principal_type = github_org` and the numeric org id; adding or removing an org is audited and needs a passkey assertion.
+
+Later phases, in order:
+
+1. **Launch extras:** per-user grants and expiring invite links for people outside an allowlisted org, and OAuth on MCP.
 2. **Hugging Face-style gated access** (early, the site design already includes it): a pack can be "gated": its listing is public, users request access through a form with owner-defined fields and terms, the owner approves, denies or sets auto-approve, and a grant API lets a paid flow (Stripe webhook) grant access. This also gives publishers a way to sell access later. Stored as `access_requests(pack_id, user_id, answers_json, status, decided_by)` feeding `grants`.
 3. **Orgs:** scope teams, team grants, seat billing, audit log UI.
 4. **Directory-backed:** GitHub org/team sync through the GitHub App (webhooks + nightly reconcile), "anyone with a verified @company.com email" after domain proof.
@@ -339,7 +350,7 @@ The permission model is JFrog-style rows of (resource, principal, action) in `gr
 
 ## 13. Security summary
 
-- Phishing-resistant MFA required for publishers; step-up for sensitive actions; no long-lived publish secrets in CI (OIDC).
+- Phishing-resistant MFA required for publishers; step-up for sensitive actions; no long-lived secrets in CI for publishing or for reading private packs (GitHub OIDC both ways).
 - Separation of duties across Workers: only the validator can write public buckets; the MCP Worker has no payment or GitHub secrets; admin is behind Cloudflare Access with IdP-enforced MFA.
 - All secrets in Secrets Store; tokens stored as hashes; prefixed tokens for leak detection.
 - Immutable versions, SHA-256 everywhere, signed attestations, and a fast quarantine that MCP shows and the signed index carries as `revoked`.
@@ -362,9 +373,9 @@ The permission model is JFrog-style rows of (resource, principal, action) in `gr
 
 ## 15. Open questions for Ariel
 
-1. **Who decides access to private packs?** The design supports allowlists, teams, gated requests and GitHub/domain sync; which should launch first? (Proposed: allowlist + invite links + read tokens.)
-2. **Is the $1 fee per new pack (proposed) or per version?** Verified Publishers are exempt through their $99/year subscription (decided).
-3. **How deep should the review go at launch?** Proposed: static checks, sandboxed load and self-test, Haiku screen on every version and Sonnet only on flagged packs (~$400/month at 1M repos), plus human review of what's flagged.
+1. ~~Who decides access to private packs?~~ Decided: an allowlist of GitHub orgs per private pack, proven by GitHub Actions OIDC (§11).
+2. ~~Is the $1 fee per new pack or per version?~~ Decided: $1 per new pack for everyone, open-source included, waived for Verified Publishers ($99/year).
+3. **Which model screens pack prose?** No agentic scans (decided). Static checks, sandboxed load and prove, and human review of holds are settled; the single-shot screen is Jev on Workers AI (recommended, about $40/month), Haiku with Sonnet on flags (about $520/month), or none ([pack-score.md](pack-score.md) §3).
 4. **Non-GitHub trusted publishing at launch** (GitLab OIDC), or GitHub OIDC only, with direct upload covering every other source?
 5. **Data residency:** default location or EU jurisdiction for D1 and R2?
 
