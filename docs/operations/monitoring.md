@@ -46,9 +46,9 @@ Non-goals:
 
 - One owner operates the service. Support hours are published; outside them, only pages reach the phone, and the system must degrade safely on its own (serve stale, fail closed on trust decisions, pause spending).
 - Plans: Workers Paid ($5/month) and a Pro zone (about $25/month, already budgeted for WAF rate rules and the 10 Health Checks it includes). No Business or Enterprise features are assumed; where a feature needs one (PagerDuty destination, Logpush failure alert, Security Events alert) this plan names the substitute.
-- Traffic at launch is small: on the order of 200k Worker requests a month, a few hundred validated versions a month, about a thousand packs. The mid point is the hosting estimate's 1M-repo scenario: about 19M Worker requests and 6.2M update checks a month, 40k versions validated a month, 100k packs ([hosting cost estimate](../hosting-cost-estimate.md)). The 10x point is 190M requests and 400k versions a month.
+- Traffic splits between the CDN host and the Workers. `cdn.packserver.dev` is an R2 custom domain with Cache Everything and no Worker, so update checks and public downloads never reach a Worker; its SLIs come from zone analytics and probes, and request gates and Worker SLIs count only requests that reach a Worker (web, mcp, publish, github, billing, admin). The hosting estimate's 19M "requests through a Worker" at the 1M-repo scenario are these CDN requests (6.2M update checks at about 3 requests each). This plan's figures: launch about 0.2M Worker requests and 1M CDN-host requests a month, a few hundred validated versions, about a thousand packs; mid (1M repos) about 3M Worker requests, 19M CDN-host requests, 40k versions and 100k packs ([hosting cost estimate](../hosting-cost-estimate.md)); 10x about 30M Worker requests, 190M CDN-host requests and 400k versions. The Worker share is this plan's estimate and is to be confirmed with the architecture thread; §9.3 and §14 are computed from it.
 - Releases use Workers Versions with gradual deployments; every Worker reads `env.CF_VERSION_METADATA` and stamps its version id on every signal (agreement with the release thread). A release has a human release id (git sha plus semver) mapped to one version id per Worker.
-- Cloudflare's Monitors and Issues are in beta. The plan uses them but never as the only path for a page: a cron Worker owned by this plan (the gate judge, §9.5) evaluates gates and critical alerts itself and posts to the paging channel directly.
+- Cloudflare's Monitors and Issues are in beta. The gate judge (§9.5), a cron Worker owned by this plan and tested as code, is the single evaluator of gates and pages; Monitors are used for anomaly detection and as a backup copy of three pages, and Issues for error grouping, so a beta product's failure costs a convenience, not a page.
 - Shadow traffic is provisional until Ariel confirms the design; the shadow gate in §9 is defined but marked provisional.
 
 ## 3. The telemetry pipeline
@@ -61,7 +61,7 @@ Fields of the wide event (names follow OpenTelemetry HTTP semantic conventions w
 
 | Group | Fields |
 |---|---|
-| Identity of the run | `ts`, `worker` (web, mcp, publish, github, billing, validator, admin, plus the monitoring Workers), `version_id`, `release_id`, `colo`, `ray_id`, `trace_id`, `span_id`, `invocation_id`, `trigger` (fetch, scheduled, queue, alarm, rpc) |
+| Identity of the run | `ts`, `worker` (web, mcp, publish, github, billing, validator, admin, plus the monitoring Workers), `version_id`, `release_id`, `colo`, `ray_id` (the join key to Workers Traces, which carry `cloudflare.ray_id` on root spans, and to Logpush records; no documented API exposes the current trace or span id to Worker code, so `trace_id` and `span_id` are optional and filled only if an accessor exists), `invocation_id`, `trigger` (fetch, scheduled, queue, alarm, rpc) |
 | Request | `http.request.method`, `http.route` (the Hono route pattern, never the raw path), `url.host`, `http.response.status_code`, `outcome` (ok, client_error, server_error, exception, canceled), `error_code` (our own enum), `bytes_out`, `cache_status`, `is_synthetic` (set by the recorder only when the authenticated principal is the synthetic tenant, §10.2; never from a client-supplied header), `version_override` (true when the request carried the Workers version override header, §9.4) |
 | Who | `principal_kind` (anonymous, session, token_read, token_publish, oidc, oauth, admin, synthetic), `principal_hash` (stable keyed hash of the user, token or client id, never the raw id on read-path Workers), `scope`, `pack`, `pack_version`, `client` and `client_version` (from the User-Agent of cn, the CLI or the MCP client), `ip_hash` (daily-rotating keyed hash, §3.4), `country` |
 | Timing | `duration_ms` (wall), `cpu_ms`, `d1_ms` and `d1_rows_read` and `d1_rows_written` (summed from `meta`), `r2_ms`, `kv_ms`, `do_ms`, `vectorize_ms`, `upstream_ms` and `upstream_host` for Stripe, GitHub, AI Gateway, email |
@@ -72,7 +72,9 @@ Client-derived strings (`client`, `client_version`, `pack`, `scope`, `upstream_h
 Two outputs per request:
 
 1. The JSON object goes to `console.log`, which Workers Logs indexes field by field. This is the detailed, searchable record for 7 days.
-2. One data point goes to the Analytics Engine dataset `request_outcomes` with `index1 = version_id` (so adaptive sampling, if it ever kicks in, is per version and canary comparisons stay fair), blobs `worker, http.route, method, outcome, principal_kind, colo, release_id, cache_status, journey, error_code`, doubles `status, duration_ms, cpu_ms, d1_ms, r2_ms, upstream_ms, bytes_out, is_synthetic`. This is the metrics substrate for SLOs, gates and alerts; it is never sampled by us below 10x scale (§14).
+2. One data point goes to the Analytics Engine dataset `request_outcomes` with `index1 = version_id` (so adaptive sampling, if it ever kicks in, is per version and canary comparisons stay fair), blobs `worker, http.route, method, outcome, principal_kind, colo, release_id, cache_status, journey, error_code`, doubles `status, duration_ms, cpu_ms, d1_ms, r2_ms, upstream_ms, bytes_out, is_synthetic`. This is the metrics substrate for SLOs, gates and alerts; it is never sampled by us at any scale (§14), so gate queries weight only by `_sample_interval`.
+
+`telemetry` is a facade: its first implementation is `console.log` plus `writeDataPoint`, and a later one may be the OpenTelemetry Logs and Metrics API when Cloudflare exports metrics. Call sites and signal names do not change.
 
 Domain events go to the dataset `domain_events` with `index1 = signal name`, so a rare signal such as `download.hash_mismatch` is never sampled away by a flood of `download.served`. Validation and LLM calls, synthetic probe results and gate evaluations have their own datasets (§8). The shadow summary dataset is written by the release thread's recorder and read here.
 
@@ -88,10 +90,10 @@ Wrangler sets a head sampling ceiling per Worker (`observability.logs.head_sampl
 
 | Worker | Logs at launch | Logs at mid scale | Logs at 10x | Traces |
 |---|---|---|---|---|
-| web, mcp | 1.0 | 0.15 | 0.05 | 0.05 at launch and mid, 0.02 at 10x |
+| web, mcp | 1.0 | 1.0 | 0.15 | 0.05 |
 | publish, github, billing, admin, validator, monitoring Workers | 1.0 | 1.0 | 1.0 | 1.0 (validator), 0.2 others including billing (§3.4: Stripe URLs in spans carry customer ids) |
 
-Head sampling cannot keep every error. The mitigations are that the `request_outcomes` point is unsampled, that Issues group uncaught exceptions and failed invocations independently of the log sample (whether Issues also see sampled-out `console.error` lines is unverified), and that the write-path Workers are never sampled. Synthetic traffic is logged at 0.1 on the read path from day one (a recorder decision, not a Wrangler one); it is already recorded in `synthetic_probes`. Anonymous 4xx responses and `abuse.rate_limited` events on the read path are logged at 0.01 from day one and counted in Analytics Engine, so a flood of blocked requests does not become a flood of paid log lines.
+`observability.logs.invocation_logs = false` is set on every Worker; the wide event replaces the platform's per-invocation log line, which would otherwise double every volume in §14. Head sampling cannot keep every error. The mitigations are that the `request_outcomes` point is unsampled, that Issues group uncaught exceptions and failed invocations independently of the log sample (whether Issues also see sampled-out `console.error` lines is unverified), and that the write-path Workers are never sampled. Synthetic traffic is logged at 0.1 on the read path from day one (a recorder decision, not a Wrangler one); it is already recorded in `synthetic_probes`. Anonymous 4xx responses and `abuse.rate_limited` events on the read path are logged at 0.01 from day one and counted in Analytics Engine, so a flood of blocked requests does not become a flood of paid log lines.
 
 Denial of wallet: every anonymous request can produce a log line, a data point and a Logpush record, and log ingestion is the one meter an outsider can run up (one million requests an hour at 4.84 KB a line is about $30 a day). The recorder reads a KV key `telemetry_mode` (`normal` or `economy`) once per invocation (cached in the isolate for a minute). In economy mode the read-path Workers skip `console.log` for anonymous 2xx and 4xx responses entirely and keep logging errors, authenticated requests and write paths. The gate judge sets economy mode when the `logs_gb` meter in `budget.usage` passes the pro-rated included allowance for the day and clears it the next day; the switch is a ticket. The Logpush `http_requests` job samples CDN cache hits (status 2xx, `CacheCacheStatus` hit) at 10% and keeps every other record. Analytics Engine points are cheap enough ($0.25 per million) that no attacker-driven volume matters before the Workers request bill does.
 
@@ -120,15 +122,15 @@ Cloudflare-native at launch, with two independent paths for anything that pages,
 | Request tracing | Workers Traces (open beta) at 5% on read paths, 100% on the validator, 20% elsewhere | Automatic spans for D1, R2, KV, DO, Queues and outbound fetch with version id attributes; the only way to see a slow D1 statement in context. Workflows, Vectorize and the AI Gateway binding are not instrumented, so those get `*_ms` fields in the wide event | Shared allowance above |
 | Metrics substrate for SLOs, gates and alerts | Workers Analytics Engine datasets (§3.1, §8) queried through the SQL API and the Workers `analytics` binding | Cheapest place for per-version, per-route percentiles; fire-and-forget writes; the only dataset family Monitors and our own gate judge can both read | 10M points and 1M queries a month included, then $0.25/M points and $1/M queries ([pricing](https://developers.cloudflare.com/analytics/analytics-engine/pricing/)) |
 | Platform metrics | GraphQL Analytics API datasets for D1, KV, R2, Queues, Workflows, Durable Objects, AI Gateway and zone HTTP; Queues REST metrics for backlog | Free, 31 days, the only source for stored bytes, backlog and cache hit ratio | $0 |
-| Error grouping | Cloudflare Issues (open beta) with automations to the alert router | Groups exceptions, failed invocations and 5xx per Worker and records the Worker version per occurrence | Free during beta |
-| Alert evaluation, primary | Monitors (SQL threshold, anomaly and SLO detection over `request_outcomes` and the other datasets), webhook destination | First native way to alert on Workers data; SLO mode is multi-window burn rate | Free so far; limits unverified |
-| Alert evaluation, independent | The gate judge: a cron Worker that evaluates every gate and every page-severity alert from the same SQL every minute and posts directly to the paging channel. It also writes `gate.evaluated` points and serves the gate API (§9.5) | Monitors is beta; a page must not depend on one beta product. The judge is also needed anyway for the rollout controller | Inside the included Workers requests |
-| Alert routing and paging | The alert router: a tiny Worker that receives Monitors, Issues, gate judge and external witness webhooks, dedupes on (alert, resource) for 5 minutes, maps severity, and posts pages to Pushover (phone makes noise even on silent) and tickets to a GitHub issue plus email | PagerDuty as a Cloudflare destination needs a Business zone; a webhook to Pushover or to PagerDuty Events API v2 does not. Pushover is $4.99 one-time per platform; PagerDuty Free (5 users, 100 notifications a month) is the alternative if schedules are ever wanted | $5 once, or $0 |
+| Error grouping | Cloudflare Issues (open beta) with automations to the alert router | Groups exceptions, failed invocations and 5xx per Worker and records the Worker version per occurrence (per the launch blog post; not stated on the product page) | Free during beta |
+| Alert and gate evaluation | The gate judge: a cron Worker that evaluates every gate and every page-severity alert, every minute during a rollout and every 5 minutes otherwise, writes `gate.evaluated` points, serves the gate API and carries the alert router routes (§9.5) | One rule set, in code under test (§16.1), rather than the same page written twice as a Monitor and as judge code. The judge is needed anyway for the rollout controller | Inside the included Workers requests |
+| Alert evaluation, backup and anomaly | Monitors (open beta): anomaly detection over `request_outcomes` and `domain_events`, which the judge would otherwise have to reimplement, plus a backup copy of three pages only (`page.read_path_burn` tier 2, `page.hash_mismatch`, `page.monitoring_dead`), webhook destination to the router | SLO mode evaluates one availability target over a short and a long window and fires when both are below it; a burn-rate tier is one Monitor whose target is 100 minus burn rate times (100 minus SLO) (§11.2). The router's dedupe absorbs the overlap on the three backed-up pages | Free so far; limits and metering unverified |
+| Alert routing and paging | The alert router: routes on the judge Worker that receive Monitors, Issues and external witness webhooks, dedupe on (alert, resource) for 5 minutes, map severity, and post pages to Pushover (phone makes noise even on silent) and tickets to a GitHub issue plus email | PagerDuty as a Cloudflare destination needs a Business zone; a webhook to Pushover or to PagerDuty Events API v2 does not. Pushover is $4.99 one-time per platform; PagerDuty Free (5 users, 100 notifications a month) is the alternative if schedules are ever wanted | $5 once, or $0 |
 | Long-term archive of request and platform records | Logpush to R2: `http_requests` (IP truncated and query string stripped by a Transformer), `workers_trace_events` with `ScriptVersion` and without `Logs`, `firewall_events`, `access_requests`, `audit_logs_v2`; 90-day lifecycle | 7 days is too short to investigate a report that arrives a month later; Logpush to R2 is near free and needs no vendor | 25 GB a month included, then $0.03/GB to R2; Workers Trace Events 10M requests included then $0.05/M; R2 storage $0.015/GB-month ([Logpush pricing](https://developers.cloudflare.com/logs/logpush/pricing/)) |
-| Dashboards | Cloudflare custom dashboards (100 per account, all plans) mixing GraphQL analytics, Workers Logs charts and SQL charts | One login; charts from the Query Builder pin directly | $0 |
-| Synthetic probing from inside | The synthetic prober: a cron Worker running probe-safe DSL scenarios through the HTTP driver against production with the synthetic tenant (§10) | Exercises real client flows (index, download, hash verify, MCP search, dry-run publish); counts toward SLIs at low traffic | Inside included requests |
+| Dashboards | Cloudflare custom dashboards (100 per account, all plans) mixing GraphQL analytics, Workers Logs charts and SQL charts (unverified for Analytics Engine datasets; the SQL API plus a page rendered by the judge is the fallback) | One login; charts from the Query Builder pin directly | $0 |
+| Synthetic probing from inside | The synthetic prober: a cron Worker running probe-safe DSL scenarios through the HTTP driver against production as the `@probe` tenant (§10) | Exercises real client flows (index, download, hash verify, MCP search, dry-run publish); counts toward SLIs at low traffic | Inside included requests |
 | Off-Cloudflare witness | Upptime (GitHub Actions) probing `packserver.dev`, `cdn.packserver.dev/index/v1/root.json`, `mcp.packserver.dev` every 5 minutes, alerting through its own path into the alert router | Everything else in this table runs on Cloudflare and goes dark with it | $0 |
-| Edge health checks | Cloudflare Health Checks (10 on Pro) on the three public hosts with `expected_body` on the root index | Already paid for by the Pro zone; status-change notification within seconds; probes Cloudflare's edge so it complements but does not replace the witness. Minimum interval and inclusion in Pro unverified | in Pro zone |
+| Edge health checks | Cloudflare Health Checks (10 on Pro) on the three public hosts with `expected_body` on the root index | Already paid for by the Pro zone (10 checks on Pro, verified); status-change notification within seconds; probes Cloudflare's edge so it complements but does not replace the witness. Minimum interval unverified | in Pro zone |
 | Status page | Instatus Starter (free, no custom domain) or Pro ($15 to $20 for a custom domain), fed by the witness | Must not share fate with Cloudflare; a status page on Workers would | $0 to $20 |
 
 ### 4.2 Rejected or deferred alternatives
@@ -161,22 +163,22 @@ Telemetry is read by people and by automation, and both need the least access th
 
 | Credential | Held by | Scope | Stored in | Rotation |
 |---|---|---|---|---|
-| Gate judge API token | gate judge Worker | Workers Scripts Read (list versions), Queues Read (backlog metrics), Logs Read (Logpush `last_error`), Account Audit Logs Read; nothing else, no Edit; the `analytics` binding needs no token | Secrets Store, bound to the judge only | 90 days |
-| Gate API service token | rollout controller (GitHub Actions) | one Access application on `GET /gates/*`, read only | GitHub Actions environment secret in the release repository, protected environment | 90 days |
+| Gate judge API token | gate judge Worker | Workers Scripts Read (list versions), Queues Read (backlog metrics), Logs Read (Logpush `last_error`), Account Audit Logs Read, Account Analytics Read (only for the SQL API fallback when the `analytics` binding is unavailable); nothing else, no Edit | Secrets Store, bound to the judge only | 90 days |
+| Gate API service token | rollout controller (GitHub Actions) | one Access application on `GET /gates/*` and `POST /probe-results`, one token per consumer (controller; the prober's dry-run workflow) | GitHub Actions environment secret in the release repository and in the `probe` repository, protected environments | 90 days |
 | `/__selftest` service token | synthetic prober Worker | one Access application per host on `/__selftest`; a second token for the controller's own call | Secrets Store (prober), Actions environment secret (controller) | 90 days |
-| Synthetic tenant `psr_` read token | synthetic prober Worker | read on the tenant's one private pack; no `pks_` token exists for the prober | Secrets Store | before its 90-day expiry, with a ticket at 7 days left |
-| Synthetic dry-run publisher | scheduled GitHub Actions workflow in the private `ps-synthetic` repository | GitHub OIDC trusted publisher for the tenant's private pack only; no long-lived secret | none (OIDC) | n/a |
+| `@probe` tenant `psr_` read token | synthetic prober Worker | read on the tenant's one private pack; no `pks_` token exists for the prober | Secrets Store | before its 90-day expiry, with a ticket at 7 days left |
+| Synthetic dry-run publisher | scheduled GitHub Actions workflow in the private `probe` repository | GitHub OIDC trusted publisher for the `@probe` tenant's private pack only; no long-lived secret | none (OIDC) | n/a |
 | Logpush destination credentials | Logpush jobs | R2 API token with Object Write on the archive bucket only (no read, no bucket configuration) | Cloudflare Logpush job | yearly |
-| Alert router inbound secrets | Monitors, Issues automations, Upptime | one shared secret per source (`cf-webhook-auth` for Cloudflare sources, HMAC header for Upptime); the judge calls the router through a service binding and needs none | Secrets Store (router), Cloudflare destination config, Upptime repository secret | yearly |
-| Pushover application token and user key | alert router; a second application token for Upptime's direct fallback | sends messages only | Secrets Store; Upptime repository secret | on compromise |
-| GitHub issue token | alert router | fine-grained token or GitHub App installation with Issues write on the private ops repository only | Secrets Store | 90 days |
+| Alert router inbound secrets | Monitors, Issues automations, Upptime | one shared secret per source (`cf-webhook-auth` for Cloudflare sources, HMAC header for Upptime); the judge's own alerts are in-process and need none | Secrets Store (judge), Cloudflare destination config, Upptime repository secret | yearly |
+| Pushover application token and user key | gate judge (router routes); a second application token for Upptime's direct fallback | sends messages only | Secrets Store; Upptime repository secret | on compromise |
+| GitHub issue token | gate judge (router routes) | fine-grained token or GitHub App installation with Issues write on the private ops repository only | Secrets Store | 90 days |
 | Instatus API key | Upptime workflow | status updates on one page | Upptime repository secret | yearly |
 | `k_master`, `k_principal` | every Worker running the recorder | HMAC keys for `ip_hash` and `principal_hash` | Secrets Store | 90 days (`k_master`), on compromise (`k_principal`) |
 | Workers deploy token | release pipeline (owned by the release plan) | listed here only so the audit watch (§7) can tell CI deploys from any other actor | release repository | release plan |
 
 ## 5. "Is there no standard Cloudflare service for writing logs? Should we explore other log services with a free plan?"
 
-For operational logs, Workers Logs is the standard service: `console.log` a JSON object from any Worker and it is indexed, searchable, queryable by SQL and alertable. It is a telemetry store, not a record: retention is 7 days at most today (longer options are announced but not shipped), it is head-sampled by configuration and force-sampled after 5 billion logs a day, entries are truncated at 256 KB, and anyone who can deploy can switch collection off. For keeping request records longer, Cloudflare's standard answer is Logpush into our own R2 bucket, which this plan does from day one for 90 days at pennies. So for operations the answer is yes, there is a standard service, and this plan uses it plus the export pipe.
+For operational logs, Workers Logs is the standard service: `console.log` a JSON object from any Worker and it is indexed, searchable, queryable by SQL and alertable. It is a telemetry store, not a record: retention is 7 days at most today (longer options are announced but not shipped), it is head-sampled by configuration and force-sampled after 5 billion logs a day, entries are truncated at 256 KB, and anyone who can deploy can switch collection off. For keeping request records longer, Cloudflare's standard answer is Logpush into our own R2 bucket, which this plan does from the first public traffic for 90 days at pennies. So for operations the answer is yes, there is a standard service, and this plan uses it plus the export pipe.
 
 Free external log services (Axiom 1 TB a month, Grafana Cloud 50 GB, New Relic 100 GB, SigNoz 50 GB, Honeycomb 20M events) are good operational log stores and are listed as the phase 2 option in §4.3. They are not needed at launch, and adding one is a vendor, a processor agreement and a second console for a solo owner.
 
@@ -218,6 +220,7 @@ All SLOs are over a rolling 30 days. Availability counts a request as good when 
 | GitHub | `upstream_host = api.github.com`; JWKS fetch failures (`publish.oidc_rejected` with reason jwks); App rate limit remaining from response headers written as `github.rate_limit_remaining` | error rate over 5%; rate limit remaining under 10%; JWKS fetch failing for 10 minutes (page: blocks all trusted publishing) |
 | Email provider | `email.sent` and `email.failed` | failure share over 10% in 30 minutes (page: sign-in codes) |
 | Cloudflare Access (`admin`) | `access_requests` via Logpush (phase 0, §15); Access login allow and deny events | over 20 denied logins in 10 minutes (ticket); any allowed admin login from a country or identity not seen in the last 90 days (page, `page.admin_new_location`) |
+| Certificates, domain, service tokens | TLS expiry as seen by the witness (Upptime reports it); domain registration expiry checked weekly by the judge; the "Expiring Access Service Token" notification routed to the router | certificate under 14 days (ticket), domain registration under 60 days (ticket), service token under 14 days (ticket) |
 
 ## 7. Registry-specific signals
 
@@ -231,7 +234,7 @@ These are the checks that other registries' incidents show matter (precedents in
 | Publish spikes and abuse | `publish.received` per scope per hour, `scope.created` per day, version churn per pack per day, `publish.quota_hit`, `abuse.rate_limited`, `abuse.turnstile_failed`, `abuse.anomaly_hold` (star velocity), name similarity flags from the validator | New scopes over 5x the 7-day daily baseline, or one scope over 50 publishes an hour, is a ticket; over 20x is a page with the kill switch runbook (pause new-pack publishing) |
 | Validation verdict drift | Daily distribution of `validation.verdict` (pass, flag, reject) and risk score percentiles; disagreement between static checks and LLM review; quarantine count; moderator queue age | Reject share moving more than 15 percentage points day over day, or pass share above 99.5% for a day with over 50 versions (checks silently off), is a ticket. Queue age over 48 hours is a ticket |
 | Takedown latency | `moderation.report_received` to `moderation.quarantined` to `moderation.takedown_completed`, with `kind` | Security reports not quarantined within 1 hour is a page; others over 24 hours is a ticket |
-| LLM evaluation cost | `validation.llm_call` with model, tokens in and out, `cost_usd` and the AI Gateway log id; daily sum per model | Daily spend over the budget line (launch: $5 a day; mid: $25 a day, which is about 1.5x the estimate's $400 a month; 10x: $250 a day) is a page, and the validator switches the Sonnet step to a queue-and-wait mode until the owner lifts it. AI Gateway spend caps are the hard backstop |
+| LLM evaluation cost | `validation.llm_call` with model, tokens in and out, `cost_usd` and the AI Gateway log id; daily sum per model | Daily spend over the budget line is a ticket (a page only outside support hours is not needed, because the validator switches the Sonnet step to a queue-and-wait mode on breach until the owner lifts it). Lines: launch $5 a day, a cap rather than a budget since expected spend is about $2 a month; mid $25 a day, about $760 a month or 1.9x the estimate's $400; 10x $250 a day, 1.9x the scaled estimate. AI Gateway spend caps are the hard backstop |
 | Account takeover patterns | `auth.login` with new country for the account followed by `token.minted` within 10 minutes; `auth.factor_removed`; `auth.recovery_requested`; token use after 90 days idle | Each is a ticket with notification to the account; over 5 in an hour across accounts is a page |
 | MFA failures and credential stuffing | `auth.login` with `ok = false` by `reason` and by `account_hash` and `ip_hash`; the judge computes `auth.login_failed_burst` per minute | Over 10 failed second-factor attempts on one account in 10 minutes is a ticket and the account is locked for an hour by the web Worker; failures across more than 50 distinct accounts from one `ip_hash` or one `/24` in 10 minutes is a page with the WAF runbook (RB-12) |
 | Token misuse | `token.rejected` with `reason` (revoked, expired, cidr, scope, unknown_prefix); `token.minted` outside support hours; a `pks_` token used from a country never seen for its owner | Any use of a revoked token is a ticket with notification to the owner; over 20 `unknown_prefix` rejections in an hour from one source is a ticket (token scanning); a publish with a token from a new country is held for owner confirmation by the publish Worker and recorded as `publish.staged_waiting` with `waiting_on = confirm` |
@@ -242,15 +245,15 @@ These are the checks that other registries' incidents show matter (precedents in
 
 ## 8. Canonical signal catalogue
 
-This table is the source of truth for signal names. The test DSL asserts them through `expect(world.telemetry).toHaveRecorded("<signal>")`, the code exports them from `core/telemetry/signals.ts`, and a repository check fails the build if the two lists differ (§16.1). Naming: `<area>.<past-tense event>`; a signal is either an event (a line in the wide event plus a `domain_events` point) or a count or timer that only produces a point. "Used by" lists D (dashboard), A (alert), G (gate), T (test). Fields listed are in addition to the common `version_id, worker, ts, is_synthetic`.
+This table is the source of truth for signal names. The test DSL asserts them through `expect(world.telemetry).toHaveRecorded("<signal>")`, the code exports them from `core/telemetry/signals.ts`, and a repository check fails the build if the two lists differ (§16.1). Naming: `<area>.<past-tense event>`; a signal is either an event (a line in the wide event plus a `domain_events` point), a count or timer that only produces a point, or derived (computed from zone analytics or platform metrics, emitted by no Worker). The repository check compares only emitted signals, and `world.telemetry` can assert only those. "Used by" lists D (dashboard), A (alert), G (gate), T (test). Fields listed are in addition to the common `version_id, worker, ts, is_synthetic`.
 
 | Signal | Type | Emitted by | Key fields | Used by |
 |---|---|---|---|---|
 | `http.request` | wide event, one per invocation | request recorder in every Worker | all fields of §3.1 | D A G T |
-| `download.served` | event | web, mcp (private and `get_download`), CDN via zone analytics | pack, pack_version, bytes, hash_ok, source (cdn, worker, presigned) | D A G T |
+| `download.served` | event (source worker, presigned); derived from zone analytics for source cdn | web, mcp (private and `get_download`) | pack, pack_version, bytes, hash_ok, source (cdn, worker, presigned) | D A G T |
 | `download.hash_mismatch` | event | web, mcp, synthetic prober (server-observed only) | pack, pack_version, expected, actual, source (worker, synthetic) | A G T |
 | `download.hash_mismatch_reported` | event | report endpoint (client-reported, never gates or pages alone) | pack, pack_version, reporter_kind, principal_hash | D A T |
-| `index.served` | count | zone analytics for cdn host; web for private indexes | scope, cache_status | D G |
+| `index.served` | count (web, private indexes); derived from zone analytics for the CDN host | web | scope, cache_status | D G |
 | `index.signed` | event | validator | scope, key_id, versions_count, generation_ms | D T |
 | `index.verify_failed` | event | synthetic prober | scope, reason | A G T |
 | `index.verify_failed_reported` | event | cn client report endpoint | scope, reason, principal_hash | D A T |
@@ -322,12 +325,12 @@ This table is the source of truth for signal names. The test DSL asserts them th
 | `synthetic.probe` | event | synthetic prober | scenario, ok, ms, target_version_id, step_failed, region | D A G T |
 | `selftest.result` | event | synthetic prober or rollout controller after calling `/__selftest` | target_version_id, release_id, ok, failed_checks, ms | A G T |
 | `shadow.summary` | gauge, per window | release thread's shadow recorder (owned there) | version_id, baseline_version_id, sampled, match_rate, diffs_by_design, diffs_acceptable, diffs_prohibitive, diffs_unclassified | D G |
-| `gate.evaluated` | event | gate judge | gate, version_id, window_s, samples, value, threshold, status (pass, fail, insufficient) | D A |
+| `gate.evaluated` | event | gate judge | gate, version_id, since, samples, bad_events, value, threshold, decision_point, status (pass, fail, insufficient, watching, suspect) | D A |
 | `budget.usage` | gauge, daily | gate judge (GraphQL and AI Gateway analytics) | meter (workers_requests, d1_writes, r2_class_a, ae_points, logs_gb, llm_usd), used, included, share | D A |
-| `monitoring.heartbeat` | event | gate judge, synthetic prober, alert router, each run | component, ok, ms | A |
-| `monitoring.alert_sent` | event | alert router | alert, severity, channel, deduped | D A |
-| `monitoring.alert_rejected` | event | alert router | source, reason (no_auth, bad_auth, storm_cap) | A |
-| `monitoring.page_test` | event | gate judge, alert router | sent, acknowledged_within_s | A |
+| `monitoring.heartbeat` | event | gate judge, synthetic prober, each run | component, ok, ms | A |
+| `monitoring.alert_sent` | event | gate judge (router routes) | alert, severity, channel, deduped | D A |
+| `monitoring.alert_rejected` | event | gate judge (router routes) | source, reason (no_auth, bad_auth, storm_cap) | A |
+| `monitoring.page_test` | event | gate judge | sent, acknowledged_within_s | A |
 
 Analytics Engine datasets and their index: `request_outcomes` (index `version_id`), `domain_events` (index signal name), `validation_events` (index `pack_version_id`; `validation.step` and `validation.llm_call` go here as well as to `domain_events` counts), `synthetic_probes` (index scenario), `gate_results` (index gate name), `budget` (index meter), `downloads` (index `pack_version_id`, architecture-owned), `shadow_summary` (release-owned).
 
@@ -335,11 +338,11 @@ Analytics Engine has no authorisation below the binding: any Worker bound to a d
 
 ## 9. Release gates
 
-A gate is a named yes-or-no question about one Worker version over a window, answered from the datasets above. The release plan decides which gates apply at which stage, how long a stage waits, how many samples it requires before trusting a verdict, and whether a failure halts or rolls back. This section owns the gate names, their definitions as queries and their thresholds, and the API the rollout controller calls.
+A gate is a named yes-or-no question about one Worker version, answered from the datasets above. The release plan decides which gates apply at which stage, how long a stage waits, and whether a failure halts or rolls back. This section owns the gate names, their definitions, thresholds and statistics, and the API the rollout controller calls. §9.6 lists what in here changes the release plan's own document.
 
 ### 9.1 Gate verdict shape
 
-Every gate returns the same object, and the controller treats `insufficient` as its own state (the release doc says what to do with it):
+Every gate returns the same object. `status` is `pass`, `fail`, `insufficient` (below the floor), `watching` (above the floor but between decision points, §9.2, so the verdict may not change yet) or `suspect` (one traffic source dominates, §9.2). The controller treats `insufficient`, `watching` and `suspect` as their own states and the release doc says what to do with each.
 
 ```json
 {
@@ -347,140 +350,168 @@ Every gate returns the same object, and the controller treats `insufficient` as 
   "version_id": "0d7b…",
   "release_id": "1.4.0+a1b2c3d",
   "worker": "web",
-  "window_s": 1800,
+  "scope": "version",
+  "window": { "since": "2026-10-22T10:00:00Z", "seconds": 1800 },
   "source": "all",
-  "samples": 412,
-  "value": 0.0049,
+  "samples": 912,
+  "bad_events": 4,
+  "value": 0.0044,
   "threshold": 0.01,
-  "baseline": { "version_id": "9c1e…", "samples": 7820, "value": 0.0021 },
+  "baseline": { "version_id": "9c1e…", "samples": 7820, "bad_events": 17, "value": 0.0022 },
+  "test": { "absolute_p": 0.98, "relative_p": 0.31, "alpha": 0.01, "decision_point": 600, "next_decision_point": 1200 },
   "status": "pass",
   "evaluated_at": "2026-10-22T10:30:00Z",
   "query_ms": 140
 }
 ```
 
-`source` is `real`, `synthetic` or `all`. At launch traffic the release doc may choose `all` so that the synthetic prober's runs against the canary count; later it should move to `real` with `synthetic` as a separate gate. `all` is safe only because `is_synthetic` is set by the recorder from the authenticated principal (§3.1) and never from a header a client can send; otherwise an outsider could fill the synthetic arm or hide from the real one. Requests that carried the version override header (`version_override = 1`) are excluded from `real` and `all`, since only the prober and the controller are allowed to send it (§9.4). `samples` is `SUM(_sample_interval)` so that Analytics Engine sampling, if it occurs, is corrected.
+`scope` is `version` for gates evaluated per version and `release` for the few that are not (`gate.queue.backlog`, `gate.budget`); the latter still answer per version id so the controller has one call shape, with `baseline` null. `source` is `real`, `synthetic` or `all`. At launch traffic the release doc may choose `all` so that the synthetic prober's runs against the candidate count; later it should move to `real` with `synthetic` as a separate gate. `all` is safe only because `is_synthetic` is set by the recorder from the authenticated principal (§3.1) and never from a header a client can send; otherwise an outsider could fill the synthetic arm or hide from the real one. Requests that carried the version override header (`version_override = 1`) are excluded from `real` and `all`, since only the prober and the controller are allowed to send it (§9.4). `samples` is `SUM(_sample_interval)` so that Analytics Engine sampling, if it occurs, is corrected. For latency gates the object also carries `quantile` (0.95 or 0.99, §9.2).
 
 ### 9.2 Gate names, definitions and thresholds
 
-The release thread proposed nine names on 2026-10-22 (10:27). All nine are ratified below with their definitions. Monitoring adds eight gates the release plan may use or ignore: `gate.exceptions`, `gate.cpu` (advisory), `gate.domain.hash_integrity`, `gate.domain.auth_success`, `gate.domain.webhook_ack`, `gate.selftest`, `gate.synthetic` and `gate.budget`. No release-thread name was renamed; the earlier working names `gate.domain.mcp_success`, `gate.domain.index_signature` and `gate.shadow_diff` are folded into `gate.domain.mcp_search_success`, `gate.domain.index_fetch_success` and `gate.shadow.match_rate` respectively.
+The release thread proposed nine names on 2026-10-22 (10:27) and all nine are ratified below. Monitoring adds three for launch (`gate.selftest`, `gate.synthetic`, `gate.domain.hash_integrity`) and four for phase 2 (`gate.cpu`, advisory; `gate.domain.auth_success`; `gate.domain.webhook_ack`; `gate.budget`). `gate.availability` and `gate.error_rate` are complements (good is outcome ok or client_error; bad is server_error, exception or canceled) and are one evaluation reported under both names, so the release plan may cite either and the two never disagree. There is no exceptions gate: any client can create a new exception group with novel input, so new Issue groups on a version are a Release dashboard panel and a ticket, and exceptions count as bad in the error rate. The earlier working names `gate.domain.mcp_success`, `gate.domain.index_signature` and `gate.shadow_diff` are folded into `gate.domain.mcp_search_success`, `gate.domain.index_fetch_success` and `gate.shadow.match_rate`.
 
-All request gates read `request_outcomes` filtered by `index1 = version_id` and `blob1 = worker` over the window; domain gates read `domain_events`. The baseline is the version currently receiving the majority of traffic over the same window (same minutes, so time-of-day effects cancel). A gate fails on the absolute threshold or on the relative guard, whichever trips; the relative guard exists so that a canary that is "within SLO" but clearly worse than the baseline still fails.
+All request gates read `request_outcomes` filtered by `index1 = version_id` and `blob1 = worker`; domain gates read `domain_events`. The window is cumulative from the moment the version entered its current stage (the controller passes `since`; the default is when the version joined the deployment), not a sliding 30 minutes, so successive evaluations see nested data and a verdict cannot flip because data left the window. The baseline is the version receiving the majority of traffic over the same minutes, so time-of-day effects cancel.
 
-| Gate | Value | Absolute threshold | Relative guard versus baseline | Statistical floor (below it the verdict is `insufficient`) |
-|---|---|---|---|---|
-| `gate.availability` | share of requests with outcome in (ok, client_error) | at least 99.5% (read-path Workers), 99% (publish, github, billing) | fail if bad share exceeds 2x the baseline and the absolute difference is over 0.5 percentage points | 300 requests |
-| `gate.error_rate` | share with outcome in (server_error, exception) | at most 1% | same as above | 300 requests |
-| `gate.exceptions` | count of outcome exception per 1,000 requests; new Issue groups first seen on this version are reported alongside but are advisory, since any client can create a new exception group by sending novel input | at most 2 per 1,000 | n/a | 200 requests |
-| `gate.p99_latency` | `quantileExactWeighted(duration_ms, _sample_interval, 0.99)` per route class (read, write) | read 800 ms, write 1,500 ms | fail if over 1.5x baseline p99 | 1,000 requests (p99 is meaningless below) |
-| `gate.cpu` (advisory: reported, not blocking unless the release doc says so) | p99 `cpu_ms` | 50 ms (read Workers), 200 ms (publish, validator step handlers) | fail if over 2x baseline | 300 requests |
-| `gate.domain.publish_success` | `publish.promoted` plus `publish.validated` with verdict reject or flag (legitimate verdicts) over `publish.received` minus those still in flight (waiting on review, payment or approval) | at least 98% | fail if more than 2 `publish.failed` where baseline has none | 5 publishes (the synthetic dry-run publish counts) |
-| `gate.domain.mcp_search_success` | `mcp.call` ok share across all tools, client errors excluded, and `search.query` (site and MCP) with `search.degraded` not set and p99 under 800 ms | tool success at least 99%; degraded share under 1% | 2x baseline failures or 1.5x baseline p99 | 100 calls or searches |
-| `gate.domain.index_fetch_success` | synthetic index fetches for this version (`synthetic.probe` scenario `update_check.signed_index`): `root.json` and one scope index fetched, Ed25519 signature verified, root-to-scope hash link verified, index not older than 10 minutes after the last promote; plus zone 2xx share for `index/v1/*` when the version serves private indexes | 100% of probe runs; zero `index.verify_failed` and `index.stale`; zone 2xx share at least 99.9% | n/a | 1 probe run (zero tolerance), 100 zone requests for the share |
-| `gate.domain.rollup_success` | for the Worker that runs the hourly stats rollup: `rollup.completed` recorded by this version since it went live, with `packs_updated` not zero when `downloads` has points in the hour | the latest scheduled rollup completed within 70 minutes of the previous one | n/a | 1 scheduled run (so this gate is `insufficient` for the first hour after deploy, by design) |
-| `gate.queue.backlog` | `queue.backlog` oldest message age and DLQ count across the notify, index, mirror and audit queues; not version-scoped, since one consumer version runs at a time | oldest message under 10 minutes (audit queue under 5), zero new DLQ messages since the version went live | n/a | n/a (point-in-time REST metric) |
-| `gate.domain.hash_integrity` | count of server-observed `download.hash_mismatch` (source worker or synthetic) for this version; client reports (`download.hash_mismatch_reported`) never count | 0 | n/a | 20 `download.served` |
-| `gate.domain.auth_success` | `auth.login` ok share, excluding `reason in (wrong_code, user_cancelled)` | at least 95% of the baseline's success share | n/a | 30 logins |
-| `gate.domain.webhook_ack` | `billing.webhook_received` and `github.webhook_received` acknowledged 2xx within 5 s | 100% | n/a | 3 webhooks (release doc may replay test webhooks from Stripe's and GitHub's dashboards to reach the floor) |
-| `gate.selftest` | latest `selftest.result` for this version: ok and no more than 10 minutes old | ok | n/a | 1 run |
-| `gate.synthetic` | share of `synthetic.probe` ok with `target_version_id` = this version, all scenarios | 100% over the window, allowing one failed run if the next run passed | n/a | 3 runs |
-| `gate.shadow.match_rate` (provisional, pending Ariel's confirmation of the shadow design) | from `shadow_summary` for this version | `diffs_prohibitive` = 0; `diffs_unclassified` at most 2% of sampled; `match_rate` plus by-design and acceptable diffs at least 98% | n/a | release doc sets the sampled count |
-| `gate.budget` | `budget.usage` share for meters that scale with requests | no meter above 90% of included with more than a day of the cycle left, and LLM spend under the daily line | n/a | n/a (not version-scoped; applies to the release as a whole) |
+Statistics for proportion gates. The earlier draft failed a gate when the canary's bad share exceeded 2x the baseline's plus 0.5 points, re-tested every minute on a sliding window. At the 300-request floor that trips on 3 errors, which a healthy canary on a 0.5% baseline produces 19% of the time per look, and the looks compound, so a false rollback per release was close to certain. The judge now runs two one-sided exact tests at alpha 0.01 each, and only at decision points:
 
-Gates that are not version-scoped (`gate.queue.backlog`, `gate.domain.rollup_success` for the hour before the first run, `gate.budget`) still answer per version id in the API so the controller has one call shape; their `baseline` field is null.
+- Absolute: an exact binomial test of "the true bad share is at most the threshold". At a 1% threshold it needs 9 bad events in 300 samples, 18 in 900 and 37 in 2,400; a canary whose true rate is 0.5% fails it with probability under 0.01%.
+- Relative: a one-sided Fisher exact test that the canary's bad share exceeds the baseline's over the same minutes. It counts only when the canary has at least 5 bad events, so a handful of errors can never fail a gate on its own.
 
-Manipulation guard. A gate verdict can make the controller roll back, so an outsider who can steer traffic at the canary (slow searches to lift p99, malformed input to raise exceptions, a burst to cause `exceeded resources`) must not be able to decide a release. Every request gate therefore also computes the share of bad samples contributed by the single largest `principal_hash` and, for anonymous traffic, `ip_hash`. If one source contributes more than 20% of the samples or more than 50% of the bad samples in the window, the verdict is `suspect` rather than `fail`, with the dominating share in the response, and the release doc's action for `suspect` should be to halt the rollout and page, not to roll back. The relative guard also protects against this when both arms see the same traffic mix; the exclusion of `version_override` requests (§9.1) is what keeps the mix the same.
+A gate fails when either test rejects at a decision point. Decision points are the first time the cumulative sample count reaches the floor, each doubling after it (300, 600, 1,200, 2,400 and so on), and the end of the stage. Between decision points the judge reports `watching` with the current counts and p-values so the dashboard shows a canary drifting toward a fail, but the controller gets no new verdict. With four decision points at alpha 0.01 the false-fail rate per gate and stage is under 4% by the union bound and about 1.5 to 2% in simulation (healthy canary at a 0.2% or 0.5% baseline, baseline arm 20x the canary). Power with the same four points: a canary at 2% on a 0.5% baseline is caught essentially always, a canary at 1% on a 0.5% baseline about 70% of the time; at a single look of 300 samples a 2% canary is caught about half the time and a 5% canary almost always. Effects under 1% are invisible at these sample sizes, which is what the burn-rate alerts and the 24-hour bake are for. The simulation script (`ops/canary-sim.py`) is kept with the judge so the numbers can be re-run when thresholds change. A Bayesian beta-binomial gives the same verdicts at these counts; exact tests were chosen because they need no prior and can be checked by hand.
 
-Example query for `gate.error_rate` (Analytics Engine SQL; Monitors and the gate judge use the same text with `$version` and `$worker` bound):
+Statistics for latency gates. A p99 at 1,000 samples is the ten slowest requests and flaps on one cold colo. `gate.p99_latency` keeps its name (the release plan's) but gates on p95 until the window holds 10,000 samples for the Worker, then on p99, and reports `quantile`. The relative test fails at a decision point when the canary's quantile exceeds 1.5x the baseline's same quantile and by at least 100 ms; the floor is 1,000. No distribution test runs below 10,000 samples, where Mann-Whitney has no power for a small effect.
+
+| Gate | Value | Absolute threshold | Relative test versus baseline | Floor (below it the verdict is `insufficient`) | When |
+|---|---|---|---|---|---|
+| `gate.availability`, `gate.error_rate` | one evaluation: bad share is outcome in (server_error, exception, canceled); availability is one minus it | bad share at most 0.5% (read-path Workers), 1% (publish, github, billing), by the binomial test | Fisher exact, 5 bad events minimum | 300 requests | launch |
+| `gate.p99_latency` | `quantileExactWeighted(0.95)(double2, _sample_interval)` per route class (read, write) until 10,000 samples, then `quantileExactWeighted(0.99)` | p95: read 500 ms, write 1,000 ms; p99: read 800 ms, write 1,500 ms | over 1.5x baseline and over 100 ms slower | 1,000 requests | launch |
+| `gate.cpu` (advisory: reported, not blocking unless the release doc says so) | p95 `cpu_ms` | 50 ms (read Workers), 200 ms (publish, validator step handlers) | over 2x baseline | 300 requests | phase 2 |
+| `gate.domain.publish_success` | launch form: the dry-run publish against this version (§10.1, every 15 minutes during a rollout) reached a verdict and no `publish.failed` was recorded for the version. Mid-scale form, from when real publishes exceed 20 an hour: `publish.promoted` plus `publish.validated` with verdict reject or flag over `publish.received` minus those still in flight | launch: zero tolerance; mid: at least 98% | mid: Fisher exact on `publish.failed` | 1 dry run (launch); 50 publishes (mid) | launch |
+| `gate.domain.mcp_search_success` | `mcp.call` failure share across all tools, client errors excluded, and `search.query` (site and MCP) with `search.degraded` set; latency by the p95 proxy | failures at most 1%; degraded share under 1%; p95 under 500 ms | Fisher exact on failures; latency as above | 100 calls or searches | launch |
+| `gate.domain.index_fetch_success` | synthetic index fetches for this version (`synthetic.probe` scenario `update_check.signed_index`): `root.json` and one scope index fetched, Ed25519 signature verified, root-to-scope hash link verified, index not older than 10 minutes after the last promote; plus zone 2xx share for `index/v1/*` when the version serves private indexes | 100% of probe runs; zero `index.verify_failed` and `index.stale`; zone 2xx share at least 99.9% | n/a | 1 probe run (zero tolerance), 100 zone requests for the share | launch |
+| `gate.domain.rollup_success` | for the Worker that runs the hourly stats rollup: `rollup.completed` recorded by this version since it went live, with `packs_updated` not zero when `downloads` has points in the hour. Whether scheduled, queue and Workflow invocations follow the deployment split or always run the latest version is undocumented (unverified); the judge attributes them by the `version_id` the handler stamps, and the release plan should not treat this gate or `gate.queue.backlog` as version-scoped until that is tested in staging | the latest scheduled rollup completed within 70 minutes of the previous one | n/a | 1 scheduled run (`insufficient` for the first hour after deploy, by design) | phase 2 (with the stats rollup, §15 phase 5) |
+| `gate.queue.backlog` | `queue.backlog` oldest message age and DLQ count across the notify, index, mirror and audit queues; scope `release` | oldest message under 10 minutes (audit queue under 5), zero new DLQ messages since the version went live | n/a | n/a (point-in-time REST metric) | launch |
+| `gate.domain.hash_integrity` | count of server-observed `download.hash_mismatch` (source worker or synthetic) for this version; client reports (`download.hash_mismatch_reported`) never count | 0 | n/a | 20 `download.served` | launch |
+| `gate.domain.auth_success` | `auth.login` failure share, excluding `reason in (wrong_code, user_cancelled)` | at most 5 points worse than the baseline's failure share | Fisher exact | 30 logins | phase 2 |
+| `gate.domain.webhook_ack` | `billing.webhook_received` and `github.webhook_received` acknowledged 2xx within 5 s | 100% | n/a | 3 webhooks (the release doc may replay test webhooks from Stripe's and GitHub's dashboards to reach the floor) | phase 2 |
+| `gate.selftest` | latest `selftest.result` for this version: ok and no more than 10 minutes old | ok | n/a | 1 run | launch |
+| `gate.synthetic` | share of `synthetic.probe` ok with `target_version_id` = this version, all scenarios | 100% over the window, allowing one failed run if the next run passed | n/a | 3 runs | launch |
+| `gate.shadow.match_rate` (provisional, pending Ariel's confirmation of the shadow design) | from `shadow_summary` for this version | `diffs_prohibitive` = 0; `diffs_unclassified` at most 2% of sampled; `match_rate` plus by-design and acceptable diffs at least 98% | n/a | release doc sets the sampled count | phase 2 |
+| `gate.budget` | `budget.usage` share for meters that scale with requests; scope `release` | no meter above 90% of included with more than a day of the cycle left, and LLM spend under the daily line | n/a | n/a | phase 2 |
+
+Manipulation guard. A gate verdict can make the controller roll back, so an outsider who can steer traffic at the canary (slow searches to lift the latency quantile, malformed input to raise exceptions, a burst to cause `exceeded resources`) must not be able to decide a release. Every request gate therefore also computes the share of bad samples contributed by the single largest `principal_hash` and, for anonymous traffic, `ip_hash`. If one source contributes more than 20% of the samples or more than 50% of the bad samples in the window, the verdict is `suspect` rather than `fail`, with the dominating share in the response, and the release doc's action for `suspect` should be to halt the rollout and page, not to roll back. The relative test also protects against this when both arms see the same traffic mix; the exclusion of `version_override` requests (§9.1) is what keeps the mix the same.
+
+Example query for `gate.error_rate` (Analytics Engine SQL, with `$version`, `$worker`, `$source` and `$since` bound; the judge runs one such query per dataset per run grouped by `index1` and `blob1` rather than one per gate, §9.5):
 
 ```sql
 SELECT
   SUM(_sample_interval) AS samples,
-  SUM(_sample_interval * IF(blob4 IN ('server_error','exception'), 1, 0)) / SUM(_sample_interval) AS value
+  SUM(_sample_interval * if(blob4 IN ('server_error','exception','canceled'), 1, 0)) AS bad_events
 FROM request_outcomes
 WHERE index1 = $version
   AND blob1 = $worker
-  AND ($source = 'all' OR double8 = IF($source = 'synthetic', 1, 0))
-  AND timestamp > NOW() - INTERVAL '30' MINUTE
+  AND ($source = 'all' OR double8 = if($source = 'synthetic', 1, 0))
+  AND timestamp > $since
 ```
 
-Example for `gate.p99_latency` on read routes:
+Example for `gate.p99_latency` on read routes while the p95 proxy applies:
 
 ```sql
 SELECT
   SUM(_sample_interval) AS samples,
-  quantileExactWeighted(0.99)(double2, _sample_interval) AS value
+  quantileExactWeighted(0.95)(double2, _sample_interval) AS value
 FROM request_outcomes
 WHERE index1 = $version AND blob1 = $worker AND blob9 IN ('install','update_check','search','mcp')
-  AND timestamp > NOW() - INTERVAL '30' MINUTE
+  AND timestamp > $since
 ```
 
-### 9.3 Low traffic, and a note for the release doc
+The binomial and Fisher tests run in the judge on the returned counts, not in SQL.
 
-The release thread's proposed stage minimums are 1% for 30 minutes and 500 samples, 5% for 60 minutes and 2,000, 25% for 120 minutes and 10,000, 50% for 120 minutes and 20,000, then 100% with a 24-hour bake. Gradual deployments split per request at random, so a stage at p% sees p% of the Worker's real traffic. Hours needed to reach each stage's sample minimum from real traffic alone:
+### 9.3 Low traffic
 
-| Scale (real requests per hour, all Workers) | 1% to 500 | 5% to 2,000 | 25% to 10,000 | 50% to 20,000 |
+The release thread's proposed stage minimums are 1% for 30 minutes and 500 samples, 5% for 60 minutes and 2,000, 25% for 120 minutes and 10,000, 50% for 120 minutes and 20,000, then 100% with a 24-hour bake. Gradual deployments split per request at random, so a stage at p% sees p% of that Worker's real traffic, and gates are per Worker, not per account. With the traffic split of §2 (the CDN host has no Worker, so update checks and public downloads never reach one), hours needed to reach each stage's sample minimum from real traffic alone:
+
+| Worker class and scale (real requests an hour) | 1% to 500 | 5% to 2,000 | 25% to 10,000 | 50% to 20,000 |
 |---|---|---|---|---|
-| Launch (about 280 an hour, 0.08 a second) | 180 hours | 144 hours | 145 hours | 144 hours |
-| Mid, 1M repos (about 26,000 an hour, 7.3 a second) | 1.9 hours | 1.5 hours | 1.5 hours | 1.5 hours |
-| 10x (about 260,000 an hour) | 12 minutes | 9 minutes | 9 minutes | 9 minutes |
+| Read path (web, mcp), launch (about 250) | 200 hours | 160 hours | 160 hours | 160 hours |
+| Read path, mid (about 3,800) | 13 hours | 11 hours | 11 hours | 11 hours |
+| Read path, 10x (about 38,000) | 1.3 hours | 1.1 hours | 1.1 hours | 1.1 hours |
+| Publish and github, mid (about 300) | 170 hours | 130 hours | 130 hours | 130 hours |
+| Publish and github, 10x (about 3,000) | 17 hours | 13 hours | 13 hours | 13 hours |
+| Billing, 10x (about 300) | 170 hours | 130 hours | 130 hours | 130 hours |
 
-So the proposed minimums work from the mid point on and are infeasible at launch: at 1% the canary sees under three real requests an hour, which cannot detect even a total outage inside 30 minutes. This plan's answer, in order of preference:
+So the proposed minimums are satisfiable from real traffic only on the read path at 10x; at launch a 1% canary of `web` sees under three real requests an hour, which cannot detect even a total outage inside 30 minutes, and the write-path Workers never see enough real traffic for a 1% or 5% stage at any scale. This plan's answer, in order of preference:
 
-1. **Synthetic load on the candidate.** The synthetic prober (§10) runs at a 1-minute cadence during a rollout, pinned to the candidate version through the version override header (before traffic) or version affinity (during the split), and the gates are evaluated with `source = all`. Five scenarios of about six requests each give roughly 1,800 requests an hour against the candidate regardless of the stage percentage: 500 samples in about 17 minutes, 2,000 in about 70. These are real requests through the real code path with real bindings, differing from user traffic only in the tenant and the fixed inputs. The prober also runs against the baseline so the relative guard has a like-for-like comparison.
-2. **Per-gate floors instead of per-stage totals.** The statistical floors in §9.2 (300 requests for a proportion gate at a 1% threshold, 1,000 for a p99) are the smallest samples at which the verdict means anything; they are what the judge enforces. A stage total above the floor adds confidence but is the release doc's choice; a stage total below the floor cannot be satisfied by waiting longer at launch, only by synthetic load.
-3. **Statistical test.** Below about 10,000 samples per arm, distribution tests of the Kayenta kind (Mann-Whitney) have no power for a 1% effect, so the gates use proportion thresholds with an absolute limit and a relative guard against the baseline over the same minutes, which is what Flagger-style controllers do. The judge will add a two-proportion z-test at 95% to the relative guard once both arms have over 1,000 samples (mid scale and up); below that the guard is the plain comparison in §9.2.
-4. **Skip 1% and 5% at launch traffic.** With synthetic load the stage percentage no longer controls the sample size, only the blast radius; and at launch 1% of real traffic is a handful of users, which is not a meaningful blast radius reduction over 25%. Recommended for the release doc: while real traffic is under 1 request a second, start at 25% with the synthetic floors, then 100%, keep the 24-hour bake, and keep auto-rollback on any gate failure. Reintroduce 1% and 5% when the mid-scale row above makes them satisfiable within the stage duration. The gate judge publishes the current real request rate in `budget.usage` (meter `request_rate`) so the controller can pick the stage ladder automatically.
-5. **Zero-tolerance and one-shot gates first.** `gate.selftest` (1 run), `gate.synthetic` (3 runs), `gate.domain.index_fetch_success` and `gate.domain.hash_integrity` are meaningful within minutes and should gate the first stage on their own at launch.
+1. **Synthetic load on the candidate.** The release plan deploys the candidate at 0% next to the incumbent (version overrides reach any version in the current deployment, including one at 0%, and a deployment holds at most two versions; verified by the release thread against the version overrides page). The synthetic prober (§10) then runs at a 1-minute cadence pinned to the candidate through the override header, asserting the echoed version id, and the gates are evaluated with `source = all`. Five scenarios of about six requests each give roughly 1,800 requests an hour against the candidate regardless of the stage percentage: 300 samples (the proportion floor) in 10 minutes, 500 in about 17, 2,000 in about 70. These are real requests through the real code path with real bindings, differing from user traffic only in the tenant and the fixed inputs. The prober also runs against the incumbent so the relative test has a like-for-like comparison. For `publish`, the dry-run scenario runs every 15 minutes against the candidate during a rollout (§10.1), which is why `gate.domain.publish_success` has a zero-tolerance launch form.
+2. **Per-gate floors and decision points instead of per-stage totals.** The floors in §9.2 are the smallest samples at which the verdict means anything and the judge enforces them; a stage total above the floor adds decision points (each doubling) and therefore power, but a stage total below the floor cannot be satisfied by waiting longer at launch, only by synthetic load.
+3. **Skip 1% and 5% at launch traffic.** With synthetic load the stage percentage no longer controls the sample size, only the blast radius, and at launch 1% of real traffic is a handful of users, which is no meaningful reduction over 25%. Recommended for the release doc: while a Worker's real traffic is under 1 request a second, start at 25% with the synthetic floors, then 100%, keep the 24-hour bake, and keep auto-rollback on any gate failure. The judge publishes each Worker's current real request rate in `budget.usage` (meter `request_rate`) so the controller can pick the stage ladder automatically.
+4. **Zero-tolerance and one-shot gates first.** `gate.selftest` (1 run), `gate.synthetic` (3 runs), `gate.domain.index_fetch_success` and `gate.domain.hash_integrity` are meaningful within minutes and should gate the first stage on their own at launch.
 
 The judge never reports `pass` below a floor; it reports `insufficient` with the sample count, and the release doc decides whether to keep waiting, add synthetic load or halt.
 
-Note for the release doc (summary of the above): stage sample minimums should be stated as "or the gate's floor, whichever is larger, with synthetic traffic counted at launch"; the 1% and 5% stages should be conditional on real traffic of at least 1 request a second; auto-rollback on `gate.domain.hash_integrity` and `gate.domain.index_fetch_success` should apply at every stage including 100%, since they are zero-tolerance.
-
 ### 9.4 How `/__selftest` and shadow metrics feed in
 
-`/__selftest` is defined by the release plan: `GET`, protected by an Access service token, reachable through the version override header before the version receives traffic, returning `{version_id, release_id, ok, checks: [{name, ok, ms, detail}]}`. The synthetic prober calls it for every staged and live version each run, records one `selftest.result` per call with the failed check names, and `gate.selftest` reads the latest. Individual checks are also written as `synthetic.probe` points with `scenario = selftest.<name>` so a flaky check is visible on the release dashboard. The gate judge treats a `/__selftest` that is unreachable as a failed result, not as missing data.
+`/__selftest` is defined by the release plan: `GET`, protected by an Access service token, reachable through the version override header once the candidate is in the deployment (at 0% before it receives traffic, §9.3), returning `{version_id, release_id, ok, checks: [{name, ok, ms, detail}]}`. The synthetic prober calls it for every staged and live version each run, records one `selftest.result` per call with the failed check names, and `gate.selftest` reads the latest. Individual checks are also written as `synthetic.probe` points with `scenario = selftest.<name>` so a flaky check is visible on the release dashboard. The gate judge treats a `/__selftest` that is unreachable as a failed result, not as missing data. Overrides work on `fetch()` service bindings but not on RPC, so a self-test that crosses Workers over RPC reports the incumbent's version for that hop; the check names which hop it tested.
 
 Exposure rules for `/__selftest` and the version override header (monitoring's requirements on the release plan's design):
 
 - The endpoint exists on every Worker host, so there is one Access application per host naming the `/__selftest` path, separate from the admin host's application and from the gate API's, with a policy that admits only the prober's service token (and the controller's for its own call); the prober Worker holds that token in Secrets Store, never in a KV or a config file. The Worker also verifies the Access JWT itself before running any check, so a missing or misconfigured Access application on one host fails closed. `detail` is an enum (`ok`, `timeout`, `error`, `unavailable`) plus a duration, never free text: the response must not name bindings, key ids, hosts or error messages, because a check that touches D1, R2, KV and the signing key is a map of the service. The endpoint is rate-limited to the prober's cadence, since it is expensive to serve.
-- The version override header lets a request choose any recent version. Whether Cloudflare honours it for unauthenticated requesters is not covered by the research (unverified) and is assumed yes until checked. A WAF rule on every host strips the header unless the request also carries the prober's or the controller's Access service token, the recorder records `version_override` on every request, and the gates exclude those requests from `real` traffic (§9.1). This also means that a rolled-back version stays reachable by anyone who knows its id until that WAF rule exists; a rollback is not a takedown, and the release plan should say so.
+- The version override header lets a request choose either version in the current deployment, including one at 0%. Whether Cloudflare honours it for unauthenticated requesters is not covered by the research (unverified) and is assumed yes until checked. A WAF rule on every host strips the header unless the request also carries the prober's or the controller's Access service token, the recorder records `version_override` on every request, and the gates exclude those requests from `real` traffic (§9.1). A version removed from the deployment is no longer reachable by override, so a rollback that removes the bad version is also what retires it; a rollback that keeps it at 0% does not, and the WAF rule is the control.
 - The public `X-PackServer-Version` header carries the release id (semver plus short sha), which is enough for support and for the witness. The raw version id, which is what the override header needs, is returned only when the request is authenticated as the prober or the controller. The prober records `target_version_id` from that authenticated response.
 
 Shadow summary metrics are written by the release thread's recorder to `shadow_summary` in Analytics Engine (sampled count, match rate, diffs by category and by classification: by-design, acceptable, prohibitive, unclassified) per version and window. This plan reads them for `gate.shadow.match_rate` and the release dashboard and does not read the full per-request shadow records in R2.
 
 ### 9.5 The gate judge and its API
 
-The gate judge is a cron Worker (every minute) that: reads the list of versions with traffic or staged (from the release pipeline's KV map and the Workers API), evaluates every gate for every such version through the `analytics` binding (no API token needed; Wrangler 4.145.0 or later), writes one `gate.evaluated` point per evaluation to `gate_results`, caches the latest verdicts in a dedicated KV namespace `gates` bound only to the judge (never the shared `cache` namespace, so no other Worker can write a verdict) under `gate:<version_id>:<gate>`, and serves `GET /gates/<version_id>` and `GET /gates/<version_id>/<gate>?window=1800&source=all` behind its own Access application and a service token issued only to the rollout controller (a GitHub Actions job per the release plan). It also evaluates the page-severity alerts of §11 so that a page never depends on Monitors alone, polls Queues backlog metrics and the Logpush jobs API for `last_error`, polls the Cloudflare account audit log for `cloudflare.audit_event` (§7), computes `budget.usage` daily, flips `telemetry_mode` (§3.3), and emits `monitoring.heartbeat`. The off-Cloudflare witness alerts if the heartbeat stops (dead man's switch). The heartbeat proves the judge runs, not that a page can reach the phone, so once a day the judge also sends a test page through the router and Pushover (`monitoring.page_test`); if the owner has not acknowledged it within 24 hours the router opens a ticket and the witness sends a direct Pushover message through its own token. The judge's API token is read-only (§4.4).
+The gate judge is a cron Worker that evaluates gates and alerts and also carries the alert router as a set of routes (`/hooks/monitors`, `/hooks/issues`, `/hooks/witness`), so monitoring is two Workers, the judge and the prober, with one set of secrets and one heartbeat each; the prober stays separate because it bundles the test DSL and runs against production as a client. The judge runs every minute while a deployment is in progress (the release pipeline's KV map says so) and every 5 minutes otherwise. Each run it:
+
+- reads the list of versions with traffic or staged (from the release pipeline's KV map and the Workers API);
+- runs one query per dataset (about six a run), each grouped by `index1` and `blob1` and bounded by the earliest `since` among the active versions, through the `analytics` binding (no API token needed; Wrangler 4.145.0 or later), and computes every gate for every version and Worker from those result sets; if the binding is unavailable it falls back to `POST /accounts/<id>/analytics_engine/sql` with an Account Analytics Read token in Secrets Store, with identical SQL text;
+- writes one `gate.evaluated` point per gate and version to `gate_results`, caches the latest verdicts in a dedicated KV namespace `gates` bound only to the judge (never the shared `cache` namespace, so no other Worker can write a verdict) under `gate:<version_id>:<gate>`, and serves `GET /gates/<version_id>` and `GET /gates/<version_id>/<gate>?since=...&source=all` behind its own Access application and a service token issued only to the rollout controller (a GitHub Actions job per the release plan);
+- accepts `POST /probe-results` (same Access application, a second service token) carrying a `synthetic.probe` or `selftest.result` record from the prober's GitHub-hosted dry-run workflow and from the rollout controller's own `/__selftest` call, and writes the point, since nothing outside Cloudflare can write a dataset directly;
+- evaluates every page-severity alert of §11 (it is the single evaluator; Monitors back up three alerts, §4.1), polls Queues backlog metrics and the Logpush jobs API for `last_error`, polls the Cloudflare account audit log for `cloudflare.audit_event` (§7), computes `budget.usage` daily, flips `telemetry_mode` (§3.3), and emits `monitoring.heartbeat`.
+
+The off-Cloudflare witness alerts if the heartbeat stops (dead man's switch). The heartbeat proves the judge runs, not that a page can reach the phone, so once a day the judge also sends a test page through the router routes and Pushover (`monitoring.page_test`); if the owner has not acknowledged it within 24 hours the judge opens a ticket and the witness sends a direct Pushover message through its own token. The judge's API token is read-only (§4.4). Query volume: about 60 runs an hour during rollouts and 12 otherwise, six queries each, is roughly 60k to 100k Analytics Engine queries a month, inside the 1M included (whether Monitors are metered as queries is unverified).
 
 The judge reads only; it never deploys or rolls back. That action belongs to the rollout controller, which the release plan owns.
+
+### 9.6 Notes for the release plan
+
+- Stage minimums: the per-Worker table in §9.3 shows the proposed 500, 2,000, 10,000 and 20,000 samples are reachable from real traffic only on the read path at 10x; write-path Workers rely on synthetic load at every scale. State minimums as "the gate's floor or the stage minimum, whichever is larger, with synthetic traffic counted at launch", make the 1% and 5% stages conditional on at least 1 real request a second for that Worker, and keep auto-rollback on `gate.domain.hash_integrity` and `gate.domain.index_fetch_success` at every stage including 100%.
+- Candidate reachability: deploy the candidate at 0% next to the incumbent before `/__selftest` and the pinned prober run; a deployment holds two versions, so the Release dashboard compares two.
+- Statistics: verdicts change only at decision points (floor, each doubling, stage end); between them the status is `watching`, which the controller should treat like `insufficient`. A stage of 30 minutes with synthetic load gives about two decision points; a 60-minute stage gives three. `suspect` means halt and page, not roll back.
+- Gate names: `gate.availability` and `gate.error_rate` are one evaluation and will never disagree; there is no `gate.exceptions`; `gate.p99_latency` gates on p95 below 10,000 samples and the verdict says which.
+- `gate.domain.publish_success` at launch is zero tolerance on the dry run, which the prober runs every 15 minutes against the candidate during a rollout; the rollout pipeline should trigger the first dry run as soon as the candidate is at 0%.
+- `gate.domain.rollup_success` and `gate.queue.backlog` are not version-scoped until the attribution of scheduled, queue and Workflow invocations under a split is tested in staging.
+- A rollback that leaves the old version at 0% keeps it reachable by override until the WAF rule exists; a rollback that removes it from the deployment retires it.
 
 ## 10. Synthetic monitoring
 
 ### 10.1 The synthetic prober (inside Cloudflare)
 
-A cron Worker runs every 5 minutes at launch (every minute once the account has traffic to compare against) and executes the test plan's probe-safe scenarios through the HTTP driver against production, authenticated as the synthetic tenant (a dedicated scope `@ps-synthetic` with its own tokens, excluded from rankings, counters and billing). Scenarios carry the `probe-safe` tag in `docs/testing/dsl.md` when they are read-mostly, self-cleaning and tenant-scoped, and the prober runs them the way `docs/testing/README.md` describes for the `http` driver (`npm run scenarios -- --driver=http --tag=probe-safe`, with the base URL, an optional version override, an Access service token and the probe tenant passed as environment). The initial set:
+A cron Worker runs every 5 minutes at launch (every minute during a rollout, and always once the account has traffic to compare against) and executes the test plan's probe-safe scenarios through the HTTP driver against production, authenticated as the synthetic tenant (a dedicated scope `@probe` with its own tokens, excluded from rankings, counters and billing). The fixed objects the probes read (the public fixture pack, the known scope index and the pack whose `latest` is asserted) live under a first-party scope `@packserver-canary`, published once by the owner, which is also what `/__selftest` reads; `@probe` is only ever the traffic's identity. Scenarios carry the `probe-safe` tag in `docs/testing/dsl.md` when they are read-mostly, self-cleaning and tenant-scoped, and the prober runs them the way `docs/testing/README.md` describes for the `http` driver (`npm run scenarios -- --driver=http --tag=probe-safe`, with the base URL, an optional version override, an Access service token and the probe tenant passed as environment). The initial set:
 
 | Scenario | Journey | What it asserts |
 |---|---|---|
-| `install.public_pack` | install | `get_download` for a fixed public pack returns a URL; the archive downloads from the CDN; SHA-256 matches; the attestation verifies |
-| `update_check.signed_index` | update check | `root.json` fetches, signature verifies, a known scope's index hash matches the root entry, `latest` for a known pack is as expected |
-| `search.lexical_and_semantic` | search | site and MCP search for a fixed query return the expected pack in the top 5, with `search.degraded` not set |
-| `mcp.initialize_and_search` | mcp | MCP initialize, `list_categories`, `search_packs`, `get_pack` succeed anonymously; a `psr_` token lists the synthetic tenant's private pack |
-| `auth.email_code_roundtrip` | auth | request a code for the synthetic account; the email provider's test inbox receives it (or the provider's sandbox mode acknowledges) |
-| `publish.dry_run` | publish | OIDC exchange with a GitHub token from the synthetic tenant's repository (run by a scheduled GitHub Action, not by the Worker), upload a 1 KB pack version to staging, confirm validation reaches a verdict within 15 minutes, confirm the version is yanked and the staging object expires; one run an hour |
+| `install.public_pack` | install | `get_download` for the `@packserver-canary` fixture pack returns a URL; the archive downloads from the CDN; SHA-256 matches the hash pinned in the prober's configuration; the attestation verifies |
+| `update_check.signed_index` | update check | `root.json` fetches, signature verifies, the `@packserver-canary` scope index hash matches the root entry, `latest` for its fixture pack is as expected |
+| `search.lexical_and_semantic` | search | site and MCP search for a fixed query return the `@packserver-canary` fixture pack in the top 5, with `search.degraded` not set |
+| `mcp.initialize_and_search` | mcp | MCP initialize, `list_categories`, `search_packs`, `get_pack` succeed anonymously; a `psr_` token lists the `@probe` tenant's private pack |
+| `auth.email_code_roundtrip` | auth | request a code for the `@probe` account; the email provider's test inbox receives it (or the provider's sandbox mode acknowledges) |
+| `publish.dry_run` | publish | OIDC exchange with a GitHub token from the `probe` repository (run by a scheduled GitHub Action, not by the Worker, which posts the result to the judge's `/probe-results`), upload a 1 KB pack version to staging, confirm validation reaches a verdict within 15 minutes, confirm the version is yanked and the staging object expires; one run an hour, every 15 minutes against the candidate during a rollout |
 | `selftest.<version>` | release | `/__selftest` for every staged or live version (§9.4) |
 
 Each run writes `synthetic.probe` points and, on a failure, one structured log line with the failed step and response excerpt (redacted). Failures page only when two consecutive runs fail for the same scenario, and the alert carries the step name.
 
 ### 10.2 Synthetic tenant privilege and isolation
 
-The synthetic tenant is a real account on the production registry, which is what makes its probes meaningful and also what makes it an attack surface: a compromised prober, prober secret or Actions repository must not be able to publish, read other tenants' data or move rankings. Rules:
+The synthetic tenant is a real account on the production registry, which is what makes its probes meaningful and also what makes it an attack surface: a compromised prober, prober secret or Actions repository must not be able to publish, read other tenants' data or move rankings. The containment of the scope is requirement REQ-OPS-001 and the restricted probe token is REQ-OPS-002 in `docs/requirements/operations.md` (test plan, PR #9); the rules below are what those requirements assert:
 
-- The scope `@ps-synthetic` has the server-side scope kind `synthetic` (a column value, not a naming convention), which every Worker uses to exclude it from the public signed index, public search, Vectorize embeddings, rankings, download counters, `pack_stats`, billing and every business metric and digest; its requests are counted only in `request_outcomes` (flagged `is_synthetic`) and `synthetic_probes`. All its packs are private, the scope is `trusted_publishing_only`, and it cannot be transferred or have members added (the web Worker refuses these actions for the scope by kind). The probe credential is a scope-restricted token, not an account login: no session, no passkey, no dashboard access.
-- The validator skips the LLM review step (and the sandbox agent run) for versions in a `synthetic` scope and records `validation.step` with `step = llm, ok = true, skipped = true`, so the hourly dry-run costs static checks and a sandbox run only and a stuck prober cannot spend the LLM budget. `gate.domain.publish_success` still counts the dry-run as a legitimate verdict. The one public fixture pack that `install.public_pack` and `search.lexical_and_semantic` use is published once by the owner under a first-party scope, not under the synthetic scope.
+- The scope `@probe` has the server-side scope kind `synthetic` (a column value, not a naming convention), which every Worker uses to exclude it from the public signed index, public search, Vectorize embeddings, rankings, download counters, `pack_stats`, billing and every business metric and digest; its requests are counted only in `request_outcomes` (flagged `is_synthetic`) and `synthetic_probes`. All its packs are private, the scope is `trusted_publishing_only`, and it cannot be transferred or have members added (the web Worker refuses these actions for the scope by kind). The probe credential is a scope-restricted token, not an account login: no session, no passkey, no dashboard access.
+- The validator skips the LLM review step (and the sandbox agent run) for versions in a `synthetic` scope and records `validation.step` with `step = llm, ok = true, skipped = true`, so the hourly dry-run costs static checks and a sandbox run only and a stuck prober cannot spend the LLM budget. `gate.domain.publish_success` still counts the dry-run as a legitimate verdict. The fixture objects that `install.public_pack`, `update_check.signed_index`, `search.lexical_and_semantic` and `/__selftest` read are published once by the owner under the first-party scope `@packserver-canary`, never under `@probe`, so a compromised probe credential cannot change what the probes compare against.
 - The dry-run publish goes to the tenant's private pack. After the verdict the version is hard-deleted (allowed within 72 hours when nothing installed it) and the staging object expires, so no bytes from the synthetic path ever reach the public CDN, and a yanked-but-fetchable version is never left behind.
-- The prober Worker holds one `psr_` read token for the tenant's private pack and no `pks_` token: the only publish path is GitHub OIDC from the scheduled workflow in the private `ps-synthetic` repository, whose trusted publisher is bound to that repository, workflow file and environment. That repository has owner-only write, branch protection and SHA-pinned actions. Nothing in it is a long-lived PackServer secret.
+- The prober Worker holds one `psr_` read token for the tenant's private pack and no `pks_` token: the only publish path is GitHub OIDC from the scheduled workflow in the private `probe` repository, whose trusted publisher is bound to that repository, workflow file and environment. That repository has owner-only write, branch protection and SHA-pinned actions. Nothing in it is a long-lived PackServer secret.
 - Token expiry is a probe failure waiting to happen (90-day maximum lifetime). The prober reads its token's `expires_at` from the account API each run and raises a ticket at seven days left; the same applies to the Access service tokens through the expiring-token notification (§4.4).
 - `is_synthetic` and `principal_kind = synthetic` are set by the recorder from the token lookup. The tenant has no bypass of rate limits, Turnstile or abuse detection; it gets the same treatment as any paying tenant, which is also what makes its probe results representative.
 
@@ -490,7 +521,7 @@ Chosen: Upptime, because it is free, runs on GitHub (which PackServer already de
 
 Upptime (GitHub Actions and GitHub Pages) probes `https://packserver.dev/`, `https://cdn.packserver.dev/index/v1/root.json` (with a body keyword match on a known scope name) and `https://mcp.packserver.dev/.well-known/oauth-protected-resource` every 5 minutes, publishes the status page, and posts failures to the alert router (and, if the router is unreachable, directly to Pushover). This is the only monitor that can observe a Cloudflare-wide incident or a mistake that takes the whole account offline. If GitHub Actions is unavailable, the Cloudflare Health Checks (Pro zone) still cover the edge.
 
-Upptime's repository is public by design (the status page is built from it), and so are its configuration, response-time history and incident issues. It therefore probes only endpoints that are public anyway and carries no header, token or path that is not. The dead man's switch (the judge's heartbeat endpoint) and the router's own health check run from a separate private repository with a plain scheduled Actions workflow, so the monitoring Workers' hostnames and the router's webhook secret never appear in a public config. The heartbeat endpoint returns only `ok` and the age of the last run, with `Cache-Control: no-store` so a cached response cannot stand in for a live one. `/__selftest`, the Access service tokens and the gate API are never referenced from Upptime.
+Upptime's repository is public by design (the status page is built from it), and so are its configuration, response-time history and incident issues. It therefore probes only endpoints that are public anyway and carries no header, token or path that is not. The dead man's switch (the judge's heartbeat endpoint) and the check of the judge's webhook routes run from a separate private repository with a plain scheduled Actions workflow, so the monitoring Workers' hostnames and the router's webhook secret never appear in a public config. The heartbeat endpoint returns only `ok` and the age of the last run, with `Cache-Control: no-store` so a cached response cannot stand in for a live one. `/__selftest`, the Access service tokens and the gate API are never referenced from Upptime.
 
 ## 11. Alerting policy
 
@@ -498,15 +529,15 @@ Upptime's repository is public by design (the status page is built from it), and
 
 | Severity | Channel | Response expectation | Examples |
 |---|---|---|---|
-| Page | Pushover with the critical sound (or PagerDuty Free), 24x7 | within 15 minutes during support hours, best effort outside; the system must have already degraded safely | read-path SLO burn, hash mismatch, index signature failure, publish pipeline stalled, Stripe webhooks failing, JWKS unreachable, audit chain broken, LLM budget breached, the witness sees the site down, canary auto-rollback executed |
-| Ticket | GitHub issue in the ops repository with labels, plus email | next working day | component thresholds in §6.2, abuse patterns, verdict drift, moderator queue age, quota at 80%, Logpush job error |
+| Page | Pushover with the critical sound (or PagerDuty Free), 24x7 | within 15 minutes during support hours, best effort outside; the system must have already degraded safely | read-path SLO burn, hash mismatch, index signature failure, publish pipeline stalled, Stripe webhooks failing, JWKS unreachable, audit chain broken, the witness sees the site down, an account change nobody made |
+| Ticket | GitHub issue in the ops repository with labels, plus email | next working day | component thresholds in §6.2, abuse patterns, verdict drift, moderator queue age, quota at 80%, Logpush job error, LLM budget line reached (the validator has already paused the Sonnet step), a canary auto-rollback that succeeded (a failed rollback is a page from the controller) |
 | Digest | weekly email generated by the gate judge | weekly review | alert counts, budget trends, slow queries, synthetic flakiness, open tickets |
 
 Every alert carries: impact in one sentence, the `runbook_url` (§13), the first command or dashboard link, the version ids involved, and a mute link. Alerts group by (alert name, worker or component) with a 5-minute window; the router dedupes repeats for the repeat interval (1 hour for tickets, 15 minutes for pages while unresolved).
 
 The router is reachable from the internet, so it is also a way to page the owner, to exhaust the paging quota, and, through the dedupe window, to suppress a genuine alert by sending a forged one first. Rules:
 
-- Every inbound source authenticates: Monitors and Issues with the `cf-webhook-auth` secret their webhook destinations support, Upptime with an HMAC over the body using a repository secret, the gate judge through a service binding (no HTTP). A post without a valid secret is dropped, never paged, and counted as `monitoring.alert_rejected`; more than 10 in an hour is a ticket. Dedupe applies only to authenticated alerts, so a forged alert cannot mute a real one.
+- Every inbound source authenticates: Monitors and Issues with the `cf-webhook-auth` secret their webhook destinations support, Upptime with an HMAC over the body using a repository secret; the judge's own alerts are in-process calls on the same Worker (no HTTP). A post without a valid secret is dropped, never paged, and counted as `monitoring.alert_rejected`; more than 10 in an hour is a ticket. Dedupe applies only to authenticated alerts, so a forged alert cannot mute a real one.
 - Pages are capped at 10 an hour; beyond that the router sends one "page storm" page naming the top alerts and keeps writing tickets, so a provoked exception storm cannot spend the Pushover quota (10k messages a month) or bury the one page that matters.
 - Alert text is rendered from a fixed template with every field escaped and length-capped. It carries alert name, severity, resource, version ids, release ids, pack or scope names and the runbook link, and never an exception message, stack trace, user id, email, token prefix or request URL. Pushover and email are third-party processors; GitHub issues go to a private ops repository.
 - Mute links are signed (HMAC with a router secret), bound to one alert and one duration, and expire with the mute, so a link that leaks in a ticket cannot be replayed.
@@ -515,18 +546,20 @@ The router is reachable from the internet, so it is also a way to page the owner
 
 For the read-path availability SLO of 99.5% (error budget 0.5% of requests over 30 days), the standard multi-window, multi-burn-rate rules apply:
 
-| Tier | Long window | Short window | Burn rate | Error rate that trips it | Severity |
-|---|---|---|---|---|---|
-| 1 | 1 hour | 5 minutes | 14.4 | 7.2% | page |
-| 2 | 6 hours | 30 minutes | 6 | 3% | page |
-| 3 | 1 day | 2 hours | 3 | 1.5% | ticket |
-| 4 | 3 days | 6 hours | 1 | 0.5% | ticket |
+| Tier | Long window | Short window | Burn rate | Error rate that trips it (read path 99.5%, publish 99%) | Monitor availability target (read path, publish) | Severity |
+|---|---|---|---|---|---|---|
+| 1 | 1 hour | 5 minutes | 14.4 | 7.2%, 14.4% | 92.8%, 85.6% | page |
+| 2 | 6 hours | 30 minutes | 6 | 3%, 6% | 97%, 94% | page |
+| 3 | 1 day | 2 hours | 3 | 1.5%, 3% | 98.5%, 97% | ticket |
+| 4 | 3 days | 6 hours | 1 | 0.5%, 1% | 99.5%, 99% | ticket |
 
-A tier fires when both its windows exceed the burn rate; tiers are combined with OR. The same shape applies to the publish journey (99% SLO: error rates 14.4%, 6%, 3%, 1%) and to the MCP journey. Monitors' SLO detection mode implements short plus long window natively and is the primary evaluator; the gate judge evaluates tiers 1 and 2 itself as the independent path.
+A tier fires when both its windows exceed the burn rate; tiers are combined with OR. The same shape applies to the MCP journey at 99.5%. The gate judge evaluates all four tiers. Monitors' SLO detection mode has no burn-rate parameter: it evaluates one availability target over a short and a long window and fires when both are below it, so a tier is one Monitor whose target is 100 minus burn rate times (100 minus SLO), as in the column above; the one Monitor configured at launch is the read-path tier 2 backup, with its minimum event count set to 100 for the short window.
 
-Low-traffic caveat: at launch, a 5-minute window on `web` holds about 20 requests, so a single error is 5% and tier 1 would be noise. Until the read path sustains at least 1 request a second, tier 1 is disabled, tier 2 requires at least 100 requests in the short window, and the synthetic prober's results are included in the SLI (they are real requests through the real path). The first retrospective (§16.3) re-enables tier 1 when the numbers allow.
+Low-traffic caveat: at launch, a 5-minute window on `web` holds about 20 requests, so a single error is 5% and tier 1 would be noise. Until the read path sustains at least 1 request a second, tier 1 is disabled, tier 2 requires at least 100 requests in the short window, and the synthetic prober's results are included in the SLI (they are real requests through the real path). That means the read-path SLI at launch is about 85% synthetic (30 synthetic requests a minute against about 4 real) and is a statement about the service as the prober sees it; the first retrospective (§16.3) replaces it with a real-only SLI and re-enables tier 1 when the numbers allow.
 
 ### 11.3 Alert catalogue (pages)
+
+Sixteen pages in all, every one requiring an action the system has not already taken. Seven are live at launch with the read path (`page.read_path_burn`, `page.site_down_external`, `page.hash_mismatch`, `page.index_signature`, `page.index_key_changed`, `page.monitoring_dead`, `page.account_change`); the rest arrive with the phase that emits their signals (§15).
 
 | Alert | Condition | Window | Runbook |
 |---|---|---|---|
@@ -538,19 +571,18 @@ Low-traffic caveat: at launch, a 5-minute window on `web` holds about 20 request
 | `page.webhooks_failing` | Stripe or GitHub webhook non-2xx share over 5% with at least 3 webhooks, or 3 signature rejections from provider ranges | 15 minutes | RB-06 |
 | `page.oidc_blocked` | JWKS fetch failures for 10 minutes or OIDC rejection rate over 5x baseline | 10 minutes | RB-07 |
 | `page.audit_pipeline` | `audit.chain_broken`, or audit queue oldest message over 30 minutes, or appended minus written over 1,000 | 30 minutes | RB-08 |
-| `page.llm_budget` | daily `validation.llm_call` cost over the budget line | 1 day, evaluated hourly | RB-09 |
-| `page.d1_near_cap` | `databaseSizeBytes` over 8 GB on `registry` | 1 hour | RB-10 |
+| `page.d1_near_cap` | `databaseSizeBytes` over 9 GB on `registry` (8 GB is a ticket) | 1 hour | RB-10 |
 | `page.email_failing` | `email.failed` share over 10% with at least 5 sends | 30 minutes | RB-11 |
 | `page.abuse_flood` | new scopes or publishes over 20x the 7-day baseline | 1 hour | RB-12 |
 | `page.takedown_overdue` | security report not quarantined within 1 hour | 1 hour | RB-13 |
-| `page.canary_rolled_back` | the rollout controller reports an automatic rollback (informational page so the owner knows a release failed) | immediate | RB-14 |
+| `page.rollback_failed` | the rollout controller reports that an automatic rollback did not complete (a completed rollback is a ticket) | immediate | RB-14 |
 | `page.monitoring_dead` | witness sees no `monitoring.heartbeat` for 15 minutes | 15 minutes | RB-15 |
 | `page.account_change` | a `cloudflare.audit_event` in the page list of §7 (token, member, Access, Logpush, bucket lock, observability, secrets, WAF, non-CI deploy) | immediate, evaluated every 5 minutes | RB-19 |
 | `page.admin_new_location` | an allowed Access login to `admin.packserver.dev` from a country or identity not seen in 90 days, or an `admin.action` with no matching Access login in the previous 12 hours | immediate | RB-19 |
 | `page.index_key_changed` | `index.signed` with an unexpected `key_id` | 1 minute | RB-04 |
 | `page.credential_stuffing` | `auth.login_failed_burst` over 50 accounts from one source in 10 minutes | 10 minutes | RB-12 |
 
-Tickets are the component thresholds in §6.2 and the registry signals in §7 not listed above, each with a runbook from §13.
+Tickets are the component thresholds in §6.2 and the registry signals in §7 not listed above, plus `ticket.llm_budget` (RB-09), `ticket.d1_size` at 8 GB (RB-10) and `ticket.canary_rolled_back` (RB-14), each with a runbook from §13.
 
 ### 11.4 Alert budget
 
@@ -558,12 +590,12 @@ The target is at most two pages a week and at most ten tickets a week on average
 
 ## 12. Dashboards
 
-Five Cloudflare custom dashboards, each a mix of GraphQL analytics, Workers Logs charts and Analytics Engine SQL charts:
+Five Cloudflare custom dashboards, each a mix of GraphQL analytics, Workers Logs charts and Analytics Engine SQL charts (the last unverified for custom dashboards; the fallback is a page the judge renders from the SQL API). Overview and Release exist at launch; the other three arrive with their phases (§15).
 
 | Dashboard | Panels |
 |---|---|
 | Overview (the one to open on a page) | per-Worker request rate, error rate and p50/p99 by version with deployment markers; journey availability versus SLO and remaining error budget; witness and Health Check status; synthetic probe pass rate by scenario; open pages and tickets |
-| Release | for the two or three live versions side by side: every gate's latest verdict and history; error rate, p99, cpu by route; new Issue groups per version; `/__selftest` check results; shadow summary (match rate, diffs by classification) when a shadow run is active |
+| Release | for the two versions in the deployment side by side: every gate's latest verdict, decision points and history; error rate, latency quantile, cpu by route; new Issue groups per version; `/__selftest` check results; shadow summary (match rate, diffs by classification) when a shadow run is active |
 | Publish pipeline | publishes received by path; verdict distribution; time from received to validated (p50, p95); step durations; Workflow states and running count; sandbox timeouts; LLM calls, tokens and cost per model per day against the budget line; moderator queue age; staged versions waiting |
 | Trust and abuse | hash checks and mismatches; index signing and verification; OIDC rejections by reason; provenance mismatches; new scopes and publishes per scope versus baseline; rate-limit and Turnstile events; anomaly holds; auth events (new-country logins, factor changes, recovery requests); takedown latency |
 | Platform and cost | D1 size, writes and slow statements; R2 operations by status and cache hit ratio; KV latency; DO request distribution by object; Queue backlog and oldest message per queue; AI Gateway errors and cache hits; `budget.usage` per meter with the included quota; Logpush job health; Analytics Engine points written per dataset |
@@ -572,7 +604,7 @@ The Release dashboard's URL, filtered to a version id, is included in every gate
 
 ## 13. Runbooks
 
-One page each under `docs/operations/runbooks/`, linked by stable id from every alert. Titles and first steps:
+One page each under `docs/operations/runbooks/`, linked by stable id from every alert. Every runbook has the same three sections after its first steps: "Confirm resolved" (the query or probe that must be green), "Mute or demote" (the signed mute link's durations and when to change the threshold instead) and a link to RB-00, the incident checklist used by every page (status page update, user communication, postmortem note in the digest). Launch needs RB-00 to RB-04, RB-15 and RB-19; the rest are written in the phase that adds their alert (§15). Titles and first steps:
 
 | Id | Title | First steps |
 |---|---|---|
@@ -584,12 +616,12 @@ One page each under `docs/operations/runbooks/`, linked by stable id from every 
 | RB-06 | Webhooks failing | Stripe dashboard: webhook delivery attempts and errors; confirm the signing secret matches Secrets Store; check clock tolerance; for GitHub, confirm the App webhook secret and installation; replay failed events from the provider's dashboard once fixed; confirm `credit_ledger` idempotency |
 | RB-07 | Trusted publishing blocked | Confirm GitHub's OIDC JWKS endpoint is reachable from a Worker; check the KV cache for stale keys and purge; compare rejection reasons; if an attack pattern, keep rejecting and notify affected publishers |
 | RB-08 | Audit pipeline unhealthy | Check the audit queue backlog and DLQ; check the consumer Worker's Issues; verify the last `audit.batch_written`; run the chain verification job manually; if the chain is broken, freeze the bucket lock review and open a security incident per the architecture doc |
-| RB-09 | LLM budget breached | Confirm spend in AI Gateway analytics; check for a publish flood (RB-12); validator is already in queue-and-wait for the Sonnet step; decide whether to raise the daily line or keep waiting; check AI Gateway spend cap |
-| RB-10 | D1 near capacity | Run the size breakdown query per table; purge expired sessions and old `recent_activity`; move the largest community table to its own database per the data-stores plan; never let it reach 10 GB |
+| RB-09 | LLM budget line reached (ticket) | Confirm spend in AI Gateway analytics; check for a publish flood (RB-12); validator is already in queue-and-wait for the Sonnet step; decide whether to raise the daily line or keep waiting; check AI Gateway spend cap |
+| RB-10 | D1 near capacity (ticket at 8 GB, page at 9 GB) | Run the size breakdown query per table; purge expired sessions and old `recent_activity`; move the largest community table to its own database per the data-stores plan; never let it reach 10 GB |
 | RB-11 | Email failing | Check the provider's status and quota; switch the mail interface to the fallback provider; confirm sign-in codes work with the prober |
 | RB-12 | Publish or signup flood | Identify the pattern (scope, IP hash, name similarity); enable the kill switch for new-pack publishing or raise Turnstile difficulty; add a WAF rule; quarantine the batch; keep LLM spend in check |
 | RB-13 | Security report overdue | Open the moderation queue; quarantine the version; the signed index and MCP status propagate the hold; respond to the reporter |
-| RB-14 | Canary rolled back automatically | Read the gate verdict that failed from the controller's log; compare versions on the Release dashboard; reproduce with the in-process driver; fix forward or leave the previous version in place |
+| RB-14 | Canary rolled back (ticket) or rollback failed (page) | If the rollback failed, run `wrangler rollback` by hand and confirm the incumbent's version id in `X-PackServer-Version`; then read the gate verdict that failed from the controller's log; compare versions on the Release dashboard; reproduce with the in-process driver; fix forward or leave the previous version in place |
 | RB-15 | Monitoring itself is dead | Check the gate judge's and prober's cron events and Issues; check that the `analytics` binding and KV are healthy; if Cloudflare is the cause, the witness and Health Checks remain; redeploy the monitoring Workers from the last good version |
 | RB-16 | Queue backlog growing | Identify the queue; check consumer errors and concurrency; check for a poison message in the DLQ; scale consumer batch size; if it is the audit queue, go to RB-08 |
 | RB-17 | Verdict drift | Compare today's distribution with the 30-day baseline; check whether a rules change or model change shipped; sample ten recent verdicts by hand; roll back the rules release if they are wrong |
@@ -598,33 +630,36 @@ One page each under `docs/operations/runbooks/`, linked by stable id from every 
 
 ## 14. Cost analysis
 
-Prices: Observability $0.25/GB ingested and $0.10/GB-month stored beyond 50 GB and 10 GB-month included; Analytics Engine $0.25 per million points beyond 10M and $1 per million queries beyond 1M; Logpush $0.03/GB to R2 beyond 25 GB, Workers Trace Events $0.05 per million beyond 10M; R2 storage $0.015/GB-month; Workers $0.30 per million requests beyond 10M. Sources in §18. Average Workers log event about 4.84 KB (Cloudflare's dataset table); HTTP request record about 2 KB uncompressed; gzip about 10x. Analytics Engine billing was not yet enabled per its pricing page in April 2026 (unverified whether it is now), so its lines are an upper bound.
+Prices: Observability $0.25/GB ingested and $0.10/GB-month stored beyond 50 GB and 10 GB-month included; Analytics Engine $0.25 per million points beyond 10M and $1 per million queries beyond 1M; Logpush $0.03/GB to R2 beyond 25 GB and Transformers $0.04/GB beyond 1 GB transformed, Workers Trace Events $0.05 per million beyond 10M; R2 storage $0.015/GB-month; Workers $0.30 per million requests beyond 10M. Sources in §18. Sizes: a Workers log event about 4.84 KB (Cloudflare's dataset table); a read-path trace about 5 KB and a validator Workflow trace with sandbox and LLM spans about 50 KB (assumptions, to be checked in the first retrospective); an HTTP request record about 2 KB uncompressed; gzip about 10x. Analytics Engine billing was not yet enabled per its pricing page in April 2026 (unverified whether it is now), so its lines are an upper bound.
 
-Scale assumptions: launch 0.2M Worker requests and 200 versions a month; mid 19M requests, 6.2M update checks and 40k versions (the hosting estimate's 1M-repo scenario); 10x 190M requests and 400k versions. Synthetic traffic adds about 0.3M requests a month at a 5-minute cadence and 1.5M at 1-minute.
+Scale assumptions (§2): launch 0.2M Worker requests, about 1M CDN-host requests and 200 versions a month; mid 3M Worker requests, 19M CDN-host requests and 40k versions; 10x 30M Worker requests, 190M CDN-host requests and 400k versions. Synthetic traffic adds about 0.3M requests a month at a 5-minute cadence and 1.3M at 1 minute. Logs are unsampled on every Worker at launch and mid and sampled at 0.15 on the read path at 10x (§3.3); traces at 0.05 on the read path, 1.0 on the validator.
 
 | Item | Launch | Mid (1M repos) | 10x |
 |---|---|---|---|
-| Workers Logs ingestion (sampling per §3.3) | 1 GB, $0 | about 25 GB, $0 | about 72 GB |
-| Workers Traces ingestion | 1 GB, $0 | about 10 GB, $0 | about 19 GB |
+| Workers Logs ingestion | 1 GB, $0 | about 15 GB, $0 | about 42 GB |
+| Workers Traces ingestion | under 1 GB, $0 | about 3 GB, $0 | about 28 GB |
 | Containers, AI Gateway, R2 Data Access logs | under 1 GB, $0 | about 3 GB, $0 | about 6 GB |
-| Observability ingestion total and overage | 3 GB, $0 | 38 GB, $0 | 97 GB, 47 GB over, $11.75 |
-| Observability storage (7-day retention, GB-month) | $0 | about 9 GB-month, $0 | about 23 GB-month, $1.30 |
-| Analytics Engine points: `request_outcomes` | 0.5M | 19M | 190M (or 22M with 1-in-10 client sampling of read-path points, weighted in queries) |
-| Analytics Engine points: `downloads` (architecture-owned, counted here for the total) | 0.1M | 20M | 200M (or 20M sampled) |
+| Observability ingestion total and overage | 2 GB, $0 | 21 GB, $0 | 76 GB, 26 GB over, $6.50 |
+| Observability storage (7-day retention, GB-month) | $0 | about 5 GB-month, $0 | about 18 GB-month, $0.80 |
+| Analytics Engine points: `request_outcomes` (never sampled by us) | 0.5M | 4.3M (including synthetic) | 31M |
+| Analytics Engine points: `downloads` (architecture-owned, counted here for the total) | 0.1M | 20M | 200M (20M if the architecture samples it 1-in-10) |
 | Analytics Engine points: domain, validation, synthetic, gates, budget | 0.3M | 3M | 30M |
-| Analytics Engine total and cost | 0.9M, $0 | 42M, $8 | 420M, $102.50 as designed; 72M, $15.50 with sampling (recommended) |
-| Analytics Engine queries (gate judge every minute, Monitors, dashboards) | 60k, $0 | 150k, $0 | 300k, $0 |
-| Logpush to R2: delivered GB | 1 GB, $0 | about 54 GB (38 http, 15 trace events sampled, 1 security and audit), $0.87 | about 435 GB, $12.30 |
-| Logpush Workers Trace Events requests | 0.2M, $0 | about 5M delivered (sampled), $0 | about 50M, $2 |
-| R2 storage for the archive (90 days, gzipped) | under 1 GB, $0 | about 16 GB, $0.25 | about 130 GB, $2 |
-| Monitoring Workers' requests (prober, judge, router) | 0.4M, inside included | 1.6M, inside included | 1.6M, $0.50 (platform already past 10M) |
+| Analytics Engine total and cost | 0.9M, $0 | 27M, $4.25 | 261M, $62.75 (61M, $12.75 with sampled `downloads`) |
+| Analytics Engine queries (judge, Monitors if metered, dashboards) | 60k to 100k, $0 | 100k to 200k, $0 | under 300k, $0 |
+| Logpush to R2: delivered GB (`http_requests` with CDN cache hits sampled at 10%, security and audit datasets) | 1 GB, $0 | about 14 GB, $0 | about 133 GB, $3.25 |
+| Logpush Transformer (IP truncation and query-string stripping on `http_requests`) | $0 | 13 GB over, $0.52 | 132 GB over, $5.28 |
+| Logpush `workers_trace_events` | deferred to phase 7 (§15); 10M requests a month included, then $0.05 per million | | |
+| R2 storage for the archive (90 days, gzipped) | under 1 GB, $0 | about 4 GB, $0.06 | about 40 GB, $0.60 |
+| Monitoring Workers' requests (prober, judge) | 0.3M, inside included | 1.3M, inside included | 1.3M, $0.40 (platform already past 10M) |
 | Monitors, Issues, dashboards, SQL API, webhooks | $0 (beta or free) | $0 | $0 (pricing after beta unverified) |
 | Health Checks | in the Pro zone | in the Pro zone | in the Pro zone |
 | Pushover | $4.99 one-time | | |
 | Witness (Upptime) and status page (Instatus Starter) | $0 | $0 | $0 (or $15 to $20 for a custom domain) |
-| **Total monitoring, recommended configuration** | **about $0 a month plus $5 once** | **about $9 to $12 a month** | **about $45 a month** (about $132 without Analytics Engine sampling) |
+| **Total monitoring, recommended configuration** | **about $0 a month plus $5 once** | **about $5 a month** | **about $80 a month** (about $30 if the architecture samples `downloads`) |
 
-For reference, the same telemetry in an external backend would add: Grafana Cloud $0 at launch and mid, about $220 a month at 10x; Axiom $0 to $25 at every scale; Sentry Team $26 a month at any scale; Datadog about $90 at mid and $900 at 10x (figures from the external research, several from aggregator pages and flagged there as needing verification). Cloudflare export to an OTLP destination adds about $5 to $10 a month per signal at 10x unless head-sampled.
+The Analytics Engine `downloads` dataset is the largest line at 10x and is not a monitoring choice: the architecture thread decides whether to count every CDN download as a point or sample them (§17 item 5). Monitoring's own datasets stay unsampled at every scale, so gate queries need no weighting beyond `_sample_interval`.
+
+For reference, the same telemetry in an external backend would add: Grafana Cloud $0 at launch and mid, about $220 a month at 10x; Axiom $0 to $25 at every scale; Sentry Team $26 a month at any scale; Datadog about $90 at mid and $900 at 10x (figures from the external research, several from aggregator pages and flagged there as needing verification). Export to an OTLP destination is not metered on the Cloudflare side: with `persist: false` only the vendor bills, and with `persist: true` the data counts once against the shared ingestion allowance above.
 
 What the recommended totals leave out: the owner's time, the Pro zone already in the platform baseline, and a possible Analytics Engine bill if its billing turns on at a different rate than published.
 
@@ -632,16 +667,16 @@ What the recommended totals leave out: the owner's time, the Pro zone already in
 
 | Phase (aligned with the architecture build plan) | Monitoring deliverables |
 |---|---|
-| 0. Foundations | `core/telemetry`: the recorder middleware, the `telemetry` interface, the signal list, the fake sink; `observability.enabled` and `traces.enabled` in every Wrangler config with per-environment sampling; `CF_VERSION_METADATA` binding on every Worker; Analytics Engine bindings; Issues enabled; the alert router with Pushover; Logpush `http_requests` (with the IP-truncating, query-stripping Transformer), `workers_trace_events` (without `Logs`), `audit_logs_v2` and `access_requests` to R2 with a 90-day lifecycle; `invocation_logs = false` everywhere; the account audit watch (`cloudflare.audit_event`, `page.account_change`) and RB-19, so the account is watched from the first deploy; the credentials table of §4.4 populated as each credential is created; the Overview dashboard skeleton |
-| 1. Read path | `download.*`, `index.*`, `search.*`, `mcp.*` signals; the gate judge with `gate.availability`, `gate.error_rate`, `gate.p99_latency`, `gate.exceptions`, `gate.domain.hash_integrity`, `gate.domain.index_fetch_success`, `gate.domain.mcp_search_success`, `gate.queue.backlog`, `gate.selftest`, `gate.synthetic`; the synthetic prober with the install, update-check, search and MCP scenarios; the witness and Health Checks; burn-rate alerts (tiers 2 to 4) and the pages in §11.3 that apply; RB-01 to RB-04, RB-15 |
-| 2. Identity | `auth.*`, `token.*`, `scope.*` signals and their tickets, including `auth.login_failed_burst`, `token.rejected` and `page.credential_stuffing`; `gate.domain.auth_success`; the email-code probe; `admin.action` and `page.admin_new_location` as soon as the admin Worker exists; RB-11 |
-| 3. Publish path | `publish.*`, `validation.*`, `workflow.*`, `queue.*`, `github.*` signals; `gate.domain.publish_success`, `gate.domain.webhook_ack` (GitHub); the Publish pipeline dashboard; the publish dry-run probe from a scheduled GitHub Action; LLM budget line and queue-and-wait switch; audit pipeline health signals as soon as the audit consumer exists; RB-05, RB-07, RB-08, RB-09, RB-12, RB-16 |
-| 4. Payments | `billing.*` signals; webhook gate for Stripe; RB-06 |
-| 5. Community | `moderation.*`, `abuse.*`, `rollup.*` and `gate.domain.rollup_success`; the Trust and abuse dashboard; takedown latency alert; RB-13, RB-17 |
+| 0. Foundations | `core/telemetry`: the recorder middleware, the `telemetry` interface, the signal list, the fake sink; `observability.enabled` and `traces.enabled` in every Wrangler config with per-environment sampling and `invocation_logs = false` everywhere; `CF_VERSION_METADATA` binding on every Worker; Analytics Engine bindings; Issues enabled; the gate judge skeleton with the alert router routes and Pushover; Logpush `audit_logs_v2` and `access_requests` to R2 with a 90-day lifecycle; the account audit watch (`cloudflare.audit_event`, `page.account_change`) and RB-00, RB-19, so the account is watched from the first deploy; the credentials table of §4.4 populated as each credential is created; the Overview dashboard skeleton |
+| 1. Read path | `download.*`, `index.*`, `search.*`, `mcp.*` signals; the judge's launch gates `gate.availability` and `gate.error_rate` (one evaluation), `gate.p99_latency` (p95 proxy), `gate.domain.hash_integrity`, `gate.domain.index_fetch_success`, `gate.domain.mcp_search_success`, `gate.queue.backlog`, `gate.selftest`, `gate.synthetic`, with the decision-point statistics of §9.2 and the fixture tests of §16.1; the synthetic prober with the install, update-check, search and MCP scenarios against `@packserver-canary`; the witness and Health Checks; burn-rate alerts (tiers 2 to 4) with the three backup Monitors; the seven launch pages of §11.3; Logpush `http_requests` with the IP-truncating, query-stripping Transformer once public traffic exists; the Release dashboard; RB-01 to RB-04, RB-15 |
+| 2. Identity | `auth.*`, `token.*`, `scope.*` signals and their tickets, including `auth.login_failed_burst`, `token.rejected` and `page.credential_stuffing`; the email-code probe; `admin.action` and `page.admin_new_location` as soon as the admin Worker exists; RB-11 |
+| 3. Publish path | `publish.*`, `validation.*`, `workflow.*`, `queue.*`, `github.*` signals; `gate.domain.publish_success` in its zero-tolerance launch form; the publish dry-run probe from the scheduled GitHub Action posting to `/probe-results`; LLM budget line and queue-and-wait switch; audit pipeline health signals as soon as the audit consumer exists; `page.publish_stalled`, `page.oidc_blocked`, `page.audit_pipeline`, `page.abuse_flood`; RB-05, RB-07, RB-08, RB-09, RB-12, RB-16 |
+| 4. Payments | `billing.*` signals; `page.webhooks_failing`; RB-06 |
+| 5. Community | `moderation.*`, `abuse.*`, `rollup.*` signals; the Trust and abuse dashboard; takedown latency alert; RB-13, RB-17 |
 | 6. Private access | `grant.changed`; private download hash checks; R2 Data Access Logs on `packs-private` |
-| 7. Hardening | shadow gate once the shadow design is confirmed; `budget.usage` and the Platform and cost dashboard; weekly digest; first alert fire drill; optional OTLP destination if the §4.3 triggers were hit; `firewall_events` Logpush |
+| 7. Hardening (phase 2 of monitoring) | the deferred gates `gate.cpu`, `gate.domain.auth_success`, `gate.domain.webhook_ack`, `gate.domain.rollup_success`, `gate.budget` and, once the shadow design is confirmed, `gate.shadow.match_rate`; `gate.domain.publish_success` in its proportion form when real publishes allow; the Publish pipeline and Platform and cost dashboards; `budget.usage`; weekly digest; first alert fire drill; Logpush `workers_trace_events` (without `Logs`) when 7-day trace retention becomes the limiting factor, and `firewall_events`; optional OTLP destination if the §4.3 triggers were hit; RB-14, RB-18 |
 
-Launch (end of phase 3 or 4) requires everything in phases 0 to 3 to be live: the recorder, the gates the release plan needs, the prober, the witness, pages with runbooks, and the archive.
+Launch (end of phase 3 or 4) requires everything in phases 0 to 3 to be live: the recorder, the ten launch gates, the prober, the witness, the launch pages with runbooks, and the `http_requests` archive. Phase 7 is the "phase 2" that §9.2, §11.3 and §12 refer to.
 
 ## 16. Verifying that monitoring works
 
@@ -651,7 +686,7 @@ Launch (end of phase 3 or 4) requires everything in phases 0 to 3 to be live: th
 - A repository check (`pnpm check:signals`) extracts the signal names from §8 of this document and from `core/telemetry/signals.ts` and fails if they differ, so the catalogue cannot drift from the code.
 - A unit test of the recorder sends a request carrying every forbidden header and body shape from §3.4 and asserts none of them appear in the emitted event; a second asserts `ip_hash` changes across a date boundary; a third sends a request with a forged synthetic header and an unauthenticated version override header and asserts `is_synthetic` is false and `version_override` is true; a fourth throws an error whose construction saw a token and asserts the token is absent from the event; a fifth sends a User-Agent containing markdown, newlines and 4 KB of text and asserts the normalised `client` field.
 - A test of the alert router posts an alert without a secret and with a wrong secret and asserts neither is forwarded and both are counted; another posts the same authenticated alert twice and a forged copy first and asserts the genuine alert still pages.
-- Gate queries are tested against a fixture dataset through a small SQL evaluator (or against a staging Analytics Engine dataset in CI) for pass, fail and insufficient cases, including the relative guard.
+- Gate queries are tested against a fixture dataset through a small SQL evaluator (or against a staging Analytics Engine dataset in CI) for pass, fail, insufficient, watching and suspect cases; the binomial and Fisher tests are unit-tested against the counts in §9.2 (9 of 300 fails the absolute test, 3 of 300 never fails the relative one) and the simulation script is re-run when a threshold changes.
 
 ### 16.2 Alert fire drills
 
@@ -664,13 +699,13 @@ About seven days after launch, the owner (or an agent) writes a one-page brief f
 | Quantity | Expected in the first week at launch scale |
 |---|---|
 | Worker requests, real | 30k to 60k |
-| Synthetic requests | about 70k at a 5-minute cadence (comparable to real traffic; this is intended) |
-| Workers Logs ingested | under 1 GB |
+| Synthetic requests | about 60k at a 5-minute cadence (comparable to real traffic; this is intended) |
+| Workers Logs ingested | under 1 GB; trace sizes measured against the 5 KB and 50 KB assumptions of §14 |
 | Analytics Engine points | under 300k |
 | Pages | 0 to 2, every one actionable or demoted |
 | Tickets | under 10 |
 | Synthetic probe pass rate | over 99.5%; any flaky scenario named |
-| Gate verdicts of `insufficient` during the launch rollout | request gates without synthetic load, by design; with the prober pinned to the candidate, `gate.availability` and `gate.error_rate` reach their floors within 20 minutes; `gate.selftest`, `gate.synthetic` and the zero-tolerance domain gates pass |
+| Gate verdicts of `insufficient` during the launch rollout | request gates without synthetic load, by design; with the prober pinned to the candidate, `gate.error_rate` reaches its floor within 10 minutes and its second decision point within 20; `gate.selftest`, `gate.synthetic` and the zero-tolerance domain gates pass; no false fail |
 | Hash mismatches, index verification failures, audit chain breaks | 0 |
 | LLM spend | under $35 |
 
@@ -680,15 +715,16 @@ The brief records: whether every signal in §8 that the shipped phases should em
 
 1. Paging channel: Pushover ($4.99 one-time, simplest, no schedules) or PagerDuty Free (schedules and escalation for a possible second person later)? The plan assumes Pushover.
 2. Is the Pro zone confirmed? It carries the 10 Health Checks and WAF rate rules; without it the witness and the prober are the only external probes.
-3. Dependence on beta products: accept Monitors and Issues at launch with the gate judge as the independent page path (this plan), or enable Grafana Cloud free as an OTLP destination from day one for a second console and IRM paging?
+3. Dependence on beta products: accept the gate judge as the single evaluator with Monitors as backup for three pages and Issues for grouping (this plan), or enable Grafana Cloud free as an OTLP destination from day one for a second console and IRM paging?
 4. Retention of request records in R2: 90 days with truncated IPs (proposed) or shorter? Any EU residency requirement that should also apply to future third-party destinations?
-5. Analytics Engine at 10x: accept 1-in-10 client-side sampling of read-path outcome and download points (about $16 a month) rather than full fidelity (about $100 a month)? Irrelevant until well past the mid point, but it changes how the queries are written now.
-6. LLM budget lines: $5 a day at launch, $25 at mid, with the validator switching the Sonnet step to queue-and-wait on breach. Are those the right numbers, and should Haiku screening also pause, or continue (it is about $120 a month at mid)?
+5. The architecture-owned `downloads` dataset is the largest Analytics Engine line at 10x (200M points, about $50 a month). Should the architecture thread count every CDN download as a point or sample 1-in-10? Monitoring's own datasets stay unsampled either way.
+6. LLM budget lines: a $5 a day cap at launch, $25 at mid (1.9x the estimate's $400 a month), with the validator switching the Sonnet step to queue-and-wait on breach and a ticket rather than a page. Are those the right numbers, and should Haiku screening also pause, or continue (it is about $120 a month at mid)?
 7. Publisher notifications on every publish (email or webhook, the npm model) are the strongest takeover detector the external research found. It is a product feature, not monitoring; should it be in v1?
 8. Client-side reporting: should cn and the CLI report hash and signature verification failures to `POST /api/report/hash-mismatch` by default? It is the only way to see a bad object served from the CDN cache that the prober did not fetch.
 9. Status page: Instatus Starter without a custom domain, or Pro at $15 to $20 for `status.packserver.dev`?
 10. The shadow gate thresholds (`prohibitive = 0`, `unclassified` at most 2%, match plus accepted at least 98%) are provisional pending the shadow design confirmation in the release thread.
-11. Launch rollout ladder: this plan recommends skipping the 1% and 5% stages while real traffic is under 1 request a second and relying on synthetic load pinned to the candidate (§9.3). The release doc owns the ladder; does Ariel accept synthetic requests counting toward gate samples at launch, given that the synthetic flag is set server-side from the tenant's token (§3.1, §10.2)?
+11. Launch rollout ladder: this plan recommends skipping the 1% and 5% stages while a Worker's real traffic is under 1 request a second and relying on synthetic load pinned to a candidate deployed at 0% (§9.3). The release doc owns the ladder; does Ariel accept synthetic requests counting toward gate samples at launch, given that the synthetic flag is set server-side from the `@probe` tenant's token (§3.1, §10.2)?
+12. The Worker share of traffic (§2): about 3M of the 22M monthly requests at mid reach a Worker in this plan's estimate. The architecture thread should confirm, since the sample-time table and the cost table depend on it.
 
 ## 18. Sources
 
