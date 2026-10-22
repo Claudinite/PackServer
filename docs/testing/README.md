@@ -42,7 +42,7 @@ The suite is a honeycomb, not a pyramid: integration scenarios are the widest la
 | Probe (scenario tagged `probe-safe`) | a deployed version answers correctly before it gets traffic | no (a subset, not new coverage) | pre-traffic in the release flow; periodically by monitoring | same as scenarios |
 | Mutation run (StrykerJS on `packages/core` unit tests) | the unit tests would notice if `core` logic were wrong | no; a strength report | nightly, in a 15-minute slice | nobody; it is a report |
 
-Unit tests are for pure logic with a large input space (date-form version ordering and `minEngineVersion` comparison, the pack score, archive path checks, OIDC claim matching, the CSP string), Durable Object internals through `runInDurableObject`, Workflow step bodies, and anything a scenario would need thirty variants of. A unit test never stands in for a scenario: a requirement with only unit tests says `coverage: unit-only` with a reason, and that is reviewed.
+Unit tests are for pure logic with a large input space (semver precedence and `minEngineVersion` comparison, the pack score, archive path checks, OIDC claim matching, the CSP string), Durable Object internals through `runInDurableObject`, Workflow step bodies, and anything a scenario would need thirty variants of. A unit test never stands in for a scenario: a requirement with only unit tests says `coverage: unit-only` with a reason, and that is reviewed.
 
 The suite does not snapshot pages or JSON responses. A scenario asserts the fields the requirement names and nothing else.
 

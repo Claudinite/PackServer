@@ -542,19 +542,19 @@ scenario('REQ-ACC-010 minting a token needs a passkey assertion made for that ve
 ```ts
 // tests/scenarios/moderation/yank.scenario.ts
 scenario('REQ-MOD-011 REQ-DELIV-005 REQ-DELIV-008 a yanked version leaves latest and search but stays fetchable by exact version', async (world) => {
-  const pack = await world.packs.public('@acme/gcp', { versions: ['1.61004.1', '1.61005.1'] });
-  await pack.version('1.61005.1').yank({ reason: 'breaks on cn 1.61004.1' });                 // the owner's per-action assertion is inside the verb
+  const pack = await world.packs.public('@acme/gcp', { versions: ['2.3.0', '2.4.0'] });
+  await pack.version('2.4.0').yank({ reason: 'breaks on cn 1.61004.1' });                 // the owner's per-action assertion is inside the verb
 
   const agent = world.agents.anonymous();
   const member = world.member();
 
-  expect((await agent.get(pack)).latest).toBe('1.61004.1');
-  expect((await member.fetchIndex('acme')).entry(pack).latest).toBe('1.61004.1');
+  expect((await agent.get(pack)).latest).toBe('2.3.0');
+  expect((await member.fetchIndex('acme')).entry(pack).latest).toBe('2.3.0');
   expect((await member.fetchIndex('acme')).entry(pack).status).toBe('yanked');
   await expect(member.fetchIndex('acme')).resolves.toHaveValidSignature();
-  expect(await agent.download(pack, '1.61005.1')).toMatchObject({ yanked: true, reason: 'breaks on cn 1.61004.1' });
-  await expect(agent.search('gcp')).not.toContainVersion(pack, '1.61005.1');
-  await expect(world.visitor().open(pack)).resolves.toMatchObject({ latest: '1.61004.1' });
+  expect(await agent.download(pack, '2.4.0')).toMatchObject({ yanked: true, reason: 'breaks on cn 1.61004.1' });
+  await expect(agent.search('gcp')).not.toContainVersion(pack, '2.4.0');
+  await expect(world.visitor().open(pack)).resolves.toMatchObject({ latest: '2.3.0' });
 });
 ```
 

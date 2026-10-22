@@ -4,11 +4,10 @@ Area `SCOPE`, 17 requirements. Format and rules: [README.md](README.md).
 
 ## REQ-SCOPE-001 Packs are named @scope/pack; a scope has one owner
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH §4
-- decision: ARCH-Q 5, SITE-D 5; CLN-REV 2 and O4 (Claudinite ids are bare lowercase, vendored under the member's shared packs directory as `<id>/`, with `local/`, `fleet/` and `temp` reserved; how a scoped registry name maps to a declared id and a vendored directory)
+- source: ARCH §4; Ariel, 2026-10-22 (scoped ids; cn adapts)
 - coverage: scenario
 
 Every pack is named `@<scope>/<pack>`; a scope belongs to exactly one user or organisation.

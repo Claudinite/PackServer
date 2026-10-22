@@ -8,10 +8,11 @@ Entries REQ-VAL-024 onwards, and the amended statements of REQ-VAL-002, 010, 011
 open decisions are provisional and name the item (`ARCH-VAL §7-n`); the ones that depend on an
 engine or registry item left open after the review's Claudinite alignment (PR #3 commits
 `7a01329` and `c410590`) name it as `O n`. The Claudinite alignment review (`CLN-REV`,
-2026-10-22) corrected the pack vocabulary here to the pack's real parts and the date-form
-version, and its open items are cited as `CLN-REV n`. REQ-VAL-030 was retired by the alignment:
+2026-10-22) corrected the pack vocabulary here to the pack's real parts, and its open items are cited as `CLN-REV n`. REQ-VAL-030 was retired by the alignment:
 a Claudinite pack carries no MCP server config. The entries that exist only with a prose-screen
-model (012, 034–037, 039) are provisional on `ARCH-SCORE` and `ARCH-SCREEN`.
+model (012, 034–037, 039) are provisional on `ARCH-SCORE` and `ARCH-SCREEN`. A version is any
+semver `x.y.z` the publisher chooses, ordered by semver precedence; Claudinite's own `1.YMMDD.n`
+is semver with a date minor (Ariel, 2026-10-22).
 
 ## REQ-VAL-001 Every upload is validated with live progress
 
@@ -58,8 +59,8 @@ REQ-VAL-022), or more than 5k files hard-fails.
 - coverage: scenario
 
 An archive whose `pack.json` is missing, malformed, or inconsistent with the files on disk
-(a declared part absent, a version not in the date form `1.YMMDD.n`, a `minEngineVersion` not in
-that form, or a `requires` entry naming a pack the registry does not serve) hard-fails.
+(a declared part absent, a version that is not semver `x.y.z`, a `minEngineVersion` that is not a
+three-part engine version, or a `requires` entry naming a pack the registry does not serve) hard-fails.
 
 ## REQ-VAL-005 A detected secret hard-fails without revealing the value
 
@@ -453,7 +454,7 @@ tells the agent to run it.
 The sandbox (a pinned cn, Go 1.24+ with `GOPROXY=off`, Node 22+) loads the extracted pack into an
 empty fixture repository twice: with the newest engine and with the lowest engine its
 `minEngineVersion` allows; a load failure in either hard-fails validation with the loader's
-message located by file. The manifest's `version` must be in the form `1.YMMDD.n` and greater
+message located by file. The manifest's `version` must be semver and greater by semver precedence
 than the pack's newest version, its `minEngineVersion` a three-part engine version, and every
 `requires` entry must name a published pack.
 
