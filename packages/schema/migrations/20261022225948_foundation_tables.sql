@@ -52,7 +52,7 @@ CREATE TABLE `retired_names` (
 CREATE TABLE `scope_members` (
 	`scope_id` text NOT NULL,
 	`user_id` text NOT NULL,
-	`role` text DEFAULT 'owner' NOT NULL,
+	`role` text NOT NULL,
 	`created_at` text NOT NULL,
 	PRIMARY KEY(`scope_id`, `user_id`),
 	FOREIGN KEY (`scope_id`) REFERENCES `scopes`(`id`) ON UPDATE no action ON DELETE no action,
@@ -84,7 +84,7 @@ CREATE TABLE `pack_versions` (
 	`id` text PRIMARY KEY NOT NULL,
 	`pack_id` text NOT NULL,
 	`version` text NOT NULL,
-	`status` text NOT NULL,
+	`state` text NOT NULL,
 	`sha256` text NOT NULL,
 	`size_bytes` integer NOT NULL,
 	`published_at` text,
@@ -99,12 +99,12 @@ CREATE TABLE `pack_versions` (
 	`score_rules_version` text,
 	`report_key` text,
 	FOREIGN KEY (`pack_id`) REFERENCES `packs`(`id`) ON UPDATE no action ON DELETE no action,
-	CONSTRAINT "pack_versions_status_check" CHECK("pack_versions"."status" in ('active', 'deprecated', 'yanked', 'quarantined', 'revoked', 'removed')),
+	CONSTRAINT "pack_versions_state_check" CHECK("pack_versions"."state" in ('pending', 'approved', 'active', 'deprecated', 'yanked', 'quarantined', 'revoked', 'removed')),
 	CONSTRAINT "pack_versions_score_check" CHECK("pack_versions"."score" is null or ("pack_versions"."score" >= 0 and "pack_versions"."score" <= 100))
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `pack_versions_pack_version_unique` ON `pack_versions` (`pack_id`,`version`);--> statement-breakpoint
-CREATE INDEX `pack_versions_status_idx` ON `pack_versions` (`status`);--> statement-breakpoint
+CREATE INDEX `pack_versions_state_idx` ON `pack_versions` (`state`);--> statement-breakpoint
 CREATE TABLE `packs` (
 	`id` text PRIMARY KEY NOT NULL,
 	`scope_id` text NOT NULL,

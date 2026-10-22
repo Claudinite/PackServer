@@ -38,7 +38,7 @@ export const scope_members = sqliteTable(
     user_id: text("user_id")
       .notNull()
       .references(() => users.id),
-    role: text("role").notNull().default("owner"),
+    role: text("role").notNull(),
     created_at: text("created_at").notNull(),
   },
   (t) => [primaryKey({ columns: [t.scope_id, t.user_id] }), index("scope_members_user_idx").on(t.user_id)],

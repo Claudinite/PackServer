@@ -1,7 +1,7 @@
 import { Table, getTableColumns, getTableName, is } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { migratedDb } from "../../test/migrated-db";
-import { VERSION_STATUSES } from "../shapes/domain";
+import { VERSION_STATES } from "../shapes/domain";
 import * as db from "./index";
 
 const NOW = "2026-10-22T00:00:00.000Z";
@@ -14,9 +14,9 @@ function seed() {
   return d;
 }
 
-const version = (id: string, v: string, status = "active") =>
-  `insert into pack_versions (id, pack_id, version, status, sha256, size_bytes, verified, source_verified)
-   values ('${id}', 'p1', '${v}', '${status}', '${"a".repeat(64)}', 10, 0, 0)`;
+const version = (id: string, v: string, state = "active") =>
+  `insert into pack_versions (id, pack_id, version, state, sha256, size_bytes, verified, source_verified)
+   values ('${id}', 'p1', '${v}', '${state}', '${"a".repeat(64)}', 10, 0, 0)`;
 
 describe("foundation tables", () => {
   const tables = (Object.values(db) as unknown[]).filter((x): x is Table => is(x, Table));
@@ -53,10 +53,10 @@ describe("foundation tables", () => {
     expect(() => d.exec(retire("other", "x"))).toThrow(/CHECK/);
   });
 
-  it("limits a version's status to the shared status enum", () => {
+  it("limits a version's state to the shared state enum", () => {
     const d = seed();
-    for (const [i, status] of VERSION_STATUSES.entries()) d.exec(version(`v${i}`, `1.0.${i}`, status));
-    expect(() => d.exec(version("bad", "2.0.0", "pending"))).toThrow(/CHECK/);
+    for (const [i, state] of VERSION_STATES.entries()) d.exec(version(`v${i}`, `1.0.${i}`, state));
+    expect(() => d.exec(version("bad", "2.0.0", "published"))).toThrow(/CHECK/);
   });
 
   it("holds a score only between 0 and 100", () => {

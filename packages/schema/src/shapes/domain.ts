@@ -4,6 +4,11 @@ export const VERSION_STATUSES = ["active", "deprecated", "yanked", "quarantined"
 export const VersionStatus = z.enum(VERSION_STATUSES);
 export type VersionStatus = z.infer<typeof VersionStatus>;
 
+/** What `pack_versions.state` holds: the published statuses plus the states before promotion (validation-pipeline.md step 15b). */
+export const VERSION_STATES = ["pending", "approved", ...VERSION_STATUSES] as const;
+export const VersionState = z.enum(VERSION_STATES);
+export type VersionState = z.infer<typeof VersionState>;
+
 export const Sha256 = z.string().regex(/^[0-9a-f]{64}$/, "lowercase hex SHA-256");
 export const Timestamp = z.iso.datetime();
 export const PackName = z.string().regex(/^@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/, "@scope/name");

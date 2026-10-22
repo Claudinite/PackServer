@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "5c587452-a41f-4a89-82cc-b2a5d46e1c0c",
+  "id": "194bde16-0daf-4096-b2b1-c891fc193938",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "credentials": {
@@ -354,8 +354,7 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": "'owner'"
+          "autoincrement": false
         },
         "created_at": {
           "name": "created_at",
@@ -554,8 +553,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "status": {
-          "name": "status",
+        "state": {
+          "name": "state",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -662,10 +661,10 @@
           ],
           "isUnique": true
         },
-        "pack_versions_status_idx": {
-          "name": "pack_versions_status_idx",
+        "pack_versions_state_idx": {
+          "name": "pack_versions_state_idx",
           "columns": [
-            "status"
+            "state"
           ],
           "isUnique": false
         }
@@ -688,9 +687,9 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
-        "pack_versions_status_check": {
-          "name": "pack_versions_status_check",
-          "value": "\"pack_versions\".\"status\" in ('active', 'deprecated', 'yanked', 'quarantined', 'revoked', 'removed')"
+        "pack_versions_state_check": {
+          "name": "pack_versions_state_check",
+          "value": "\"pack_versions\".\"state\" in ('pending', 'approved', 'active', 'deprecated', 'yanked', 'quarantined', 'revoked', 'removed')"
         },
         "pack_versions_score_check": {
           "name": "pack_versions_score_check",

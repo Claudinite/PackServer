@@ -4,13 +4,14 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./db": "./src/db/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
-    "db:check": "drizzle-kit check",
+    "db:check": "drizzle-kit check && node scripts/check-drift.mjs",
     "db:migrate": "wrangler d1 migrations apply registry --config wrangler.jsonc",
     "gen:range": "node scripts/gen-range.mjs"
   },

@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -12,7 +13,10 @@ function run(files: Record<string, string>): { ok: boolean; out: string } {
   const dir = mkdtempSync(join(tmpdir(), "migrations-"));
   dirs.push(dir);
   mkdirSync(dir, { recursive: true });
-  for (const [name, sql] of Object.entries(files)) writeFileSync(join(dir, name), sql);
+  for (const [name, sql] of Object.entries(files)) {
+    mkdirSync(dirname(join(dir, name)), { recursive: true });
+    writeFileSync(join(dir, name), sql);
+  }
   try {
     execFileSync("node", [TOOL, dir], { stdio: "pipe" });
     return { ok: true, out: "" };
@@ -92,6 +96,67 @@ describe("check-migrations", () => {
   it("rejects a contract marker on a migration that is safe", () => {
     const r = run({ ...base, "20260102000000_packs_expand.sql": "-- contract-of: 20260101000000_foundation_tables.sql\nALTER TABLE packs ADD COLUMN slug text;" });
     expect(r.ok).toBe(false);
+  });
+
+  it("accepts the NOT NULL DEFAULT order Drizzle writes", () => {
+    expect(run({ ...base, "20260102000000_packs_change.sql": "ALTER TABLE `packs` ADD `n` integer DEFAULT 0 NOT NULL;" }).ok).toBe(true);
+  });
+
+  it("counts a trigger as a reference", () => {
+    const r = run({
+      ...base,
+      "20260102000000_tokens_create.sql": "CREATE TABLE tokens (id text);",
+      "20260103000000_audit_create.sql": "CREATE TRIGGER t AFTER INSERT ON tokens BEGIN SELECT 1; END;",
+    });
+    expect(r.ok).toBe(false);
+    expect(r.out).toMatch(/cross-area/);
+  });
+
+  it("allows cross-area references only to users, scopes, packs and pack_versions", () => {
+    const files = { [FOUNDATION]: "CREATE TABLE users (id text);\nCREATE TABLE credentials (id text);" };
+    expect(run({ ...files, "20260102000000_tokens_create.sql": "CREATE TABLE a (c text REFERENCES users(id));" }).ok).toBe(true);
+    const r = run({ ...files, "20260102000000_tokens_create.sql": "CREATE TABLE a (c text REFERENCES credentials(id));" });
+    expect(r.ok).toBe(false);
+    expect(r.out).toMatch(/cross-area/);
+  });
+
+  it("lets only the first foundation migration create foundation tables", () => {
+    const r = run({ ...base, "20260102000000_foundation_more.sql": "CREATE TABLE extra (id text);" });
+    expect(r.ok).toBe(false);
+    expect(r.out).toMatch(/first foundation/);
+  });
+
+  it("names an earlier non-foundation, non-contract expand as the contract target", () => {
+    const expand = { "20260102000000_packs_expand.sql": "ALTER TABLE packs ADD COLUMN slug text;" };
+    const contract = (target: string) => `-- contract-of: ${target}\nALTER TABLE packs DROP COLUMN id;`;
+    expect(run({ ...base, ...expand, "20260103000000_packs_contract.sql": contract(FOUNDATION) }).ok).toBe(false);
+    const files = { ...base, ...expand, "20260103000000_packs_contract.sql": contract("20260102000000_packs_expand.sql") };
+    expect(run({ ...files, "20260104000000_packs_again.sql": contract("20260103000000_packs_contract.sql") }).ok).toBe(false);
+  });
+
+  describe("Drizzle table rebuilds", () => {
+    const snapshot = (columns: string[]) => JSON.stringify({ tables: { packs: { columns: Object.fromEntries(columns.map((c) => [c, {}])) } } });
+    const rebuild =
+      "PRAGMA foreign_keys=OFF;\n--> statement-breakpoint\nCREATE TABLE `__new_packs` (`id` text);\n--> statement-breakpoint\n" +
+      "INSERT INTO `__new_packs`(`id`) SELECT `id` FROM `packs`;\n--> statement-breakpoint\nDROP TABLE `packs`;\n--> statement-breakpoint\n" +
+      "ALTER TABLE `__new_packs` RENAME TO `packs`;\n--> statement-breakpoint\nPRAGMA foreign_keys=ON;";
+    const history = (after: string[]) => ({
+      ...base,
+      "20260101000000_foundation_tables.sql": base[FOUNDATION],
+      "meta/20260101000000_snapshot.json": snapshot(["id", "name"]),
+      "20260102000000_packs_rebuild.sql": rebuild,
+      "meta/20260102000000_snapshot.json": snapshot(after),
+    });
+
+    it("accepts a rebuild that keeps every column", () => {
+      expect(run(history(["id", "name", "extra"])).ok).toBe(true);
+    });
+
+    it("requires a contract marker when the rebuild drops a column", () => {
+      const r = run(history(["id"]));
+      expect(r.ok).toBe(false);
+      expect(r.out).toMatch(/DROP COLUMN packs\.name/);
+    });
   });
 
   it("passes on the repository's own migrations", () => {

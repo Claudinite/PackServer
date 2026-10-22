@@ -6,6 +6,8 @@ import { CONTRACT_MARKER, migrationFiles, renderRange } from "../packages/schema
 
 const dir = process.argv[2] ?? join(import.meta.dirname, "../packages/schema/migrations");
 const FOUNDATION = "foundation";
+// The only tables another area's migration may reference.
+const CROSS_AREA_TARGETS = ["users", "scopes", "packs", "pack_versions"];
 const NAME = /^(\d{14})_([a-z][a-z0-9-]*)_([a-z0-9_]+)\.sql$/;
 const INTERNAL = /^(sqlite_|_cf_|d1_migrations$|__new_)/;
 const problems = [];
@@ -16,16 +18,20 @@ const REFERENCE_PATTERNS = [
   new RegExp(`\\balter\\s+table\\s+${ident}`, "gi"),
   new RegExp(`\\bdrop\\s+table\\s+(?:if\\s+exists\\s+)?${ident}`, "gi"),
   new RegExp(`\\bcreate\\s+(?:unique\\s+)?index\\s+(?:if\\s+not\\s+exists\\s+)?\\S+\\s+on\\s+${ident}`, "gi"),
+  new RegExp(`\\bcreate\\s+(?:temp\\w*\\s+)?trigger\\s[^;]*?\\bon\\s+${ident}`, "gi"),
   new RegExp(`\\b(?:from|join|into|update)\\s+${ident}`, "gi"),
 ];
 const CREATED = new RegExp(`\\bcreate\\s+(?:virtual\\s+)?table\\s+(?:if\\s+not\\s+exists\\s+)?${ident}`, "gi");
 const RENAMED_TO = new RegExp(`\\brename\\s+to\\s+${ident}`, "gi");
+const close = "[`\"\\]]?";
+const REBUILD_RENAME = new RegExp(`^\\s*alter\\s+table\\s+${ident}${close}\\s+rename\\s+to\\s+${ident}${close}\\s*$`, "i");
+const DROP_TABLE = new RegExp(`^\\s*drop\\s+table\\s+(?:if\\s+exists\\s+)?${ident}${close}\\s*$`, "i");
 // Each of these breaks the previous Worker while it still serves against the new schema.
 const UNSAFE = [
   [/\bdrop\s+table\b/i, "DROP TABLE"],
   [/\bdrop\s+column\b/i, "DROP COLUMN"],
   [/\brename\b/i, "RENAME"],
-  [/\badd\s+(?:column\s+)?[^;]*\bnot\s+null\b(?![^;,]*\bdefault\b)/i, "ADD COLUMN NOT NULL without DEFAULT"],
+  [/\badd\s+(?:column\s+)?[^;]*\bnot\s+null\b/i, "ADD COLUMN NOT NULL without DEFAULT", (stmt) => !/\bdefault\b/i.test(stmt)],
 ];
 
 function code(sql) {
@@ -39,15 +45,45 @@ function code(sql) {
 
 const matches = (re, text) => [...text.matchAll(re)].map((m) => m[1].toLowerCase());
 
+function snapshotColumns(file) {
+  const path = join(dir, "meta", `${file.slice(0, 14)}_snapshot.json`);
+  if (!existsSync(path)) return null;
+  const tables = JSON.parse(readFileSync(path, "utf8")).tables ?? {};
+  return Object.fromEntries(Object.entries(tables).map(([t, v]) => [t.toLowerCase(), Object.keys(v.columns ?? {})]));
+}
+
+/** Drizzle rebuilds a table (create __new_t, copy, drop t, rename) to change a column; that is safe unless a column goes. */
+function rebuildStatements(sql, files, index) {
+  const stmts = sql.split(";");
+  const renames = stmts.map((s) => REBUILD_RENAME.exec(s)).filter((m) => m && /^__new_/i.test(m[1]));
+  const rebuilt = new Set(renames.map((m) => m[2].toLowerCase()));
+  const dropped = [];
+  const before = index > 0 ? snapshotColumns(files[index - 1]) : {};
+  const after = snapshotColumns(files[index]);
+  for (const t of rebuilt) {
+    if (!before || !after) dropped.push(`${t} (no snapshot to compare)`);
+    else for (const c of before[t] ?? []) if (!(after[t] ?? []).includes(c)) dropped.push(`${t}.${c}`);
+  }
+  const rest = stmts.filter((s) => {
+    const drop = DROP_TABLE.exec(s);
+    if (drop && rebuilt.has(drop[1].toLowerCase())) return false;
+    const rename = REBUILD_RENAME.exec(s);
+    return !(rename && /^__new_/i.test(rename[1]));
+  });
+  return { rest, dropped };
+}
+
 const files = migrationFiles(dir);
 const seenPrefix = new Map();
 const created = new Map(); // table -> area
+const isContract = new Map();
+let firstFoundation = null;
 
-for (const file of files) {
+files.forEach((file, index) => {
   const m = NAME.exec(file);
   if (!m) {
     problems.push(`${file}: name must be YYYYMMDDHHMMSS_<area>_<what>.sql`);
-    continue;
+    return;
   }
   const [, prefix, area] = m;
   if (seenPrefix.has(prefix)) problems.push(`${file}: same timestamp prefix as ${seenPrefix.get(prefix)}`);
@@ -57,28 +93,45 @@ for (const file of files) {
   const sql = code(raw);
   const own = new Set(matches(CREATED, sql));
 
+  if (area === FOUNDATION) {
+    firstFoundation ??= file;
+    if (file !== firstFoundation && own.size > 0)
+      problems.push(`${file}: only the first foundation migration (${firstFoundation}) may create foundation tables`);
+  }
+
   const referenced = new Set();
   for (const re of REFERENCE_PATTERNS) for (const t of matches(re, sql)) referenced.add(t);
   for (const t of referenced) {
     if (own.has(t) || INTERNAL.test(t) || t === "set" || t === "select") continue;
     const owner = created.get(t);
     if (owner === undefined) problems.push(`${file}: references table ${t}, which no earlier migration created`);
-    else if (owner !== FOUNDATION && owner !== area)
-      problems.push(`${file}: references ${t} from area ${owner}; cross-area references point at foundation tables only`);
+    else if (owner !== area && !(owner === FOUNDATION && CROSS_AREA_TARGETS.includes(t)))
+      problems.push(`${file}: references ${t} from area ${owner}; cross-area references point only at ${CROSS_AREA_TARGETS.join(", ")}`);
   }
 
-  for (const t of [...own, ...matches(RENAMED_TO, sql)]) if (!created.has(t)) created.set(t, area);
+  for (const t of own) if (!created.has(t)) created.set(t, area);
+  for (const t of matches(RENAMED_TO, sql)) if (!created.has(t)) created.set(t, area);
 
-  const unsafe = UNSAFE.filter(([re]) => re.test(sql)).map(([, label]) => label);
+  const { rest, dropped } = rebuildStatements(sql, files, index);
+  const unsafe = dropped.map((c) => `DROP COLUMN ${c} (table rebuild)`);
+  for (const [re, label, applies] of UNSAFE)
+    if (rest.some((stmt) => re.test(stmt) && (applies?.(stmt) ?? true))) unsafe.push(label);
+
+  const marker = CONTRACT_MARKER.exec(raw);
+  isContract.set(file, Boolean(marker));
   if (unsafe.length > 0) {
-    const marker = CONTRACT_MARKER.exec(raw);
     if (!marker) problems.push(`${file}: ${unsafe.join(", ")} breaks the running Worker; make it a contract migration with "-- contract-of: <earlier expand>.sql"`);
-    else if (!files.slice(0, files.indexOf(file)).includes(marker[1]))
-      problems.push(`${file}: contract-of ${marker[1]} is not an earlier migration`);
-  } else if (CONTRACT_MARKER.test(raw)) {
+    else {
+      const target = marker[1];
+      const targetArea = NAME.exec(target)?.[2];
+      if (!files.slice(0, index).includes(target)) problems.push(`${file}: contract-of ${target} is not an earlier migration`);
+      else if (targetArea === FOUNDATION) problems.push(`${file}: contract-of ${target} is a foundation migration, not an expand`);
+      else if (isContract.get(target)) problems.push(`${file}: contract-of ${target} is itself a contract`);
+    }
+  } else if (marker) {
     problems.push(`${file}: marked contract-of but contains nothing a running Worker cannot survive`);
   }
-}
+});
 
 if (files.length === 0) problems.push(`no migrations in ${dir}`);
 

@@ -1,7 +1,7 @@
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { inList } from "./enum-check";
 import { sql } from "drizzle-orm";
-import { VERSION_STATUSES } from "../shapes/domain";
+import { VERSION_STATES } from "../shapes/domain";
 import { scopes } from "./scopes";
 
 export const PACK_VISIBILITIES = ["public", "private"] as const;
@@ -34,7 +34,7 @@ export const pack_versions = sqliteTable(
       .notNull()
       .references(() => packs.id),
     version: text("version").notNull(),
-    status: text("status", { enum: VERSION_STATUSES }).notNull(),
+    state: text("state", { enum: VERSION_STATES }).notNull(),
     sha256: text("sha256").notNull(),
     size_bytes: integer("size_bytes").notNull(),
     /** Absent until promotion. */
@@ -54,8 +54,8 @@ export const pack_versions = sqliteTable(
   },
   (t) => [
     uniqueIndex("pack_versions_pack_version_unique").on(t.pack_id, t.version),
-    index("pack_versions_status_idx").on(t.status),
-    check("pack_versions_status_check", sql`${t.status} in (${inList(VERSION_STATUSES)})`),
+    index("pack_versions_state_idx").on(t.state),
+    check("pack_versions_state_check", sql`${t.state} in (${inList(VERSION_STATES)})`),
     check("pack_versions_score_check", sql`${t.score} is null or (${t.score} >= 0 and ${t.score} <= 100)`),
   ],
 );
