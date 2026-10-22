@@ -1,8 +1,8 @@
 # Operations: probes, self-test and the production configuration
 
-Area `OPS`, 4 requirements. Format and rules: [README.md](README.md).
+Area `OPS`, 11 requirements. Format and rules: [README.md](README.md).
 
-These entries come from the security review of the test plan (2026-10-22) and bind the test plan to the release plan (PR #8, `docs/release/README.md`) and the monitoring plan (`docs/operations/monitoring.md`). The release plan adds the self-test response-shape entries to this file with the next numbers.
+REQ-OPS-001..004 come from the security review of the test plan (2026-10-22) and bind the test plan to the release plan (PR #8, `docs/release/README.md`) and the monitoring plan (`docs/operations/monitoring.md`). REQ-OPS-005..011 are the self-test contract from the release plan §5, added 2026-10-22. The actor for the self-test entries is the operator (the release flow, the synthetic prober, or a person with the probe credential), so endpoint detail is acceptable in their statements; a scenario observes them through `world.operator.selfTest(...)` ([../testing/dsl.md](../testing/dsl.md) §2.4), never through a path.
 
 ## REQ-OPS-001 A synthetic scope is invisible outside itself
 
@@ -53,3 +53,96 @@ The self-test endpoint answers an anonymous caller exactly as an unknown path; i
 to the release flow's credential or to a calling Worker across a service binding; it is
 read-only, makes no paid or external call, and in production reports check names and pass/fail
 only.
+
+## REQ-OPS-005 The self-test reports its version, release and checks in a fixed shape
+
+- status: active
+- since: 2026-10
+- actor: operator
+- source: release plan §5 (PR #8, `docs/release/README.md`)
+- coverage: scenario+http (in-process through `world.operator.selfTest()`; the release flow's pre-traffic stage and the nightly http run observe it on a deployed version with the version override)
+
+A full self-test answers `{version_id, release_id, ok, checks: [{name, ok, ms, detail}]}`:
+`ok` is true exactly when every check is `ok`; each check carries a name, its outcome, its
+duration and a short detail that never contains a secret value or a row of user data; and
+`version_id` equals the version id (`CF_VERSION_METADATA`) of the version that answered, so a
+caller pinned to a candidate can tell that the candidate, not the incumbent, answered.
+
+## REQ-OPS-006 Every response names the version that produced it
+
+- status: active
+- since: 2026-10
+- actor: operator
+- source: release plan §4.1, §5 (PR #8, `docs/release/README.md`)
+- coverage: scenario+http (in-process every response the World sees carries it; under http the driver asserts it against the version override on every call)
+
+Every response from PackServer (site, API, MCP, CDN index, self-test, refusals included)
+carries an `X-PackServer-Version` header equal to the version id of the version that answered,
+and that value equals the `version_id` the same version's self-test reports.
+
+## REQ-OPS-007 Checks time out individually and the self-test as a whole
+
+- status: active
+- since: 2026-10
+- actor: operator
+- source: release plan §5 (PR #8, `docs/release/README.md`)
+- coverage: scenario (the World stalls the dependency behind one check and the clock supplies the elapsed time)
+
+Each self-test check is given 2 seconds and the whole self-test 10 seconds. A check that does
+not finish in time is reported as `ok: false` with a timeout detail, the other checks still
+report, and the self-test answers (with `ok: false`) instead of hanging; a self-test never takes
+longer than its overall limit to answer.
+
+## REQ-OPS-008 The self-test leaves no trace
+
+- status: active
+- since: 2026-10
+- actor: operator
+- source: release plan §5 (PR #8, `docs/release/README.md`)
+- coverage: scenario (storage is fingerprinted before and after a full self-test; the Recorder shows the writes)
+
+A full self-test run leaves the registry database, every bucket, every KV namespace and every
+queue exactly as it found them, apart from the fixed `@packserver-canary` objects it is
+permitted to touch (the canary queue message that its consumer discards, and the canary scope's
+coordinator ping); it records no download, audit or rate-limit side effect for itself, and it
+makes no paid or creating outbound call.
+
+## REQ-OPS-009 The self-test rate limit is per authenticated principal and cannot be spent by outsiders
+
+- status: active
+- since: 2026-10
+- actor: operator / anonymous visitor (security)
+- source: release plan §5 (PR #8, `docs/release/README.md`)
+- coverage: scenario+http (in-process for the per-principal budget and the untouched budget after anonymous calls; the nightly http run proves the refusal shape on the deployed host)
+
+The self-test allows 10 calls per minute per Worker for each authenticated principal (service
+token or signing-key id) and refuses the eleventh as rate-limited. The limit is applied after
+authentication: unauthenticated calls are answered as an unknown path (REQ-OPS-004) without
+consuming any of the budget, so an outsider cannot exhaust it and block the release flow or the
+synthetic prober.
+
+## REQ-OPS-010 Shallow mode checks only configuration and the presence of secrets
+
+- status: active
+- since: 2026-10
+- actor: operator
+- source: release plan §5 (PR #8, `docs/release/README.md`); `docs/testing/README.md` §9
+- coverage: scenario (the Recorder proves that a shallow run makes no binding, service or outbound call)
+
+A shallow self-test reports only the configuration check (version id present, environment and
+compatibility date as compiled) and the secrets check (every secret the Worker needs is present,
+by name, never by value); it calls no binding, no other Worker and no outside host, and it
+answers in the same shape as a full run with `version_id` set.
+
+## REQ-OPS-011 A schema outside the version's supported range fails the self-test
+
+- status: active
+- since: 2026-10
+- actor: operator
+- source: release plan §5, §6.2 (PR #8, `docs/release/README.md`)
+- coverage: scenario (the World sets the registry's migration head above and below the compiled range)
+
+Each version is compiled with the range of registry schema migrations it can run against
+(`SCHEMA_MIN`..`SCHEMA_MAX`). When the registry's applied migration head is outside that range,
+the full self-test reports `ok: false` with the schema check failed and names the head it found
+and the range it supports; inside the range the schema check passes.

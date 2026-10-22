@@ -1,6 +1,11 @@
 # Publishing: trusted publishing, tokens, web upload, lifecycle
 
-Area `PUB`, 32 requirements. Format and rules: [README.md](README.md).
+Area `PUB`, 33 requirements (1 retired). Format and rules: [README.md](README.md).
+
+Reconciled with the architecture revision of 2026-10-22: PackServer never writes to GitHub
+(DATA decision 6), so validation results reach the publisher through the dashboard and email,
+never as a Check Run (REQ-PUB-010 retired, REQ-PUB-033 supersedes it). GitHub remains read-only:
+repo links, OIDC claims, App repo fetches and inbound webhooks.
 
 ## REQ-PUB-001 Register a trusted publisher, reserving a pending name
 
@@ -106,26 +111,27 @@ webhook deliveries for the same (repo, sha, path) produce one run.
 
 ## REQ-PUB-010 Validation results post as a GitHub Check Run
 
-- status: active
+- status: retired
 - since: 2026-10
 - actor: CI workflow
-- source: ARCH §5.1; FLOW 6
-- coverage: scenario
+- source: ARCH §5.1 (earlier draft); FLOW 6
+- retired: architecture commit 95dad28 "Remove all writes to GitHub (mirror and Check Runs)", confirmed 2026-10-22; superseded by REQ-PUB-033
+- coverage: scenario (retired; no scenario may name this ID)
 
 Validation results of a GitHub-sourced publish are posted as a GitHub Check Run on the commit:
 queued → in progress → success / neutral "awaiting payment" / failure with file annotations.
 
-## REQ-PUB-011 Tag/manifest version mismatch and missing manifest fail with annotations
+## REQ-PUB-011 Tag/manifest version mismatch and missing manifest fail with a located finding
 
 - status: active
 - since: 2026-10
 - actor: CI workflow
-- source: FLOW 6
+- source: FLOW 6; DATA decision 6
 - coverage: scenario
 
 A GitHub-sourced publish whose manifest version differs from the tag fails (unless the mapping
-says the tag is the source of truth); a path without a manifest fails with an annotation at the
-expected file.
+says the tag is the source of truth); a path without a manifest fails with a finding that names
+the expected file, shown on the publisher's dashboard and in the email, never on GitHub.
 
 ## REQ-PUB-012 Mint scoped, restricted, time-limited API tokens
 
@@ -364,3 +370,18 @@ can perform account or session actions.
 
 The leak-report endpoint revokes only on presentation of the full token, never on a prefix,
 answers identically for valid and invalid input, and is rate-limited per IP.
+
+## REQ-PUB-033 Validation results reach the publisher in-site and by email; nothing is written to GitHub
+
+- status: active
+- since: 2026-10
+- actor: CI workflow / publisher
+- source: ARCH §5.1; DATA decision 6
+- supersedes: REQ-PUB-010
+- coverage: scenario
+
+For a GitHub-sourced publish (trusted publishing or App tag push) the publisher sees the run's
+progress and verdict (queued, validating, awaiting payment, staged, published, failed with
+findings located by file and line) on the dashboard and receives the final verdict by email.
+PackServer creates no Check Run, commit status, release, issue or comment on GitHub for any
+publish; GitHub is only read.

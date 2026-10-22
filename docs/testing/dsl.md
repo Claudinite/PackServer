@@ -7,10 +7,11 @@ Status: design, 2026-10-22. Layer 2 of the plan in [README.md](README.md). Packa
 1. **One sentence per line.** Every line of a scenario is one domain action or one observation: `const u = await world.users.create(); await u.signIn();`. Plain `await` per line, no builder chains for commands, no `try`/`catch`, no `Promise.all` unless the scenario is about concurrency.
 2. **Nouns are handles, verbs are methods on the noun.** `world.users.create()` returns a `User`; `user.scopes.create('acme')` returns a `Scope`; `scope.packs.publish(...)` returns a `Version`; `version.yank(...)` is a method on the version. A scenario rarely needs to pass an ID around.
 3. **Commands return, observations assert.** A verb never asserts on a business outcome; it returns a handle or a result. Only `expect(...)` lines assert. Expected refusals are matchers on a promise (`await expect(token.mint()).toBeRefused('step-up')`). A verb throws only for infrastructure failures (the harness is down), with a distinct `InfrastructureError` the reporter shows differently.
-4. **Defaults are the common case.** `world.users.create()` is a member with a verified email and no MFA. `world.publishers.create()` is a member with a passkey enrolled, signed in, stepped up, owning a personal scope, with zero credits. A scenario names only the option it is about.
+4. **Defaults are the common case.** `world.users.create()` is a member with a verified email and no MFA. `world.publishers.create()` is a member with a passkey enrolled, signed in, owning a personal scope, with zero credits. A scenario names only the option it is about.
 5. **The World owns everything stateful.** Fakes, the clock, the recorder, aliases and the driver live on `world`; a scenario never imports anything but `scenario`, `expect` and types from `@packserver/world`.
 6. **Names are invented and aliased.** `'acme'` in a scenario becomes `acme-7f3a` in the system; handles and matchers translate back, so output reads as the scenario wrote it. Real product or company names appear only when the scenario is about that name (reserved-word refusals).
 7. **Time is moved, never waited for.** `await world.clock.advance('24h1m')`. The DSL exposes no sleep.
+8. **Step-up is part of the verb.** A sensitive action needs a passkey assertion bound to that action and its target (REQ-ACC-010), so every sensitive verb (`tokens.mint`, `version.approve`, `version.yank`, `org.setRole`, `pack.setVisibility`, …) makes that assertion with the actor's enrolled passkey by itself. There is no `stepUp()` to call first and no window to keep fresh. The negatives are options on the verb: `{ assertion: 'none' }` (no assertion), `{ assertion: await other.assertionFor(...) }` (the wrong session, action or target), `{ assertion: 'replay' }` (the previous one again).
 
 ## 2. Vocabulary
 
@@ -19,8 +20,9 @@ Status: design, 2026-10-22. Layer 2 of the plan in [README.md](README.md). Packa
 | Actor | Created by | Default state |
 |---|---|---|
 | `Visitor` | `world.visitor()` | anonymous browser, no session; `.asCrawler()` variant |
-| `User` (member) | `await world.users.create(opts?)` | verified email, no MFA, not signed in; `opts`: `{ email?, ageDays?, mfa?: 'passkey' \| 'totp', handle? }` |
-| `Publisher` | `await world.publishers.create(opts?)` | member + passkey + signed in + stepped up + personal scope; `opts`: `{ credits?, verified?: boolean }` |
+| `User` (member) | `await world.users.create(opts?)` | verified email, no MFA, not signed in; `opts`: `{ email?, ageDays?, via?: 'github' \| 'passkey' \| 'email', mfa?: 'passkey' \| 'totp', handle? }` |
+| `Publisher` | `await world.publishers.create(opts?)` | member + passkey + signed in + personal scope; sensitive verbs assert with the passkey by themselves (rule 8); `opts`: `{ credits?, verified?: boolean }` |
+| `Operator` | `world.operator` | the release flow's or the prober's identity: holds the probe credential in-process and under `http`; the only actor that can see a self-test |
 | `Org` | `await publisher.orgs.create('acme')` | org scope owned by `publisher` |
 | `OrgMember` | `await org.invite(user).as('maintainer')` | role `owner` \| `maintainer` (the UI's two roles; the architecture's four map onto them in the driver) |
 | `Agent` | `world.agents.anonymous()`, `await world.agents.withToken(token)`, `await world.agents.oauth(user)` | an MCP client; `anonymous` needs no await |
@@ -36,7 +38,7 @@ Personas (object mothers) for states requirements name: `world.personas.verified
 
 ### 2.2 Entities (handles)
 
-`Scope`, `Org`, `Pack`, `Version`, `Archive` (a fixture: `world.archive('gcp')`, `world.archive('with-secret')`, `world.archive('gcp', { version: '2.0.0', files: {...} })`), `Manifest`, `Inventory`, `Attestation`, `ScopeIndex`, `RootIndex`, `ValidationRun`, `Report`, `Finding`, `TrustedPublisher`, `Token`, `CreditBalance`, `Subscription`, `Grant`, `Invite`, `AccessRequest`, `Review`, `BugReport`, `SecurityReport`, `AbuseReport`, `Advisory`, `AuditEntry`, `Badge`, `DomainChallenge`, `CheckRun`, `Email`, `Notification`.
+`Scope`, `Org`, `Pack`, `Version`, `Archive` (a fixture: `world.archive('gcp')`, `world.archive('with-secret')`, `world.archive('gcp', { version: '2.0.0', files: {...} })`), `Manifest`, `Inventory`, `Attestation`, `ScopeIndex`, `RootIndex`, `ValidationRun`, `Report`, `Finding`, `TrustedPublisher`, `Token`, `Assertion` (a per-action passkey assertion, for negatives), `CreditBalance`, `Subscription`, `Grant`, `Invite`, `AccessRequest`, `Review`, `BugReport`, `SecurityReport`, `AbuseReport`, `Advisory`, `AuditEntry`, `AuditBatch`, `AuditHead`, `Badge`, `DomainChallenge`, `SelfTest`, `Email`, `Notification`. There is no `CheckRun` and no mirror handle: PackServer writes nothing to GitHub, and `world.github.writes()` exists only to prove that.
 
 Every handle knows its World and its driver; `pack.name` is the scenario's name (`@acme/gcp`), `pack.systemName` the aliased one. Handles are cheap views: `pack.version('1.1.0')` does not hit the system until a verb or observation does. `world.packs.get('@acme/gcp')` returns the handle for a pack created earlier in the scenario; `pack.owner()` returns its owning publisher.
 
@@ -46,12 +48,13 @@ Archive fixtures: `'gcp'`, `'with-secret'`, `'with-symlink'`, `'with-hardlink'`,
 
 ```ts
 // User
-await user.signIn({ via?: 'github' | 'google' | 'passkey' | 'email' })   // default: the provider the user was created with
+await user.signIn({ via?: 'github' | 'passkey' | 'email' })              // default: the method the user was created with; there is no Google
 await user.signOut()
 await user.chooseHandle('ariel')
 await user.mfa.enrollPasskey();  await user.mfa.enrollTotp();  await user.mfa.remove(factor)
 await user.mfa.recoveryCodes()                                           // -> string[10], shown once
-await user.stepUp();  await user.stepUp({ fail: 5 })                     // fail n times
+await user.assertionFor(action)                                          // -> Assertion bound to this session and that action (for negatives on another verb)
+await user.failAssertion({ times: 5 })                                   // n failed per-action assertions (REQ-ACC-011)
 await user.sessions.list();  await user.sessions.revoke(session)
 await user.star(pack);  await user.unstar(pack)
 await user.review(pack, { rating: 4, body?: '...' })
@@ -60,12 +63,16 @@ await user.report(pack).bug({ version, severity, repro, attachments? })
 await user.report(pack).security({ ... })
 await user.reportAbuse(pack | review | profile, { category, details })
 await user.requestAccess(pack, { answers, acceptTerms: true })
-await user.tokens.mint({ read: pack })                                   // read token; step-up implied if fresh
+await user.tokens.mint({ read: pack })                                   // read token; the per-action assertion is made inside the verb
+await user.tokens.list()                                                 // -> Token[] with lastUsed (hourly-accurate, REQ-AUDIT-006)
 await user.account.delete();  await user.account.changeEmail(addr)
 await user.recover()                                                     // no-factor recovery
-await user.providers.link('google')
+await user.providers.link('github')                                      // GitHub or a passkey; nothing else exists
 await user.signIn({ next: 'https://evil.example' })                     // -> Session; .landedOn is where the site sent them
-await user.stepUp({ assertionFrom: otherSession })                       // replay negative
+await user.tokens.mint({ read: pack, assertion: 'none' })               // sensitive verb without its assertion (negative)
+await user.tokens.mint({ read: pack, assertion: await user.as(otherSession).assertionFor('token.mint') })  // wrong session
+await user.tokens.mint({ read: pack, assertion: await user.assertionFor({ yank: version }) })             // wrong action/target
+await user.tokens.mint({ read: pack, assertion: 'replay' })             // the previous assertion again
 
 // Publisher (a User with more)
 await publisher.orgs.create('acme')
@@ -108,7 +115,7 @@ await agent.callUnlistedTool(name)                                       // a to
 await agent.authenticate({ redirectTo?, state?: false })                 // OAuth through the fake login; options for negatives
 
 // CI workflow / cn
-await workflow.run({ tag: 'v1.0.0' })                                    // -> { checkRun, version?, refusal? }
+await workflow.run({ tag: 'v1.0.0' })                                    // -> { version?, refusal? }; the verdict is read from the dashboard and mail, never from GitHub
 await workflow.publishes(pack, '1.2.3')                                  // -> Version (or a refusal, for matchers)
 workflow.oidcToken({ aud?, iss?, exp?, nbf?, alg?, kid?, ...claims })    // minted with overrides, for negative tests
 await workflow.upload(archive, { reuse?: upload })                       // the 15-minute upload credential; reuse replays it
@@ -124,7 +131,7 @@ await admin.recovery.approve(user)
 // World-level
 await world.validation.completes(version)                                // runs the workflow to a verdict, gates auto-answered
 await world.validation.of(version)                                       // -> ValidationRun handle (verdict(), report(), findings())
-await world.cron.run('domain-rechecks' | 'stats-rollup' | 'staging-expiry' | 'rescan')
+await world.cron.run('domain-rechecks' | 'stats-rollup' | 'staging-expiry' | 'rescan' | 'audit-head' | 'audit-verify' | 'activity-prune')
 await world.clock.advance('31d')
 world.dns.publishTxt(name, value);  world.dns.remove(name)
 world.github.repo('acme/tool');  world.github.installApp({ org, installer })
@@ -135,6 +142,9 @@ world.llm.script({ verdict: 'flag', risk: 0.8 })
 world.sandbox.script(archive, { exitCode, egressAttempts })
 world.registryKey();  world.registryKey('previous')                      // the index-signing public key(s) cn trusts
 world.tokens.leakReport(tokenOrPrefix)                                   // the public leak-report form
+world.audit.tamper(batch, { drop: true } | { alter: true })              // corrupt a stored audit batch (negative for REQ-AUDIT-005)
+world.operator.stall('outbound.github' | 'r2.packs-public' | …)          // make the dependency behind one self-test check hang
+await world.database.setMigrationHead(n)                                 // move the registry's applied migration head (REQ-OPS-011)
 ```
 
 ### 2.4 Observations
@@ -145,8 +155,17 @@ await visitor.browse({ q, category, sort })
 await visitor.profile(org)                 // -> ProfilePage (.badges, .packs)
 await user.inbox()                         // in-site notifications
 await world.mail.inbox(user).latest()      // -> Email (.subject, .links, .code)
-await world.audit.for(user | org)          // -> AuditEntry[]
-await world.github.checkRuns('acme/tool', sha)
+await world.audit.for(user | org)          // -> AuditEntry[] (the 90-day copy the pages show)
+await world.audit.batches()                // -> AuditBatch[] as stored in the write-once bucket, each with .previousHash
+await world.audit.heads()                  // -> AuditHead[] served at the well-known path
+await world.rekor.entries()                // -> what the registry published to the transparency log fake
+await world.audit.verify()                 // -> 'intact' | { mismatch: AuditBatch } and the page it raised
+await world.github.writes()                // -> [] always: every write the fake GitHub was asked for (REQ-PUB-033, REQ-MOD-001)
+await world.operator.selfTest({ shallow?: true })   // -> SelfTest (.ok, .versionId, .releaseId, .checks[], .check(name))
+await world.visitor().selfTest()           // -> NotFound (REQ-OPS-004)
+world.operator.deployedVersion()           // the version id under test (the harness's, or the http override)
+world.operator.observedVersions()          // every version id seen on a response in this scenario (REQ-OPS-006)
+await world.storage.fingerprint()          // a digest of D1, R2, KV and queue state, canary objects excluded (REQ-OPS-008)
 await world.staging.objects()
 await world.recorder.invocations({ kind?, target?, effect? })
 await world.telemetry.recorded()           // signals, see §7
@@ -168,7 +187,7 @@ Matchers hide protocol detail. Each works on a value or on a promise (Vitest's a
 | Matcher | Passes when | Hides |
 |---|---|---|
 | `toBeNotFound()` | the observation is the same shape as for a nonexistent resource | 404 vs 403, page vs JSON vs MCP error |
-| `toBeRefused(reason?)` | the command was refused, optionally with reason code `'step-up' \| 'mfa-required' \| 'oidc.fork' \| 'oidc.workflow' \| 'oidc.environment' \| 'oidc.invalid' \| 'signature' \| 'signed-out' \| 'rate-limited' \| 'human-check' \| 'forbidden' \| 'exists' \| 'trusted-only' \| 'quota' \| 'unknown-tool' \| 'scope'` | status codes, error envelopes, MCP `isError` |
+| `toBeRefused(reason?)` | the command was refused, optionally with reason code `'step-up'` (no valid per-action assertion: missing, for another action or target, from another session, or replayed) `\| 'mfa-required' \| 'oidc.fork' \| 'oidc.workflow' \| 'oidc.environment' \| 'oidc.invalid' \| 'signature' \| 'signed-out' \| 'rate-limited' \| 'human-check' \| 'forbidden' \| 'exists' \| 'trusted-only' \| 'quota' \| 'unknown-tool' \| 'scope'` | status codes, error envelopes, MCP `isError` |
 | `toBeIgnored()` | a delivery (webhook, replayed event) was acknowledged and nothing happened | the acknowledgement shape |
 | `toBePack(pack)` | a result card is that pack | card shape |
 | `toVerifyAgainst(key)` / `toHaveValidSignature()` | an attestation or index verifies with the registry key | signature format |
@@ -212,8 +231,12 @@ export interface World {
   cron: { run(job: CronJob): Promise<void> };
   clock: Clock;
   github: FakeGitHub;   stripe: FakeStripe;   llm: FakeLlm;   sandbox: FakeSandbox;
-  mail: FakeMail;       dns: FakeDns;         turnstile: FakeTurnstile;
-  audit: { for(subject: User | Org): Promise<AuditEntry[]> };
+  mail: FakeMail;       dns: FakeDns;         turnstile: FakeTurnstile;   rekor: FakeRekor;
+  audit: { for(subject: User | Org): Promise<AuditEntry[]>; batches(): Promise<AuditBatch[]>; heads(): Promise<AuditHead[]>;
+           verify(): Promise<AuditVerdict>; tamper(b: AuditBatch, how: { drop: true } | { alter: true }): void };
+  operator: Operator;
+  storage: { fingerprint(): Promise<string> };
+  database: { setMigrationHead(n: number): Promise<void> };
   staging: { objects(): Promise<string[]> };
   recorder: RecorderView;
   telemetry: TelemetrySink;
@@ -226,7 +249,8 @@ export interface User {
   as(session: Session): User;
   signIn(opts?: SignInOpts): Promise<Session>;
   signOut(): Promise<void>;
-  stepUp(opts?: { fail?: number }): Promise<void>;
+  assertionFor(action: SensitiveAction): Promise<Assertion>;       // for handing to another verb's `assertion` option
+  failAssertion(o: { times: number }): Promise<void>;
   mfa: Mfa;  sessions: Sessions;  tokens: UserTokens;  account: Account;  providers: Providers;
   star(p: Pack): Promise<void>;  unstar(p: Pack): Promise<void>;
   review(p: Pack, r: ReviewOpts): Promise<Review>;
@@ -252,13 +276,28 @@ export interface Publisher extends User {
 export interface Version {
   readonly pack: Pack;  readonly version: string;
   status(): Promise<VersionStatus>;  sha256(): Promise<string>;  attestation(): Promise<Attestation>;
-  approve(): Promise<void>;  deprecate(reason: string): Promise<void>;
-  yank(o: { reason: string; security?: boolean }): Promise<void>;  unyank(): Promise<void>;
-  delete(): Promise<void>;
+  approve(o?: Sensitive): Promise<void>;  deprecate(reason: string, o?: Sensitive): Promise<void>;
+  yank(o: { reason: string; security?: boolean } & Sensitive): Promise<void>;  unyank(o?: Sensitive): Promise<void>;
+  delete(o?: Sensitive): Promise<void>;
+}
+
+// every sensitive verb accepts this; the default makes the action-bound assertion with the actor's passkey
+export interface Sensitive { assertion?: 'none' | 'replay' | Assertion }
+
+export interface Operator {
+  selfTest(o?: { shallow?: boolean; worker?: WorkerName }): Promise<SelfTest>;   // refused as rate-limited after the budget (REQ-OPS-009)
+  deployedVersion(): string;
+  observedVersions(): ReadonlySet<string>;
+  stall(check: string): void;                                                     // in-process only
+}
+export interface SelfTest {
+  readonly ok: boolean;  readonly versionId: string;  readonly releaseId: string;
+  readonly checks: ReadonlyArray<{ name: string; ok: boolean; ms: number; detail?: string | object }>;
+  check(name: string): { name: string; ok: boolean; ms: number; detail?: string | object } | undefined;
 }
 ```
 
-Every method on a handle resolves through `world.driver`. Under `inprocess` and `http` the call is an HTTP request the driver builds; under `browser` the verbs marked as UI actions in the driver (`signIn`, `mfa.enrollPasskey`, `stepUp`, `publish(...).as` via the wizard, `version.approve`) go through the page and everything else still goes through HTTP; under `mcp` the `Agent` verbs are tool calls.
+Every method on a handle resolves through `world.driver`. Under `inprocess` and `http` the call is an HTTP request the driver builds; under `browser` the verbs marked as UI actions in the driver (`signIn`, `mfa.enrollPasskey`, the per-action passkey ceremony inside a sensitive verb, `publish(...).as` via the wizard, `version.approve`) go through the page and everything else still goes through HTTP; under `mcp` the `Agent` verbs are tool calls. `world.operator` sends the probe credential (the Access service token and the HMAC header under `http`; the harness's equivalent in-process) only with `selfTest`, never on other verbs.
 
 ```ts
 // tests/drivers/driver.ts
@@ -294,7 +333,7 @@ export function scenario(title: string, fn: (world: World) => Promise<void>, opt
 
 - The requirement ID is in the title, first, so humans, `git log -S`, the register check and the reporters all see the same string. A scenario may name several IDs when one observation genuinely proves several (yank: REQ-MOD-011 with REQ-DELIV-005 and REQ-DELIV-008).
 - `opts.needs`: capabilities beyond what the tags imply; `'reset'` asks for an empty world (storage reset before this scenario, ~1.5 s) instead of the default alias isolation.
-- **Tags, the one list** (README and stability-checks refer here): `probe-safe` (runs against a deployment; must need no fake, clock, sink or recorder, and writes only as `world.probe.publisher()`; lint-checked), `ui` (needs the browser driver), `agent` (needs the MCP client), `compat` (crosses a service-binding edge; re-run by the release plan's N/N-1 stage), `slow` (over 5 s in-process; nightly lane only), `quarantined` (flaky; runs nightly, reported, not gating; README §10), `provisional` (added by the helper from the register's status, never by the author). All are declared in the Vitest config; an undeclared tag fails collection.
+- **Tags, the one list** (README and stability-checks refer here): `probe-safe` (runs against a deployment; must need no fake, clock, sink, recorder or storage seam, and writes only as `world.probe.publisher()` or reads as `world.operator`; lint-checked), `ui` (needs the browser driver), `agent` (needs the MCP client), `compat` (crosses a service-binding edge; re-run by the release plan's N/N-1 stage), `slow` (over 5 s in-process; nightly lane only), `quarantined` (flaky; runs nightly, reported, not gating; README §10), `provisional` (added by the helper from the register's status, never by the author). All are declared in the Vitest config; an undeclared tag fails collection.
 - Vitest's tags are strict by default: the requirement tags are generated from the register at config load, so an unknown or retired ID fails collection ([Vitest test tags](https://vitest.dev/guide/test-tags)); the spike shows the error.
 
 ## 6. World lifecycle and isolation
@@ -391,18 +430,20 @@ scenario('REQ-PAY-003 a failed validation consumes no credit', async (world) => 
 
 ```ts
 // tests/scenarios/accounts/step-up.scenario.ts
-scenario('REQ-ACC-010 minting a token needs a step-up fresher than ten minutes', async (world) => {
-  const publisher = await world.publishers.create();          // stepped up at creation
-  await world.clock.advance('10m');
-  const inTime = await publisher.tokens.mint({ scopes: ['publish:update'] });
-  expect(inTime.plain).toMatch(/^pks_/);
+scenario('REQ-ACC-010 minting a token needs a passkey assertion made for that very action', async (world) => {
+  const publisher = await world.publishers.create();
 
-  await world.clock.advance('1s');
-  await expect(publisher.tokens.mint({ scopes: ['publish:update'] })).toBeRefused('step-up');
+  const minted = await publisher.tokens.mint({ scopes: ['publish:update'] });          // the verb asserts for itself
+  expect(minted.plain).toMatch(/^pks_/);
 
-  await publisher.stepUp();
-  const again = await publisher.tokens.mint({ scopes: ['publish:update'] });
-  expect(again.plain).toMatch(/^pks_/);
+  await expect(publisher.tokens.mint({ scopes: ['publish:update'], assertion: 'none' })).toBeRefused('step-up');
+  await expect(publisher.tokens.mint({ scopes: ['publish:update'], assertion: 'replay' })).toBeRefused('step-up');
+  const forAnotherAction = await publisher.assertionFor('account.delete');
+  await expect(publisher.tokens.mint({ scopes: ['publish:update'], assertion: forAnotherAction })).toBeRefused('step-up');
+
+  await world.clock.advance('1s');                                                    // no window: time changes nothing
+  await expect(publisher.tokens.mint({ scopes: ['publish:update'], assertion: 'replay' })).toBeRefused('step-up');
+  expect((await publisher.tokens.list())).toHaveLength(1);
   await expect(world.audit.for(publisher)).resolves.toContainAction('token.minted');
 });
 ```
@@ -411,9 +452,7 @@ scenario('REQ-ACC-010 minting a token needs a step-up fresher than ten minutes',
 // tests/scenarios/moderation/yank.scenario.ts
 scenario('REQ-MOD-011 REQ-DELIV-005 REQ-DELIV-008 a yanked version leaves latest and search but stays fetchable by exact version', async (world) => {
   const pack = await world.packs.public('@acme/gcp', { versions: ['1.0.0', '1.1.0'] });
-  const owner = await pack.owner();
-  await owner.stepUp();
-  await pack.version('1.1.0').yank({ reason: 'breaks on Ant 2.3' });
+  await pack.version('1.1.0').yank({ reason: 'breaks on Ant 2.3' });                 // the owner's per-action assertion is inside the verb
 
   const agent = world.agents.anonymous();
   const cn = world.cn.repo();
@@ -434,7 +473,7 @@ scenario('REQ-MOD-009 three independent malware reports quarantine a pack', asyn
   const pack = await world.packs.public('@acme/gcp');
   const reporters = [
     await world.users.create({ ageDays: 8, via: 'github' }),
-    await world.users.create({ ageDays: 30, via: 'google' }),
+    await world.users.create({ ageDays: 30, via: 'passkey' }),
     await world.users.create({ ageDays: 8, via: 'email' }),
   ];
   for (const r of reporters) {
@@ -563,18 +602,95 @@ scenario('REQ-PAY-005 a payment event with a bad signature or a stale timestamp 
 
 ```ts
 // tests/scenarios/accounts/sessions.scenario.ts
-scenario('REQ-ACC-012 a revoked session stops working immediately', async (world) => {
-  const user = await world.users.create();
+scenario('REQ-ACC-012 a revoked session loses sensitive actions at once and everything within a minute', async (world) => {
+  const user = await world.users.create({ mfa: 'passkey' });
   const laptop = await user.signIn();
   const phone = await user.signIn();
+  const pack = await world.packs.public('@acme/gcp');
 
   await user.as(laptop).sessions.revoke(phone);
 
+  await expect(user.as(phone).tokens.mint({ read: pack })).toBeRefused('signed-out');   // sensitive: refused at once, assertion or not
+  await world.clock.advance('60s');                                                     // the accepted propagation bound
   await expect(user.as(phone).inbox()).toBeRefused('signed-out');
   await expect(user.as(laptop).inbox()).resolves.toEqual([]);
   expect(await user.as(laptop).sessions.list()).toHaveLength(1);
 });
 ```
+
+The 60-second line is the bound the requirement states, moved with `world.clock`, never slept. In-process the local KV is strongly consistent, so the phone would in fact be refused before the clock moves; the scenario asserts only what is promised (refused *by* 60 s), which keeps it true on the deployed host too, where the delay is real.
+
+```ts
+// tests/scenarios/audit/record.scenario.ts
+scenario('REQ-AUDIT-005 a tampered audit batch is caught by the published chain head', async (world) => {
+  const publisher = await world.publishers.create();
+  await publisher.tokens.mint({ scopes: ['publish:update'] });
+  await world.cron.run('audit-head');
+
+  const batches = await world.audit.batches();
+  expect(batches.at(-1)?.previousHash).toBe(batches.at(-2)?.hash);
+  await expect(world.rekor.entries()).resolves.toContainEqual(expect.objectContaining({ head: batches.at(-1)?.hash }));
+  expect(await world.audit.verify()).toBe('intact');
+
+  world.audit.tamper(batches[0], { alter: true });
+  await world.cron.run('audit-verify');
+  expect(await world.audit.verify()).toMatchObject({ mismatch: expect.objectContaining({ key: batches[0].key }) });
+  await expect(world.admins.notifications()).resolves.toContainEqual(expect.objectContaining({ kind: 'audit-mismatch' }));
+});
+```
+
+```ts
+// tests/scenarios/operations/selftest.scenario.ts
+scenario('REQ-OPS-005 REQ-OPS-006 a full self-test names the version that answered, and so does every response', async (world) => {
+  const result = await world.operator.selfTest();
+
+  expect(result.ok).toBe(true);
+  expect(result.versionId).toBe(world.operator.deployedVersion());
+  expect(result.checks).toContainEqual(expect.objectContaining({ name: 'config', ok: true, ms: expect.any(Number) }));
+  await world.visitor().browse({ q: 'ping' });                                          // any ordinary response counts too
+  expect(world.operator.observedVersions()).toEqual(new Set([world.operator.deployedVersion()]));
+}, { tags: ['probe-safe'] });
+
+scenario('REQ-OPS-007 a check that hangs is reported as failed inside the overall limit', async (world) => {
+  world.operator.stall('outbound.github');
+
+  const result = await world.operator.selfTest();
+
+  expect(result.ok).toBe(false);
+  expect(result.check('outbound.github')).toMatchObject({ ok: false, detail: 'timeout' });
+  expect(result.check('outbound.github')?.ms).toBeLessThanOrEqual(2000);
+  expect(result.check('config')).toMatchObject({ ok: true });
+});
+
+scenario('REQ-OPS-008 REQ-OPS-010 a self-test leaves no trace, and a shallow one touches nothing', async (world) => {
+  const before = await world.storage.fingerprint();
+
+  await world.operator.selfTest();
+  expect(await world.storage.fingerprint()).toBe(before);
+  await expect(world.telemetry).not.toHaveRecorded('download');
+
+  await world.operator.selfTest({ shallow: true });
+  await expect(world.recorder.invocations()).resolves.toHaveLength(0);               // no binding, service or outbound call at all
+});
+
+scenario('REQ-OPS-009 outsiders cannot spend the self-test budget', async (world) => {
+  for (let i = 0; i < 20; i++) await expect(world.visitor().selfTest()).toBeNotFound();
+  for (let i = 0; i < 10; i++) expect((await world.operator.selfTest({ shallow: true })).ok).toBe(true);
+
+  await expect(world.operator.selfTest({ shallow: true })).toBeRateLimited();
+});
+
+scenario('REQ-OPS-011 a migration head outside the compiled range fails the self-test', async (world) => {
+  await world.database.setMigrationHead(999);
+
+  const result = await world.operator.selfTest();
+
+  expect(result.ok).toBe(false);
+  expect(result.check('schema')).toMatchObject({ ok: false, detail: expect.objectContaining({ head: 999 }) });
+});
+```
+
+The self-test scenarios run under the `inprocess` driver, where `world.operator` holds the harness's probe identity; the first one is also `probe-safe` and runs against a deployed version as the release flow's pre-traffic check. `stall`, `storage.fingerprint`, `database.setMigrationHead` and the Recorder are in-process only, so the others carry no tag.
 
 ```ts
 // tests/scenarios/delivery/download.scenario.ts

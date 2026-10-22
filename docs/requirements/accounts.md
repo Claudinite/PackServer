@@ -2,7 +2,13 @@
 
 Area `ACC`, 25 requirements. Format and rules: [README.md](README.md).
 
-## REQ-ACC-001 Sign up with GitHub, Google, a passkey or an email code
+Reconciled with the architecture revision of 2026-10-22 (decided with Ariel): PackServer is its
+own identity provider with passkeys, GitHub sign-in and email codes and no Google sign-in;
+sessions live in KV and a revocation may take about 60 seconds to be seen everywhere; and
+"step-up" everywhere in this register means a passkey assertion made for one specific action
+and its target (REQ-ACC-010), never a reusable window of time.
+
+## REQ-ACC-001 Sign up with GitHub, a passkey or an email code
 
 - status: active
 - since: 2026-10
@@ -10,8 +16,9 @@ Area `ACC`, 25 requirements. Format and rules: [README.md](README.md).
 - source: ARCH §4; FLOW 1
 - coverage: scenario
 
-A visitor can create an account by signing in with GitHub, with Google, with a passkey, or with
-an email one-time code / magic link.
+A visitor can create an account by signing in with GitHub, with a passkey, or with an email
+one-time code / magic link. There is no Google sign-in: the site offers none, and a Google
+identity presented to the sign-in endpoints is refused.
 
 ## REQ-ACC-002 First login chooses a unique, non-reserved handle
 
@@ -104,18 +111,20 @@ transfer ownership; attempting any of these redirects to MFA enrolment.
 A member with only a verified email can star, vote works-for-me and file bug reports without
 MFA.
 
-## REQ-ACC-010 Sensitive actions require a fresh step-up
+## REQ-ACC-010 Sensitive actions require a passkey assertion bound to that action
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher / org owner
-- source: ARCH §4; FLOW 2
-- conflict: CONFLICT-1
+- source: ARCH §4; DATA decision 1; FLOW 2 (superseded on the window)
 - coverage: scenario
 
 A sensitive action (approve a staged publish, mint a token, add a scope owner, change billing,
 yank, change visibility, remove a factor, change email with a notice to the old address)
-requires a fresh MFA assertion within the last 10 minutes, even in a valid session.
+requires a passkey assertion made for that specific action and its target, even in a valid
+session. There is no reusable step-up window: an assertion made for one action or target does
+not authorise another, a second sensitive action needs a second assertion, and no amount of time
+since an earlier assertion makes one unnecessary or sufficient.
 
 ## REQ-ACC-011 Five failed step-ups lock step-up for 15 minutes
 
@@ -127,27 +136,34 @@ requires a fresh MFA assertion within the last 10 minutes, even in a valid sessi
 
 Five failed step-up attempts lock step-up for 15 minutes and send an email alert to the account.
 
-## REQ-ACC-012 Sessions are listable and revocation is immediate
+## REQ-ACC-012 Sessions are listable; revocation lands within about a minute and sensitive actions stop at once
 
 - status: active
 - since: 2026-10
 - actor: member
-- source: ARCH §4; DATA decision 1
+- source: ARCH §4; DATA decision 1 (decided with Ariel, 2026-10-22)
 - coverage: scenario
 
-A member can list their active sessions and revoke any of them; a revoked session stops working
-immediately, not eventually.
+A member can list their active sessions and revoke any of them. A revoked session stops working
+for ordinary reads and writes within about 60 seconds of the revocation (the propagation delay
+accepted for KV-backed sessions), and no later. A sensitive action (REQ-ACC-010) attempted from
+a revoked session is refused from the moment of revocation, whatever the session presents,
+because each one needs a per-action passkey assertion that is checked against the current
+session state.
 
 ## REQ-ACC-013 Sessions expire after 12 h idle or 7 days absolute
 
 - status: provisional
 - since: 2026-10
 - actor: member
-- source: ARCH §4
+- source: ARCH §4; DATA decision 5
 - conflict: CONFLICT-2
 - coverage: scenario
 
-A session expires after 12 hours idle or 7 days absolute, whichever comes first.
+A session expires after 12 hours idle or 7 days absolute, whichever comes first. Idle time is
+measured from the last recorded activity, and activity is recorded at most once every 15
+minutes, so a session may expire up to 15 minutes before a strict 12 hours of inactivity and
+never later than 12 hours after its last request.
 
 ## REQ-ACC-014 New-device sign-in sends an email notice
 
@@ -222,8 +238,8 @@ and per-account rate limits; a client that fails the human check is refused.
 - source: FLOW 1
 - coverage: scenario
 
-A member can link an additional login provider from Account > Security after signing in; linking
-never happens implicitly.
+A member can link an additional login method (GitHub, or a passkey) from Account > Security after
+signing in; linking never happens implicitly.
 
 ## REQ-ACC-021 Sessions rotate on sign-in and step-up and carry hardened cookie attributes
 
@@ -236,7 +252,7 @@ never happens implicitly.
 The session id is rotated on sign-in, on step-up and on factor changes; sign-out and revocation
 invalidate server-side; the session cookie is host-only, secure, HTTP-only and same-site lax.
 
-## REQ-ACC-022 A step-up assertion is bound to its session and a code is accepted once
+## REQ-ACC-022 A step-up assertion is bound to its session, action and target, and a code is accepted once
 
 - status: active
 - since: 2026-10
@@ -244,9 +260,11 @@ invalidate server-side; the session cookie is host-only, secure, HTTP-only and s
 - source: SEC (security review, 2026-10-22); ARCH §4
 - coverage: scenario
 
-A step-up assertion is bound to the session that requested it; an assertion obtained in one
-session does not step up another; a TOTP code is accepted once per window; recovery-code
-attempts are rate-limited like step-up.
+A step-up assertion is bound to the session that requested it and to the action and target it
+was requested for; an assertion obtained in one session does not authorise another session, an
+assertion for one action or target is refused for any other, and a replayed assertion is
+refused; a TOTP code is accepted once per window; recovery-code attempts are rate-limited like
+step-up.
 
 ## REQ-ACC-023 Sign-in return targets are same-origin only
 

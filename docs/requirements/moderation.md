@@ -2,17 +2,19 @@
 
 Area `MOD`, 17 requirements. Format and rules: [README.md](README.md).
 
-## REQ-MOD-001 File a bug report, mirrored to GitHub when a repo is linked
+## REQ-MOD-001 File a bug report; a linked repo gets a pre-filled issue the reporter files themselves
 
 - status: active
 - since: 2026-10
 - actor: member
-- source: ARCH §10; FLOW 4
+- source: ARCH §10; DATA decision 6; FLOW 4
 - coverage: scenario
 
 A member can file a bug report (version, type, severity, repro, environment, attachments ≤ 5 MB
-images/text) on a pack; when a public repo is linked it opens a pre-filled GitHub issue and the
-status is mirrored; otherwise it lands in the publisher's in-site inbox.
+images/text) on a pack. When a public repo is linked, the member is handed a pre-filled GitHub
+issue to open under their own GitHub account; PackServer itself creates nothing on GitHub, and
+the report's status then follows the issue's state as GitHub reports it through the App's
+webhooks. Otherwise the report lands in the publisher's in-site inbox.
 
 ## REQ-MOD-002 Security reports are private with a 90-day disclosure timer
 
@@ -146,8 +148,8 @@ Yanking the only version leaves the pack listed with "No available versions" and
 - source: FLOW 12
 - coverage: scenario
 
-A yank or deprecate notifies members who starred the pack (opt-in digest) and open issues
-referencing the version.
+A yank or deprecate notifies members who starred the pack (opt-in digest) and the reporters of
+open in-site reports that reference the version; nothing is posted to a GitHub issue.
 
 ## REQ-MOD-014 Actioned publishers are notified and can appeal
 

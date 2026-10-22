@@ -1,6 +1,6 @@
 # Delivery and the signed index
 
-Area `DELIV`, 16 requirements. Format and rules: [README.md](README.md).
+Area `DELIV`, 16 requirements (1 retired). Format and rules: [README.md](README.md).
 
 ## REQ-DELIV-001 Public versions download from immutable URLs with SHA-256 and attestation
 
@@ -116,12 +116,12 @@ A quarantined version's download is held (451-style) with a reason; `get_pack` r
 
 ## REQ-DELIV-011 Optional GitHub Release mirror with identical bytes
 
-- status: provisional
+- status: retired
 - since: 2026-10
 - actor: cn engine
-- source: ARCH §7.2; DATA decision 6
-- decision: provisional: mirror only if needed
-- coverage: manual (mirror is optional (DATA decision 6); covered only if built)
+- source: ARCH §7.2 (earlier draft); DATA decision 6
+- retired: architecture commit 95dad28 "Remove all writes to GitHub (mirror and Check Runs)", confirmed 2026-10-22: PackServer never writes to GitHub; networks that cannot reach the CDN are a client-side question (allowlist, or update checks from GitHub Actions), not a mirror
+- coverage: manual (never built; no scenario may name this ID)
 
 Each public version's archive, sha256 and attestation can be mirrored to a GitHub Release asset
 with identical bytes and signature (fallback for networks that cannot reach the CDN).

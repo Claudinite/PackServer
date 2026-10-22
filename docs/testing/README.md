@@ -1,6 +1,6 @@
 # PackServer test plan
 
-Status: proposal, 2026-10-22, revised the same day after a practice review and a security review. Depends on the architecture PR (`docs/architecture/README.md`, `data-stores.md`), the UI flows PR (`docs/ui/flows.md`), the release plan (PR #8, `docs/release/README.md`, `docs/release/shadow-traffic.md`) and the monitoring plan (`docs/operations/monitoring.md`, branch `claude/project-thread-bwothd`); sections that depend on them say so. Nothing here is implemented yet; §13 says what gets built first.
+Status: proposal, 2026-10-22, revised the same day after a practice review, a security review, and the architecture decisions Ariel made that day (sessions stay in KV with a ~60 s revocation delay; step-up is a passkey assertion per action; PackServer is its own IdP with no Google sign-in; the audit record is a locked R2 log in a second account anchored in Sigstore Rekor; PackServer never writes to GitHub). Depends on the architecture PR (`docs/architecture/README.md`, `data-stores.md`), the UI flows PR (`docs/ui/flows.md`), the release plan (PR #8, `docs/release/README.md`, `docs/release/shadow-traffic.md`) and the monitoring plan (`docs/operations/monitoring.md`, branch `claude/project-thread-bwothd`); sections that depend on them say so. Nothing here is implemented yet; §13 says what gets built first.
 
 > **What you get**
 >
@@ -9,7 +9,7 @@ Status: proposal, 2026-10-22, revised the same day after a practice review and a
 > - All seven Workers run as production bundles in one local `workerd`; D1, R2, KV, Durable Objects, Workflows and Queues are the real local implementations; everything else is faked at a port and an unfaked outbound call fails the test.
 > - Coverage = every active requirement in [../requirements/](../requirements/README.md) has at least one green scenario naming its ID. That is a traceability measure, not proof that the scenario proves the statement; review and the see-it-fail job are the defence.
 > - PR lane ~10 minutes wall-clock; ~$30–35/month of CI on a private repo. The tooling bet is proven by [a spike](../../spike/test-dsl/RESULTS.md): harness, MSW, DSL, http driver, Recorder and N/N-1 all ran.
-> - Decisions that block the first scenarios: the six architecture/UI conflicts, a CI-only Cloudflare account, repo visibility, and confirming the 29 security-review requirements (§14).
+> - Decisions that block the first scenarios: the five remaining architecture/UI conflicts, a CI-only Cloudflare account, repo visibility, and confirming the 29 security-review requirements (§14).
 
 Companion documents: [dsl.md](dsl.md) (the World DSL and example scenarios), [stability-checks.md](stability-checks.md) (the gate and the hatches), [../requirements/](../requirements/README.md) (the register), [research/tooling.md](research/tooling.md) and [research/dsl-patterns.md](research/dsl-patterns.md) (sources for every tool claim), [../../spike/test-dsl/](../../spike/test-dsl/README.md) (the runnable proof and its measured numbers). The sibling plans are cited by path until they merge; the agreements with them are restated here where they bind this plan.
 
@@ -56,7 +56,7 @@ flowchart TB
     S["scenario('REQ-PUB-004 a fork cannot publish', async (world) => { … })"]
   end
   subgraph L2["Layer 2 · tests/world/**  (the DSL; changes freely)"]
-    W["World: users · publishers · orgs · agents · cn · admins · github · stripe · llm · mail · dns · clock · telemetry"]
+    W["World: users · publishers · orgs · agents · cn · admins · operator · github · stripe · llm · mail · dns · rekor · audit · clock · telemetry"]
     M["handles and matchers"]
   end
   subgraph L3["Layer 3 · tests/drivers/**  (protocol drivers; change freely)"]
@@ -168,7 +168,7 @@ A gradual rollout has Workers of two builds talking to each other, so the releas
 
 ## 5. The ports layer and the Recorder
 
-`packages/core` does all I/O through ports: `Clock`, `Rng`, `Stripe`, `GitHub`, `OidcVerifier`, `VectorIndex`, `Embedder`, `Sandbox`, `LlmReviewer`, `Mail`, `Dns`, `Turnstile`, `AccessIdentity`, `Stats`, `Cache`, `Uploads`, and thin wrappers around the Cloudflare bindings. Production adapters are constructed from `env` in each Worker's entry; test doubles implement the same interfaces.
+`packages/core` does all I/O through ports: `Clock`, `Rng`, `Stripe`, `GitHub` (read-only by construction: the interface has no method that writes, so "PackServer never writes to GitHub" is a type, and the fake records any call that would), `OidcVerifier`, `VectorIndex`, `Embedder`, `Sandbox`, `LlmReviewer`, `Mail`, `Dns`, `Turnstile`, `AccessIdentity`, `Stats`, `Cache`, `Uploads`, `AuditSink` (the append-only batch writer to the audit bucket), `Transparency` (the Rekor client), and thin wrappers around the Cloudflare bindings. Production adapters are constructed from `env` in each Worker's entry; test doubles implement the same interfaces.
 
 The release plan's shadow-traffic design needs the same layer, and the two were agreed as one thing: every port call goes through one pluggable `Recorder`. The release thread's schema (`docs/release/shadow-traffic.md`, pending Ariel's confirmation) is the source of truth; restated so the test side cannot drift:
 
@@ -194,7 +194,9 @@ In production the Recorder redacts before it stores and keeps envelopes 14 days 
 
 | Dependency | In the in-process driver | Why |
 |---|---|---|
-| D1 (both databases, FTS5), R2, KV, Durable Objects, Workflows, Queues | real, local, in `workerd`; migrations applied per reset | fully simulated ([bindings per environment](https://developers.cloudflare.com/workers/local-development/bindings-per-env/)). KV TTLs do not move with the fake clock, so every lifetime is an `expires_at` read through the clock port; DO alarms fire through `fireAlarm()` on the fake-worker shim; presigned R2 uploads go through the `Uploads` port whose local adapter writes directly |
+| D1 (`registry`, FTS5), R2, KV, Durable Objects, Workflows, Queues | real, local, in `workerd`; migrations applied per reset | fully simulated ([bindings per environment](https://developers.cloudflare.com/workers/local-development/bindings-per-env/)). KV TTLs do not move with the fake clock, so every lifetime is an `expires_at` read through the clock port; local KV is strongly consistent, so the ~60 s revocation delay of production sessions is not reproduced and REQ-ACC-012 asserts its bound with `world.clock`, never with a sleep; DO alarms fire through `fireAlarm()` on the fake-worker shim; presigned R2 uploads go through the `Uploads` port whose local adapter writes directly |
+| Audit record (bucket-locked R2 in a second Cloudflare account) | a local R2 bucket `audit-log` behind the `AuditSink` port, chained the same way; `world.audit.batches()`, `.tamper()`, `.verify()` | the lock, the second account and the put-only token are deployment properties on the release checklist (REQ-AUDIT-005 `scenario+manual`) |
+| Sigstore Rekor (audit chain head) | **faked** by MSW behind the `Transparency` port; `world.rekor.entries()` | HTTP; the real-backend suite writes to Rekor's public staging instance |
 | Analytics Engine | the `Stats` port; the fake is a list the rollup job reads | local sink has no query API |
 | Cron Triggers | `world.cron.run('domain-rechecks')` calls the scheduled handler | — |
 | Rate Limiting binding | local, approximate; scenarios assert "refused after the limit", not counts | — |
@@ -204,8 +206,8 @@ In production the Recorder redacts before it stores and keeps envelopes 14 days 
 | AI Gateway → Anthropic | **faked** by MSW with canned structured reviews; the `cf-aig-authorization` header is asserted | HTTP |
 | Stripe | **faked** by MSW for the ~5 API calls; webhook events built and signed in the World (`stripe.webhooks.generateTestHeaderString`, presence in stripe-node 23 unverified). `stripe-mock` rejected: stateless, ignores bodies | HTTP |
 | GitHub OIDC | **faked**: an RSA keypair per run (`jose`), JWKS served by MSW, tokens minted with arbitrary claims | HTTP |
-| GitHub REST / App / webhooks | **faked** by MSW; webhooks signed with `X-Hub-Signature-256` in the World | HTTP |
-| Login IdPs, email provider, Turnstile, DNS (`_packserver-challenge` TXT over DoH) and `.well-known` | **faked** by MSW; `world.mail.inbox(user)` parses codes and links; `world.dns.publishTxt()` | HTTP |
+| GitHub REST / App / webhooks | **faked** by MSW, read endpoints only; webhooks signed with `X-Hub-Signature-256` in the World; any write-shaped request (check runs, releases, issues, comments, statuses) is recorded and surfaced by `world.github.writes()`, which every scenario may expect to be empty | HTTP |
+| GitHub sign-in (the only external login), email provider, Turnstile, DNS (`_packserver-challenge` TXT over DoH) and `.well-known` | **faked** by MSW; `world.mail.inbox(user)` parses codes and links; `world.dns.publishTxt()`; there is no Google fake because there is no Google sign-in | HTTP |
 | Cloudflare Access (admin) | **faked** `AccessIdentity` port: the fake verifies the `Cf-Access-Jwt-Assertion` signature against a test key the World holds, so a forged header is a tested negative (REQ-ADMIN-008) | Access is in front of the Worker, not in it |
 | Clock, RNG | `Clock`/`Rng` ports; `world.clock.advance('25h')` moves the fake-clock Worker | §7 |
 | Public CDN cache | the `Cache` port's fake with explicit purge | the harness has no CDN |
@@ -219,7 +221,8 @@ Every fake is a plain object owned by the World, reset per scenario, with the Re
 | Vectorize, Workers AI | `remote: true` bindings in the CI-only account | nightly |
 | AI Gateway → Anthropic | the real gateway, $1 spend cap, Haiku | nightly |
 | Stripe | a Stripe Sandbox via Stripe CLI `trigger` | nightly |
-| GitHub OIDC, App, webhooks, OAuth login | a throwaway org and repo with a real App; OIDC exchange against the CI-only account's deployment | nightly (Google login: manual, quarterly) |
+| GitHub OIDC, App, webhooks, OAuth login | a throwaway org and repo with a real App installed with read permissions only; OIDC exchange against the CI-only account's deployment; the suite asserts the App's token requests no write permission | nightly |
+| Sigstore Rekor | the public staging log (`rekor.sigstage.dev`), one head entry a night, verified by inclusion proof | nightly |
 | Mail, DNS proof, Access on the admin host | provider test mode; a real cheap test domain; the admin host with and without the probe token | nightly |
 | Workflows, CDN index TTL, Analytics Engine rollup, presigned R2 PUT/GET | the CI-only account's deployment | nightly (Workflows), weekly (the rest) |
 | Sandbox container | the real image on a Docker-capable runner; monthly against a deployed preview container. REQ-VAL-011 (no network, no secrets inside) is proven here, not in-process | weekly |
@@ -228,7 +231,7 @@ The Claudinite `cloudflare-workers` pack's `wire-bindings-seam` rule says D1, R2
 
 ## 7. Determinism
 
-- **Time is a port.** In production `Date.now()` is frozen during CPU work ([Performance API](https://developers.cloudflare.com/workers/runtime-apis/performance/)); Vitest fake timers do not touch KV TTLs, R2, DO alarms or Workflow sleeps ([known issues](https://developers.cloudflare.com/workers/testing/vitest-integration/known-issues/)). So `core` takes `Clock` from a port; every lifetime (session idle/absolute, step-up window, token expiry, the 24 h agent cooldown, the 72 h delete window, the 14-day staging lifetime, the 30-day domain re-check, the 90-day disclosure timer) is computed from `clock.now()` against a stored instant.
+- **Time is a port.** In production `Date.now()` is frozen during CPU work ([Performance API](https://developers.cloudflare.com/workers/runtime-apis/performance/)); Vitest fake timers do not touch KV TTLs, R2, DO alarms or Workflow sleeps ([known issues](https://developers.cloudflare.com/workers/testing/vitest-integration/known-issues/)). So `core` takes `Clock` from a port; every lifetime (session idle/absolute and the 15-minute last-seen throttle, the ~60 s session-revocation bound, the per-action assertion challenge's validity, token expiry and the hourly last-used write, the 24 h agent cooldown, the 72 h delete window, the 14-day staging lifetime, the 30-day domain re-check, the 90-day disclosure timer, the 90-day activity copy, the daily audit head) is computed from `clock.now()` against a stored instant. There is no step-up window to compute: an assertion is good for one action and nothing else.
 - **IDs and randomness are a port.** ULIDs from a seeded PRNG in tests; `randomUUID`/`randomBytes` in production.
 - **No sleeps, no polling against wall-clock.** A scenario waits on a condition the World observes (`waitForStatus`, a queue drained) or moves the clock. `setTimeout`, `sleep` and `Date.now` are banned in scenario files.
 - **Hermetic state per file, aliased names per scenario.** `server.reset()` recreates storage once per file; within a file every scenario creates its own actors and entities under unique aliased names and never reads anything it did not create. `needs: ['reset']` buys an empty world for the few scenarios that need one (a global count, an empty index).
@@ -260,7 +263,7 @@ Per pull request (GitHub Actions, hosted Linux 2-core; stage 4 is extrapolated f
 | 8 mutation, incremental (conditional) | StrykerJS on changed `core` files, unit-test runner, report only | 4 | ~3 min |
 | 9 matrix + summary | join JUnit from 4 and the latest nightly 6, publish the matrix, enforce the watermark | after 4 | <1 min |
 
-Wall-clock target under 10 minutes; roughly 15–20 billable minutes per run. On `main` after a merge the release plan's compat stage (§4.5) and a self-test scenario run (`GET /__selftest` full and `?shallow=1` on every Worker; `shallow` must touch no callee, asserted through the Recorder) add ~13 minutes.
+Wall-clock target under 10 minutes; roughly 15–20 billable minutes per run. On `main` after a merge the release plan's compat stage (§4.5) and the self-test scenarios (REQ-OPS-005..011: full and shallow on every Worker through `world.operator.selfTest()`; a shallow run must make no binding, service or outbound call, asserted through the Recorder) add ~13 minutes.
 
 Nightly, one scheduled workflow with `workflow_dispatch` for reruns: the real-backend suites (§6, ~20 min), `http` probes against the CI-only account's deployment (~3 min), every `ui` scenario (~6 min), the `slow` lane (~10 min), the full StrykerJS run over `packages/core` unit tests with the ratcheting watermark (~20 min), and the fixture-drift PR (~1 min).
 
@@ -306,8 +309,8 @@ Not in the table: a few hours a month of driver maintenance while the harness an
 | Queue dispatch in the harness is undocumented; DOs, Workflows, KV, `bindingOverrides` and Playwright under the harness are unproven | the next spike items (§4.1) run before M2 and M5 commit to them; consumer entrypoints called through `getExport()` if queues do not fire |
 | A CI runner behind an egress proxy | `setGlobalDispatcher(new Agent())` in the driver (spike gotcha 1) |
 | AI-written scenarios with weak oracles (80% of 86k AI test patches had weak or no oracle, per a 2025 study cited by [Augment](https://www.augmentcode.com/guides/is-the-test-pyramid-dead)) | the assertion-strength lint and the see-it-fail job; a mutation score killed by *scenarios* would be the stronger signal but needs a `buildCommand` plus an active-mutant bridge into `workerd` and hours per run, so it is a research item, not a check |
-| A requirement the World cannot observe (CSP string contents, a physically separate audit database) | `coverage:` kinds other than `scenario`, reviewed; the matrix lists them in their own section |
-| The architecture and UI PRs disagree in six places | those entries are provisional; their scenarios change once when Ariel decides |
+| A requirement the World cannot observe (CSP string contents, the bucket lock and second account behind the audit record) | `coverage:` kinds other than `scenario`, reviewed; the matrix lists them in their own section |
+| The architecture and UI PRs disagree in five remaining places (the step-up window was resolved by removing it) | those entries are provisional; their scenarios change once when Ariel decides |
 
 The remaining known upstream issues (DO RPC teardown noise, plugin snapshot size, Bun) are in [research/tooling.md §8](research/tooling.md).
 
@@ -317,18 +320,19 @@ The remaining known upstream issues (DO RPC teardown noise, plugin snapshot size
 |---|---|---|
 | M1 register and gates | `docs/requirements/**`, the register loader, the `requirements:matrix` script, the ESLint scenario override, the `scenario-gate` job on `pull_request_target`, the ruleset and CODEOWNERS, the bot identity for agent commits | a PR that changes a scenario's assertions without a register change is blocked; the matrix lists every ID with zero scenarios; the watermark starts at 0 |
 | M2 harness and World skeleton | the in-process driver booting whichever Workers exist, MSW fail-closed, the Clock/Rng ports and fake-clock Worker, the Recorder interface, `world.users`, `world.visitor()`, `world.agents.anonymous()`, `world.telemetry`, the first matchers, the production-seam grep | the first ten scenarios (REQ-SEARCH-001..007, REQ-PRIV-001, REQ-DELIV-001, REQ-TELEM-001) green and each seen red on base |
-| M3 http driver and probe-safe | the `http` driver with the env-var contract and the version assertion, JUnit output, `probe-safe` lint, a first probe set, the `__selftest` scenarios, REQ-OPS-* | the release plan's pre-traffic stage runs it against the CI-only account's deployment; monitoring runs it against production |
-| M4 identity | fake IdPs, the virtual authenticator in the World, TOTP, mail inbox, the `browser` driver, REQ-ACC-* incl. the session and step-up negatives (ACC-021..025) | accounts area at 100%; passkey `ui` scenarios green twice |
-| M5 publish path | fake GitHub (OIDC, App, signed webhooks, check runs), fake Sandbox, Workflow introspection, the `Uploads` port, REQ-PUB-*, REQ-VAL-*, REQ-DELIV-*, REQ-SCOPE-016/017 | publishing, validation, delivery areas at 100%; the weekly Docker sandbox job exists |
+| M3 http driver and probe-safe | the `http` driver with the env-var contract and the version assertion, JUnit output, `probe-safe` lint, a first probe set, `world.operator` and the self-test scenarios (REQ-OPS-005..011), REQ-OPS-* | the release plan's pre-traffic stage runs it against the CI-only account's deployment; monitoring runs it against production |
+| M4 identity | the fake GitHub login, the virtual authenticator in the World (used by every sensitive verb for its per-action assertion), TOTP, mail inbox, the `browser` driver, REQ-ACC-* incl. the session, revocation-bound and per-action-assertion negatives (ACC-010, 012, 021..025) | accounts area at 100%; passkey `ui` scenarios green twice |
+| M5 publish path | fake GitHub (OIDC, App, signed webhooks, read-only with a write-attempt recorder), fake Sandbox, Workflow introspection, the `Uploads` port, REQ-PUB-*, REQ-VAL-*, REQ-DELIV-*, REQ-SCOPE-016/017 | publishing, validation, delivery areas at 100%; the weekly Docker sandbox job exists |
 | M6 payments and access | fake Stripe with signed webhooks, the billing contract suite, REQ-PAY-*, REQ-PRIV-* | payments and private areas at 100% |
-| M7 community, moderation, admin, abuse | fake Access identity with signature checks, admin actor, abuse and quarantine scenarios, REQ-COMM/MOD/ADMIN/ABUSE/AUDIT-* | matrix at 100% of active + provisional |
+| M7 community, moderation, admin, abuse, audit | fake Access identity with signature checks, admin actor, abuse and quarantine scenarios, the local audit bucket with chain, `world.audit.tamper()`/`verify()` and the Rekor fake, REQ-COMM/MOD/ADMIN/ABUSE/AUDIT-* | matrix at 100% of active + provisional |
 | M8 honesty and strength | every real-backend suite wired with secrets in the `nightly` environment, redaction and drift PRs, the mutation watermark | a month of nightlies with no unexplained drift |
 
 The default day-to-day flow under agents: Ariel names the requirement ID (or asks for a new one) in the session; the agent writes the register entry, the scenario, the World verbs and the implementation in one PR under the bot identity; Ariel reviews and merges. No role split is needed.
 
 ## 14. Open questions for Ariel
 
-1. **The six conflicts** between the architecture and UI documents ([../requirements/README.md](../requirements/README.md#conflicts-between-the-architecture-and-the-ui-flows)). Each freezes a scenario value.
+1. **The five remaining conflicts** between the architecture and UI documents ([../requirements/README.md](../requirements/README.md#conflicts-between-the-architecture-and-the-ui-flows)). Each freezes a scenario value. (CONFLICT-1, the step-up window, is closed: there is no window.)
+6. **TOTP-only members and sensitive actions.** The revised architecture makes the per-action step-up a WebAuthn assertion. Can a member with only TOTP (no passkey) perform a sensitive action at all? The register leaves it unstated; a scenario needs the answer.
 2. **The 29 security-review requirements** ([../requirements/README.md](../requirements/README.md#entries-from-the-security-review)) are the only register entries not derived from the design documents. Confirm them (they become architecture work) or strike any you do not want promised.
 3. **CI-only Cloudflare account** ($5/month). This plan recommends it; say if the production account's preview environment must do instead.
 4. **Public or private repository?** It removes the Actions cost and changes nothing else.
