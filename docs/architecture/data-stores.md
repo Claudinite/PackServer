@@ -9,7 +9,7 @@ Writing this out changed six decisions in the [architecture](README.md). They're
 1. **Sessions move from KV to D1.** KV is eventually consistent, and a write can take 60 seconds or more to reach other locations (Cloudflare's own wording). A logout, a revoked session or a fresh step-up approval would not be seen everywhere at once. Only signed-in traffic touches sessions, so a primary-key lookup in D1 per request is cheap, and revocation takes effect immediately. A hybrid (sessions in KV, with D1 holding only changes KV may not have propagated yet, cleared after a few hours) was considered: it works, but every request would still need the same D1 lookup, so it adds a second store and dual writes without saving the call. It becomes worthwhile only if session writes start contending with publishing or the table grows far beyond the ~1 GB estimate.
 2. **KV is now only a cache and OAuth storage.** It holds what `workers-oauth-provider` requires, short-lived OAuth state, and the cached GitHub OIDC signing keys. Nothing there is the system of record.
 3. **Bulky per-version JSON moves from D1 to R2.** The extracted inventory, provenance and validation report become a `meta.json` next to each archive. D1 keeps only the columns that are filtered, sorted or shown in lists (counts, context tokens, repo, commit). This protects D1's 10 GB cap: inventory JSON at a few KB per version over 2M versions would have used most of it.
-4. **The audit log gets its own D1 database.** It's append-only, rarely read, grows without bound, and must survive mistakes in the main database. A separate database keeps it from eating the registry's 10 GB and from competing with the registry's single writer.
+4. **The audit log is a locked R2 log, not a database.** It's append-only, almost never queried, grows without bound, and above all must not be editable, by a bug or by an attacker holding a Worker's bindings. A database row can be updated or deleted by anything that can write to the database; an R2 bucket with a [bucket lock](https://developers.cloudflare.com/r2/buckets/bucket-locks/) refuses deletes and overwrites for the retention period. The two screens that show activity (a user's security page, an org's audit view) read a 90-day `recent_activity` table in the registry D1, which is a convenience copy, not the record.
 5. **Write-on-read hot spots are removed.** `tokens.last_used_at` is updated at most once an hour per token, and `sessions.last_seen_at` at most once every 15 minutes per session (enough for the 12-hour idle timeout), instead of on every call. The hourly stats rollup only rewrites packs whose numbers changed. Without these, every authenticated read would also be a D1 write.
 6. **The GitHub mirror no longer commits archives to a git repo.** At 40k versions of about 25 KB each, the repo would grow about 1 GB a month, passing GitHub's 1 GB ideal size in the first month and its strongly recommended 5 GB limit within half a year, and git history can't be pruned without rewriting it. The preferred fix is to run update checks from GitHub Actions in the member repo, which can reach our hosts, so web sessions never need to. If a mirror is still needed, it stores archives as GitHub Release assets and keeps only the indexes as files in the repo.
 
@@ -18,7 +18,8 @@ Writing this out changed six decisions in the [architecture](README.md). They're
 | Store | What's in it | Writes | Reads | System of record? |
 |---|---|---|---|---|
 | D1 `registry` | Accounts, scopes, packs, versions (lean), grants, sessions, tokens, community data, credit ledger, stats | Low volume, small rows, must be consistent | High volume, relational, filtered, full-text | Yes |
-| D1 `audit` | Audit events | Append-only, one row per sensitive action | Rare: admin, incident review, user's own history | Yes |
+| R2 `audit-log` (bucket-locked) | Audit events as daily NDJSON batches | Append-only, via a Queue, batched | Rare: incident review, compliance export | Yes |
+| D1 `registry.recent_activity` | Last 90 days of audit events per user and scope | One row per sensitive action, pruned daily | Security page, org audit view | No (copy of the R2 log) |
 | R2 `packs-staging` | Uploaded archives awaiting validation | Once per upload, by the uploader through a presigned URL | Once or twice, by the validator | No (deleted after 14 days) |
 | R2 `packs-public` | Validated public archives, `meta.json`, attestations, rendered READMEs, scope indexes | Once per version (immutable); indexes rewritten per publish | Very high, almost all CDN cache hits | Yes, for bytes |
 | R2 `packs-private` | Validated private archives and their `meta.json` | Once per version | Through a Worker after an access check | Yes, for bytes |
@@ -48,13 +49,15 @@ Writing this out changed six decisions in the [architecture](README.md). They're
 - *10 GB cap.* Only lean rows live here (decision 3). Rough budget: users and credentials ~1–2 GB at 1M accounts, versions ~1 GB at 2M lean rows, community rows ~1–2 GB, FTS index ~0.5 GB. If the community tables outgrow that, they move to their own `community` database, which is a code change, not a migration of the whole system.
 - *Access materialisation.* `effective_access` is materialised for user and team grants only. Domain-based access ("anyone with a verified @acme.com email") is checked at read time, because materialising it would mean a row per future employee.
 
-### D1 `audit`: append-only history
+### R2 `audit-log`: the tamper-resistant record
 
-**Writes.** One row per sensitive action: login, factor added or removed, token minted, grant changed, trusted publisher changed, publish approved, admin action. Never updated, never deleted inside the retention window.
+**Writes.** One event per sensitive action: login, factor added or removed, token minted, grant changed, trusted publisher changed, publish approved, admin action. Workers send events to a Queue; the consumer writes batches as `audit/YYYY/MM/DD/<batch-id>.ndjson`, each batch carrying the hash of the previous one so a missing or altered batch is detectable. The bucket has a lock rule (for example 2 years) so objects can't be deleted or overwritten through the R2 API during retention. Only the queue consumer has write access, and no Worker has delete access.
 
-**Reads.** Rare: a user's security page, an org's audit view, incident investigation.
+**Reads.** Almost never: incident investigation and compliance exports, done by scanning the relevant days.
 
-**Why it fits.** It's still structured and queried by actor, target and time, so SQL is right. A separate database isolates its unbounded growth and its writes from the registry. Older rows are exported to R2 monthly once retention needs exceed what the database should hold.
+**Why it fits.** An audit log needs immutability and cheap unbounded storage, not queries. A database offers the opposite: easy queries, but every row is editable by whatever can write to it. Bucket lock rules are account settings, so changing them needs admin access to the Cloudflare account, which sits behind Access with enforced MFA.
+
+**The query side.** The security page and the org audit view need "recent events for this user or scope, newest first". That's served by a `recent_activity` table in the registry D1 holding 90 days, written alongside the queue message and pruned daily. It's small (a few hundred MB at most) and disposable, because the R2 log remains the record.
 
 ### R2 `packs-staging`: untrusted uploads
 

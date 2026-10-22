@@ -122,8 +122,8 @@ credit_ledger(id, owner_type, owner_id, delta, reason, stripe_event_id UNIQUE, p
 subscriptions(scope_id, stripe_customer_id, stripe_subscription_id, plan, seats, status)
 packs_fts  (FTS5 external-content over name, summary, keywords, inventory names)
 
--- separate D1 database `audit`
-audit_log(id, actor, action, target, ip_hash, at, detail_json)
+recent_activity(id, actor, scope_id, action, target, ip_hash, at, detail_json)  -- 90-day copy for UI
+-- the audit record itself is append-only NDJSON in the bucket-locked R2 `audit-log` (data-stores.md)
 ```
 
 D1 limits shape the model: one database is single-writer and hard-capped at 10 GB. So D1 holds only metadata and indexes; READMEs, manifests and validation logs live in R2; high-frequency counters (installs, downloads) go to Analytics Engine and are rolled up. A registry is overwhelmingly read-heavy, and a few hundred writes a minute is far below what one SQLite primary handles. The schema is plain SQL through Drizzle so that moving to Postgres via Hyperdrive is a migration, not a rewrite. Every store PackServer writes to, and why each fits its read and write pattern, is in [data-stores.md](data-stores.md).
