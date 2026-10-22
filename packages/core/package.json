@@ -5,10 +5,16 @@
   "type": "module",
   "exports": {
     "./canonical": "./canonical/index.ts",
-    "./canonical/fixtures": "./canonical/fixtures.ts"
+    "./canonical/fixtures": "./canonical/fixtures.ts",
+    "./mail": "./mail/index.ts",
+    "./mail/testing": "./mail/testing.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "@packserver/ports": "workspace:*",
+    "@packserver/schema": "workspace:*"
   }
 }
