@@ -536,7 +536,7 @@ scenario('REQ-ACC-010 minting a token needs a passkey assertion made for that ve
 // tests/scenarios/moderation/yank.scenario.ts
 scenario('REQ-MOD-011 REQ-DELIV-005 REQ-DELIV-008 a yanked version leaves latest and search but stays fetchable by exact version', async (world) => {
   const pack = await world.packs.public('@acme/gcp', { versions: ['1.0.0', '1.1.0'] });
-  await pack.version('1.1.0').yank({ reason: 'breaks on Ant 2.3' });                 // the owner's per-action assertion is inside the verb
+  await pack.version('1.1.0').yank({ reason: 'breaks on cn 2.3' });                 // the owner's per-action assertion is inside the verb
 
   const agent = world.agents.anonymous();
   const cn = world.cn.repo();
@@ -545,7 +545,7 @@ scenario('REQ-MOD-011 REQ-DELIV-005 REQ-DELIV-008 a yanked version leaves latest
   expect((await cn.fetchIndex('acme')).entry(pack).latest).toBe('1.0.0');
   expect((await cn.fetchIndex('acme')).entry(pack).status).toBe('yanked');
   await expect(cn.fetchIndex('acme')).resolves.toHaveValidSignature();
-  expect(await agent.download(pack, '1.1.0')).toMatchObject({ yanked: true, reason: 'breaks on Ant 2.3' });
+  expect(await agent.download(pack, '1.1.0')).toMatchObject({ yanked: true, reason: 'breaks on cn 2.3' });
   await expect(agent.search('gcp')).not.toContainVersion(pack, '1.1.0');
   await expect(world.visitor().open(pack)).resolves.toMatchObject({ latest: '1.0.0' });
 });
