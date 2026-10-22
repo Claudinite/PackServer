@@ -200,7 +200,7 @@ JSON Lines, one envelope per line. Version field first so the comparison engine 
   "request": {
     "method": "POST",
     "route": "POST /api/publish/:pack/:version",   // Hono route template, not the path
-    "path_params": {"pack": "@acme/gcp", "version": "1.4.0"},
+    "path_params": {"pack": "<pack id>", "version": "1.61004.1"},
     "query": {"page": "2"},                        // sorted keys
     "headers": {"content-type": "application/json", "accept": "…"},   // allowlist only, §4.4
     "principal": {"kind": "user" | "token" | "oauth" | "oidc" | "anon", "id_hash": "…"},
@@ -235,7 +235,7 @@ JSON Lines, one envelope per line. Version field first so the comparison engine 
   "effect": "read" | "write" | "external_side_effect",
   "request": {                   // normalized per kind, §4.3
     "sql": "SELECT id, state FROM pack_versions WHERE pack_id = ? AND version = ?",
-    "params": ["pk_…", "1.4.0"],
+    "params": ["pk_…", "1.61004.1"],
     "tables": ["pack_versions"]
   },
   "request_hash": "sha256:…",
@@ -277,7 +277,7 @@ Applied identically on both sides before hashing, by one function in `core/shado
 |---|---|
 | SQL | collapse whitespace; strip comments; lowercase keywords only (identifiers and string literals untouched); inline numeric literals left as-is; parameters stay as `?` with the bound values in `params`. Drizzle emits `?` placeholders, so no renumbering is needed. `tables` extracted by a small tokenizer (FROM/JOIN/INTO/UPDATE/DELETE FROM). |
 | JSON bodies | canonical form: sorted keys, no insignificant whitespace, numbers as shortest round-trip, `-0` → `0`, strings NFC. Arrays keep order unless a per-route rule declares them a set. |
-| Headers | allowlist on request: `content-type`, `accept`, `accept-encoding`, `user-agent` (family only, e.g. `cn/1.4`), `x-packserver-client`, `idempotency-key`; on response: `content-type`, `cache-control`, `etag`, `location`, `www-authenticate`, `x-packserver-version`, `retry-after`. Everything else is dropped, never hashed. |
+| Headers | allowlist on request: `content-type`, `accept`, `accept-encoding`, `user-agent` (family only, e.g. `cn/1.61004.1` recorded as family `cn/1`), `x-packserver-client`, `idempotency-key`; on response: `content-type`, `cache-control`, `etag`, `location`, `www-authenticate`, `x-packserver-version`, `retry-after`. Everything else is dropped, never hashed. |
 | Volatile fields | replaced by typed placeholders before hashing: ISO timestamps within ±1 h of `pins.now` → `<ts>`; the pinned UUIDs → `<uuid:n>`; presigned URL signatures/expiry → `<sig>`; session ids → `<session>`; R2 `cursor`/`etag`/upload ids → `<opaque>`; `Date`, `cf-ray`, `set-cookie` → dropped; D1 `last_row_id` → `<rowid>`; `ms` is never hashed. Per-route rules can add fields (e.g. `pack_stats.score_*` floats rounded to 1e-6). |
 | Row order | D1 rows hashed in returned order; if the SQL has no `ORDER BY`, rows are sorted by their canonical JSON before hashing and the record notes `unordered: true`. |
 | Floats | rounded to 6 significant digits before hashing (ranking scores, vector scores). |
