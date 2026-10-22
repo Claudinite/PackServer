@@ -521,7 +521,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
   <div class="section grid2">
     <div class="panel">
       <h3>Publish a pack</h3>
-      <p class="small">Connect a GitHub repo or upload a zip. We validate the manifest, scan for secrets and prompt injection, run the pack's tests, build the effects manifest, and publish it. Public listing costs a <b>$1 publish credit per new pack</b>; new versions are free; credit bundles available.</p>
+      <p class="small">Connect a GitHub repo or upload a zip. We validate the manifest, scan for secrets and prompt injection, run the pack's tests, build the effects manifest, and publish it. Each new pack uses a <b>$1 publish credit</b>, sold in bundles of 5 for $5; new versions are free.</p>
       <a class="btn" href="#publish">Start publishing</a>
     </div>
     <div class="panel">
@@ -1095,7 +1095,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
   <div class="wizard-step" data-step="4" hidden>
     <h2>4 · Visibility &amp; price</h2>
     <div class="choice" style="max-width:640px">
-      <label><input type="radio" name="vis" id="vis-public" checked><span><b>Public</b> <span class="price" style="font-size:1rem">1 publish credit ($1.00)</span><br><span class="small muted">Listed in the directory, discoverable by every Claude Code session over MCP, adoptable by any repo, served from the CDN. $1 publish credit per new pack; new versions are free; credit bundles available. The credit is an anti-spam measure.</span></span></label>
+      <label><input type="radio" name="vis" id="vis-public" checked><span><b>Public</b> <span class="price" style="font-size:1rem">1 publish credit ($1.00)</span><br><span class="small muted">Listed in the directory, discoverable by every Claude Code session over MCP, adoptable by any repo, served from the CDN. One $1 publish credit per new pack (bundles of 5 for $5); new versions are free. The credit is an anti-spam measure.</span></span></label>
       <label><input type="radio" name="vis" id="vis-private"><span><b>Private</b> <span class="price" style="font-size:1rem">1 publish credit ($1.00)</span><br><span class="small muted">Not listed. Only repos in the GitHub orgs you allow can see or fetch it; they prove their org with the GitHub Actions OIDC token. <a href="#access">How access works</a></span></span></label>
     </div>
     <div class="note mt2" style="max-width:640px">You can change visibility later. Making a private pack public re-runs validation and charges the $1 listing fee; making a public pack private keeps already-served versions fetchable by repos that hold them for 30 days (their vendored copies stay as they are).</div>
@@ -1112,13 +1112,14 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
       </div>
       <aside class="panel">
         <h3>Order summary</h3>
-        <div class="row between small"><span>1 publish credit · @google/gcp-ops (new pack)</span><span class="mono">$1.00</span></div>
+        <div class="row between small"><span>Publish credits · bundle of 5</span><span class="mono">$5.00</span></div>
+        <div class="row between small muted"><span>Used now · @google/gcp-ops (new pack)</span><span class="mono">1 credit</span></div>
         <div class="row between small muted"><span>Future versions</span><span class="mono">free</span></div>
-        <div class="tiny muted mt1">Credit bundles: 10 for $9 · 50 for $40 · <a href="#billing">buy credits</a></div>
-        <div class="row between small muted"><span>Tax</span><span class="mono">$0.00</span></div>
+        <div class="tiny muted mt1">4 credits stay on the account for your next new packs. Single credits are not sold: Polar's fee would exceed $1.</div>
+        <div class="row between small muted"><span>Tax</span><span class="mono">set by Polar</span></div>
         <hr>
-        <div class="row between"><b>Total</b><span class="price">$1.00</span></div>
-        <div class="note ok mt2 small"><b>You are charged only after validation passes.</b> We place a hold now and capture it when the pack is published. Publishing a new version of an existing pack never costs a credit.</div>
+        <div class="row between"><b>Total</b><span class="price">$5.00</span></div>
+        <div class="note ok mt2 small"><b>You buy credits only after validation passes.</b> The credit is used when the pack is published; if you never publish, it returns to your account. Publishing a new version of an existing pack never costs a credit.</div>
       </aside>
     </div>
   </div>
@@ -1132,7 +1133,7 @@ details.report .body { padding: 0 12px 12px; font-size: .9rem; border-top: 1px s
           <dt>Pack</dt><dd class="mono">@google/gcp-ops 1.61021.1</dd>
           <dt>Source</dt><dd class="mono">github.com/googlecloudplatform/claudinite-packs · packs/gcp-ops/ · 1.61021.1</dd>
           <dt>Validation</dt><dd><span class="pill ok">Passed</span> <span class="pill warn">1 warning</span></dd>
-          <dt>Visibility</dt><dd>Public · $1.00</dd>
+          <dt>Visibility</dt><dd>Public · 1 credit</dd>
           <dt>Served</dt><dd>as soon as it is published; each repo's own settings decide when its update takes it</dd>
           <dt>Artifact</dt><dd class="mono small">sha256 9f1c…e3a0 · 180 KB</dd>
         </dl>
@@ -1447,19 +1448,19 @@ jobs:
   <div class="layout right">
     <div>
       <div class="section">
-        <div class="panel mb2 row between"><div><b>Publish credits</b><br><span class="small muted">3 unused credits · 2 consumed this quarter</span></div><button class="btn sm" type="button" data-stepup="Buy credit bundle" data-toast="10 credits added">Buy bundle</button></div>
+        <div class="panel mb2 row between"><div><b>Publish credits</b><br><span class="small muted">3 unused credits · 2 consumed this quarter</span></div><button class="btn sm" type="button" data-stepup="Buy credit bundle" data-toast="5 credits added">Buy 5 for $5</button></div>
         <div class="section-head"><h2>Receipts</h2><button class="btn sm" type="button" data-toast="Exporting CSV">Export CSV</button></div>
         <div class="table-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Status</th><th></th></tr></thead><tbody>
-          <tr><td class="mono small">2026-10-21</td><td>Publish credit · @google/gcp-ops (new pack)</td><td class="mono">$1.00</td><td><span class="pill ok">Paid</span></td><td><a href="#billing">Receipt</a></td></tr>
+          <tr><td class="mono small">2026-10-21</td><td>Credit bundle · 5 credits</td><td class="mono">$5.00</td><td><span class="pill ok">Paid</span></td><td><a href="#billing">Receipt</a></td></tr>
           <tr><td class="mono small">2026-10-01</td><td>Verified Publisher · annual</td><td class="mono">$99.00</td><td><span class="pill ok">Paid</span></td><td></td></tr>
-          <tr><td class="mono small">2026-09-14</td><td>Publish credit · @google/gke-autopilot (new pack)</td><td class="mono">$1.00</td><td><span class="pill ok">Paid</span></td><td><a href="#billing">Receipt</a></td></tr>
+          <tr><td class="mono small">2026-09-14</td><td>Credit bundle · 5 credits</td><td class="mono">$5.00</td><td><span class="pill ok">Paid</span></td><td><a href="#billing">Receipt</a></td></tr>
           <tr><td class="mono small">2026-09-02</td><td>Publish credit · @google/bq-migrate <span class="tiny muted">(not consumed — validation failed)</span></td><td class="mono">$0.00</td><td><span class="pill">Released</span></td><td></td></tr>
-          <tr><td class="mono small">2026-08-20</td><td>Publish credit · @google/vertex-eval (new pack)</td><td class="mono">$1.00</td><td><span class="pill fail">Refunded</span></td><td><a href="#billing">Receipt</a></td></tr>
+          <tr><td class="mono small">2026-08-20</td><td>Credit bundle · 5 credits</td><td class="mono">$5.00</td><td><span class="pill fail">Refunded</span></td><td><a href="#billing">Receipt</a></td></tr>
         </tbody></table></div>
       </div>
       <div class="section">
         <h2>Pricing summary</h2>
-        <dl class="kv"><dt>Public pack</dt><dd>$1 publish credit per new pack, open source included, consumed only after validation passes. New versions are free. Credit bundles available (10 for $9, 50 for $40).</dd><dt>Private pack</dt><dd>The same $1 credit per new pack.</dd><dt>Verified Publisher</dt><dd>$99 per year; no per-pack fee.</dd><dt>Fetches by member repos</dt><dd>Free, served from Cloudflare R2.</dd></dl>
+        <dl class="kv"><dt>Public pack</dt><dd>$1 publish credit per new pack, open source included, consumed only after validation passes. New versions are free. Credits are sold through Polar in bundles; the smallest is 5 for $5.</dd><dt>Private pack</dt><dd>The same $1 credit per new pack.</dd><dt>Verified Publisher</dt><dd>$99 per year; no per-pack fee.</dd><dt>Fetches by member repos</dt><dd>Free, served from Cloudflare R2.</dd></dl>
       </div>
     </div>
     <aside class="stack">

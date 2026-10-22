@@ -202,7 +202,7 @@ th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: u
 <li><code>publish</code> step 1 Source → &quot;Upload archive&quot; (<code>.tar.gz</code>/<code>.zip</code>, ≤ 3 MB). Browser uploads directly to R2 via a presigned URL (upload bucket, 24h TTL).</li>
 <li>Step 2 Validate → Worker enqueues validation job; UI streams progress; links to <code>validation</code>.</li>
 <li>On pass/warn → step 3 Listing details, pre-filled from <code>pack.json</code> (name, <code>pitch</code> as summary, category, repo URL if declared). Publisher confirms &quot;No public repo&quot; if none.</li>
-<li>Step 4 Visibility → Public or Private (add the GitHub orgs allowed to adopt it). A new pack costs $1 either way, waived for Verified Publishers.</li>
+<li>Step 4 Visibility → Public or Private (add the GitHub orgs allowed to adopt it). A new pack uses one $1 credit either way (credits come in bundles of 5 for $5), waived for Verified Publishers.</li>
 <li>Step 5 Pay → Polar checkout (Polar is merchant of record). See flow 8.</li>
 <li>Step 6 Publish → confirm with passkey → Worker copies the archive from the upload bucket to the public (or private) packs bucket as <code>packs/&lt;id&gt;/&lt;version&gt;.tar.gz</code> (never overwritten), rewrites and signs <code>packs/&lt;id&gt;/index.json</code> (versions, sha256, size, publishedAt, revoked, minEngineVersion, requires, sourceCommit, serial), then rewrites and signs <code>packs/catalog.json</code> as the last write; invalidates cache, emits &quot;published&quot; event. The version is served from that moment.</li>
 </ol>
@@ -383,11 +383,11 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <p><strong>Decision: charge after validation passes, before publish.</strong> Rationale: the fee is anti-spam, not revenue; charging on submit would require refunds for every failed run (processing fees on refunds, support burden, bad first impression). Validation is cheap and rate-limited by account age + MFA + CAPTCHA, which already deters bulk spam. Payment is tied to the validated artifact hash, so a different archive cannot reuse it.</p>
 <p><strong>Polar is merchant of record</strong> (owner decision, 2026-10-22): Polar sells to the publisher, collects and remits sales tax and VAT, issues receipts and invoices, and handles disputes. PackServer never sees card data and keeps no tax logic; it reacts to Polar&#39;s signed webhooks.</p>
 <ol>
-<li><code>publish</code> step 5: show line item (New pack: $1.00 one-time), pack name, artifact hash. Verified Publishers skip this step.</li>
+<li><code>publish</code> step 5: if the account holds a credit, show &quot;Uses 1 of your N credits&quot; and skip checkout. Otherwise show the line item &quot;Publish credits · bundle of 5: $5.00&quot;, pack name, artifact hash; one credit is used by this pack and four stay on the account. Single $1 sales are not offered: Polar&#39;s fee (5% + 50¢) would exceed the margin. Verified Publishers skip this step.</li>
 <li>Click Pay → Worker creates a Polar checkout session for the &quot;New pack&quot; product, with metadata <code>{validation_run_id, pack, version, hash, user}</code> and the account&#39;s Polar customer; redirect.</li>
 <li>Polar hosted checkout; Polar computes and shows tax for the publisher&#39;s country.</li>
 <li>Success URL → wizard step 5 shows &quot;Confirming…&quot; until the signed webhook <code>order.paid</code> arrives (Durable Object notifies).</li>
-<li><code>payment</code> row marked paid; step 6 unlocked.</li>
+<li>Five credits added to the account, one reserved for this run; step 6 unlocked.</li>
 <li>Order listed in <code>billing</code> with a link to Polar&#39;s invoice; Polar emails the receipt.</li>
 </ol>
 <div class="diagram"><pre class="mermaid">sequenceDiagram
@@ -396,9 +396,9 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
   participant W as Worker (api)
   participant Po as Polar
   participant DO as Durable Object (run)
-  Pu-&gt;&gt;Wz: Pay $1
+  Pu-&gt;&gt;Wz: Buy 5 credits ($5)
   Wz-&gt;&gt;W: POST /checkout run_id
-  W-&gt;&gt;Po: create checkout (metadata run, hash)
+  W-&gt;&gt;Po: create checkout, bundle of 5 (metadata run, hash)
   Po--&gt;&gt;W: checkout url
   W--&gt;&gt;Wz: redirect
   Pu-&gt;&gt;Po: pay (Polar handles tax)
@@ -409,11 +409,11 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
   DO--&gt;&gt;Wz: unlock step 6</pre></div><p>Failure / edge states:</p>
 <ul>
 <li>Webhook delayed &gt; 60s → wizard shows &quot;Still confirming, we&#39;ll email you&quot;; draft stays; alert on <code>dashboard</code>.</li>
-<li>Payment succeeded, publish never completed → credit tied to hash valid 30 days; after that, refunded automatically.</li>
+<li>Payment succeeded, publish never completed → the reserved credit returns to the account after 30 days; credits do not expire.</li>
 <li>Dispute (handled by Polar as merchant of record) → version revoked, publisher account flagged, further publishes require manual review.</li>
 <li>Re-publishing a new version of an already-paid public pack: free (decision). Alternative considered: $1 per version — rejected as it taxes good maintenance.</li>
 <li>Verified Publishers ($99/year, a Polar subscription) pay nothing per pack (owner decision, 2026-10-22); open-source publishers pay the $1 like everyone else. A lapsed subscription (<code>subscription.revoked</code>) brings the per-pack fee back for new packs only.</li>
-<li>Publish credits (backend design): $1 buys one credit (a Polar product); bundles of credits can be bought up front so CI publishes of new packs don&#39;t stall on checkout. One credit is consumed per new pack, never per version.</li>
+<li>Publish credits (backend design, PR #3): sold through Polar in bundles, the smallest being 5 credits for $5, because Polar&#39;s fee (5% + 50¢) makes a single $1 sale lose money. Each new pack still costs one $1 credit. Holding credits up front also keeps CI publishes of new packs from stalling on checkout. One credit is consumed per new pack, never per version.</li>
 </ul>
 <hr>
 <h2 id="f-9-verify-organization">9. Verify organization</h2>
@@ -770,7 +770,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <td><code>/publish</code></td>
 <td>6-step wizard</td>
 <td>Publisher</td>
-<td>Stepper: 1 Source (GitHub repo + path, read from the repo (trusted publishing workflow running <code>cn vendor</code>, or the read-only GitHub App), or upload archive drag-drop with size limit; an upload is marked &quot;No public repo&quot;, decision 14) → 2 Validate (live log, links to <code>validation</code>) → 3 Listing details (name, slug, category, tags, summary, README preview, repo link / &quot;no public repo&quot; confirm, icon) → 4 Visibility (Public / Private with its GitHub org allowlist) → 5 Pay ($1 per new pack, skipped for Verified Publishers; Polar checkout redirect; Polar is merchant of record) → 6 Publish (confirm with passkey)</td>
+<td>Stepper: 1 Source (GitHub repo + path, read from the repo (trusted publishing workflow running <code>cn vendor</code>, or the read-only GitHub App), or upload archive drag-drop with size limit; an upload is marked &quot;No public repo&quot;, decision 14) → 2 Validate (live log, links to <code>validation</code>) → 3 Listing details (name, slug, category, tags, summary, README preview, repo link / &quot;no public repo&quot; confirm, icon) → 4 Visibility (Public / Private with its GitHub org allowlist) → 5 Pay (uses one $1 credit; with none left, buy a bundle of 5 for $5 at Polar checkout; skipped for Verified Publishers; Polar is merchant of record) → 6 Publish (confirm with passkey)</td>
 <td>Next/back, save draft, cancel</td>
 </tr>
 <tr>
@@ -810,7 +810,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <td><code>/billing</code></td>
 <td>Payments</td>
 <td>Publisher</td>
-<td>Plan (Publisher: $1 per new pack / Verified Publisher: $99 per year, no per-pack fee); payment methods and invoices via Polar (merchant of record; customer portal link); orders table (date, item, pack, amount, Polar invoice link); upcoming charges</td>
+<td>Plan (Publisher: one $1 credit per new pack, credits sold in bundles of 5 for $5 / Verified Publisher: $99 per year, no per-pack fee); credits left; payment methods and invoices via Polar (merchant of record; customer portal link); orders table (date, item, pack, amount, Polar invoice link); upcoming charges</td>
 <td>Update card, download receipt, cancel plan</td>
 </tr>
 </tbody></table>
@@ -1076,7 +1076,7 @@ Alternative without a workflow: install the read-only PackServer GitHub App; a m
 <li><strong>Version format.</strong> Settled: publishers choose their own scheme; PackServer accepts any semver <code>x.y.z</code> and orders by semver precedence (owner, 2026-10-22). Claudinite&#39;s own <code>1.YMMDD.n</code> is ordinary semver with a date as the minor and gets no special treatment.</li>
 <li><strong>Pre-install manifest</strong> (settled, owner 2026-10-22). Every pack page carries it above the README from v1: guards and the tool calls they judge, scheduled tasks and cadence, forced skills, GitHub actions requested. It renders as one bottom-line line with the full list one click away, and a version that widens it is flagged.</li>
 </ol>
-<p>Fees (settled, owner 2026-10-22): $1 per new pack for every publisher, open source included, waived for Verified Publishers ($99/year); new versions are free.</p>
+<p>Fees (settled, owner 2026-10-22): $1 per new pack for every publisher, open source included, waived for Verified Publishers ($99/year); new versions are free. Credits are sold through Polar in bundles, the smallest 5 for $5, since a single $1 sale loses money to Polar&#39;s fee.</p>
 <p>Settled: the site is called <strong>Claudinite Packs</strong> (review D4); a person is <em>signed in</em>, never a <em>member</em>, since a Claudinite member is a repo (review D7).</p>
 </article></main>
 </div></div>

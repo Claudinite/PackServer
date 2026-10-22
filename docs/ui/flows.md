@@ -180,7 +180,7 @@ Failure / edge states:
 1. `publish` step 1 Source → "Upload archive" (`.tar.gz`/`.zip`, ≤ 3 MB). Browser uploads directly to R2 via a presigned URL (upload bucket, 24h TTL).
 2. Step 2 Validate → Worker enqueues validation job; UI streams progress; links to `validation`.
 3. On pass/warn → step 3 Listing details, pre-filled from `pack.json` (name, `pitch` as summary, category, repo URL if declared). Publisher confirms "No public repo" if none.
-4. Step 4 Visibility → Public or Private (add the GitHub orgs allowed to adopt it). A new pack costs $1 either way, waived for Verified Publishers.
+4. Step 4 Visibility → Public or Private (add the GitHub orgs allowed to adopt it). A new pack uses one $1 credit either way (credits come in bundles of 5 for $5), waived for Verified Publishers.
 5. Step 5 Pay → Polar checkout (Polar is merchant of record). See flow 8.
 6. Step 6 Publish → confirm with passkey → Worker copies the archive from the upload bucket to the public (or private) packs bucket as `packs/<id>/<version>.tar.gz` (never overwritten), rewrites and signs `packs/<id>/index.json` (versions, sha256, size, publishedAt, revoked, minEngineVersion, requires, sourceCommit, serial), then rewrites and signs `packs/catalog.json` as the last write; invalidates cache, emits "published" event. The version is served from that moment.
 
@@ -338,11 +338,11 @@ Failure / edge states:
 
 **Polar is merchant of record** (owner decision, 2026-10-22): Polar sells to the publisher, collects and remits sales tax and VAT, issues receipts and invoices, and handles disputes. PackServer never sees card data and keeps no tax logic; it reacts to Polar's signed webhooks.
 
-1. `publish` step 5: show line item (New pack: $1.00 one-time), pack name, artifact hash. Verified Publishers skip this step.
+1. `publish` step 5: if the account holds a credit, show "Uses 1 of your N credits" and skip checkout. Otherwise show the line item "Publish credits · bundle of 5: $5.00", pack name, artifact hash; one credit is used by this pack and four stay on the account. Single $1 sales are not offered: Polar's fee (5% + 50¢) would exceed the margin. Verified Publishers skip this step.
 2. Click Pay → Worker creates a Polar checkout session for the "New pack" product, with metadata `{validation_run_id, pack, version, hash, user}` and the account's Polar customer; redirect.
 3. Polar hosted checkout; Polar computes and shows tax for the publisher's country.
 4. Success URL → wizard step 5 shows "Confirming…" until the signed webhook `order.paid` arrives (Durable Object notifies).
-5. `payment` row marked paid; step 6 unlocked.
+5. Five credits added to the account, one reserved for this run; step 6 unlocked.
 6. Order listed in `billing` with a link to Polar's invoice; Polar emails the receipt.
 
 ```mermaid
@@ -352,9 +352,9 @@ sequenceDiagram
   participant W as Worker (api)
   participant Po as Polar
   participant DO as Durable Object (run)
-  Pu->>Wz: Pay $1
+  Pu->>Wz: Buy 5 credits ($5)
   Wz->>W: POST /checkout run_id
-  W->>Po: create checkout (metadata run, hash)
+  W->>Po: create checkout, bundle of 5 (metadata run, hash)
   Po-->>W: checkout url
   W-->>Wz: redirect
   Pu->>Po: pay (Polar handles tax)
@@ -367,11 +367,11 @@ sequenceDiagram
 
 Failure / edge states:
 - Webhook delayed > 60s → wizard shows "Still confirming, we'll email you"; draft stays; alert on `dashboard`.
-- Payment succeeded, publish never completed → credit tied to hash valid 30 days; after that, refunded automatically.
+- Payment succeeded, publish never completed → the reserved credit returns to the account after 30 days; credits do not expire.
 - Dispute (handled by Polar as merchant of record) → version revoked, publisher account flagged, further publishes require manual review.
 - Re-publishing a new version of an already-paid public pack: free (decision). Alternative considered: $1 per version — rejected as it taxes good maintenance.
 - Verified Publishers ($99/year, a Polar subscription) pay nothing per pack (owner decision, 2026-10-22); open-source publishers pay the $1 like everyone else. A lapsed subscription (`subscription.revoked`) brings the per-pack fee back for new packs only.
-- Publish credits (backend design): $1 buys one credit (a Polar product); bundles of credits can be bought up front so CI publishes of new packs don't stall on checkout. One credit is consumed per new pack, never per version.
+- Publish credits (backend design, PR #3): sold through Polar in bundles, the smallest being 5 credits for $5, because Polar's fee (5% + 50¢) makes a single $1 sale lose money. Each new pack still costs one $1 credit. Holding credits up front also keeps CI publishes of new packs from stalling on checkout. One credit is consumed per new pack, never per version.
 
 ---
 
