@@ -229,7 +229,7 @@ JSON Lines, one envelope per line. Version field first so the comparison engine 
 {
   "seq": 7,
   "parent": 3 | null,            // seq of the enclosing parallel group, if any
-  "kind": "d1" | "r2" | "kv" | "do" | "vectorize" | "queue" | "ae" | "workflow" | "ratelimit" | "http" | "clock" | "random",
+  "kind": "d1" | "r2" | "kv" | "do" | "vectorize" | "queue" | "ae" | "workflow" | "ratelimit" | "http" | "service" | "clock" | "random",
   "target": "registry" | "packs-public" | "oauth" | "ScopeCoordinator" | "api.stripe.com" | …,
   "op": "query" | "batch" | "get" | "put" | "publish" | "fetch" | …,
   "effect": "read" | "write" | "external_side_effect",
@@ -266,6 +266,7 @@ Per-kind `request` and `result` shapes:
 | workflow | `{name, op, instance_id, params}` | `{status}` |
 | ratelimit | `{key_hash}` | `{success}` |
 | http | `{method, url (host + path, query sorted, secrets stripped), headers (allowlist), body (normalized) \| body_hash}` | `{status, headers (allowlist), body (normalized) \| body_hash}` |
+| service | `{binding, method, path (route template), headers (allowlist), body (normalized) \| body_hash, override? (version id)}`; RPC calls → `{binding, rpc_method, args (normalized)}` | `{status, headers (allowlist), body (normalized) \| body_hash}`; RPC → `{return (normalized)}` |
 | clock / random | `{}` | `{value}` |
 
 ### 4.3 Normalization rules
