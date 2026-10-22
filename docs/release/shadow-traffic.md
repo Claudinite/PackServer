@@ -56,10 +56,10 @@ Cloudflare has no native mirroring (research §E.1), so duplication happens in a
 | **Front/router Worker** in front of `web`, `mcp`, `publish`, … that tees to the RC | One extra Worker invocation on every request; one place to configure; the router itself needs releasing | Rejected: adds a hop and a new single point of failure to 100% of traffic to serve a 1–10% sample; each Worker's version id would still need per-Worker override headers |
 | **Middleware inside each Worker** (`shadow()` in the Hono chain, from the shared `core` package) | The live version decides to sample, clones the request, answers the user, then in `ctx.waitUntil` calls **itself** through a service binding with the override header | Chosen: zero hops for unsampled traffic, the live version already has the request body and the recording, and `CF_VERSION_METADATA` tells it which version it is |
 
-The three Workers the release plan shadows (`web`, `mcp`, `publish`; release plan §4.2) get a service binding `SELF` to themselves. `github`, `billing` and `admin` ship the same middleware compiled out (they are all-at-once Workers whose webhook traffic is too thin to compare, release plan §3.3) and can opt in later. Mechanics that matter:
+The three Workers the release plan shadows (`web`, `mcp`, `publish`; release plan §4.2) get a service binding `SELF` to themselves. `github`, `billing` and `admin` run the same middleware too; because they deploy all-at-once (release plan §3.3) they have no 0% candidate to shadow against, so for them the middleware records the live side only (wet records feed the baseline and replay datasets) until they move to gradual deploys. Mechanics that matter:
 
 - The override header is honoured only on `fetch()` service-binding calls, not RPC (research §A.4), so the shadow call is `env.SELF.fetch(req)`. The service-binding call counts as one Worker invocation (limit 32 per request chain), which is fine.
-- The RC version id and the knobs come from the release plan's feature-flag mechanism (release plan §6.7): the D1 row `shadow_releases` (§6) plus a `shadow` entry in `feature_flags` `{rate, baselineRate, excludeRoutes, bodyCap, maxShadowPerMinute}`, read through the ports layer once per isolate per 60 s with compiled-in defaults (`rate: 0`) when the read fails. Not KV: the release plan rejects KV for release knobs (consistency delay, 2025-06 outage) and a failed read must mean "do not shadow", not "shadow with a stale id". (A `vars` binding would be versioned with the Worker and need a redeploy to change.)
+- The RC version id and the knobs come from the release plan's feature-flag mechanism (release plan §6.7): the D1 row `shadow_releases` (§6) plus a `shadow` entry in `feature_flags` `{rate, baselineRate, bodyCap, maxShadowPerMinute}`, read through the ports layer once per isolate per 60 s with compiled-in defaults (`rate: 0`) when the read fails. Not KV: the release plan rejects KV for release knobs (consistency delay, 2025-06 outage) and a failed read must mean "do not shadow", not "shadow with a stale id". (A `vars` binding would be versioned with the Worker and need a redeploy to change.)
 - The override is **silently ignored** if the RC version is not in the deployment. The RC's response therefore carries `x-packserver-version: <id>` and the shadow middleware checks it; a mismatch is recorded as `shadow_misroute` and the pair is discarded. Without this check, a mistyped version id would quietly compare live against live and report "no diffs".
 - Workers with a Durable Object class have no version URLs (research §A.8); irrelevant here because the override header works on the production hostname.
 
@@ -109,7 +109,7 @@ The live run sends its own envelope to the RC inside the shadow request. That is
 
 ### 2.4 Sampling decision
 
-`sample = (fnv1a(request_id) mod 10_000) < rate × 100`, so a request's fate is reproducible from its id. Per-route overrides exist so a rare route can be sampled at 100% while `GET /index/v1/*` sits at 1% (§7.5). Requests are never sampled when: the route is on `excludeRoutes` (§5.1), the body exceeds the cap, the request already carries `X-PackServer-Shadow` (no recursion), the request carries `Cloudflare-Workers-Version-Overrides` (a self-test or a user pinning a version), or the live version is itself not the deployment's 100% version (a request that already landed on the RC during a later rollout stage must not shadow).
+`sample = (fnv1a(request_id) mod 10_000) < rate × 100`, so a request's fate is reproducible from its id. Per-route overrides exist so a rare route can be sampled at 100% while `GET /index/v1/*` sits at 1% (§7.5). Requests are never sampled when: the body exceeds the cap, the request already carries `X-PackServer-Shadow` (no recursion), the request carries `Cloudflare-Workers-Version-Overrides` (a self-test or a user pinning a version), or the live version is itself not the deployment's 100% version (a request that already landed on the RC during a later rollout stage must not shadow).
 
 A second knob, `baselineRate` (default 1%), shadows the live version against **itself**: same path, override header naming the live version id. Those pairs are tagged `pair_kind: baseline` and feed the noise floor (§7.3).
 
@@ -290,19 +290,20 @@ Store the normalized body when it is ≤ 4 KB (JSON) or ≤ 1 KB (KV values); st
 
 ### 5.1 What is and is not recorded
 
-| Data | Treatment |
-|---|---|
-| `Authorization`, `Cookie`, `Set-Cookie`, `X-Hub-Signature-256`, `Stripe-Signature`, `CF-Access-*`, `Cf-Access-Jwt-Assertion` | never recorded (header allowlist); principal reduced to `{kind, id_hash}` with a per-release HMAC key so ids are joinable within a release and useless outside |
-| OAuth authorization codes, PKCE verifiers, refresh/access tokens, `pks_`/`psr_` tokens, OIDC JWTs, upload tokens | the values appear in bodies and query strings; the normalizer replaces any string matching the token prefixes, `code=`, `code_verifier`, `*_token`, `jwt`-shaped strings (`^[\w-]+\.[\w-]+\.[\w-]+$`) with `<secret:kind>` **before** hashing. A unit test with fixtures guards the pattern list. |
-| TOTP codes, WebAuthn assertions, recovery codes, passwords (none exist) | routes `/api/auth/*` (login, MFA, step-up, recovery) are on `excludeRoutes` entirely; nothing from them is sampled |
-| Profile and account bodies (`/api/me/*`, `/api/settings/*`, `/api/tokens/*`, `/api/scopes/*/members`, token-mint and recovery-code responses) | request and response bodies **hash-only** by route rule, whatever their size; these carry names, emails and freshly minted secrets that key-name redaction cannot be trusted to catch |
-| Stripe webhook payloads and `/api/billing/*` bodies | card data never reaches Workers (Checkout), but payloads carry names, emails, amounts: fields `email`, `name`, `address`, `phone`, `last4` are redacted; amounts and event types kept (they are what a billing regression would change) |
-| Emails, handles, IPs | `email` → `<email:hash>`; IPs are already hashed in PackServer; handles kept (public) |
-| Private pack contents | archive bytes never pass through Workers; `meta.json` and READMEs of private packs are fetched from `packs-private` via `R2Port`: results from that bucket are **hash-only** regardless of size |
-| Validation reports, LLM review text | `validation-reports` bucket results are hash-only |
-| D1 rows | columns `secret_enc`, `public_key`, `hash`, `token`, `body` (reviews), `detail_json` (audit) are redacted by column name; the redaction list is a table in `normalize.ts` and a test asserts every column named `*secret*`, `*hash`, `*token*`, `*_enc` in the Drizzle schema is in it |
+**Decided with Ariel 2026-10-22:** the duplicate / record / replay / store / compare pipeline is one transparent layer, the same for every Worker and every route, and redaction is applied everywhere by the same rules. No route, Worker or product area (billing, auth, tokens) gets special handling or an exclusion list. The only per-route value in the pipeline is the computed sample rate (§7.5).
 
-Every redaction is listed in `envelope.redactions` so the diff engine knows a `<secret>` placeholder is expected on both sides.
+Redaction happens once, in the Recorder (§3), before anything is hashed, queued or stored, so no unredacted value ever leaves the isolate. The rule is **default deny by data classification**:
+
+| Layer | Rule |
+|---|---|
+| Classification source | Every field the system stores or exchanges is classified once, where it is defined: D1 columns in the Drizzle schema, JSON request/response bodies in the route's zod schema, R2 buckets and KV namespaces in the bindings config, outbound HTTP bodies in the client's schema. Classes: `public` (pack names, versions, public metadata, enums, status codes), `operational` (counts, amounts, sizes, timestamps, ids generated by us), `personal` (emails, names, addresses, handles of private users, IPs), `secret` (tokens, codes, keys, signatures, credentials, OTPs, WebAuthn data), `customer-content` (private pack metadata, READMEs and archives, validation reports, review text). A CI check fails when a schema field has no class. |
+| Stored in clear | `public` and `operational` values only, after normalization (§4.3). |
+| Keyed hash | `personal` and `customer-content` values become `<redacted:class:hmac8>`, an 8-byte HMAC under the per-release key, so the comparison can still tell "same value on both sides" from "different value" without seeing either. |
+| Dropped | `secret` values become `<secret:class>` with no hash at all (an HMAC of a 6-digit code or a short token is brute-forceable if the key leaks). Headers follow the same rule: anything not classified `public`/`operational` (`Authorization`, `Cookie`, `Set-Cookie`, signature headers, `CF-Access-*`) is dropped, and the principal is reduced to `{kind, id_hash}`. |
+| Unclassified values | Treated as `customer-content` (keyed hash). Anything the schema did not describe, such as an unexpected extra field, a free-text column added without a class, or a third-party payload field, is never stored in clear. |
+| Safety net | A detector pass over every string that survives in clear looks for secret shapes (JWTs, known token prefixes, `code=`, PEM blocks, high-entropy strings ≥ 24 chars) and email/phone shapes. A hit is redacted *and* counted as `redaction_miss{field}` in Analytics Engine, which fails `gate.shadow` for the release until the field is classified. |
+
+Every redaction is listed in `envelope.redactions` so the diff engine knows a placeholder is expected on both sides. The same Recorder, with the same rules, is what the test plan's fakes use, so redaction is covered by the ordinary integration tests rather than by a separate route list.
 
 ### 5.2 Encryption, access, retention
 
@@ -446,7 +447,7 @@ The dry state does not carry across requests: each RC run starts from its own we
 | OAuth (authorize → consent → code → token) | each request is shadowed independently with its own recorded reads; single-use codes are never consumed by the RC (writes are not applied; code lookups are replayed) | fine as is; `/oauth/token` bodies are redacted (§5.1) |
 | Publish: `POST /api/oidc/exchange` → presigned PUT (not a Worker) → `POST /api/publish/{pack}/{version}` → Workflow | request 1 and 3 are shadowed; the RC's `WorkflowPort.create` is recorded, not executed, so the validation pipeline is never duplicated | the Workflow itself is covered by §8.2 |
 | Upload-to-R2 then finalize | the finalize step's `R2Port.head` on the staged object is replayed from the wet run | fine |
-| Step-up MFA then sensitive action | `/api/auth/*` is excluded; the sensitive action's session read (`mfa_at`) is replayed | fine |
+| Step-up MFA then sensitive action | the MFA request is shadowed like any other (OTP and WebAuthn values are `secret` and dropped, §5.1); the sensitive action's session read (`mfa_at`) is replayed | fine |
 | MCP sessions | the endpoint is stateless (one `McpServer` per request); OAuth tokens are validated via KV reads that are replayed | fine; streaming responses see §8.3 |
 
 A flow-level comparison ("did the RC produce the same end state after the three publish requests?") is **not** attempted; it would need applied writes. The integration tests cover flows; shadow covers requests.
@@ -490,7 +491,7 @@ Expand/contract means the RC may read a column the live version does not (`SELEC
 | **v0: record only** | Ports layer with `off`/`wet` modes (needed by the test plan anyway), normalizer, envelope, Queue → R2 consumer, AE counters, `shadow/config`, baseline sampling at 1% with `dry-replay` on the live version itself. Output: the noise catalogue, a proof that recording costs nothing visible, and the first wet-leak alarm. | ~2 weeks (1 for the ports/normalizer, 1 for the pipeline and tests) |
 | **v1: RC shadow and gate** | `dry-replay` against the RC via `SELF` + override, `-shadow` entrypoint, signed header, `ScopeCoordinator.dryRun`, comparison Workflow, signatures, `shadow_rules`, markdown report on the PR, `gate.shadow` in monitoring. Triage via the markdown report and a CLI to classify (`npm run shadow classify <sig> by-design --link …`). | ~3 weeks |
 | **v2: triage UI and semantic matching** | Admin page with side-by-side view, semantic D1 matching, `dry-live` per route, overlay for same-request reads, probe-tenant coverage of no-traffic routes. | ~2 weeks |
-| **v3: async coverage** | Replay recorded queue messages into staging, consumer-vs-consumer comparison, cron result diffs. Only if v1/v2 catch enough to justify it. | ~2 weeks |
+| **v3: async coverage (deferred by Ariel 2026-10-22: HTTP endpoints only for now)** | Replay recorded queue messages into staging, consumer-vs-consumer comparison, cron result diffs. Only if v1/v2 catch enough to justify it. | ~2 weeks |
 
 v0 is useful on its own and is the recommended first step even if the rest is deferred: the normalizer and baseline tell us how deterministic the system is, which also improves the integration tests.
 
@@ -527,7 +528,7 @@ A release that shadows for 48 h at the recommended profile costs about **$0.30**
 3. ~~Human in the loop at the gate.~~ Decided: a classifier agent judges every signature on every release (§7.6).
 4. **"X%" meaning (A6).** Read as the shadow sampling rate with a per-route profile (recommended default ~5% effective); the live rollout percentages are a separate schedule in the release plan. Correct?
 5. ~~Statistical bar.~~ Decided with Ariel: Good-Turing coverage plus rule-of-three floors, sample rates computed from a chosen window (min 24 h) (§7.5).
-6. **Billing route sampling.** `/api/billing/*` and Stripe webhooks are shadowed with redaction (amounts and event types kept). Comfortable with that, or exclude billing entirely?
-7. **Async coverage (phase 3).** Replaying recorded queue messages into staging is the only way to shadow consumers; is it worth ~2 weeks, or do integration tests suffice for consumers and Workflows?
+6. ~~Billing route sampling.~~ Decided: billing is shadowed like every other route; the pipeline is uniform and redaction is classification-based everywhere (§5.1).
+7. ~~Async coverage.~~ Decided: HTTP endpoints only for now; v3 (queue/Workflow replay) is deferred, consumers and Workflows rely on integration tests and staging.
 8. **Retention.** 14 days for raw records, 90 days for aggregated reports. Confirm.
 9. **Build order.** v0 (record + baseline, ~2 weeks) first, with the RC shadow in v1 (~3 weeks), or everything before the first production release?
