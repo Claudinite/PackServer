@@ -62,7 +62,7 @@ One file per area, in the order a user meets them:
 | [telemetry.md](telemetry.md) | `REQ-TELEM` | 7 | counters and the dashboard |
 | [operations.md](operations.md) | `REQ-OPS` | 12 | synthetic scopes, probes, the self-test contract, recorded-traffic redaction, the production configuration |
 
-262 entries: 197 derived from the design documents (46 of them provisional, 2 retired), 29 from the security review (one provisional), 8 from the release plan (the self-test contract and the redaction rule), 27 from the validation-flow review (20 provisional, 2 retired) and 1 from the Claudinite alignment review (retired). 190 are active, 67 provisional and 5 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. (The totals were recounted from the files on 2026-10-22 when the architecture thread's Claudinite deltas were applied: REQ-VAL-030 was retired, REQ-OPS-012 was added, and no other status moved; REQ-DELIV-003, 004 and 005 returned to active when CLN-REV 1 was withdrawn, and REQ-SCOPE-001 when Ariel chose scoped ids; REQ-DELIV-019 and 020 retired and REQ-SEARCH-004 became active when Ariel dropped channels and the cooldown.)
+262 entries: 197 derived from the design documents (46 of them provisional, 2 retired), 29 from the security review (one provisional), 8 from the release plan (the self-test contract and the redaction rule), 27 from the validation-flow review (18 provisional, 2 retired) and 1 from the Claudinite alignment review (retired). 192 are active, 65 provisional and 5 retired. The count column counts allocated IDs, retired ones included, because a retired entry stays in its file. (The totals were recounted from the files on 2026-10-22 when the architecture thread's Claudinite deltas were applied: REQ-VAL-030 was retired, REQ-OPS-012 was added, and no other status moved; REQ-DELIV-003, 004 and 005 returned to active when CLN-REV 1 was withdrawn, and REQ-SCOPE-001 when Ariel chose scoped ids; REQ-DELIV-019 and 020 retired and REQ-SEARCH-004 became active when Ariel dropped channels and the cooldown, and REQ-VAL-027 and 028 when Ariel chose the pre-install manifest.)
 
 ## Entry format
 
@@ -231,7 +231,7 @@ Provisional entries name `ARCH-Q n` (architecture §15, questions 1–11), `SITE
 | O5 | **resolved**: back to the split revocation design, still Ariel's call as ARCH-VAL §7-3 | — |
 | O6 | engine changes PackServer would need: a `tier` index field and `minTier` setting, `cn pack lint` and `cn pack canonicalize` | REQ-VAL-041 |
 | O7 | **resolved**: no channels | — |
-| O8 | whether the capability set is carried in the signed index as the pre-install manifest, or the engine produces it | REQ-VAL-027, 042 |
+| O8 | **resolved** (Ariel, 2026-10-22): PackServer derives the pre-install manifest and signs it into the index entry | — |
 
 The ones that touch the most entries:
 
@@ -243,7 +243,7 @@ The ones that touch the most entries:
 | SITE-D 4 (MFA required for which actions) | REQ-ACC-008, 009, 018 | the refusal matrix in the accounts scenarios (which actions need a factor at all; which actions need a per-action assertion is REQ-ACC-010 and is decided) |
 | SITE-D 6, 7 (which checks fail vs warn; what the public page shows) | REQ-VAL-005, 006, 007, 009, 015 | verdict expectations in the validation scenarios |
 | SITE-D 2 (private pack plans) | REQ-PAY-010, 011, REQ-AUDIT-003 | plan limits |
-| ARCH-VAL §7-1 (capabilities as an extracted, first-class model, new capability = hold; runtime network forbidden outright; reopens ARCH-Q 9) | REQ-VAL-027, 028, 029, 031, REQ-VAL-042 (the capability fields) | whether the capability and network scenarios exist |
+| ARCH-VAL §7-1 (runtime network forbidden outright; reopens ARCH-Q 9; the capability model and the hold are decided as REQ-VAL-027 and 028) | REQ-VAL-029, 031 | whether the network scenarios exist |
 | ARCH-VAL §7-2 (the pack must load under cn, and every check ships firing and silent fixtures; reopens ARCH-Q 8) | REQ-VAL-010, REQ-VAL-032 | what the sandbox step asserts instead of "the pack's declared tests" |
 | ARCH-VAL §7-3 (a security revocation disables the executable parts by default, with a report-only opt-in; ARCH-Q 7) | REQ-DELIV-018, REQ-VAL-018 (who may revoke) | what the member handle observes after a revocation |
 | CLN-REV 8 (ranking by members or stars) | REQ-SEARCH-013, REQ-VAL-013, REQ-COMM-011 | the default order of the queue and of browse |

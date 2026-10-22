@@ -367,36 +367,33 @@ Every URL in the archive is extracted into the version's URL inventory, which th
 read in the report. Prose that instructs the agent to install something from a URL holds the
 version for human review; code or prose that fetches an executable from a URL hard-fails.
 
-## REQ-VAL-027 A version's capabilities are computed from the archive and published with it
+## REQ-VAL-027 Each version carries a pre-install manifest derived from the archive and signed into the index
 
-- status: provisional
+- status: active
 - since: 2026-10
-- actor: publisher / anonymous visitor / agent
-- source: ARCH-VAL §6, §3.2 (PR #3 commit 7a01329)
-- decision: ARCH-VAL §7-1 (the extracted capability model); O8 (whether the set is carried in the signed index as the pre-install manifest, or the engine produces it)
+- actor: publisher / anonymous visitor / agent / cn engine
+- source: ARCH-VAL §6, §3.2; Ariel, 2026-10-22 (O8: the pre-install manifest, derived by PackServer)
 - coverage: scenario
 
-The validator computes the version's capability set from the archive, not from a declaration.
-The set is: `guard` (a PreToolUse judge that can deny a tool call), `coded-check`, `task` (with
-its cadence, and whether it is `opens-pr` or has an `agentic-phase`), `env-setup`,
-`forced-skill`, and `github-action:<name>` for each named GitHub action the pack declares in
-`pack.json`. A manifest that declares fewer capabilities than were extracted hard-fails. The set
-is stored in `meta.json` with the version and shown on the pack page and over MCP; it is not
-signed into the index, which has no such field. A prose-only pack has an empty set.
+The validator derives each version's pre-install manifest from the archive (the check tags in
+`checks/*.go`, `declared-checks.json`, `task.json` and `pack.json`). It lists each guard with the
+tool calls it judges, each task with its cadence and whether it opens a PR or has an agentic
+phase, the forced skills, and the GitHub actions requested. The manifest is stored in `meta.json`
+and in the version's signed index entry, so cn can show it in an update PR, and it appears above
+the README on the pack page and in MCP `get_pack`. A prose-only pack has an empty manifest.
 
-## REQ-VAL-028 A new capability holds the version and forces passkey approval
+## REQ-VAL-028 A version that widens the manifest is held and needs passkey approval
 
-- status: provisional
+- status: active
 - since: 2026-10
 - actor: publisher
-- source: ARCH-VAL §6, §3.2, §4 step 15
-- decision: ARCH-VAL §7-1
+- source: ARCH-VAL §6, §3.2, §4 step 15; Ariel, 2026-10-22 (new capability = hold)
 - coverage: scenario
 
-A version whose capability set contains a capability absent from the previous promoted version
-is held for human review and, once approved, is staged for the owner's passkey approval
-regardless of the pack's staged-publishing setting; the approval presents the diff summary and
-the new capabilities. The hold never resolves by timeout.
+A version whose manifest widens the previous promoted version's (a new guard, task, forced skill or
+GitHub action, or a faster task cadence) is held for human review and, once approved, is staged
+for the owner's passkey approval regardless of the pack's staged-publishing setting; the approval
+presents the diff summary and the widening. The hold never resolves by timeout.
 
 ## REQ-VAL-029 Executable content may not reach the network at all
 
@@ -596,12 +593,12 @@ in (REQ-SEARCH-019), and never fills an exploration slot. cn can enforce a per-r
 - since: 2026-10
 - actor: anonymous visitor / agent
 - source: ARCH-VAL §6, §3.13
-- decision: SITE-D 7; ARCH-VAL §7-1, §7-4, §7-5 (the fields that exist only with those decisions); O8 (whether the capability list is also the signed pre-install manifest), CLN-REV 6 (the top tier's name)
+- decision: SITE-D 7; ARCH-VAL §7-4, §7-5 (the fields that exist only with those decisions); CLN-REV 6 (the top tier's name)
 - coverage: scenario
 
-The public pack page and the MCP pack view show the version's tier, capability list, provenance,
+The public pack page and the MCP pack view show the version's tier, pre-install manifest, provenance,
 upload and canonical hashes, the validation date and rules version, the count of warnings by
-category name, and whether the latest version introduced new capabilities. Finding excerpts, rule
+category name, and whether the latest version widened the manifest. Finding excerpts, rule
 internals, secret locations and reviewer text are shown only to the publisher and to admins
 (whose reads are audited, REQ-ADMIN-009); the publisher never sees the second screen's raw text.
 
