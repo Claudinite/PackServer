@@ -1,6 +1,6 @@
 # Cloudflare observability stack for PackServer: research notes (2026-10-22)
 
-> Research report backing [../monitoring.md](../monitoring.md). Copied from the monitoring thread's scratchpad with light cleanup; citations kept. Section 16 (audit trail options) is retained as background only: the audit trail decision is owned by the architecture thread in [docs/architecture/audit-log-options.md](../../architecture/audit-log-options.md).
+> Research report backing [../monitoring.md](../monitoring.md). Copied from the monitoring thread's scratchpad with light cleanup; citations kept. Section 16 (audit trail options) is retained as background only: the audit trail decision is owned by the architecture thread in its audit log options note (project file `architecture/audit-log-options.md`).
 
 Scope: every Cloudflare-native telemetry, alerting and long-term-analytics capability relevant to PackServer's components (Workers `web`/`mcp`/`publish`/`github`/`billing`/`validator`/`admin`, D1 ×2, KV, R2 ×4, Vectorize, Workflows + Sandbox/Containers, Durable Objects, AI Gateway, Queues, Access in front of `admin`, Stripe/GitHub as external deps). All prices USD, Workers Paid ($5/mo) unless stated. Sources are developers.cloudflare.com pages read on 2026-10-22 unless noted; "unverified" marks things I could not confirm from an authoritative page.
 

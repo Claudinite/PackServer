@@ -1,6 +1,6 @@
 # External observability products and monitoring practice for PackServer
 
-> Research report backing [../monitoring.md](../monitoring.md). Copied from the monitoring thread's scratchpad with light cleanup; citations kept. Section 1.1b (external log services as an audit sink) is background only: the audit trail decision is owned by the architecture thread in [docs/architecture/audit-log-options.md](../../architecture/audit-log-options.md). Section 3's note on traffic duplication is superseded by the release thread's shadow-traffic design.
+> Research report backing [../monitoring.md](../monitoring.md). Copied from the monitoring thread's scratchpad with light cleanup; citations kept. Section 1.1b (external log services as an audit sink) is background only: the audit trail decision is owned by the architecture thread in its audit log options note (project file `architecture/audit-log-options.md`). Section 3's note on traffic duplication is superseded by the release thread's shadow-traffic design.
 
 Researched 2026-10-22. Scope: everything *outside* Cloudflare's native stack (Workers Logs, Analytics Engine, Logpush internals are covered by a separate note), plus modern practice. Prices are list prices as published on the cited pages on the dates noted; most vendor pages were read through secondary summaries where the vendor page was not fetchable, and those are flagged. Verify before committing budget.
 
