@@ -8,7 +8,7 @@ Shared conventions:
 - All mutating actions are POST with CSRF token and idempotency key.
 - PackServer never writes to GitHub: no Check Runs, no mirroring, no comments. An optional GitHub App only reads (repo tarballs, org membership, issue webhooks). Results go to the dashboard and email; "Report on GitHub" only opens a pre-filled issue the user files themselves.
 - Async work (validation, payment webhooks) runs in Cloudflare Workers consuming a Queue; UI polls or uses SSE/WebSocket via a Durable Object per run.
-- How a pack reaches a repo: a repo (a Claudinite *member*) declares the pack in its Claudinite settings (`packs.declared`, optional `version:` freeze) or runs `cn adopt <id>`; the pack is fetched as an immutable per-version archive, checked against the signed per-pack index, and vendored into `.claudinite/shared/packs/<id>/`, landing as a pull request. Nothing is fetched at session time and nothing is installed into Claude Code. Versions are date-based, `1.YMMDD.n` (e.g. `1.61021.1`). A published version enters a cooldown (length: `sitemap.md` open decision 16); member repos' scheduled updates select it only once the cooldown has passed. PackServer replaces the engine's current repo-and-R2 serving, so that layout is prior art here, not a constraint; `cn adopt` will take PackServer's ids.
+- How a pack reaches a repo: a repo (a Claudinite *member*) declares the pack in its Claudinite settings (`packs.declared`, optional `version:` freeze) or runs `cn adopt <id>`; the pack is fetched as an immutable per-version archive, checked against the signed per-pack index, and vendored into `.claudinite/shared/packs/<id>/`, landing as a pull request. Nothing is fetched at session time and nothing is installed into Claude Code. Versions are semver `x.y.z` in whatever scheme the publisher chooses (e.g. `1.61021.1`, `2.3.0`), ordered by semver precedence. PackServer serves a version as soon as it passes validation and shows its publish time; how long a repo waits before its update takes a new version is a `cn` setting the repo owns, not a PackServer concern. PackServer replaces the engine's current repo-and-R2 serving, so that layout is prior art here, not a constraint; `cn adopt` will take PackServer's ids.
 - "Member" below means a repo running Claudinite. A person with a session is a *signed-in user* or *account*.
 
 ---
@@ -101,8 +101,8 @@ Failure / edge states:
 
 1. `pack`: click Star → toggles immediately (optimistic), count updates. Anonymous click → `signin` with return URL.
 2. Click "Rate" or "Write a review" → `review`.
-3. Choose version (default: newest version past its cooldown), 1-5 stars, optional title/body.
-4. Submit → stored; pack rating recomputed (Bayesian average with prior to avoid 1-review 5-star packs ranking first; see open decision 15).
+3. Choose version (default: newest version), 1-5 stars, optional title/body.
+4. Submit → stored; pack rating recomputed (Bayesian average with prior to avoid 1-review 5-star packs ranking first).
 5. Review appears in `pack` > Reviews with "verified adoption" badge if a repo of the account fetched the pack (optional, decision #8).
 6. Publisher may reply once per review and flag for moderation.
 
@@ -145,7 +145,7 @@ Failure / edge states:
 2. Fields: version, type (bug / docs / security), severity, repro steps, environment, attachments (≤5 MB, images/text only).
 3. If type = security → toggle "Private security report" auto-on: report is visible only to pack owners/maintainers and PackServer security; not listed in Issues tab.
 4. Submit → issue created; publisher notified (email + dashboard alert). Private security reports also create a 90-day disclosure timer (publisher-visible).
-5. Publisher responds / sets status (open, acknowledged, fixed in 1.YMMDD.n, won't fix, duplicate). Reporter notified.
+5. Publisher responds / sets status (open, acknowledged, fixed in x.y.z, won't fix, duplicate). Reporter notified.
 6. Public issues appear in `pack` > Issues; private ones in `account` > My reports (reporter) and `dashboard` alerts (publisher).
 
 ```mermaid
@@ -175,14 +175,14 @@ Failure / edge states:
 
 ## 5. Publish via upload
 
-**Goal**: publisher uploads an archive, it is validated, listed, paid for, and published to R2, where it enters its cooldown. Whether upload-only packs (no `sourceCommit`, no reviewable source) exist at all, or every pack must come from a repo, is `sitemap.md` open decision 14.
+**Goal**: publisher uploads an archive, it is validated, listed, paid for, and published to R2. Upload is open to every pack (`sitemap.md` decision 14); a pack without a public repo is marked down: "No public repo" on cards and the pack page, Partial trust, lower score.
 
 1. `publish` step 1 Source → "Upload archive" (`.tar.gz`/`.zip`, ≤ 3 MB). Browser uploads directly to R2 via a presigned URL (upload bucket, 24h TTL).
 2. Step 2 Validate → Worker enqueues validation job; UI streams progress; links to `validation`.
 3. On pass/warn → step 3 Listing details, pre-filled from `pack.json` (name, `pitch` as summary, category, repo URL if declared). Publisher confirms "No public repo" if none.
 4. Step 4 Visibility & price → Public ($1) or Private (TBD price, pick access model).
 5. Step 5 Pay → Stripe Checkout (or one-click with saved method). See flow 8.
-6. Step 6 Publish → confirm with passkey → Worker copies the archive from the upload bucket to the public (or private) packs bucket as `packs/<id>/<version>.tar.gz` (never overwritten), rewrites and signs `packs/<id>/index.json` (versions, sha256, size, publishedAt, revoked, minEngineVersion, requires, sourceCommit, serial), then rewrites and signs `packs/catalog.json` as the last write; invalidates cache, emits "published" event. The version is published; member repos' updates select it once its cooldown passes (open decision 16).
+6. Step 6 Publish → confirm with passkey → Worker copies the archive from the upload bucket to the public (or private) packs bucket as `packs/<id>/<version>.tar.gz` (never overwritten), rewrites and signs `packs/<id>/index.json` (versions, sha256, size, publishedAt, revoked, minEngineVersion, requires, sourceCommit, serial), then rewrites and signs `packs/catalog.json` as the last write; invalidates cache, emits "published" event. The version is served from that moment.
 
 ```mermaid
 sequenceDiagram
@@ -217,7 +217,7 @@ Failure / edge states:
 - Upload interrupted → resumable multipart; draft persists on `dashboard` > Drafts.
 - Validation fail → flow 7.
 - Version already exists → hard error; an archive is written once and never overwritten (bump the build number: `1.61021.2`).
-- Name collides with a verified org's domain or a reserved word → blocked; suggest scoped name (ids: open decision 13).
+- Name collides with a verified org's domain or a reserved word → blocked; suggest a scoped name.
 - Payment succeeded but publish step abandoned → credit held on account 30 days; dashboard alert "Finish publishing".
 - Uploaded archive expired (24h) → re-upload required, validation re-run.
 
@@ -238,7 +238,7 @@ Per release:
 5. Worker verifies the JWT against GitHub's JWKS and matches `repository`, `workflow_ref`, `environment` and `ref` claims to a trusted publisher → stores the archive in the R2 upload bucket, enqueues validation, returns a run id and status URL.
 6. The workflow polls the status URL and prints the verdict and report link in its own job log; it exits non-zero on failure, so the GitHub run shows red or green without PackServer writing anything.
 7. On pass: if the trusted publisher is in hold mode, the version becomes **Awaiting approval** and an owner approves it on `dashboard` with a passkey tap bound to that version. Otherwise, if the pack already has its credit (existing pack, new version) → publish directly. A new pack without a credit → "awaiting payment", dashboard alert and email; publisher completes flow 8. Publishing writes the archive once, re-signs the per-pack index with `sourceCommit` = the tagged commit, and re-signs the catalog (as in flow 5 step 6).
-8. Version published; the status URL now links to `pack`. Member repos' updates select it once its cooldown passes (open decision 16).
+8. Version published; the status URL now links to `pack`. Each member repo's own settings decide when its update takes it.
 
 ```mermaid
 sequenceDiagram
@@ -271,7 +271,6 @@ sequenceDiagram
   else fail
     W-->>GH: failed + report link (job exits 1)
   end
-  Note over W,R2: after the cooldown, member repos' updates select it
 ```
 
 Failure / edge states:
@@ -295,7 +294,7 @@ Check stages, in order (fail-fast on blocking checks):
 |---|---|---|
 | Archive & size limits (≤3 MB, ≤5k files, no symlinks out) | ✓ | |
 | Manifest schema (`pack.json`, `pack.yaml` or `pack.toml`; exactly one) | ✓ | |
-| Manifest consistency (declared items exist on disk; version is `1.YMMDD.n`; `minEngineVersion` is a `cn` version; `requires` names published packs) | ✓ | |
+| Manifest consistency (declared items exist on disk; version is semver `x.y.z`; `minEngineVersion` is a `cn` version; `requires` names published packs) | ✓ | |
 | Secret scan (gitleaks-style rules) | ✓ | |
 | Security scan (executables, path traversal; Go checks import only the check SDK and the standard library; task workers import only `@claudinite/sdk`) | ✓ for traversal / binaries / foreign imports | |
 | Prompt-injection heuristics on `RULES.md` and `SKILL.md` (prose scanned as code) | | ✓ (human-readable excerpt) |
@@ -377,7 +376,7 @@ Failure / edge states:
 
 ## 9. Verify organization
 
-**Goal**: an org proves control of a domain and/or GitHub org, earning a verified badge so "@google/gcp" is trustworthy (scoped vs. bare ids: `sitemap.md` open decision 13).
+**Goal**: an org proves control of a domain and/or GitHub org, earning a verified badge so "@google/gcp" is trustworthy.
 
 1. `org` > Create org: handle, display name. Creator becomes `owner` (confirm with passkey).
 2. Verification tab → "Add domain": enter `example.com` → shown TXT record `_packserver-challenge.example.com  TXT  "<signed token>"`, or the alternative file `https://example.com/.well-known/packserver-auth` (MCP Registry model).
@@ -465,12 +464,12 @@ Edge states (all options):
 
 **Goal**: a Claude Code session asks what packs exist for a kind of work and suggests one to declare. The MCP endpoint is a discovery aid; delivery is `cn adopt <id>` (or a `packs.declared` entry), which vendors the pack and lands a PR. Nothing is fetched at session time. Documented on `claude-code`.
 
-Tools: `list_categories()`, `search_packs(query, category?, content_type?, verified_only?, past_cooldown?, limit)` where `content_type` is one of `rules`, `skills`, `checks`, `guards`, `tasks`; `get_pack(id, version?)` → metadata, manifest of effects, cooldown state, `minEngineVersion`, `requires`, publisher tier, adoption instructions; `get_pack_manifest(id, version)` → `pack.json`; `fetch_pack(id, version)` → the archive URL (`packs/<id>/<version>.tar.gz` on the public CDN) and the signed index entry (sha256, publishedAt, minEngineVersion, requires, revoked), for inspection.
+Tools: `list_categories()`, `search_packs(query, category?, content_type?, verified_only?, limit)` where `content_type` is one of `rules`, `skills`, `checks`, `guards`, `tasks`; `get_pack(id, version?)` → metadata, manifest of effects, publish time, `minEngineVersion`, `requires`, publisher tier, adoption instructions; `get_pack_manifest(id, version)` → `pack.json`; `fetch_pack(id, version)` → the archive URL (`packs/<id>/<version>.tar.gz` on the public CDN) and the signed index entry (sha256, publishedAt, minEngineVersion, requires, revoked), for inspection.
 
 Public:
 1. The session connects to `https://mcp.packserver.dev` (Streamable HTTP MCP), no auth.
-2. `search_packs("deploy to GCP Cloud Run", category="cloud")` → ranked list of compact summaries: `pitch` (from `pack.json`), manifest of effects, cooldown state, `minEngineVersion`, `requires`, publisher tier. Full content stays behind `get_pack` so a search costs the session little context.
-3. `get_pack("@google/gcp")` → summary, warnings, validation verdict, newest version past its cooldown, manifest of effects.
+2. `search_packs("deploy to GCP Cloud Run", category="cloud")` → ranked list of compact summaries: `pitch` (from `pack.json`), manifest of effects, publish time, `minEngineVersion`, `requires`, publisher tier. Full content stays behind `get_pack` so a search costs the session little context.
+3. `get_pack("@google/gcp")` → summary, warnings, validation verdict, newest version, manifest of effects.
 4. The session proposes `cn adopt @google/gcp` (or the settings declaration, with an optional `version:` freeze); running it fetches the archive, checks it against the signed index, vendors it into `.claudinite/shared/packs/<id>/` and lands a PR for review. `fetch_pack` exists so a session (or a person) can read the archive before proposing; it is not the delivery path.
 
 Private (option C token or personal read token):
@@ -486,7 +485,7 @@ sequenceDiagram
   Ag->>M: initialize (no auth)
   Ag->>M: search_packs "deploy to GCP"
   M->>D: query public index
-  M-->>Ag: results with pitch, effects, cooldown, publisher tier
+  M-->>Ag: results with pitch, effects, publisher tier
   Ag->>M: get_pack @google/gcp
   M-->>Ag: metadata, manifest of effects, adoption instructions
   Ag->>Repo: propose cn adopt @google/gcp
@@ -501,7 +500,7 @@ sequenceDiagram
 Failure / edge states:
 - Invalid/expired token → 401 with `WWW-Authenticate` hint and docs link; never reveals whether pack exists.
 - Rate limits: anonymous 60 req/min per IP; token 600 req/min; archive fetches counted toward "member repos holding this pack" once per (token/IP, version, day).
-- Revoked version requested → `get_pack` returns it with `revoked: true` and reason; `fetch_pack` works only with exact version. Selection is the newest not-revoked version past its cooldown that fits the member's engine; there is no "latest".
+- Revoked version requested → `get_pack` returns it with `revoked: true` and reason; `fetch_pack` works only with exact version. Selection is the newest not-revoked version that fits the member's engine, after any wait the repo's own settings ask for; there is no "latest".
 - The session asks for a category that doesn't exist → `list_categories` suggestion in error.
 - Responses include `advisory` field when a public security advisory exists for the version.
 

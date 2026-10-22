@@ -38,9 +38,9 @@ only the three-state marks carry semantic color.
 - **Encodes:** validation result × publisher proof × source origin × signing, collapsed into one verdict.
 - **States (3):**
   - `●` **Trusted** (green-neutral): validation passed, publisher verified (domain or GitHub org), public repo
-    built from a tag via trusted publishing (OIDC), artifact signed, past its cooldown.
+    built from a tag via trusted publishing (OIDC), artifact signed.
   - `◐` **Partial** (amber-neutral): validation passed but one or more of {verified publisher, public repo,
-    trusted publishing, signature} missing; or validation passed with warnings; or still in its cooldown.
+    trusted publishing, signature} missing; or validation passed with warnings.
   - `○` **Unverified / failing** (gray outline; red only if validation failed or version revoked).
 - **Default render:** mark + one word ("Trusted", "Partial", "Unverified", "Revoked"). On cards: mark only.
 - **Hover:** four-row checklist, each row a tick/dash and ≤6 words: `✓ Validation passed · 1 warning`,
@@ -65,12 +65,13 @@ only the three-state marks carry semantic color.
 - **Encodes:** what adopting this pack *does to a repo*, derived by validation, not by the publisher: guards
   added and the tool calls they judge, scheduled tasks and their cadence, skills forced before matching edits,
   checks and whether they block after grace, and the GitHub actions the pack asks for.
-- **Default render:** a few quiet lines of secondary type directly under the Trust mark, no box, no color:
-  `1 guard · PreToolUse on Bash: denies gcloud run deploy to *-prod without an approved plan`,
-  `4 scheduled tasks · 3 monthly, 1 quarterly; each lands as a PR`, `3 checks · 2 blocking after the
-  14-day grace, 1 advisory`, `6 skills · cloud-run-deploy forced before edits to infra/**`,
-  `GitHub actions · contents: write, pull-requests: write`. A pack with none of these says so in one line.
-- **Hover:** the item names behind each line. **Click:** the Contents tab.
+- **Default render:** one quiet line of secondary type directly under the Trust mark, no box, no color:
+  `Adds 1 guard · 4 scheduled tasks · 3 checks · 6 skills · GitHub actions ›`. A version that widens the
+  manifest (adds a guard, a task, a forced skill or a GitHub permission) ends the line with
+  `· widened in 1.61021.1` in the warn tone, the one colored word on the page.
+- **Click:** a drawer with the full list: each guard and the tool calls it judges, tasks and their cadence,
+  checks and whether they block after grace, forced skills and what they match, the GitHub actions requested,
+  and what the widening version added. The Versions tab marks each widening version.
 
 ### 2.3 Rating
 
@@ -114,8 +115,7 @@ only the three-state marks carry semantic color.
   per session) as a 64×14 px sparkline with no axes. On cards for signed-in publishers only; on the pack page
   for everyone, next to "fetched by 9.3k repos / 7 d".
 - **Hover:** total, delta vs prior period. **Click:** nothing (no analytics page in v2).
-- Whether a fetch count belongs on the page at all is open (§6): the personas say install counts are not a
-  trust signal.
+- The fetch count stays (owner, 2026-10-22), shown as the Pulse sparkline beside the other signals.
 
 ### 2.8 Severity (bug reports / validation findings)
 
@@ -129,8 +129,7 @@ Format: **Visible** (default) · **Hover** · **Click** · **Removed**.
 ### Home (anonymous)
 
 - Visible: one sentence tagline ("Rules, checks and tasks for your repos, from the people who build the
-  stack."), a search field, and one row of six pack cards ("Trending"; the rail's name and ranking are open,
-  §6). That is the whole first viewport.
+  stack."), a search field, and one row of six pack cards ("Trending"). That is the whole first viewport.
 - Hover: card marks (Trust, shape, rating) as in §2.
 - Click: "For Claude Code" and "Publish" are two plain text links under the search field, not sections.
 - Removed: stat-row (1,284 packs / 312 publishers / fetches per day), "Verified publishers" section,
@@ -143,7 +142,7 @@ Format: **Visible** (default) · **Hover** · **Click** · **Removed**.
   "Updated" or "Stars" sort.
 - Hover: the three marks.
 - Visible: one quiet row of filter toggles under the query (Trusted only, Verified publisher, Public repo,
-  Past cooldown, Contains… with the five pack types and "Checks only (no tasks, no skills)"). Outline
+  Contains… with the five pack types and "Checks only (no tasks, no skills)"). Outline
   pills, filled only when on; no counts, no sidebar.
   (Ariel, 2026-10-22: hiding filters in a sheet went too far; search filters stay on the page.)
 - Removed: always-visible filter sidebar, "public repo / validated" pills on cards, five counts per card,
@@ -151,17 +150,16 @@ Format: **Visible** (default) · **Hover** · **Click** · **Removed**.
 
 ### Pack page
 
-- Visible, above the fold, in this order: `@scope/name` with publisher mark (whether ids are scoped is open,
-  §6); one-line summary; Trust mark with its word; the manifest of effects (§2.2b: guards and what they
+- Visible, above the fold, in this order: `@scope/name` with publisher mark; one-line summary; Trust mark with its word; the manifest of effects (§2.2b: guards and what they
   judge, tasks and cadence, forced skills, GitHub actions); Adopt block (`cn adopt <id>` with a copy button,
   and a second copyable snippet with the Claudinite settings declaration and an optional `version:`
   freeze, under one muted line "Lands as a pull request; updates arrive the same way"); then rating number,
-  shape glyph, pulse, and "Updated 2 d ago · 1.61021.1 · past cooldown · minEngineVersion 1.61006.1 · MIT" as a
+  shape glyph, pulse, and "Updated 2 d ago · 1.61021.1 · minEngineVersion 1.61006.1 · MIT" as a
   single muted line. Below: the README. Nothing is "installed": a pack is declared in settings and vendored
   into `.claudinite/shared/packs/<id>/` by `cn adopt` or the scheduled update, as a PR.
 - Hover: every mark per §2.
 - Click: secondary tabs rendered as plain text links in one row: Contents · Versions · Reviews · Issues.
-  The Versions drawer carries cooldown state, SHA-256, `minEngineVersion` and `requires` per version, and marks a
+  The Versions drawer carries publish date, SHA-256, `minEngineVersion` and `requires` per version, and marks a
   revoked version as such (a revoked version is never selected by an update; repos holding it keep it).
   Trust drawer from the mark. "Source" is a link inside the Trust drawer and the muted line, not a panel.
 - Removed: Trust panel, "What's inside" count row (the table moves to Contents tab), repo-badge box,
@@ -195,7 +193,7 @@ Format: **Visible** (default) · **Hover** · **Click** · **Removed**.
   Source → Check → Listing → Access → Publish. Each step shows its single input and one primary button.
   The Source step reads the pack *from a repo* ("packs from a repo" is the publishing primitive); the
   workflow snippet runs `cn vendor` so the archive is the vendored set, and publishes on tags that name a
-  version (`1.YMMDD.n`). Whether an upload-only path exists at all is open (§6).
+  version (semver `x.y.z`). Upload stays open to every pack; a pack without a public repo is marked down (§6).
 - Hover: "Why?" text links reveal one-sentence rationale inline (not a tooltip box).
 - Click: "Advanced" disclosure at the bottom of Listing (tags, price) and Access (private rules).
   Payment is a sheet inside Access, shown only if a new-pack credit is needed, with one line: "First
@@ -244,8 +242,8 @@ Format: **Visible** (default) · **Hover** · **Click** · **Removed**.
   muted line "1 hidden comment (low score) · Show". No colored boxes, no badges, no counts shown unless the
   viewer turned comments on.
 - Pack score: not designed yet. The Trust drawer carries one muted line, "Pack score: coming soon; formula
-  published with it", and nothing else changes until the measurements are defined. The personas accept a
-  score only from verifiable facts with a published formula, never from installs or stars (§6).
+  published with it", and nothing else changes until the measurements are defined. The score sits beside
+  star ratings, Trending, fetch counts, comments and votes; its formula is published with it.
 
 ## 4. Visual language
 
@@ -289,7 +287,7 @@ to approve vpc-review 1.61020.1 · Approve").
 | Pack page Trust panel (Validation, Signed, SHA-256, Source, Targets) | Trust drawer, opened from the mark |
 | Pack page "What's inside" count row + table | Manifest of effects (guards, tasks, forced skills, actions) above the README; shape glyph; table lives in Contents tab |
 | Pack page Install block (`cn adopt name@version`, MCP config) | Adopt block: `cn adopt <id>` plus the settings.yaml declaration with an optional `version:` freeze |
-| Versions: `yanked` / `deprecated` / `latest` | `revoked` flag from the signed index; selection is the newest version past its cooldown, there is no "latest" |
+| Versions: `yanked` / `deprecated` / `latest` | `revoked` flag from the signed index; selection is the newest eligible version, there is no "latest" |
 | Repo-badge box / "No public repo" explanatory box | `–` row in Trust hover; link in muted line |
 | Publisher Verification + Trust-signals panels | Publisher mark hover; Verification drawer |
 | Dashboard alert strip (5 links) | Needs-you queue; informational items to Activity |
@@ -309,16 +307,17 @@ PackServer replaces the engine's current repo-and-R2 pack serving, so the engine
 channels and `packs.sources` are prior art, not constraints. Still open with the owner (`sitemap.md` decisions
 13–19 hold the detail):
 
-- **Pack ids.** `@scope/name` proposed; `cn adopt` adapts to PackServer's ids.
-- **Version format.** Date-based `1.YMMDD.n` proposed; the wireframes use it.
-- **Cooldown length.** A new version waits out a cooldown before member repos' updates select it; the
-  Status mark and the Versions tab show "in cooldown" / "past cooldown".
-- **Publish from a repo vs. upload.**
 - **Private access model** (options A–D) and its pricing.
-- **Pre-install manifest** contents (§2.2b).
-- **Reputation signals** (rating, "Trending", Pulse, pack score) and **fees**.
+- **Fees** (public credit settled; private pricing open).
 
-Settled: the site is called **Claudinite Packs**, and a person is *signed in*, never a *member* (a
+Settled: the site is called **Claudinite Packs**; pack ids are `@scope/name`; versions are any semver
+`x.y.z` the publisher chooses, ordered by semver precedence; a version is served once it passes
+validation, and how long a repo waits before taking it is a `cn` setting the repo owns; publishing
+from a repo or by upload is open to every pack, and a pack without a public repo is marked down ("No
+public repo" on cards and the pack page, Partial trust, lower score); the pre-install manifest (§2.2b) sits
+above the README on every pack page as one bottom-line line, details one click away, with widening
+versions flagged; every reputation signal stays (star ratings, Trending, fetch counts, the pack score,
+comments and votes); and a person is *signed in*, never a *member* (a
 Claudinite member is a repo; the prototype's internal persona value is still `member`).
 
 ## 7. References

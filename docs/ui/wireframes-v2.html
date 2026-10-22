@@ -177,6 +177,15 @@ body[data-persona="publisher"] .not-publisher-note { display: none; }
 .effects .hc { position: static; }
 .effects .hc > button { text-align: left; }
 .effects .pop { left: 0; }
+.effects-line { margin-top: 16px; max-width: 620px; font-size: 13px; color: var(--ink-2); }
+.effects-line button { text-align: left; color: var(--ink-2); }
+.effects-line button:hover { color: var(--ink); }
+.effects-line .lead { color: var(--ink); font-weight: 500; }
+.effects-line .flag { color: var(--warn); font-weight: 500; }
+.effects-drawer .effects { margin-top: 0; gap: 12px; }
+.effects-drawer .effects li { display: block; }
+.effects-drawer .effects .k { display: block; width: auto; }
+.effects-drawer .effects .d { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
 .adopt-note { color: var(--muted); font-size: 13px; margin-top: 8px; }
 .facts .hc > button { gap: 8px; }
 .tabs { display: flex; gap: 20px; margin-top: 40px; padding-bottom: 12px; border-bottom: 1px solid var(--line); overflow-x: auto; }
@@ -412,7 +421,6 @@ body[data-persona="anonymous"] .only-signed { display: none !important; }
     <button type="button" class="ftog" data-ftog aria-pressed="false">Trusted only</button>
     <button type="button" class="ftog" data-ftog aria-pressed="false">Verified publisher</button>
     <button type="button" class="ftog" data-ftog aria-pressed="false">Public repo</button>
-    <button type="button" class="ftog" data-ftog aria-pressed="false">Past cooldown</button>
     <label class="fsel"><span class="sr">Contains</span><select id="f-contains"><option>Any contents</option><option>Has rules</option><option>Has skills</option><option>Has checks</option><option>Has guards</option><option>Has tasks</option><option>Checks only (no tasks, no skills)</option></select></label>
   </div>
   <div class="row between" style="margin-top:14px">
@@ -501,7 +509,7 @@ body[data-persona="anonymous"] .only-signed { display: none !important; }
       <label><input type="radio" name="src" id="src-zip"><span>Upload a .zip <span class="muted">· manual publishing, listed as “No public repo”</span></span></label>
     </div>
     <div class="field" id="src-gh-fields"><label class="lbl" for="pub-repo">Repository and path</label><input type="text" id="pub-repo" value="googlecloudplatform/claudinite-packs · packs/gcp-ops/" class="mono"></div>
-    <p class="why-text" hidden id="why-src">Must be a repo in an org you have verified, or your own account. The pack is read from the repo, so every published file has a source commit. Later tags naming a version (1.YMMDD.n, e.g. 1.61021.1) publish automatically.</p>
+    <p class="why-text" hidden id="why-src">Must be a repo in an org you have verified, or your own account. The pack is read from the repo, so every published file has a source commit. Later tags naming a semver version (e.g. 1.61021.1 or 2.3.0) publish automatically.</p>
     <button type="button" class="why" data-why="why-src">Why?</button>
     <details class="adv"><summary>Publish automatically on tags</summary><div class="body"><p class="muted small" style="margin-bottom:8px">Commit as .github/workflows/publish.yml. No token: GitHub Actions proves its identity with OIDC. The tag is the version; cn vendor strips test/, docs/ and provenance/ so the archive is the same set a repo vendors.</p>
       <div class="install" style="margin-top:0"><pre id="gh-wf">name: Publish pack
@@ -628,12 +636,12 @@ jobs:
   var PACKS = {
     pack: {
       token: 'pack', name: '@google/gcp-ops', icon: 'GC', pub: 'Google Cloud', pubMark: 'org', pubId: 'google',
-      version: '1.61021.1', channel: 'past cooldown', minEngine: '1.61006.1', requires: ['basics'], updated: '2 h ago', license: 'Apache-2.0',
+      version: '1.61021.1', minEngine: '1.61006.1', requires: ['basics'], updated: '2 h ago', license: 'Apache-2.0',
       summary: 'Operate GCP projects: IAM audits, Cloud Run deploys, log triage and key rotation.',
       rating: 4.7, ratings: 236, dist: [72, 18, 7, 2, 1], fetches: '9.3k', delta: '+12% vs prior 7 d',
       pulse: [210, 240, 230, 260, 300, 280, 310, 330, 320, 350, 340, 360, 390, 380, 400, 420, 410, 440, 430, 460, 480, 470, 500, 520, 510, 540, 560, 550, 580, 600],
       trust: 'trusted', trustWord: 'Trusted',
-      trustRows: [['y', 'Validation passed · 1 warning'], ['y', 'Publisher verified (google.com)'], ['y', 'Built from tag 1.61021.1 via GitHub Actions'], ['y', 'Signed (Sigstore) · past the cooldown']],
+      trustRows: [['y', 'Validation passed · 1 warning'], ['y', 'Publisher verified (google.com)'], ['y', 'Built from tag 1.61021.1 via GitHub Actions'], ['y', 'Signed (Sigstore)']],
       repo: 'github.com/googlecloudplatform/claudinite-packs', sha: '9f1c7e02b4…e3a0', signed: 'Sigstore · OIDC identity publish.yml@refs/tags/1.61021.1', verifiedHow: 'DNS TXT on google.com · GitHub org googlecloudplatform · 2026-03-04', valId: 'val_01JB2K', valRun: 'gcp',
       contents: { rules: ['RULES.md'], skills: ['iam-audit', 'cloud-run-deploy', 'log-triage', 'gcs-lifecycle', 'vpc-review', 'billing-anomalies'], checks: ['no-public-buckets', 'sa-key-age', 'min-tls'], guards: ['pre-deploy-guard'], tasks: ['rotate-service-keys', 'quarterly-iam-review', 'cost-report', 'cleanup-stale-disks'] },
       effects: [
@@ -644,14 +652,14 @@ jobs:
         ['GitHub actions', 'contents: write, pull-requests: write, for task PRs', 'From pack.json; granted to the update workflow only']
       ],
       readme: ['gcp-ops gives Claude Code a safe, opinionated toolkit for day-to-day Google Cloud operations. RULES.md sets the standing rules; skills explain how to audit IAM, deploy to Cloud Run with a dry-run first, and triage Cloud Logging output.', 'Checks block the most common foot-guns (public buckets, stale service-account keys) at the session Stop hook and again in CI. Tasks are scheduled work the scheduler files and the executor runs, landing as PRs. The pre-deploy-guard is a PreToolUse guard that denies a deploy to a production project without an approved plan.'],
-      versions: [['1.61021.1', '2026-10-21', 'passed', 'Fix custom-role handling in iam-audit'], ['1.61009.1', '2026-10-09', 'passed', 'Add billing-anomalies skill, billing-anomaly declared check'], ['1.60922.1', '2026-09-22', 'passed', 'Docs; tighten no-public-buckets check'], ['1.60910.1', '2026-09-10', 'revoked', 'rotate-service-keys could delete a key before the new one was active (advisory PS-2026-014)']],
+      versions: [['1.61021.1', '2026-10-21', 'passed', 'Fix custom-role handling in iam-audit'], ['1.61009.1', '2026-10-09', 'passed', 'Add billing-anomalies skill, billing-anomaly declared check', 'adds 1 declared check (billing-anomaly) and 1 skill'], ['1.60922.1', '2026-09-22', 'passed', 'Docs; tighten no-public-buckets check'], ['1.60910.1', '2026-09-10', 'revoked', 'rotate-service-keys could delete a key before the new one was active (advisory PS-2026-014)']],
       reviews: [[5, 'ariel', '1.61021.1', 'Oct 12, 2026', 'Finally an IAM audit that understands custom roles.', 'Used it with Claude Code on three projects, caught two over-permissioned service accounts.', 12], [4, 'devops_nina', '1.61009.1', 'Oct 10, 2026', 'Solid, verbose logs', 'The log-triage skill is excellent. The cost-report task spams a lot of output; would like a summary mode.', 5], [3, 'mt_builds', '1.60922.1', 'Sep 28, 2026', 'Cloud Run deploy assumes default VPC', 'Works for simple projects. Needed to patch the skill for shared VPC.', 2]],
       issues: [['#42', 'medium', 'iam-audit skill misreads custom roles', 'ariel', 'Acknowledged'], ['#38', 'low', 'Typo in the log-triage report heading', 'jdoe', 'Open'], ['#41', 'high', 'rotate-service-keys deletes key before new one is active', 'sre_ok', 'Fixed in 1.60922.1']],
       sev: 'medium', sevCounts: '0 high · 1 medium · 1 low open'
     },
     pack2: {
       token: 'pack2', name: '@dana-k/sql-tidy', icon: 'SQ', pub: 'dana-k', pubMark: null, pubId: 'dana',
-      version: '1.61009.1', channel: 'past cooldown', minEngine: '1.60901.1', requires: [], updated: '12 d ago', license: 'MIT',
+      version: '1.61009.1', minEngine: '1.60901.1', requires: [], updated: '12 d ago', license: 'MIT',
       summary: 'Format, lint and explain SQL across Postgres, BigQuery and DuckDB.',
       rating: 3.9, ratings: 31, dist: [35, 36, 16, 10, 3], fetches: '640', delta: '+4% vs prior 7 d',
       pulse: [18, 22, 20, 25, 19, 24, 28, 26, 30, 27, 25, 29, 31, 28, 33, 30, 29, 34, 32, 36, 31, 35, 38, 34, 37, 40, 36, 39, 42, 41],
@@ -748,11 +756,17 @@ jobs:
     var legend = '<span class="legend">' + c.map(function (n, i) { return n ? '<b>' + n + '</b><span>' + TYPES[i] + '</span>' : ''; }).join('') + '</span>';
     return hc(shapeSvg(c) + (withTotal ? '<span class="muted">' + esc(inventoryLine(c)) + '</span>' : ''), legend, 'contents:' + p.token, total + ' items: ' + inventoryLine(c));
   }
+  /* Pre-install manifest: one bottom-line line; the full list is one click away. A version that widens it is flagged. */
   function effectsHtml(p) {
-    return '<ul class="effects" aria-label="What adopting this pack adds">' + p.effects.map(function (e) {
-      var line = '<span class="k">' + esc(e[0]) + '</span>';
-      return '<li>' + line + (e[2] ? hc('<span>' + esc(e[1]) + '</span>', e[2], 'contents:' + p.token, e[0] + ': ' + e[1]) : '<span>' + esc(e[1]) + '</span>') + '</li>';
-    }).join('') + '</ul>';
+    var w = p.versions[0][4];
+    return '<p class="effects-line"><button type="button" data-sheet="effects:' + p.token + '"><span class="lead">Adds</span> ' + p.effects.map(function (e) { return esc(e[0]); }).join(' · ') + (w ? ' · <span class="flag">widened in ' + esc(p.versions[0][0]) + '</span>' : '') + ' <span class="muted">›</span></button></p>';
+  }
+  function effectsDrawer(p) {
+    var w = p.versions[0][4];
+    return '<div class="effects-drawer">' + (w ? '<p class="ink2" style="margin-bottom:16px"><b>Widened in ' + esc(p.versions[0][0]) + ':</b> ' + esc(w) + '</p>' : '') +
+      '<ul class="effects" aria-label="What adopting this pack adds">' + p.effects.map(function (e) {
+        return '<li><span class="k">' + esc(e[0]) + '</span><span>' + esc(e[1]) + '</span>' + (e[2] ? '<span class="d mono">' + e[2] + '</span>' : '') + '</li>';
+      }).join('') + '</ul><p class="muted small" style="margin-top:20px">Derived from the pack\'s files at validation; a version that adds a guard, a task, a forced skill or a GitHub permission is flagged as widening.</p></div>';
   }
   function adoptSnippet(p, version) {
     return 'packs:\n  declared:\n    - ' + p.name + (version ? '\n      version: "' + version + '"   # optional freeze' : '');
@@ -781,7 +795,7 @@ jobs:
       '<a class="name" href="#' + p.token + '">' + esc(p.name) + '</a>' +
       '<div class="by">' + pubMark(p) + '</div>' +
       '<p class="sum">' + esc(p.summary) + '</p>' +
-      '<div class="marks">' + trustMark(p, false) + shapeMark(p, false) + ratingMark(p) + (p.pulse ? '<span class="only-publisher">' + pulseMark(p.pulse, p.fetches || '—', p.delta || '', '') + '</span>' : '') + '</div>' +
+      '<div class="marks">' + trustMark(p, false) + (p.repo === null ? '<span class="muted small">No public repo</span>' : '') + shapeMark(p, false) + ratingMark(p) + (p.pulse ? '<span class="only-publisher">' + pulseMark(p.pulse, p.fetches || '—', p.delta || '', '') + '</span>' : '') + '</div>' +
       '</article>';
   }
   function renderCards(id, list) { var el = document.getElementById(id); if (el) el.innerHTML = list.map(cardHtml).join(''); }
@@ -803,8 +817,8 @@ jobs:
     var readable = p.token === 'pack';
     var contents = '<table class="ctable">' + TYPES.map(function (t) { var items = p.contents[t]; return items.length ? '<tr><td>' + t + (t === 'rules' ? '' : ' · ' + items.length) + '</td><td class="mono small">' + items.map(function (n) { var label = t === 'checks' ? n + (CODED[n] ? ' (coded, Go)' : ' (declared)') : n; return readable ? '<a href="#read" data-file="' + esc(filePath(t, n)) + '">' + esc(label) + '</a>' : esc(label); }).join(', ') + '</td></tr>' : ''; }).join('') +
       '<tr><td>manifest</td><td class="mono small">' + (readable ? '<a href="#read" data-file="pack.json">pack.json</a>' : 'pack.json') + ' <span class="muted">· version ' + esc(p.version) + ' · minEngineVersion ' + esc(p.minEngine) + ' · requires ' + (p.requires.length ? esc(p.requires.join(', ')) : 'none') + '</span></td></tr></table>';
-    var versions = '<ul class="rows">' + p.versions.map(function (v, i) { return '<li><button type="button" data-sheet="version:' + p.token + ':' + i + '"><span class="k mono" style="width:76px">' + esc(v[0]) + '</span><span class="g">' + esc(v[3]) + '</span><span class="m">' + (v[2] === 'revoked' ? 'revoked · ' : (i === 0 ? esc(p.channel) + ' · ' : '')) + esc(v[1]) + '</span></button></li>'; }).join('') + '</ul>' +
-      '<p class="muted small" style="margin-top:12px">A repo takes the newest version past its cooldown that fits its engine and is not revoked; it never rolls back. A revoked version is never selected again, but repos already holding it keep it and are told why.</p>';
+    var versions = '<ul class="rows">' + p.versions.map(function (v, i) { return '<li><button type="button" data-sheet="version:' + p.token + ':' + i + '"><span class="k mono" style="width:76px">' + esc(v[0]) + '</span><span class="g">' + esc(v[3]) + '</span><span class="m">' + (v[2] === 'revoked' ? 'revoked · ' : (v[4] ? 'widens · ' : '')) + esc(v[1]) + '</span></button></li>'; }).join('') + '</ul>' +
+      '<p class="muted small" style="margin-top:12px">A repo takes the newest version that fits its engine and is not revoked, after any wait its own settings ask for; it never rolls back. A revoked version is never selected again, but repos already holding it keep it and are told why.</p>';
     var reviews = '<ul class="rows">' + p.reviews.map(function (r, i) { return '<li><button type="button" data-sheet="review:' + p.token + ':' + i + '"><span class="k">' + r[0] + '.0</span><span class="g">' + esc(r[4]) + '</span><span class="m">' + esc(r[1]) + '</span></button></li>'; }).join('') + '</ul>';
     var issues = '<ul class="rows">' + p.issues.map(function (i) { return '<li><div><span class="k sev" style="width:14px">' + sevSvg(i[1]) + '</span><span class="g">' + esc(i[2])+ '</span><span class="m">' + esc(i[4]) + '</span></div></li>'; }).join('') + '</ul>';
     var reportLabel = p.repo ? 'Report on GitHub ↗' : 'Report a bug';
@@ -823,7 +837,7 @@ jobs:
       '<p class="adopt-note">Lands as a pull request; updates arrive the same way. Or declare it in .claudinite/settings.yaml, with an optional version freeze.</p>' +
       (readable ? '<p class="small" style="margin-top:8px"><a href="#read">Read the pack</a> <span class="muted">· every file, as published</span></p>' : '') +
       '<div class="facts">' + ratingMark(p) + shapeMark(p, true) + pulseMark(p.pulse, p.fetches, p.delta, 'fetched by ' + p.fetches + ' repos / 7 d') + sevMark(p) + '</div>' +
-      '<p class="muted small" style="margin-top:12px">Updated ' + esc(p.updated) + ' · ' + esc(p.version) + ' · ' + esc(p.channel) + ' · minEngineVersion ' + esc(p.minEngine) + ' · ' + esc(p.license) + ' · ' + src + '</p>' +
+      '<p class="muted small" style="margin-top:12px">Updated ' + esc(p.updated) + ' · ' + esc(p.version) + ' · minEngineVersion ' + esc(p.minEngine) + ' · ' + esc(p.license) + ' · ' + src + '</p>' +
       '<div class="tabs" role="tablist" aria-label="Pack sections">' +
         ['readme', 'contents', 'versions', 'reviews', 'issues'].map(function (t, i) { return '<button type="button" role="tab" data-tab="' + t + '" aria-selected="' + (i === 0) + '">' + t.charAt(0).toUpperCase() + t.slice(1) + '</button>'; }).join('') +
       '</div>' +
@@ -1142,18 +1156,19 @@ jobs:
   function trustDrawer(p) {
     return '<p class="row" style="gap:10px;margin-bottom:16px"><span class="mark word">' + trustSvg(p.trust) + '<span>' + esc(p.trustWord) + '</span></span>' + (p.trustReason ? '<span class="muted">· ' + esc(p.trustReason) + '</span>' : '') + '</p>' +
       '<ul class="rows" style="margin-bottom:20px;display:grid;gap:4px">' + p.trustRows.map(function (r) { return '<li style="display:flex;gap:8px"><span class="mono" style="color:var(--' + (r[0] === 'y' ? 'ok' : 'muted') + ')">' + (r[0] === 'y' ? '✓' : '–') + '</span><span>' + esc(r[1]) + '</span></li>'; }).join('') + '</ul>' +
-      kv([['Validation', esc(p.valId) + ' · passed' + (p.trustRows[0][1].indexOf('warning') > -1 ? ' · 1 warning' : '') + ' · <a href="#validation" data-val="' + p.valRun + '">Full report</a>'], ['Cooldown', esc(p.channel) + ' · signed index', 'small'], ['SHA-256', esc(p.sha), 'mono small'], ['Signature', esc(p.signed), 'small'], ['Source', p.repo ? '<a href="#' + p.token + '">' + esc(p.repo) + '</a> · built from tag ' + esc(p.version) : 'No public repo. Uploaded as an archive; every file is readable in Contents.', 'small'], ['Publisher', esc(p.verifiedHow), 'small']]) +
+      kv([['Validation', esc(p.valId) + ' · passed' + (p.trustRows[0][1].indexOf('warning') > -1 ? ' · 1 warning' : '') + ' · <a href="#validation" data-val="' + p.valRun + '">Full report</a>'], ['Published', esc(p.versions[0][1]) + ' · signed index', 'mono small'], ['SHA-256', esc(p.sha), 'mono small'], ['Signature', esc(p.signed), 'small'], ['Source', p.repo ? '<a href="#' + p.token + '">' + esc(p.repo) + '</a> · built from tag ' + esc(p.version) : 'No public repo. Uploaded as an archive; every file is readable in Contents.', 'small'], ['Publisher', esc(p.verifiedHow), 'small']]) +
       '<p class="muted small" style="margin-top:20px">What this does not prove: that the pack is safe for your environment. Validation checks structure, secrets, known-bad patterns and the pack\'s own tests.</p>' +
       '<p class="muted small" style="margin-top:12px">Pack score: coming soon; formula published with it.</p>';
   }
   function sheet(key) {
     var parts = key.split(':'), kind = parts[0], p = PACKS[parts[1]], i = Number(parts[2]);
     if (kind === 'trust') return openDrawer('Trust', trustDrawer(p));
-    if (kind === 'version') { var v = p.versions[i], frz = adoptSnippet(p, v[0]); return openDrawer(p.name.split('/')[1] + ' ' + v[0], '<p class="ink2">' + esc(v[3]) + '</p>' + kv([['Released', v[1], 'mono small'], ['Validation', v[2] === 'revoked' ? 'Revoked · advisory PS-2026-014 · never selected by an update; repos holding it keep it' : 'Passed · <a href="#validation" data-val="gcp">report</a>'], ['Cooldown', v[2] === 'revoked' ? 'revoked' : esc(p.channel), 'small'], ['SHA-256', esc(p.sha), 'mono small'], ['Engine', 'minEngineVersion ' + esc(p.minEngine), 'mono small'], ['Requires', p.requires.length ? esc(p.requires.join(', ')) : 'none', 'mono small'], ['Adopt', 'cn adopt ' + esc(p.name), 'mono small'], ['Freeze', '<pre style="font-size:12px">' + esc(frz) + '</pre>', 'small']]) + '<div class="actions"><button class="btn" type="button" data-copy="cn adopt ' + esc(p.name) + '">Copy adopt command</button><button class="btn quiet" type="button" data-copy="' + esc(frz) + '">Copy freeze</button></div>'); }
+    if (kind === 'effects') return openDrawer('What adopting adds', effectsDrawer(p));
+    if (kind === 'version') { var v = p.versions[i], frz = adoptSnippet(p, v[0]); return openDrawer(p.name.split('/')[1] + ' ' + v[0], '<p class="ink2">' + esc(v[3]) + '</p>' + kv([['Released', v[1], 'mono small'], ['Effects', v[4] ? 'Widens: ' + esc(v[4]) : 'No change to what adopting adds', 'small'], ['Validation', v[2] === 'revoked' ? 'Revoked · advisory PS-2026-014 · never selected by an update; repos holding it keep it' : 'Passed · <a href="#validation" data-val="gcp">report</a>'], ['SHA-256', esc(p.sha), 'mono small'], ['Engine', 'minEngineVersion ' + esc(p.minEngine), 'mono small'], ['Requires', p.requires.length ? esc(p.requires.join(', ')) : 'none', 'mono small'], ['Adopt', 'cn adopt ' + esc(p.name), 'mono small'], ['Freeze', '<pre style="font-size:12px">' + esc(frz) + '</pre>', 'small']]) + '<div class="actions"><button class="btn" type="button" data-copy="cn adopt ' + esc(p.name) + '">Copy adopt command</button><button class="btn quiet" type="button" data-copy="' + esc(frz) + '">Copy freeze</button></div>'); }
     if (kind === 'review') { var r = p.reviews[i]; return openDrawer('Review', '<p class="muted small">' + stars(r[0]) + ' · ' + esc(r[1]) + ' · ' + esc(r[2]) + ' · ' + esc(r[3]) + '</p><h3 style="margin-top:12px">' + esc(r[4]) + '</h3><p class="ink2" style="margin-top:8px">' + esc(r[5]) + '</p><div class="actions"><button class="btn quiet" type="button" data-auth="mark helpful" data-toast="Marked helpful">Helpful · ' + r[6] + '</button><button class="btn quiet" type="button" data-auth="flag" data-toast="Flagged for moderators">Flag</button></div>'); }
     if (kind === 'contents-gcp') return openDrawer('Contents', '<table class="ctable">' + TYPES.map(function (t) { var items = PACKS.pack.contents[t]; return items.length ? '<tr><td>' + t + ' · ' + items.length + '</td><td class="mono small">' + items.map(esc).join(', ') + '</td></tr>' : ''; }).join('') + '</table>');
     if (kind === 'claude-code') return openDrawer('For Claude Code', '<p class="ink2">A Claude Code session can discover packs over MCP and propose one for the repo. Adopting is cn adopt, which lands a pull request; nothing is fetched at session time.</p><div class="install"><pre>https://packs.example/mcp</pre><button class="btn" type="button" data-copy="https://packs.example/mcp">Copy</button></div>' + kv([['Tools', 'search_packs · get_pack · list_categories · fetch_pack', 'mono small'], ['Auth', 'None for public packs; a read token for private packs, kept in the repo\'s CI secrets and used by its update task and cn adopt', 'small'], ['Limits', '120 calls / min anonymous · 1,000 with a token', 'small']]));
-    if (kind === 'proves') return openDrawer('What validation checks', kv([['Manifest', 'pack.json, .yaml or .toml (exactly one): version 1.YMMDD.n, minEngineVersion, requires', 'small'], ['Contents', 'RULES.md, skills, declared-checks.json, checks/*.go, tasks/*/task.json resolve; no undeclared executables', 'small'], ['Effects', 'Guards and the tool calls they judge, tasks and cadence, forced skills, GitHub actions requested: derived and shown on the pack page', 'small'], ['Secrets', '48 detectors across all files', 'small'], ['Imports', 'Go checks: check SDK and standard library only; task workers: @claudinite/sdk only', 'small'], ['Prose', 'RULES.md and SKILL.md scanned as code: operator override, exfiltration, hidden behavior', 'small'], ['Tests', 'The pack\'s test/ folder in a container (stripped by cn vendor)', 'small'], ['Size', '3 MB archive', 'small']]) + '<p class="muted small" style="margin-top:16px">It does not run the pack against your data or judge whether its advice is correct.</p>');
+    if (kind === 'proves') return openDrawer('What validation checks', kv([['Manifest', 'pack.json, .yaml or .toml (exactly one): version (any semver x.y.z), minEngineVersion, requires', 'small'], ['Contents', 'RULES.md, skills, declared-checks.json, checks/*.go, tasks/*/task.json resolve; no undeclared executables', 'small'], ['Effects', 'Guards and the tool calls they judge, tasks and cadence, forced skills, GitHub actions requested: derived and shown on the pack page', 'small'], ['Secrets', '48 detectors across all files', 'small'], ['Imports', 'Go checks: check SDK and standard library only; task workers: @claudinite/sdk only', 'small'], ['Prose', 'RULES.md and SKILL.md scanned as code: operator override, exfiltration, hidden behavior', 'small'], ['Tests', 'The pack\'s test/ folder in a container (stripped by cn vendor)', 'small'], ['Size', '3 MB archive', 'small']]) + '<p class="muted small" style="margin-top:16px">It does not run the pack against your data or judge whether its advice is correct.</p>');
     if (kind === 'verification') return openDrawer('Verification', kv([['Domains', 'google.com · cloud.google.com', 'small'], ['Method', 'DNS TXT record, re-checked every 30 days', 'small'], ['GitHub org', 'googlecloudplatform', 'mono small'], ['Verified on', '2026-03-04', 'mono small'], ['Members', 'MFA enforced for all 6', 'small']]));
     if (kind === 'publisher-other') return openDrawer('Publisher', '<p class="ink2">Verification details for this publisher would appear here; the publisher page is a deep link.</p>');
     if (kind === 'status') {
@@ -1168,7 +1183,7 @@ jobs:
     }
     if (kind === 'manage') {
       var m = DASH.filter(function (x) { return x.id === parts[1]; })[0];
-      return openDrawer(m.name.replace('@google/', ''), '<p class="muted small" style="margin-bottom:16px">' + esc(m.line) + '</p>' + kv([['Versions', m.latest === '—' ? 'None yet' : esc(m.latest) + ' · <a href="#pack">all versions</a>', 'small'], ['Source', m.priv || m.id === 'vertex' ? 'Upload' : 'GitHub · tag = version (1.YMMDD.n) · awaiting approval until an Owner approves', 'small'], ['Access', m.priv ? 'Private · 6 people · 2 read tokens (update task, cn adopt)' : 'Public', 'small'], ['Billing', m.id === 'vertex' ? 'Credit held, not charged' : 'Credit consumed · receipt', 'small']]) + '<div class="actions">' + (m.status === 'needs' ? '<button class="btn primary" type="button" data-sheet="status:' + m.id + '">Act on this</button>' : '') + '<button class="btn" type="button" data-passkey="Mint a read token for ' + esc(m.name) + '" data-toast="Token shown once: psr_live_8d…">Mint read token</button><button class="btn quiet" type="button" data-toast="Settings would open">Settings</button></div>');
+      return openDrawer(m.name.replace('@google/', ''), '<p class="muted small" style="margin-bottom:16px">' + esc(m.line) + '</p>' + kv([['Versions', m.latest === '—' ? 'None yet' : esc(m.latest) + ' · <a href="#pack">all versions</a>', 'small'], ['Source', m.priv || m.id === 'vertex' ? 'Upload' : 'GitHub · tag = version (semver) · awaiting approval until an Owner approves', 'small'], ['Access', m.priv ? 'Private · 6 people · 2 read tokens (update task, cn adopt)' : 'Public', 'small'], ['Billing', m.id === 'vertex' ? 'Credit held, not charged' : 'Credit consumed · receipt', 'small']]) + '<div class="actions">' + (m.status === 'needs' ? '<button class="btn primary" type="button" data-sheet="status:' + m.id + '">Act on this</button>' : '') + '<button class="btn" type="button" data-passkey="Mint a read token for ' + esc(m.name) + '" data-toast="Token shown once: psr_live_8d…">Mint read token</button><button class="btn quiet" type="button" data-toast="Settings would open">Settings</button></div>');
     }
   }
 
