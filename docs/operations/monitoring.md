@@ -134,7 +134,7 @@ or rolls back.
 ## Synthetic monitoring
 
 The **prober** (cron Worker, every 5 minutes, every minute during a rollout) runs the probe-safe
-scenarios as `@probe` against production and every staged version: `install.public_pack`,
+scenarios as `@probe` against production and every staged version: `adopt.public_pack`,
 `update_check.signed_index`, `search.lexical_and_semantic`, `mcp.initialize_and_search`,
 `auth.email_code_roundtrip`, `publish.dry_run` (a scheduled GitHub Action in the private `probe`
 repository posting to `/probe-results`; hourly, every 15 minutes against a candidate), and
@@ -161,7 +161,7 @@ Pages (Pushover, to Ariel only):
 
 | Page | Trigger | Already done by the system |
 |---|---|---|
-| `page.read_path_burn` | tier 1 or 2 burn on install, update check, search or MCP | controller rolls back if a rollout is in progress |
+| `page.read_path_burn` | tier 1 or 2 burn on adopt/fetch, update check, search or MCP | controller rolls back if a rollout is in progress |
 | `page.site_down_external` | witness fails 2 consecutive probes | status page kept honest |
 | `page.hash_mismatch` | any server-observed mismatch, or two principals reporting one version | version quarantined, cache key purged |
 | `page.index_signature` | prober-observed verification failure after one automatic regeneration | one regeneration attempted |

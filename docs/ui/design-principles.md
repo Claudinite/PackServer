@@ -3,7 +3,7 @@
 The site shows the verdict and keeps the evidence one gesture away. The visual direction was
 settled in PR #4 (`design-direction.md` v2 and the `wireframes-v2.html` prototype); this page keeps
 what is still true after the decisions of 2026-10-22. The prototype's stale labels ("Signed
-(Sigstore)", "6/6 tests", GitHub orgs on Team allowlists) are not carried.
+(Sigstore)", "6/6 tests") are not carried.
 
 ## Rules
 
@@ -18,7 +18,7 @@ what is still true after the decisions of 2026-10-22. The prototype's stale labe
 4. **One alert per screen, only if the viewer must act.** Informational events go to a plain
    activity list.
 5. **Card budget:** name, publisher mark with its source, one line of pitch, shape glyph, score,
-   rating number, "No public source" when it applies. Nothing else.
+   rating number, "No public repo" when it applies. Nothing else.
 6. **Hover tells, click opens.** Hover is a tooltip-sized breakdown of at most five lines with no
    actions; click is a drawer with the full record and actions. Never a navigation just to see a
    breakdown.

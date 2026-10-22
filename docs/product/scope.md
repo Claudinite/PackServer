@@ -38,7 +38,7 @@
   policy decides.
 - **No channels, soak or cooldown.** A version is served the moment it is promoted and carries its
   `published_at`; when a repository takes it is the repository's setting in cn.
-- **No ranking by installs or stars by default.** The default sort is the pack score; the
+- **No ranking by fetch counts or stars by default.** The default sort is the pack score; the
   community signals stay visible and selectable.
 - **No agentic validation.** Nothing in the pipeline has tools, a loop or discretion; the one
   model returns probabilities that code compares to thresholds, and it can only hold.

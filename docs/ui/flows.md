@@ -44,7 +44,7 @@ routes to registry security alone when the pack has no security contact.
 ## 5. Publish by upload
 
 Wizard, one step per screen: drag the `tar.zst` (≤ 3 MB) → presigned resumable upload straight to
-staging → live validation log → listing (category, tags, repository or confirm "No public source")
+staging → live validation log → listing (category, tags, repository or confirm "No public repo")
 → visibility → pay (one credit, buy a bundle of 5 for $5 if none, skipped for Verified Publishers)
 → publish with a passkey. Draft persists on the dashboard. A validated version waits as "awaiting
 approval" when staged publishing applies. The staged upload expires after 14 days.
@@ -70,7 +70,9 @@ located finding; fork or unsafe event → refused; JWKS unreachable → fails cl
 prefix, answer within 4 minutes, create nothing and cost nothing (20 a day). `cn lint` reports the
 same findings and score offline. A failed publish shows failures first; "Re-run" for infrastructure
 errors, "Resubmit" for a new archive, "Appeal" once (2,000 chars) for a rejection; a held version
-shows "Under review" until an admin decides.
+shows "Under review" until an admin decides. The report gives the verdict and, for a prose-screen
+hold, quotes the flagged passage; it never shows a probability or a threshold, and validation runs,
+re-runs and dry-runs are rate-limited per publisher (REQ-VAL-021, REQ-VAL-050).
 
 ## 8. Pay through Polar
 

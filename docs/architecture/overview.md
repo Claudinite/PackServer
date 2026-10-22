@@ -121,7 +121,10 @@ from `workers-oauth-provider`. Tools and shapes: [apis.md](apis.md).
 Polar is merchant of record. The billing Worker creates checkout sessions with `scope_id` and
 `user_id` in metadata, verifies Standard Webhooks signatures at `/hooks/polar`, writes the event to
 D1 and answers within 2 s, and lets a Queue consumer apply it; an hourly cron reconciles against
-Polar's API. Products: credit bundles, the Verified Publisher yearly subscription, Team seats.
+Polar's API through the same idempotent handler and writes two audit events: `billing.reconciled`
+with the number of events it had to repair, and `billing.endpoint_disabled` when Polar reports the
+webhook endpoint disabled (PR #3 §9); monitoring alerts on both. Products: credit bundles, the
+Verified Publisher yearly subscription, Team seats.
 Requirements: [../requirements/billing.md](../requirements/billing.md).
 
 ## Community and ranking
@@ -140,6 +143,20 @@ ownership with the Actions OIDC token, people with GitHub sign-in or the device-
 CI with `psr_` tokens. Phases after v1: invites and links, gated access with `access_requests`,
 org teams and seats, domain access, enterprise SSO. Requirements:
 [../requirements/private-packs.md](../requirements/private-packs.md).
+
+## Scheduled work
+
+Every cron is a Worker trigger; none runs inside a Claude Code session.
+
+| Cadence | Job | Requirement |
+|---|---|---|
+| Hourly | Polar reconciliation (above) | REQ-PAY-014 |
+| Hourly | 30-day fetch-count rollup | REQ-TELEM-003 |
+| Weekly | Public adoption scan: the `github` Worker searches public repositories through GitHub code search for Claudinite settings files and reads the packs they declare; a run stops after 10 minutes and the next resumes from its saved cursor; it never reads a private repository; the counts feed the declaring-repo count on the pack page, ranking and Trending | REQ-TELEM-007 |
+| Weekly | URL domains in live prose re-resolved; the thousand most-declared packs re-run the full pipeline | REQ-VAL-018 |
+| Every 30 days per scope | Domain proof re-check | REQ-SCOPE-006 |
+| Daily | Audit chain head to Sigstore Rekor and `/.well-known/audit-heads`; nightly chain verifier | REQ-AUDIT-005 |
+| Every 5 minutes (every minute during a rollout) | The gate judge and the synthetic prober | [../operations/monitoring.md](../operations/monitoring.md) |
 
 ## Email
 

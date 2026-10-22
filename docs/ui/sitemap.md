@@ -39,17 +39,17 @@ Pages, roles and the permission matrix. Flows: [flows.md](flows.md). Principles:
 | Page | Primary elements | Actions |
 |---|---|---|
 | home | Search box; category grid; Recently published and Trending rails; a muted footer line pointing agents to `/mcp` | Search, open pack, sign in |
-| browse | Results as cards (design budget); one row of filter toggles: category, part, verified only, verified domains, has repository; sort (score default, stars, rating, recent, fetches) | Filter, sort, open |
-| pack | Name and pitch; publisher mark with source; pre-install manifest line; adopt block; repository link or "No public source"; score; shape glyph; rating; Pulse; tabs | Star, review, report, comment on a section, copy adopt snippet, switch version; publisher: manage menu |
+| browse | Results as cards (design budget); one row of filter toggles: category, part, Verified publisher, has repository; sort (score default, stars, rating, recent, fetches) | Filter, sort, open |
+| pack | Name and pitch; publisher mark with source; pre-install manifest line; adopt block; repository link or "No public repo"; score; shape glyph; rating; Pulse; tabs | Star, review, report, comment on a section, copy adopt snippet, switch version; publisher: manage menu |
 | pack › contents | Every file by part, each rendered read-only with section anchors and collapsed comments | Comment, vote |
 | pack › versions | Each version: number, `published_at`, status, sha256, `minEngineVersion`, `requires`, score, manifest widening marker | Open report, open attestation |
 | publisher | Handle, proofs, Verified Publisher mark, packs | Open packs |
-| claude-code | Endpoint URL; tools `search_packs`, `list_categories`, `get_pack`, `get_download`; how a session uses them and proposes `cn adopt`; private access via Actions OIDC; client config; rate limits | Copy config |
+| claude-code | Endpoint URL; tools `search_packs`, `list_categories`, `get_pack`, `get_download`; how a session uses them and proposes `cn adopt`; private packs over MCP after OAuth sign-in or with a `psr_` read token (REQ-SEARCH-009 to 011), and in CI with the Actions OIDC token; client config; rate limits | Copy config |
 | signin | Passkey (default), GitHub; email code for sign-up and recovery only; handle step on first login | Sign in, sign up |
 | account › security | Factors with last used, recovery-code reminder, sessions with revoke, tokens with last used, security history | Add or remove factor, revoke, mint token (passkey) |
 | dashboard | Needs-you queue; packs with status, newest version, fetches, declaring repos, open issues; drafts; private packs | New pack, approve, resume draft |
-| publish | One step per screen: source (GitHub repository and path, or upload marked "No public source") → validate (live log) → listing (category, tags, repository) → visibility (public, private) → pay (one credit; buy a bundle; skipped for Verified Publishers) → publish (passkey) | Next, back, save draft |
-| validation | One-sentence verdict; "Show report" list of findings with file, line, rule, hint; previous runs; re-run and dry-run | Re-run, resubmit, download log |
+| publish | One step per screen: source (GitHub repository and path, or upload marked "No public repo") → validate (live log) → listing (category, tags, repository) → visibility (public, private) → pay (one credit; buy a bundle; skipped for Verified Publishers) → publish (passkey) | Next, back, save draft |
+| validation | One-sentence verdict; "Show report" list of findings with file, line, rule, hint, and for a prose-screen hold the quoted passage, never a probability or threshold; previous runs; re-run and dry-run, both rate-limited | Re-run, resubmit, download log |
 | github | Per pack: repository, path, trigger, trusted publisher (owner, repository, workflow, environment); recent runs with in-site status; copy workflow YAML | Add, edit, disable |
 | org settings | Name and handle; domain proof (record shown, Check now) and GitHub org proof; members and roles; require MFA or passkeys only; transfer and delete | Prove, invite, change role |
 | access | Visibility; allowlist of GitHub accounts with added-by and last fetch; fetches by account and repository; denied attempts | Add or remove (passkey), change visibility (passkey) |
