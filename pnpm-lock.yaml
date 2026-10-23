@@ -71,6 +71,9 @@ importers:
       '@packserver/ports':
         specifier: workspace:*
         version: link:../ports
+      '@packserver/rules':
+        specifier: workspace:*
+        version: link:../rules
       '@packserver/schema':
         specifier: workspace:*
         version: link:../schema
