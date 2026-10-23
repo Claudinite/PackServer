@@ -131,7 +131,7 @@ describe("IT-AUDIT-005 chain half", () => {
     await consume(0, 2);
     await consume(2, 4);
     await consume(4, 6);
-    bucket.tamper(bucket.batchKeys()[1]!, 400);
+    bucket.tamper(bucket.batchKeys()[1]!, { alter: true, offset: 400 });
     expect((await chainErrors(bucket)).length).toBeGreaterThan(0);
   });
 
@@ -284,7 +284,7 @@ describe("IT-AUDIT-005 chain half", () => {
     const { audit, bucket, consume } = setup();
     await audit({ kind: "system" }, "admin.action", "t");
     await consume(0);
-    bucket.tamper(bucket.batchKeys()[0]!, 50);
+    bucket.tamper(bucket.batchKeys()[0]!, { alter: true, offset: 50 });
     bucket.objects.delete(HEAD_KEY);
     await expect(consume(0)).rejects.toThrow(/does not continue the chain/);
   });
