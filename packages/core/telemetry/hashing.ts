@@ -84,9 +84,15 @@ const decodeOnce = (text: string): string =>
     return code < 128 ? String.fromCharCode(code) : m;
   });
 
+const isLetter = (c: string | undefined): boolean => c !== undefined && /[A-Za-z_]/.test(c);
+
 /**
  * Whether some window of the run is a valid address, found by walking forward from each start in
- * one pass (no allocation, at most MAX_V6 steps per start). `std::vector`'s `d::` is not one.
+ * one pass (no allocation, at most MAX_V6 steps per start). A full eight-group address always
+ * counts. A compressed one (`::`) counts only with a decimal digit in it, which keeps scope
+ * paths such as `Foo::bar`, `A::B` and `a::b` intact, and when it has three or more groups or no
+ * letter touching either end, so `Foo2::bar9` stays while `x2001:db8::1` and `a2001:db8::1` are
+ * still scrubbed.
  */
 function holdsIpv6(run: string, offset: number, whole: string): boolean {
   for (let start = 0; start < run.length; start++) {
@@ -95,12 +101,14 @@ function holdsIpv6(run: string, offset: number, whole: string): boolean {
     let groupLen = 0;
     let colons = 0;
     let doubles = 0;
+    let digit = false;
     const stop = Math.min(run.length, start + MAX_V6);
     for (let j = start; j < stop; j++) {
       const c = run[j] as string;
       if (isHex(c)) {
         if (++groupLen > 4) break;
         if (groupLen === 1) groups++;
+        if (c <= "9") digit = true;
       } else {
         colons++;
         if (j > start && run[j - 1] === ":" && ++doubles > 1) break;
@@ -109,7 +117,10 @@ function holdsIpv6(run: string, offset: number, whole: string): boolean {
       const endsOnColon = c === ":";
       if (endsOnColon && !(j > start && run[j - 1] === ":")) continue;
       if (colons < 2 || (doubles === 1 ? groups >= 8 : groups !== 8 || doubles !== 0)) continue;
-      if (endsOnColon && /[A-Za-z_]/.test(whole[offset + j + 1] ?? "")) continue;
+      if (doubles === 1) {
+        const glued = isLetter(whole[offset + start - 1]) || isLetter(whole[offset + j + 1]);
+        if (!digit || (groups < 3 && glued)) continue;
+      }
       return true;
     }
   }
@@ -132,20 +143,27 @@ const CONTROL = /[\u0000-\u001f\u007f]/g;
  * NFKC (full-width digits and colons), and scrubbed at every percent-decoding level, since a
  * decode can create an address or destroy one. Dotted IPv4 with decimal or `0x` parts is
  * recognised; the shorthand `127.1` and the bare integer `2130706433` are not, since they cannot
- * be told from versions, decimals, byte counts and timestamps. `std::vector` is left alone.
+ * be told from versions, decimals, byte counts and timestamps. Scope paths such as `std::vector` are left alone (see `holdsIpv6`).
  * Text with nothing to scrub comes back as given (cut to length); text with an address comes
  * back in its decoded form with control characters removed.
  */
 export function scrubIp(text: string): string {
-  const input = text.length > MAX_SCRUBBED_LENGTH ? text.slice(0, MAX_SCRUBBED_LENGTH) : text;
+  const input = cut(text);
   let current = input.normalize("NFKC");
   let found = false;
   for (let level = 0; level < 8; level++) {
     const scrubbed = scrubLevel(current);
     if (scrubbed !== current) found = true;
-    const next = decodeOnce(scrubbed);
-    current = next;
-    if (next === scrubbed) break;
+    current = decodeOnce(scrubbed);
+    if (current === scrubbed) break;
   }
-  return found ? current.replace(CONTROL, "") : input;
+  const last = scrubLevel(current);
+  if (last !== current) found = true;
+  return found ? last.replace(CONTROL, "") : input;
+}
+
+/** A cut value loses any trailing run of address-like characters, so the cut cannot leave half an address. */
+function cut(text: string): string {
+  if (text.length <= MAX_SCRUBBED_LENGTH) return text;
+  return text.slice(0, MAX_SCRUBBED_LENGTH).replace(/[0-9a-f:.%]+$/i, "");
 }

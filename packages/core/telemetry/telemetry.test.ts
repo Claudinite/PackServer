@@ -380,7 +380,7 @@ describe("review fixes", () => {
     expect([...out].some((ch) => ch.charCodeAt(0) < 32)).toBe(false);
     expect(out).not.toMatch(/10\.0\.0\.1|1\.2\.3\.4|db8|198|7f|0xC0|2001|:0:0|10\.0\.0\.2|:2$/);
   });
-  it.each(["std::vector", "1.2.3", "10:20:30", "1.2.3.256", "v1.2.3-beta", "12:00", "ns::Type<int>", "2026-10-22T10:20:30Z", "2130706433", "127.1", "100% sure", "3.14", "%ZZ"])("leaves %s alone", (text) => {
+  it.each(["std::vector", "1.2.3", "10:20:30", "1.2.3.256", "v1.2.3-beta", "12:00", "ns::Type<int>", "Foo::bar", "Module::decode", "Class::add", "A::B", "a::b", "Foo2::bar9", "Result::ok1", "2026-10-22T10:20:30Z", "2130706433", "127.1", "100% sure", "3.14", "%ZZ"])("leaves %s alone", (text) => {
     expect(scrubIp(text)).toBe(text);
   });
 
@@ -402,7 +402,7 @@ describe("review fixes", () => {
 });
 
 describe("scrub cost and edges", () => {
-  it("handles colon-dense and long input quickly", () => {
+  it("scans 20 KB of colon-dense filler in under 50 ms", () => {
     for (const filler of ["a:", ":", "a::", "1:2:"]) {
       const input = filler.repeat(Math.ceil(20_000 / filler.length));
       const started = performance.now();
@@ -410,6 +410,18 @@ describe("scrub cost and edges", () => {
       expect(performance.now() - started).toBeLessThan(50);
     }
     expect(scrubIp("x".repeat(5000))).toHaveLength(2048);
+  });
+  it("scans the text of the final decoding level too", () => {
+    let deep = "10%2E0%2E0%2E2";
+    for (let i = 0; i < 7; i++) deep = deep.replaceAll("%", "%25");
+    expect(scrubIp(`x 10.0.0.1 ${deep}`)).toBe("x [ip] [ip]");
+  });
+  it("does not leak half an address across the length cut", () => {
+    const v4 = scrubIp("x".repeat(2040) + "198.51.100.77");
+    expect(v4).toBe("x".repeat(2040));
+    const v6 = scrubIp("x".repeat(2030) + "2001:db8:85a3:0:0:8a2e:370:7334");
+    expect(v6).not.toMatch(/\d/);
+    expect(v6.length).toBeLessThanOrEqual(2048);
   });
   it("strips control characters from text that held an address", () => {
     expect(scrubIp("a\u0000b 10.0.0.1\u0007")).toBe("ab [ip]");
