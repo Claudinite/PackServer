@@ -26,7 +26,7 @@ export function mixedScripts(docs: readonly Doc[], make: MakeFinding): Finding[]
       const scripts = scriptsIn(id);
       if (scripts.length < 2) continue;
       reported.add(id);
-      out.push(make("text.mixed-script", { file: d.file, line: d.lineAt(m.index), quote: id, hint: `The identifier mixes ${scripts.join(" and ")} letters; spell it in one script.` }));
+      out.push(make("text.mixed-script", { file: d.file, line: d.lineAt(m.index), quote: d.safe.slice(m.index, m.index + id.length), hint: `The identifier mixes ${scripts.join(" and ")} letters; spell it in one script.` }));
     }
   }
   return out;

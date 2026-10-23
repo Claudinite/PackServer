@@ -342,6 +342,12 @@ Checks, guards, task workers and env setup may not open network connections; the
 declared-domains exception. An egress attempt during the sandbox run or a static network pattern in
 that content hard-fails. GitHub is reached only through actions declared in `pack.json`.
 
+The sandbox has no network at all (`--network none` is the control that enforces this). The
+run-time egress record is best-effort evidence against careless packs, not a barrier against
+deliberate evasion: a pack that drops the recorders from a child's environment, or runs a
+statically linked program, reaches no network but may leave no record, and the static pattern scan
+is what catches it.
+
 ## REQ-VAL-027 A version's capabilities are extracted from the archive, and new ones are marked
 
 - status: active

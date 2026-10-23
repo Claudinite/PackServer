@@ -1,0 +1,11 @@
+**/node_modules
+.git
+.claudinite
+.turbo
+**/.wrangler
+**/dist
+reports
+docs
+infra
+workers
+scenarios
