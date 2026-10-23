@@ -61,6 +61,8 @@ export const assertion_grants = sqliteTable(
     method: text("method", { enum: ASSERTION_METHODS }).notNull(),
     /** The credential row that made the assertion; null for a recovery code. */
     credential_id: text("credential_id"),
+    /** The hold the confirming factor was under when the grant was issued; fixed then, so removing the factor later changes nothing. */
+    hold_until: text("hold_until"),
     expires_at: text("expires_at").notNull(),
   },
   (t) => [index("assertion_grants_expires_idx").on(t.expires_at)],

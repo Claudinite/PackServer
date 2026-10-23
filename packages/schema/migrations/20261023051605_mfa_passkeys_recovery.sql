@@ -14,6 +14,7 @@ CREATE TABLE `assertion_grants` (
 	`target` text NOT NULL,
 	`method` text NOT NULL,
 	`credential_id` text,
+	`hold_until` text,
 	`expires_at` text NOT NULL,
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action
 );

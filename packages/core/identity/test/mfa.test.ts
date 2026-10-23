@@ -204,13 +204,13 @@ describe("IT-ACC-005 a new factor on a publishing account is on hold unless a pa
     expect(await holdUntilFor(ports, "u1", null)).toBeNull();
     publishing(db);
 
-    const byPasskey = { user_id: "u1", method: "passkey" as const, credential_id: first.id };
+    const byPasskey = await grantBy(ports, "passkey", first.id);
     expect(await holdUntilFor(ports, "u1", byPasskey)).toBeNull();
-    const held = await holdUntilFor(ports, "u1", { user_id: "u1", method: "recovery", credential_id: null });
+    const held = await holdUntilFor(ports, "u1", await grantBy(ports, "recovery", null));
     expect(Date.parse(held!) - ports.clock.now()).toBe(HOLD_MS);
 
     const k2 = await enrol(ports, new VirtualAuthenticator(), "u1", held);
-    expect(await holdUntilFor(ports, "u1", { user_id: "u1", method: "passkey", credential_id: k2.id })).not.toBeNull();
+    expect(await holdUntilFor(ports, "u1", await grantBy(ports, "passkey", k2.id))).not.toBeNull();
   });
 
   it("keeps a held factor out of the held actions until the hold lapses, and in the other actions at once", async () => {
@@ -238,7 +238,7 @@ describe("IT-ACC-005 a held factor cannot launder its hold through recovery code
     const k1 = await enrol(ports, device, "u1");
     db.exec("insert into scopes (id, name, kind, created_at) values ('s1', 'acme', 'org', '2026-10-22T00:00:00.000Z')");
     db.exec("insert into scope_members (scope_id, user_id, role, created_at) values ('s1', 'u1', 'owner', '2026-10-22T00:00:00.000Z')");
-    const held = await holdUntilFor(ports, "u1", { user_id: "u1", method: "recovery", credential_id: null });
+    const held = await holdUntilFor(ports, "u1", await grantBy(ports, "recovery", null));
     const k2 = await enrol(ports, new VirtualAuthenticator(), "u1", held);
     return { ...world, k1, k2, held };
   };
@@ -247,7 +247,7 @@ describe("IT-ACC-005 a held factor cannot launder its hold through recovery code
 
   it("gives a code set regenerated under a held passkey that passkey's hold", async () => {
     const { ports, fakes, k2, held } = await setupHeld();
-    const hold = await recoveryHoldFor(ports, "u1", { user_id: "u1", method: "passkey", credential_id: k2.id });
+    const hold = await recoveryHoldFor(ports, await grantBy(ports, "passkey", k2.id));
     expect(hold).toBe(held);
     const codes = await replaceRecoveryCodes(ports, "u1", hold);
 
@@ -259,22 +259,51 @@ describe("IT-ACC-005 a held factor cannot launder its hold through recovery code
 
   it("carries the hold through a regeneration confirmed by a held code, and none through an unheld one", async () => {
     const { ports, k1, k2 } = await setupHeld();
-    const heldCodes = await replaceRecoveryCodes(ports, "u1", await recoveryHoldFor(ports, "u1", { user_id: "u1", method: "passkey", credential_id: k2.id }));
+    const heldCodes = await replaceRecoveryCodes(ports, "u1", await recoveryHoldFor(ports, await grantBy(ports, "passkey", k2.id)));
     expect(await byCode(ports, heldCodes[0]!, ctx({ action: FACTOR_ACTIONS.regenerateCodes }))).toMatchObject({ ok: true });
-    const again = await recoveryHoldFor(ports, "u1", { user_id: "u1", method: "recovery", credential_id: null });
+    const again = await recoveryHoldFor(ports, await grantBy(ports, "recovery", null));
     expect(again).not.toBeNull();
 
-    const clean = await replaceRecoveryCodes(ports, "u1", await recoveryHoldFor(ports, "u1", { user_id: "u1", method: "passkey", credential_id: k1.id }));
+    const clean = await replaceRecoveryCodes(ports, "u1", await recoveryHoldFor(ports, await grantBy(ports, "passkey", k1.id)));
     expect((await byCode(ports, clean[0]!)).ok).toBe(true);
-    expect(await recoveryHoldFor(ports, "u1", { user_id: "u1", method: "recovery", credential_id: null })).toBeNull();
+    expect(await recoveryHoldFor(ports, await grantBy(ports, "recovery", null))).toBeNull();
+  });
+
+  it("fixes the hold when the grant is issued, so removing the held passkey before the grant is spent changes nothing", async () => {
+    const { ports, db, k2, held } = await setupHeld();
+    const c = ctx({ action: FACTOR_ACTIONS.regenerateCodes, target: "u1" });
+    const token = await issueGrant(ports, c, { method: "passkey", credential_id: k2.id });
+    db.exec(`delete from credential_flags where credential_id = '${k2.id}'`);
+    db.exec(`delete from credentials where id = '${k2.id}'`);
+
+    const grant = await consumeGrant(ports, token, c);
+    expect(grant).not.toBeNull();
+    expect(await recoveryHoldFor(ports, grant!)).toBe(held);
+    const enrolHold = await holdUntilFor(ports, "u1", grant!);
+    expect(enrolHold).not.toBeNull();
+  });
+
+  it("treats a confirming credential that no longer exists as held", async () => {
+    const { ports } = await setupHeld();
+    const c = ctx({ action: FACTOR_ACTIONS.regenerateCodes, target: "u1" });
+    const token = await issueGrant(ports, c, { method: "passkey", credential_id: "gone" });
+    const grant = await consumeGrant(ports, token, c);
+    expect(await recoveryHoldFor(ports, grant!)).not.toBeNull();
   });
 
   it("does not spend a code the hold refused", async () => {
     const { ports, k2 } = await setupHeld();
-    const codes = await replaceRecoveryCodes(ports, "u1", await recoveryHoldFor(ports, "u1", { user_id: "u1", method: "passkey", credential_id: k2.id }));
+    const codes = await replaceRecoveryCodes(ports, "u1", await recoveryHoldFor(ports, await grantBy(ports, "passkey", k2.id)));
     expect((await byCode(ports, codes[0]!)).ok).toBe(false);
     expect((await byCode(ports, codes[0]!, ctx({ action: "token.mint" }))).ok).toBe(true);
   });
 });
+
+/** A grant as the site would hold it: issued for a regeneration and spent at once. */
+async function grantBy(ports: MfaPorts, method: "passkey" | "recovery", credentialId: string | null) {
+  const c: AssertionContext = { user_id: "u1", sid_hash: "grant-sid", action: FACTOR_ACTIONS.regenerateCodes, target: "u1" };
+  const grant = await consumeGrant(ports, await issueGrant(ports, c, { method, credential_id: credentialId }), c);
+  return grant!;
+}
 
 const isoAtOffset = (ports: MfaPorts, ms: number) => new Date(ports.clock.now() + ms).toISOString();

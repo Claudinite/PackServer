@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "4a804012-726e-46c5-ae77-b7bc67e1c8a5",
+  "id": "654e5c33-75b8-4c8e-82e3-61c79f9823e4",
   "prevId": "dfb9ec22-371e-4d05-a3c3-596d1170c19b",
   "tables": {
     "credentials": {
@@ -1416,6 +1416,13 @@
         },
         "credential_id": {
           "name": "credential_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "hold_until": {
+          "name": "hold_until",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

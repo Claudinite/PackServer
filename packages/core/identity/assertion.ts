@@ -155,6 +155,27 @@ export interface Grant {
   user_id: string;
   method: AssertionMethod;
   credential_id: string | null;
+  /** The hold the confirming factor was under when the grant was issued; null when it was under none. */
+  hold_until: string | null;
+}
+
+/**
+ * The hold the factor making an assertion is under now. A passkey that cannot be found is treated as
+ * held for the full period, so a factor removed mid-flight cannot shed its hold.
+ */
+async function confirmerHold(ports: MfaPorts, userId: string, made: { method: AssertionMethod; credential_id: string | null }): Promise<string | null> {
+  const now = ports.clock.now();
+  if (made.method === "recovery") {
+    const { rows } = await ports.d1.query("select hold_until from recovery_sets where user_id = ?", [userId]);
+    const hold = rows[0]?.hold_until;
+    return typeof hold === "string" && Date.parse(hold) > now ? hold : null;
+  }
+  const { rows } = made.credential_id
+    ? await ports.d1.query("select f.hold_until from credentials c left join credential_flags f on f.credential_id = c.id where c.id = ?", [made.credential_id])
+    : { rows: [] };
+  if (rows.length === 0) return isoAt(ports.clock, HOLD_MS);
+  const hold = rows[0]!.hold_until;
+  return typeof hold === "string" && Date.parse(hold) > now ? hold : null;
 }
 
 const grantHash = (token: string): Promise<string> => sha256Hex(`assertion-grant:${token}`);
@@ -162,11 +183,12 @@ const grantHash = (token: string): Promise<string> => sha256Hex(`assertion-grant
 /** The secret the sensitive request carries; only its hash is stored. */
 export async function issueGrant(ports: MfaPorts, ctx: AssertionContext, made: { method: AssertionMethod; credential_id: string | null }): Promise<string> {
   const token = toHex(ports.rng.bytes(32));
+  const hold = await confirmerHold(ports, ctx.user_id, made);
   await ports.d1.batch([
     { sql: "delete from assertion_grants where expires_at <= ?", params: [isoAt(ports.clock)] },
     {
-      sql: "insert into assertion_grants (grant_hash, user_id, sid_hash, action, target, method, credential_id, expires_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
-      params: [await grantHash(token), ctx.user_id, ctx.sid_hash, ctx.action, ctx.target, made.method, made.credential_id, isoAt(ports.clock, ASSERTION_TTL_MS)],
+      sql: "insert into assertion_grants (grant_hash, user_id, sid_hash, action, target, method, credential_id, hold_until, expires_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      params: [await grantHash(token), ctx.user_id, ctx.sid_hash, ctx.action, ctx.target, made.method, made.credential_id, hold, isoAt(ports.clock, ASSERTION_TTL_MS)],
     },
   ]);
   return token;
@@ -178,7 +200,7 @@ export async function consumeGrant(
 ): Promise<Grant | null> {
   const { rows } = await ports.d1.query(
     `delete from assertion_grants where grant_hash = ? and sid_hash = ? and action = ? and target = ? and expires_at > ?
-     returning user_id, method, credential_id`,
+     returning user_id, method, credential_id, hold_until`,
     [await grantHash(token), bound.sid_hash, bound.action, bound.target, isoAt(ports.clock)],
   );
   return rows.length === 1 ? (rows[0] as unknown as Grant) : null;
@@ -189,11 +211,7 @@ export async function consumeGrant(
  * itself off hold carries none, and neither does one on an account that cannot publish.
  */
 export async function holdUntilFor(ports: MfaPorts, userId: string, confirmedBy: Grant | null): Promise<string | null> {
-  if (confirmedBy?.method === "passkey" && confirmedBy.credential_id) {
-    const { rows } = await ports.d1.query("select f.hold_until from credentials c left join credential_flags f on f.credential_id = c.id where c.id = ?", [confirmedBy.credential_id]);
-    const hold = rows[0]?.hold_until;
-    if (rows.length === 1 && (typeof hold !== "string" || Date.parse(hold) <= ports.clock.now())) return null;
-  }
+  if (confirmedBy?.method === "passkey" && confirmedBy.hold_until === null) return null;
   return (await isPublishingCapable(ports.d1, userId)) ? isoAt(ports.clock, HOLD_MS) : null;
 }
 
@@ -202,12 +220,7 @@ export async function holdUntilFor(ports: MfaPorts, userId: string, confirmedBy:
  * held factor cannot hand its hold to codes that then authorise held actions at once. A confirming
  * factor that is not on hold passes none on.
  */
-export async function recoveryHoldFor(ports: MfaPorts, userId: string, confirmedBy: Grant): Promise<string | null> {
-  const now = ports.clock.now();
-  const { rows } =
-    confirmedBy.method === "passkey" && confirmedBy.credential_id
-      ? await ports.d1.query("select f.hold_until from credentials c left join credential_flags f on f.credential_id = c.id where c.id = ?", [confirmedBy.credential_id])
-      : await ports.d1.query("select hold_until from recovery_sets where user_id = ?", [userId]);
-  const hold = rows[0]?.hold_until;
-  return typeof hold === "string" && Date.parse(hold) > now ? hold : null;
+export async function recoveryHoldFor(ports: Pick<MfaPorts, "clock">, confirmedBy: Grant): Promise<string | null> {
+  const hold = confirmedBy.hold_until;
+  return hold !== null && Date.parse(hold) > ports.clock.now() ? hold : null;
 }

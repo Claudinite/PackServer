@@ -33,7 +33,7 @@ routes.post(
     const userId = live.record.user_id;
     if (!(await hasPasskey(runtime.ports.d1, userId))) return refusal("mfa-required", { message: "Recovery codes belong to an account with a passkey." });
     await recordAudit(c, userId, "factor.added", undefined, { kind: "recovery" });
-    const hold = await recoveryHoldFor(mfaPorts(runtime), userId, c.get("assertion")!);
+    const hold = await recoveryHoldFor(mfaPorts(runtime), c.get("assertion")!);
     const codes = await replaceRecoveryCodes(mfaPorts(runtime), userId, hold);
     if (await isPublishingCapable(runtime.ports.d1, userId)) {
       await notifyUser(c, userId, "factor-added", { factor: "recovery codes", securityUrl: securityUrlOf(c), lockApplies: hold !== null });
