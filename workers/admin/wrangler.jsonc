@@ -13,7 +13,6 @@
         "WORKER": "admin",
         "ENVIRONMENT": "test",
         "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
-        "AUDIT_S3_ENDPOINT": "https://audit-bucket.invalid/audit-log",
         "AUDIT_S3_ACCESS_KEY_ID": "test-audit-access-key-id",
         "AUDIT_S3_SECRET_ACCESS_KEY": "test-audit-secret-access-key"
       },

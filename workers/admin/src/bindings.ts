@@ -18,8 +18,8 @@ export interface Env {
   REQUEST_OUTCOMES: AnalyticsEngineDataset;
   DOMAIN_EVENTS: AnalyticsEngineDataset;
   SELFTEST_HMAC_KEY: string | SecretsStoreSecret;
-  /** The audit bucket's S3 endpoint, `https://<account>.r2.cloudflarestorage.com/<bucket>`. The bucket has no binding. */
-  AUDIT_S3_ENDPOINT: string;
+  /** The audit bucket's S3 endpoint, `https://<account>.r2.cloudflarestorage.com/<bucket>`; absent under `env.test`, which has no audit bucket. The bucket has no binding. */
+  AUDIT_S3_ENDPOINT?: string;
   AUDIT_S3_ACCESS_KEY_ID: string | SecretsStoreSecret;
   AUDIT_S3_SECRET_ACCESS_KEY: string | SecretsStoreSecret;
   CF_VERSION_METADATA: WorkerVersionMetadata;
@@ -36,16 +36,18 @@ export type AdminPorts = Pick<Ports, "clock" | "rng" | "d1" | "stats" | "queues"
 function lazyAuditBucket(env: Env): AuditBucket {
   let bucket: Promise<AuditBucket> | undefined;
   const resolve = () =>
-    (bucket ??= (async () =>
-      s3AuditBucket({
+    (bucket ??= (async () => {
+      if (!env.AUDIT_S3_ENDPOINT) throw new Error("AUDIT_S3_ENDPOINT is not set");
+      return s3AuditBucket({
         endpoint: env.AUDIT_S3_ENDPOINT,
         accessKeyId: await readSecret(env.AUDIT_S3_ACCESS_KEY_ID),
         secretAccessKey: await readSecret(env.AUDIT_S3_SECRET_ACCESS_KEY),
-      }))());
+      });
+    })());
   return {
     get: async (key) => (await resolve()).get(key),
-    put: async (key, body) => (await resolve()).put(key, body),
-    list: async (prefix, limit) => (await resolve()).list(prefix, limit),
+    put: async (key, body, options) => (await resolve()).put(key, body, options),
+    list: async (prefix, limit, startAfter) => (await resolve()).list(prefix, limit, startAfter),
   };
 }
 export type AdminRuntime = WorkerRuntime<AdminPorts>;
