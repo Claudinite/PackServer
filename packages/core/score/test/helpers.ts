@@ -35,7 +35,7 @@ export function input(files: Parameters<typeof treeOf>[0], over: Partial<ScoreIn
 
 export const skill = (name: string, description: string, body = "Do the thing.\n", extra = "") => `---\nname: ${name}\ndescription: ${description}\n${extra}---\n\n${body}`;
 
-export const declared = (...ids: string[]) => JSON.stringify(ids.map((id) => ({ id, on_fail: "block", failureMessage: `${id} failed` })));
+export const declared = (...ids: string[]) => JSON.stringify(ids.map((id) => ({ id, on_fail: "block", failureMessage: `${id} failed`, matchLines: ["x"] })));
 
 export const GOOD_DESCRIPTION = "Cuts a commit with one concern. Use before any git commit.";
 

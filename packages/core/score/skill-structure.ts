@@ -7,7 +7,8 @@ import type { Outcome } from "./types.ts";
 function hasDetector(d: unknown): boolean {
   if (d === null || typeof d !== "object") return false;
   const { paths, text } = d as { paths?: unknown; text?: unknown };
-  return (typeof paths === "string" && paths !== "") || (text !== null && typeof text === "object") || (typeof text === "string" && text !== "");
+  const source = text !== null && typeof text === "object" ? (text as { source?: unknown }).source : text;
+  return (typeof paths === "string" && paths !== "") || (typeof source === "string" && source !== "");
 }
 
 type Bad = { file: string | null; detail?: string } | null;
@@ -16,7 +17,17 @@ const TRIGGER = /\b(when|whenever|before|after|if|while|use for|loaded for|for a
 const PERSON = /\b(you|your|we|our|my|i|i'm|i'll|me)\b/i;
 const MONTH = "(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\.?";
 const DATED = new RegExp(`\\b(?:before|after|until|as of|since|starting)\\s+(?:${MONTH}\\s+)?(?:\\d{1,2},?\\s+)?20\\d\\d\\b`, "i");
-const FORCE_LOAD_KEY = /^\s*force-load-on-[a-z-]+\s*:/m;
+const FORCE_LOAD_KEY = /^[ \t]+force-load-on-[a-z-]+[ \t]*:/;
+
+/** True when a `force-load-on-*` key sits inside the frontmatter's `metadata:` mapping. */
+function forceLoads(frontmatter: string): boolean {
+  let inMetadata = false;
+  for (const line of frontmatter.split("\n")) {
+    if (/^\S/.test(line)) inMetadata = /^metadata[ \t]*:/.test(line);
+    else if (inMetadata && FORCE_LOAD_KEY.test(line)) return true;
+  }
+  return false;
+}
 const DRIVE_PATH = /^[A-Za-z]:\\/;
 const BACKSLASH_FILE = /^[\w.-]+\\[\w.-]+\.\w{1,5}$/;
 const SCRIPT_NAME = /^[\w-][\w.-]*\.(?:sh|bash|py|ps1)$/;
@@ -75,6 +86,41 @@ export function skillStructure(pack: PackIndex, score: RulesVersion["score"]): O
   };
   const at = (s: SkillDoc, detail: string): Bad => ({ file: s.path, detail });
 
+  // Each skill's links and each reference file's facts are computed once, however many spellings reach them.
+  const referenceCache = new Map<string, string[]>();
+  const referencesOf = (s: SkillDoc): string[] => {
+    let refs = referenceCache.get(s.path);
+    if (!refs) {
+      const resolved = new Set<string>();
+      for (const target of relativeLinks(s.body)) {
+        const path = resolveRelative(s.dir, target);
+        if (path !== null && path !== s.path && /\.(md|markdown)$/i.test(path) && pack.text(path) !== null) resolved.add(path);
+      }
+      referenceCache.set(s.path, (refs = [...resolved]));
+    }
+    return refs;
+  };
+  const infoCache = new Map<string, { onward: string | null; lines: number; hasToc: boolean }>();
+  const refInfo = (path: string) => {
+    let info = infoCache.get(path);
+    if (!info) {
+      const text = pack.text(path) ?? "";
+      const dir = path.slice(0, path.lastIndexOf("/"));
+      let onward: string | null = null;
+      for (const l of relativeLinks(text)) {
+        const p = resolveRelative(dir, l);
+        if (p !== null && p !== path && !p.endsWith("/SKILL.md") && pack.byPath.has(p)) {
+          onward = p;
+          break;
+        }
+      }
+      const lines = lineCount(text);
+      const head = text.split("\n", 40).join("\n");
+      infoCache.set(path, (info = { onward, lines, hasToc: /^#{1,6}\s*(table of )?contents\b/im.test(head) }));
+    }
+    return info;
+  };
+
   const ownFiles = (s: SkillDoc) => (pack.bySkillDir.get(s.dir) ?? []).filter((f) => /\.(md|markdown)$/i.test(f.path));
 
   return [
@@ -95,30 +141,22 @@ export function skillStructure(pack: PackIndex, score: RulesVersion["score"]): O
       return words >= t.description_min_words && TRIGGER.test(s.description!) ? null : at(s, "description does not say what the skill does and when to use it");
     }),
     share("skill-structure.reachable", skills, (s) => {
-      if (detector || FORCE_LOAD_KEY.test(s.frontmatter) || (s.description && TRIGGER.test(s.description))) return null;
+      if (detector || forceLoads(s.frontmatter) || (s.description && TRIGGER.test(s.description))) return null;
       return at(s, "nothing reaches this skill unless it is named");
     }),
     share("skill-structure.reference-depth", skills, (s) => {
       const bad: Bad[] = [];
-      for (const target of new Set(relativeLinks(s.body))) {
-        const path = resolveRelative(s.dir, target);
-        if (path === null || path === s.path || !/\.(md|markdown)$/i.test(path)) continue;
-        const text = pack.text(path);
-        if (text === null) continue;
-        const onward = relativeLinks(text).map((l) => resolveRelative(path.slice(0, path.lastIndexOf("/")), l)).filter((p): p is string => p !== null && p !== path && p !== s.path && pack.byPath.has(p));
-        if (onward.length > 0) bad.push({ file: path, detail: `links onward to ${onward[0]}` });
+      for (const path of referencesOf(s)) {
+        const onward = refInfo(path).onward;
+        if (onward !== null) bad.push({ file: path, detail: `links onward to ${onward}` });
       }
       return bad;
     }),
     share("skill-structure.reference-toc", skills, (s) => {
       const bad: Bad[] = [];
-      for (const target of new Set(relativeLinks(s.body))) {
-        const path = resolveRelative(s.dir, target);
-        if (path === null || path === s.path || !/\.(md|markdown)$/i.test(path)) continue;
-        const text = pack.text(path);
-        if (text === null || lineCount(text) <= t.reference_toc_min_lines) continue;
-        const head = text.split("\n").slice(0, 40).join("\n");
-        if (!/^#{1,6}\s*(table of )?contents\b/im.test(head)) bad.push({ file: path, detail: `${lineCount(text)} lines with no table of contents` });
+      for (const path of referencesOf(s)) {
+        const info = refInfo(path);
+        if (info.lines > t.reference_toc_min_lines && !info.hasToc) bad.push({ file: path, detail: `${info.lines} lines with no table of contents` });
       }
       return bad;
     }),

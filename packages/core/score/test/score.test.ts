@@ -300,6 +300,13 @@ describe("declared checks are counted only when well formed", () => {
   it("does not let padding offset a coded check", () => {
     expect(checksPoints({ "declared-checks.json": JSON.stringify(Array.from({ length: 999 }, () => ({}))), "checks/one.go": "package a\n" })).toBe(0);
   });
+  it("ignores entries cn would reject or never run, and folders without a skill", () => {
+    const entry = (over: object) => JSON.stringify([{ id: "a", on_fail: "block", failureMessage: "x", matchLines: ["x"], ...over }]);
+    expect(checksPoints({ "declared-checks.json": entry({ on_fail: "x" }), "checks/one.go": "package a\n" })).toBe(0);
+    expect(checksPoints({ "declared-checks.json": entry({ matchLines: undefined }), "checks/one.go": "package a\n" })).toBe(0);
+    expect(checksPoints({ "declared-checks.json": entry({ on_fail: "advise" }), "checks/one.go": "package a\n" })).toBe(10);
+    expect(checksPoints({ "skills/ghost/declared-checks.json": declared("a"), "checks/one.go": "package a\n" })).toBe(0);
+  });
   it("counts each id once", () => {
     expect(checksPoints({ "declared-checks.json": declared("a", "a", "a"), "checks/one.go": "package a\n" })).toBe(10);
   });
@@ -316,6 +323,15 @@ describe("reachability and ordering", () => {
     expect(reach("Writes commit messages for the repository, strictly enforced always")).toContain("skill-structure.reachable");
     const empty = JSON.stringify({ version: "1.0.0", minEngineVersion: "1.61001.1", relevanceDetector: {} });
     expect(reach("Writes commit messages for the repository carefully", "", { "pack.json": empty })).toContain("skill-structure.reachable");
+  });
+  it("needs the force-load key under metadata, and a detector with a real pattern", () => {
+    const bare = "Writes commit messages for the repository carefully";
+    expect(reach(bare, "metadata:\n  force-load-on-tool-calls:\n    - x\n")).not.toContain("skill-structure.reachable");
+    const folded = "---\nname: commit\ndescription: >\n  Writes commit messages for the repository carefully\n  force-load-on-anything: yes\n---\n\nBody\n";
+    expect(reach(bare, "", { "skills/commit/SKILL.md": folded })).toContain("skill-structure.reachable");
+    const detector = (d: unknown) => JSON.stringify({ version: "1.0.0", minEngineVersion: "1.61001.1", relevanceDetector: d });
+    expect(reach(bare, "", { "pack.json": detector({ text: {} }) })).toContain("skill-structure.reachable");
+    expect(reach(bare, "", { "pack.json": detector({ text: { source: "jwt" } }) })).not.toContain("skill-structure.reachable");
   });
   it("accepts loaded-for phrasing as a trigger", () => {
     expect(reach("Loaded for any edit of a workflow or package.json test script.")).toEqual([]);
@@ -344,9 +360,15 @@ describe("scoring time stays linear in the input", () => {
     ["backslash run", "a\\".repeat(MB / 2)],
     ["unclosed fences", "```x\n".repeat(MB / 5)],
     ["spaces", "before" + " ".repeat(MB)],
+    ["empty links", "[](".repeat(MB / 3)],
     ["blank lines", "x\n \n".repeat(MB / 4)],
   ])("a 1 MB skill body of %s", (_name, body) => {
     timed({ "skills/commit/SKILL.md": skill("commit", GOOD_DESCRIPTION, body) });
+  });
+  it("many spellings of one large reference file", () => {
+    const ref = "line\n".repeat(700_000);
+    const links = Array.from({ length: 20_000 }, (_, i) => `[r](d${i}/../ref.md)`).join(" ");
+    timed({ "skills/commit/SKILL.md": skill("commit", GOOD_DESCRIPTION, links), "skills/commit/ref.md": ref });
   });
   it("a 5,000-file tree with 2,500 skills and 2,500 reference files", () => {
     const files: Record<string, string> = {};

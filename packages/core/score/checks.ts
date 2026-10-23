@@ -4,17 +4,19 @@ import type { Outcome } from "./types.ts";
 
 const isText = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
 
-/** A declared check names itself, says what to do on failure and carries its message. */
+const MATCHERS = ["matchLines", "scanFiles", "scanFileClasses", "guardToolCalls", "flagUntrackedFilesMatching", "requireIndexCoverage", "maxLineLength", "checkEachFile"];
+
+/** A declared check names itself, fails as block or advise, carries its message and says what it looks at. */
 function wellFormed(entry: unknown): string | null {
   if (entry === null || typeof entry !== "object") return null;
   const e = entry as Record<string, unknown>;
-  return isText(e.id) && isText(e.on_fail) && isText(e.failureMessage) ? e.id : null;
+  return isText(e.id) && (e.on_fail === "block" || e.on_fail === "advise") && isText(e.failureMessage) && MATCHERS.some((m) => e[m] !== undefined) ? e.id : null;
 }
 
 /** Distinct ids of well-formed entries in the pack's and its skills' declared-checks files. */
 function declaredIds(pack: PackIndex): Set<string> {
   const paths = ["declared-checks.json"];
-  for (const dir of [...pack.bySkillDir.keys()].sort()) paths.push(`${dir}/declared-checks.json`);
+  for (const skill of pack.skills) paths.push(`${skill.dir}/declared-checks.json`);
   const ids = new Set<string>();
   for (const path of paths) {
     const text = pack.text(path);

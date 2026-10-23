@@ -79,13 +79,16 @@ export function relativeLinks(text: string): string[] {
     else if (c === "]") {
       if (open >= 0 && text[i + 1] === "(") {
         let j = i + 2;
-        while (j < text.length && j - i < MAX_TARGET && /[ \t]/.test(text[j]!)) j++;
+        while (j < text.length && j - i < MAX_TARGET && (text[j] === " " || text[j] === "\t")) j++;
         if (text[j] === "<") j++;
         const start = j;
-        while (j < text.length && j - start < MAX_TARGET && !/[\s)>]/.test(text[j]!)) j++;
+        while (j < text.length && j - start < MAX_TARGET && !isTargetEnd(text[j]!)) j++;
         if (j - start < MAX_TARGET) {
           const target = text.slice(start, j).replace(/[#?].*$/, "");
           if (target !== "" && !/^[a-z][a-z0-9+.-]*:/i.test(target) && !target.startsWith("/")) out.push(target);
+        } else {
+          // Resume where the read stopped, so no character is read more than twice.
+          i = j - 1;
         }
       }
       open = -1;
@@ -93,6 +96,8 @@ export function relativeLinks(text: string): string[] {
   }
   return out;
 }
+
+const isTargetEnd = (c: string): boolean => c === ")" || c === ">" || c === " " || c === "\t" || c === "\n" || c === "\r" || c === "\f" || c === "\v";
 
 export function resolveRelative(dir: string, target: string): string | null {
   const stack = dir === "" ? [] : dir.split("/");
