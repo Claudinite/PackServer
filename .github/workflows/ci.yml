@@ -105,13 +105,25 @@ jobs:
           persist-credentials: false
       - run: node docs/testing/coverage.mjs --check
 
+  # Legs run in parallel so no one runner carries the whole budget.
   checks:
+    name: checks (${{ matrix.leg }})
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: lint
+            run: pnpm lint
+          - leg: typecheck
+            run: pnpm typecheck
+          - leg: tools
+            run: node tools/check-rules.mjs && node tools/check-bindings.mjs && node infra/apply-ids.mjs --check && pnpm db:check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -122,15 +134,22 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm check
+      - run: ${{ matrix.run }}
 
+  # The infra project is one leg; the workspace packages, listed from the
+  # workspace itself, are dealt round-robin across the package legs.
   unit:
+    name: unit (${{ matrix.leg }})
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: [infra, packages-0, packages-1, packages-2]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -141,8 +160,24 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec turbo run test
-      - run: pnpm test:infra
+      - name: run the leg
+        env:
+          LEG: ${{ matrix.leg }}
+        run: |
+          if [ "$LEG" = infra ]; then
+            pnpm test:infra
+            exit 0
+          fi
+          legs=3
+          idx=${LEG#packages-}
+          filters=$(pnpm ls -r --depth -1 --json | node -e '
+            const pkgs = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            const names = pkgs.filter((p) => p.name !== "packserver").map((p) => p.name).sort();
+            console.log(names.filter((_, i) => i % Number(process.argv[1]) === Number(process.argv[2])).map((n) => "--filter=" + n).join(" "));
+          ' "$legs" "$idx")
+          echo "packages: $filters"
+          [ -n "$filters" ] || { echo "empty leg"; exit 0; }
+          pnpm exec turbo run test --only $filters
 
   scenarios:
     needs: changes
