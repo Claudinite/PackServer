@@ -7,9 +7,10 @@ import { evaluateNetwork, parseNetworkCase } from "./lib/transformer.mjs";
 export function deliveredObjects(overrides = {}) {
   const record = (extra = {}) => JSON.stringify({ CacheCacheStatus: "hit", ClientRequestPath: "/x", EdgeStartTimestamp: "2026-10-23T00:00:00Z", ClientNetwork: "198.51.100.0/24", ...extra });
   const out = [];
+  const day = new Date().toISOString().slice(0, 10).replaceAll("-", "");
   for (const bucket of ["ops", "ops-staging"]) {
-    out.push({ bucket, key: "logs/http-requests/hits/20261023/a.log", last_modified: "2999-01-01T00:00:00Z", body: `${record()}\n${record()}\n`, ...overrides.hits });
-    out.push({ bucket, key: "logs/http-requests/misses/20261023/a.log", last_modified: "2999-01-01T00:00:00Z", body: `${record({ CacheCacheStatus: "miss" })}\n`, ...overrides.misses });
+    out.push({ bucket, key: `logs/http-requests/hits/${day}/a.log`, last_modified: "2999-01-01T00:00:00Z", body: `${record()}\n${record()}\n`, ...overrides.hits });
+    out.push({ bucket, key: `logs/http-requests/misses/${day}/a.log`, last_modified: "2999-01-01T00:00:00Z", body: `${record({ CacheCacheStatus: "miss" })}\n`, ...overrides.misses });
   }
   return out;
 }
@@ -25,6 +26,7 @@ export function fakeZone({ seed = {}, failGet = [], failWrite = [], failSecretNu
     idps: idps ?? [{ id: "idp-hw", name: "Hardware key", type: "saml" }],
     jobs: structuredClone(seed.jobs ?? []),
     transformers: structuredClone(seed.transformers ?? []),
+    listedPrefixes: [],
     objects: structuredClone(seed.objects ?? (delivered ? deliveredObjects() : [])),
     lifecycle: structuredClone(seed.lifecycle ?? {}),
     inner: inner.state,
@@ -110,6 +112,7 @@ export function fakeZone({ seed = {}, failGet = [], failWrite = [], failSecretNu
       const mine = state.objects.filter((o) => o.bucket === r[1]);
       if (!r[2]) {
         const prefix = url.searchParams.get("prefix") ?? "";
+        state.listedPrefixes.push(prefix);
         return ok(mine.filter((o) => o.key.startsWith(prefix)).map(({ key, last_modified }) => ({ key, last_modified, size: 1 })), { is_truncated: false });
       }
       const obj = mine.find((o) => o.key === decodeURIComponent(r[2]));
@@ -118,7 +121,7 @@ export function fakeZone({ seed = {}, failGet = [], failWrite = [], failSecretNu
     }
     if (path.startsWith("/accounts/acct/logpush/transformers")) {
       if (transformersForbidden) return fail(403, 1000, "transformer feature is not available for this account");
-      const view = (t) => ({ id: t.id, name: t.name, dataset: "http_requests" });
+      const view = (t) => ({ id: t.id, name: t.name, dataset: "http_requests", ...(t.updated_at ? { updated_at: t.updated_at } : {}) });
       if (path === "/accounts/acct/logpush/transformers") {
         if (method === "GET") return ok(state.transformers.map(view));
         const made = { id: state.transformers.length + 1, name: body.name, code: body.code };

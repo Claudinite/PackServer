@@ -8,7 +8,16 @@ import { suffixed } from "../../lib/plan.mjs";
 const API = "https://api.cloudflare.com/client/v4";
 const NETWORK = /^([0-9]+\.[0-9]+\.[0-9]+\.0\/24|[0-9a-f:]+::\/48)$/;
 const MAX_PAGES = 20;
+const DAY_MS = 86400000;
 const SAMPLE_RECORDS = 200;
+
+// Logpush writes {DATE} as the UTC day (YYYYMMDD). Only today's and yesterday's folders are listed,
+// so the listing stays small however long the bucket has been filling.
+export function datePrefixes(prefix, nowMs) {
+  const day = (ms) => new Date(ms).toISOString().slice(0, 10).replaceAll("-", "");
+  if (!prefix.includes("{DATE}")) throw new Error(`prefix ${prefix} has no {DATE} placeholder to narrow the listing by`);
+  return [day(nowMs), day(nowMs - DAY_MS)].map((d) => prefix.replace("{DATE}", d));
+}
 
 export const VERIFIED = "verified";
 export const PENDING = "pending";
@@ -61,14 +70,19 @@ export function assessRecords(job, text, required) {
 }
 
 // One pass over every transformer job. `since` (ms) ignores objects delivered before a change.
-export async function checkDeliveryOnce({ fetchImpl, token, accountId, env, spec, since }) {
+export async function checkDeliveryOnce({ fetchImpl, token, accountId, env, spec, since, nowMs = Date.now() }) {
   const bucket = suffixed(env, spec.logpush.destinationBucket);
   const results = [];
   for (const job of spec.logpush.jobs.filter((j) => j.transformer)) {
-    const prefix = job.prefix.split("{DATE}")[0];
+    const prefixes = datePrefixes(job.prefix, nowMs);
+    const prefix = prefixes.join(" or ");
     const label = `packserver-${env}-${job.key}`;
     try {
-      const fresh = (await listObjects(fetchImpl, token, accountId, bucket, prefix)).filter((o) => since === undefined || Date.parse(o.last_modified) >= since);
+      const listed = [];
+      for (const p of prefixes) listed.push(...(await listObjects(fetchImpl, token, accountId, bucket, p)));
+      const undated = listed.find((o) => Number.isNaN(Date.parse(o.last_modified)));
+      if (undated) throw new Error(`object ${undated.key} has no usable last_modified; the latest object cannot be told, so nothing is verified`);
+      const fresh = listed.filter((o) => since === undefined || Date.parse(o.last_modified) >= since);
       if (fresh.length === 0) {
         results.push({ job: label, state: PENDING, detail: `no object under ${bucket}/${prefix}${since === undefined ? "" : " since the change"} yet` });
         continue;
@@ -88,7 +102,7 @@ export async function checkDeliveryOnce({ fetchImpl, token, accountId, env, spec
 export async function verifyDelivery({ waitMs, intervalMs = 15000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = Date.now, out, ...args }) {
   const deadline = now() + waitMs;
   for (;;) {
-    const results = await checkDeliveryOnce(args);
+    const results = await checkDeliveryOnce({ ...args, nowMs: now() });
     const pending = results.filter((r) => r.state === PENDING);
     if (pending.length === 0 || now() >= deadline) {
       for (const r of results) out(`${r.state.padEnd(8)} delivery ${r.job}: ${r.detail}`);

@@ -511,6 +511,34 @@ describe("the command", () => {
     expect(ok.out).toContain("verified delivery packserver-staging-http-cache-hits");
   });
 
+  it("lists only today's and yesterday's date folders, however many older objects exist", async () => {
+    const old = [];
+    for (let i = 0; i < 30000; i++) old.push({ bucket: "ops-staging", key: `logs/http-requests/hits/2026010${i % 9 + 1}/${i}.log`, last_modified: "2026-01-01T00:00:00Z", body: "" });
+    const zone = fakeZone({ seed: { objects: [...old, ...deliveredObjects()] } });
+    const r = await run(["--env", "staging", "--verify-delivery", "--verify-wait", "0"], zone, { env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" } });
+    expect(r.code).toBe(0);
+    const day = (ms) => new Date(ms).toISOString().slice(0, 10).replaceAll("-", "");
+    const now = Date.now();
+    const today = day(now);
+    const yesterday = day(now - 86400000);
+    if (today === day(Date.now())) expect(new Set(zone.state.listedPrefixes)).toEqual(new Set(["hits", "misses"].flatMap((k) => [today, yesterday].map((d) => `logs/http-requests/${k}/${d}`))));
+  });
+
+  it("an object without a usable last_modified fails the job instead of being skipped", async () => {
+    const zone = fakeZone({ seed: { objects: deliveredObjects({ hits: { last_modified: undefined } }) } });
+    const r = await run(["--env", "staging", "--verify-delivery", "--verify-wait", "0"], zone, { env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" } });
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("no usable last_modified");
+  });
+
+  it("--verify-delivery alone cuts off at --since, and rejects --since elsewhere", async () => {
+    const stale = fakeZone({ seed: { objects: deliveredObjects({ hits: { last_modified: "2026-10-01T00:00:00Z" }, misses: { last_modified: "2026-10-01T00:00:00Z" } }) } });
+    const r = await run(["--env", "staging", "--verify-delivery", "--verify-wait", "0", "--since", "2026-10-02T00:00:00Z"], stale, { env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" } });
+    expect(r.code).toBe(3);
+    const bad = await run(["--env", "staging", "--plan", "--since", "2026-10-02T00:00:00Z"], fakeZone());
+    expect(bad.code).toBe(2);
+  });
+
   it("needs a token and an explicit mode", async () => {
     const noToken = await run(["--env", "staging", "--plan"], fakeZone(), { env: {} });
     expect(noToken.code).toBe(2);

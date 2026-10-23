@@ -67,6 +67,17 @@ async function readTransformers(api, accountId) {
   }
 }
 
+// Newest update time (ms) among this env's transformers, or undefined when the listing reports none.
+export async function newestTransformerUpdate(api, accountId, env, spec) {
+  const { byName, forbidden } = await readTransformers(api, accountId);
+  if (forbidden) throw new Error(forbidden);
+  const times = spec.logpush.jobs.filter((j) => j.transformer)
+    .map((j) => byName.get(transformerName(env, j.key)))
+    .map((t) => Date.parse(t?.updated_at ?? t?.modified_on ?? ""))
+    .filter((n) => !Number.isNaN(n));
+  return times.length ? Math.max(...times) : undefined;
+}
+
 // Runs the rendered SQL through the preview endpoint against every vector, and records that must be dropped.
 export async function previewTransformer({ api, accountId, sql, job, hosts, spec }) {
   const { vectors, sampleRecord } = spec.logpush;

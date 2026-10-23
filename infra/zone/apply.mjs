@@ -15,7 +15,7 @@ import { ENVS, ZONE } from "../lib/plan.mjs";
 import { appsFor, envHosts, loadSpec, tokensFor, validateSpec } from "./lib/spec.mjs";
 import { countRules, ensurePhase, ensureSmartTieredCache } from "./lib/rulesets.mjs";
 import { ensureAccess, readAccessConfig } from "./lib/access.mjs";
-import { ensureLogpush, readLogpushCredentials } from "./lib/logpush.mjs";
+import { ensureLogpush, newestTransformerUpdate, readLogpushCredentials } from "./lib/logpush.mjs";
 import { FAILED, PENDING, verifyDelivery } from "./lib/delivery.mjs";
 
 export const SECTIONS = ["access", "logpush"];
@@ -23,7 +23,7 @@ const DEFAULT_BACKUP_DIR = join(import.meta.dirname, "previous");
 
 const USAGE = `Usage: node infra/zone/apply.mjs [--env <staging|production>] [--zone] [--plan | --apply]
                               [--only <access,logpush>] [--backup-dir <dir>]
-       node infra/zone/apply.mjs --env <staging|production> --verify-delivery [--verify-wait <seconds>]
+       node infra/zone/apply.mjs --env <staging|production> --verify-delivery [--verify-wait <seconds>] [--since <iso-time>]
 
   (default)     validate the declarations offline and print them
   --plan        read the account and report the changes --apply would make
@@ -35,6 +35,8 @@ const USAGE = `Usage: node infra/zone/apply.mjs [--env <staging|production>] [--
                 token's R2 read). Also runs after an --apply of the logpush section, using only objects
                 delivered since that apply. A job with no object yet is reported "not yet delivered",
                 never as a pass, and the exit code is 3.
+  --since       with --verify-delivery alone: ignore objects delivered before this time (default: the
+                newest update time the env's transformers report; none reported means no cut-off)
   --verify-wait seconds to keep polling for a first object (default 180; 0 checks once)
   --backup-dir  where the previous rule set of each changed phase is saved (default infra/zone/previous)
 
@@ -76,7 +78,7 @@ export async function main(argv, envVars, deps = {}) {
   try {
     ({ values } = parseArgs({
       args: argv,
-      options: { env: { type: "string" }, "verify-delivery": { type: "boolean" }, "verify-wait": { type: "string" }, zone: { type: "boolean" }, plan: { type: "boolean" }, apply: { type: "boolean" }, only: { type: "string" }, "backup-dir": { type: "string" }, help: { type: "boolean" } },
+      options: { env: { type: "string" }, "verify-delivery": { type: "boolean" }, "verify-wait": { type: "string" }, since: { type: "string" }, zone: { type: "boolean" }, plan: { type: "boolean" }, apply: { type: "boolean" }, only: { type: "string" }, "backup-dir": { type: "string" }, help: { type: "boolean" } },
       strict: true,
     }));
   } catch (e) {
@@ -97,6 +99,10 @@ export async function main(argv, envVars, deps = {}) {
   }
   if (values["verify-delivery"] && (!values.env || values.plan || values.zone || values.only)) {
     err(`--verify-delivery takes --env alone, or rides on --apply\n\n${USAGE}`);
+    return 2;
+  }
+  if (values.since !== undefined && (!values["verify-delivery"] || values.apply || Number.isNaN(Date.parse(values.since)))) {
+    err(`--since takes a time and goes with --verify-delivery alone\n\n${USAGE}`);
     return 2;
   }
   const waitSeconds = values["verify-wait"] === undefined ? 180 : Number(values["verify-wait"]);
@@ -155,7 +161,16 @@ export async function main(argv, envVars, deps = {}) {
   }
   const api = (method, path, body) => call(fetchImpl, cfg.token, method, path, body);
   if (verifyOnly) {
-    const results = await verify(undefined);
+    let since = values.since === undefined ? undefined : Date.parse(values.since);
+    if (since === undefined) {
+      try {
+        since = await newestTransformerUpdate(api, cfg.accountId, env, spec);
+        out(since === undefined ? "no update time reported for the transformers; any delivered object counts" : `counting objects delivered since the transformers' newest update, ${new Date(since).toISOString()}`);
+      } catch (e) {
+        out(`transformers not readable (${e.message}); any delivered object counts`);
+      }
+    }
+    const results = await verify(since);
     if (results.some((r) => r.state === FAILED)) return 1;
     return results.some((r) => r.state === PENDING) ? 3 : 0;
   }
