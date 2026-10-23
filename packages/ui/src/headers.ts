@@ -27,6 +27,9 @@ export function contentSecurityPolicy(nonce: string): string {
   ].join("; ");
 }
 
+/** Anything that is not a page (JSON, SVG, text) can run nothing and cannot be framed, whatever its content type turns out to be. */
+export const NON_HTML_CSP = "default-src 'none'; frame-ancestors 'none'; sandbox";
+
 /** Two years, as the preload list requires. */
 export const HSTS = "max-age=63072000; includeSubDomains; preload";
 
@@ -40,7 +43,7 @@ export const baseSecurityHeaders: Readonly<Record<string, string>> = {
 };
 
 /**
- * Sets the baseline headers on every response and the CSP on HTML ones, and makes sure no
+ * Sets the baseline headers and a CSP on every response (the page policy on HTML, a sandboxed deny-all otherwise), and makes sure no
  * response lets a foreign origin read a credentialed answer: `Access-Control-Allow-Credentials`
  * is removed, and an allowed origin other than `*` is removed with it.
  */
@@ -50,9 +53,8 @@ export function securityHeaders(): MiddlewareHandler {
     c.set("cspNonce", nonce);
     await next();
     for (const [name, value] of Object.entries(baseSecurityHeaders)) c.res.headers.set(name, value);
-    if ((c.res.headers.get("content-type") ?? "").toLowerCase().startsWith("text/html")) {
-      c.res.headers.set("content-security-policy", contentSecurityPolicy(nonce));
-    }
+    const html = (c.res.headers.get("content-type") ?? "").toLowerCase().startsWith("text/html");
+    c.res.headers.set("content-security-policy", html ? contentSecurityPolicy(nonce) : NON_HTML_CSP);
     c.res.headers.delete("access-control-allow-credentials");
     const origin = c.res.headers.get("access-control-allow-origin");
     if (origin !== null && origin !== "*") c.res.headers.delete("access-control-allow-origin");

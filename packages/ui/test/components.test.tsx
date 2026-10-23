@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FileText, ManifestLine, NeedsYouQueue, Price, PRICES, Pulse, PublisherMark, Rating, ScoreRing, Severity, ShapeGlyph, StatusChip,
-  Drawer, pageCss, segmentWidths, sparkPath, tokens, tokenCss,
+  Drawer, HOVER_DISMISS_SCRIPT, ManifestHover, pageCss, segmentWidths, sparkPath, tokens, tokenCss,
 } from "../src";
 
 const html = (node: unknown) => String(node);
@@ -89,13 +89,38 @@ describe("components", () => {
   it("Drawer is addressed by id and closes with a plain link", () => {
     const out = html(<Drawer id="trust" title="Trust"><p>x</p></Drawer>);
     expect(out).toContain(`id="trust"`);
-    expect(out).toContain(`href="#"`);
+    expect(out).toContain(`href="#_"`);
+    expect(out).not.toContain(`href="#"`);
   });
   it("FileText escapes HTML and SVG", () => {
     const out = html(<FileText path="a.svg" text={`<svg onload="x()"><script>1</script></svg>`} />);
     expect(out).not.toContain("<svg");
     expect(out).not.toContain("<script");
     expect(out).toContain("&lt;svg onload=");
+  });
+});
+
+describe("hover card and manifest accessibility", () => {
+  it("links the trigger to its tooltip", () => {
+    const out = html(<ScoreRing score={80} />);
+    const id = /aria-describedby="(hc-\d+)"/.exec(out)?.[1];
+    expect(id).toBeTruthy();
+    expect(out).toContain(`role="tooltip" id="${id}"`);
+    expect(out).toContain(`tabindex="0"`);
+  });
+  it("is one tab stop when the label is already a link", () => {
+    const out = html(<StatusChip status="needs-you" detail="awaiting approval" drawerId="sheet" />);
+    expect(out).toContain(`href="#sheet"`);
+    expect(out).not.toContain("tabindex");
+  });
+  it("never puts a paragraph inside a span", () => {
+    const out = html(<ManifestHover counts={{ guards: 1, tasks: 0, checks: 0, skills: 0, githubActions: false }} />);
+    expect(out.startsWith(`<p class="manifest">`)).toBe(true);
+    expect(out.match(/<p[ >]/g)?.length).toBe(1);
+  });
+  it("styles Escape dismissal and ships the script that sets it", () => {
+    expect(pageCss()).toContain("html.esc .hc:hover .pop");
+    expect(HOVER_DISMISS_SCRIPT).toContain("Escape");
   });
 });
 

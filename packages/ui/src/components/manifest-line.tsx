@@ -10,8 +10,15 @@ export interface ManifestCounts {
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-/** The pre-install manifest line: secondary type, never a heading. `newIn` marks a version that widened. */
-export function ManifestLine(props: { counts: ManifestCounts; newIn?: string; drawerId?: string }) {
+interface LineProps {
+  counts: ManifestCounts;
+  /** The version that widened what adopting does; shown in the warn tone. */
+  newIn?: string;
+  drawerId?: string;
+}
+
+/** The line's text and optional drawer link, as phrasing content so it fits inside a paragraph or a hover label. */
+function ManifestText(props: LineProps) {
   const c = props.counts;
   const parts = [
     c.guards > 0 ? plural(c.guards, "guard") : null,
@@ -28,23 +35,31 @@ export function ManifestLine(props: { counts: ManifestCounts; newIn?: string; dr
       {props.drawerId ? " ›" : null}
     </>
   );
+  return props.drawerId ? <a href={`#${props.drawerId}`}>{line}</a> : line;
+}
+
+/** The pre-install manifest line: secondary type, never a heading. */
+export function ManifestLine(props: LineProps) {
   return (
     <p class="manifest">
-      {props.drawerId ? <a href={`#${props.drawerId}`}>{line}</a> : line}
+      <ManifestText {...props} />
     </p>
   );
 }
 
-/** Hover variant listing what each count is, for places the line is shown without its drawer. */
-export function ManifestHover(props: { counts: ManifestCounts; newIn?: string }) {
+/** The same line with each count itemised in a hover, for places shown without the drawer. */
+export function ManifestHover(props: LineProps) {
+  const c = props.counts;
   return (
-    <HoverCard label={<ManifestLine counts={props.counts} newIn={props.newIn} />}>
-      <ul>
-        <li>{plural(props.counts.guards, "guard")}</li>
-        <li>{plural(props.counts.tasks, "scheduled task")}</li>
-        <li>{plural(props.counts.checks, "check")}</li>
-        <li>{plural(props.counts.skills, "skill")}</li>
-      </ul>
-    </HoverCard>
+    <p class="manifest">
+      <HoverCard label={<ManifestText {...props} />} focusable={!props.drawerId}>
+        <ul>
+          <li>{plural(c.guards, "guard")}</li>
+          <li>{plural(c.tasks, "scheduled task")}</li>
+          <li>{plural(c.checks, "check")}</li>
+          <li>{plural(c.skills, "skill")}</li>
+        </ul>
+      </HoverCard>
+    </p>
   );
 }

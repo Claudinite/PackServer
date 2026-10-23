@@ -43,8 +43,13 @@ describe("security headers (IT-ABUSE-008, IT-ABUSE-009)", () => {
     expect(res.headers.get("access-control-allow-origin")).toBeNull();
   });
 
-  it("puts the CSP on HTML only", async () => {
-    expect((await app.request("/api/x")).headers.get("content-security-policy")).toBeNull();
+  it("gives every non-HTML response a sandboxed deny-all policy", async () => {
+    for (const path of ["/api/x", "/missing"]) {
+      const csp = (await app.request(path)).headers.get("content-security-policy") ?? "";
+      expect(directives(csp)["default-src"]).toEqual(["'none'"]);
+      expect(directives(csp)["frame-ancestors"]).toEqual(["'none'"]);
+      expect(directives(csp)["sandbox"]).toEqual([]);
+    }
   });
 
   it("builds nonces that are 32 hex digits", () => {

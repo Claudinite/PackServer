@@ -18,7 +18,7 @@ export function StatusChip(props: { status: PackStatus; visibility?: "public" | 
     </span>
   );
   const inner = props.drawerId ? <a href={`#${props.drawerId}`} class="plain">{chip}</a> : chip;
-  return props.detail ? <HoverCard label={inner}>{props.detail}</HoverCard> : inner;
+  return props.detail ? <HoverCard label={inner} focusable={!props.drawerId}>{props.detail}</HoverCard> : inner;
 }
 
 /** A row of the Needs-you queue: what is blocked and the one action that unblocks it. */

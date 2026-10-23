@@ -1,11 +1,23 @@
 import type { Child } from "hono/jsx";
 
-/** Hover tells: a tooltip-sized breakdown, no actions. Opens on hover and keyboard focus. */
-export function HoverCard(props: { label: Child; children: Child; align?: "left" | "right" }) {
+let nextId = 0;
+
+/** Script for the one thing CSS cannot do: Escape dismisses an open hover card until the pointer or focus moves (WCAG 1.4.13). */
+export const HOVER_DISMISS_SCRIPT =
+  `document.addEventListener("keydown",function(e){if(e.key==="Escape")document.documentElement.classList.add("esc")});` +
+  `["mousemove","focusin"].forEach(function(t){document.addEventListener(t,function(){document.documentElement.classList.remove("esc")})});`;
+
+/**
+ * Hover tells: a tooltip-sized breakdown, no actions. Opens on hover and keyboard focus.
+ * A label that already holds a link or button passes `focusable={false}` so it is one tab stop, not two.
+ */
+export function HoverCard(props: { label: Child; children: Child; align?: "left" | "right"; focusable?: boolean }) {
+  const id = `hc-${++nextId}`;
+  const focusable = props.focusable !== false;
   return (
     <span class="hc">
-      <span class="trigger" tabindex={0}>{props.label}</span>
-      <span class={props.align === "right" ? "pop right" : "pop"} role="tooltip">{props.children}</span>
+      <span class="trigger" tabindex={focusable ? 0 : undefined} aria-describedby={focusable ? id : undefined}>{props.label}</span>
+      <span class={props.align === "right" ? "pop right" : "pop"} role="tooltip" id={id}>{props.children}</span>
     </span>
   );
 }
@@ -14,7 +26,8 @@ export function HoverCard(props: { label: Child; children: Child; align?: "left"
 export function Drawer(props: { id: string; title: string; children: Child }) {
   return (
     <aside class="drawer" id={props.id} aria-label={props.title}>
-      <a class="close" href="#" aria-label="Close">✕</a>
+      {/* A fragment with no matching element clears :target without scrolling, unlike "#". */}
+      <a class="close" href="#_" aria-label="Close">✕</a>
       <h2>{props.title}</h2>
       {props.children}
     </aside>

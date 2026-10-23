@@ -1,4 +1,4 @@
-import { CrystalGlyph, pageCss } from "@packserver/ui";
+import { CrystalGlyph, HOVER_DISMISS_SCRIPT, pageCss } from "@packserver/ui";
 import type { Context } from "hono";
 import type { Child } from "hono/jsx";
 
@@ -22,8 +22,8 @@ export interface LayoutProps {
 }
 
 /**
- * The page shell. Its only inline code is the stylesheet, which runs under the response nonce;
- * it carries no script, so pack content placed in `children` has nothing to hook into.
+ * The page shell. Its only inline code is the stylesheet and the Escape-dismiss script, both
+ * under the response nonce; pack content placed in `children` is escaped text and carries none.
  */
 export function Layout(props: LayoutProps) {
   return (
@@ -45,6 +45,7 @@ export function Layout(props: LayoutProps) {
           </div>
         </header>
         <main class="wrap">{props.children}</main>
+        <script nonce={props.nonce} dangerouslySetInnerHTML={{ __html: HOVER_DISMISS_SCRIPT }} />
       </body>
     </html>
   );

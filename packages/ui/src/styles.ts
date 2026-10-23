@@ -97,6 +97,7 @@ const layers = `
 .hc > .trigger { display: inline-flex; align-items: center; gap: 6px; border-radius: 4px; color: inherit; cursor: default; }
 .pop { position: absolute; top: calc(100% + 8px); left: 0; z-index: 40; min-width: 180px; width: max-content; max-width: min(300px, calc(100vw - 32px)); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 8px 24px var(--shadow); padding: ${g(1)} 12px; font-size: ${typeScale.small}px; color: var(--ink); opacity: 0; visibility: hidden; transform: translateY(-2px); transition: opacity 120ms, transform 120ms, visibility 120ms; pointer-events: none; }
 .hc:hover .pop, .hc:focus-within .pop { opacity: 1; visibility: visible; transform: none; pointer-events: auto; }
+html.esc .hc:hover .pop, html.esc .hc:focus-within .pop { opacity: 0; visibility: hidden; }
 .pop.right { left: auto; right: 0; }
 .pop ul { list-style: none; margin: 0; padding: 0; }
 .pop li + li { margin-top: 2px; }
