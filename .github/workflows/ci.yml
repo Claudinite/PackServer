@@ -107,7 +107,6 @@ jobs:
 
   # Legs run in parallel so no one runner carries the whole budget.
   checks:
-    name: checks (${{ matrix.leg }})
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
@@ -117,39 +116,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - leg: lint
-            run: pnpm lint
-          - leg: typecheck
-            run: pnpm typecheck
-          - leg: tools
-            run: node tools/check-rules.mjs && node tools/check-bindings.mjs && node infra/apply-ids.mjs --check && pnpm db:check
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: ${{ matrix.run }}
-
-  # The infra project is one leg; the workspace packages, listed from the
-  # workspace itself, are dealt round-robin across the package legs.
-  unit:
-    name: unit (${{ matrix.leg }})
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        leg: [infra, packages-0, packages-1, packages-2]
+        shard: [lint, typecheck, tools]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -162,7 +129,41 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: run the leg
         env:
-          LEG: ${{ matrix.leg }}
+          LEG: ${{ matrix.shard }}
+        run: |
+          case "$LEG" in
+            lint) pnpm lint ;;
+            typecheck) pnpm typecheck ;;
+            tools) node tools/check-rules.mjs && node tools/check-bindings.mjs && node infra/apply-ids.mjs --check && pnpm db:check ;;
+            *) echo "unknown leg $LEG"; exit 1 ;;
+          esac
+
+  # The infra project is one leg; the workspace packages, listed from the
+  # workspace itself, are dealt round-robin across the package legs.
+  unit:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [infra, packages-0, packages-1, packages-2]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: run the leg
+        env:
+          LEG: ${{ matrix.shard }}
         run: |
           if [ "$LEG" = infra ]; then
             pnpm test:infra

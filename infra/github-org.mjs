@@ -11,7 +11,11 @@ export const MAIN_REPO = "PackServer";
 export const RULESET_NAME = "main-protection";
 // Contexts must be what CI reports: a matrix job reports one context per entry, so `scenarios`
 // is "scenarios (1)" and "scenarios (2)" (github-org.test.mjs checks this against ci.yml).
-export const MAIN_CHECKS = ["checks", "unit", "scenarios (1)", "scenarios (2)", "summary"];
+export const MAIN_CHECKS = [
+  "checks (lint)", "checks (typecheck)", "checks (tools)",
+  "unit (infra)", "unit (packages-0)", "unit (packages-1)", "unit (packages-2)",
+  "scenarios (1)", "scenarios (2)", "summary",
+];
 export const GATE_CHECK = "scenario-gate";
 export const GATE_WORKFLOW = ".github/workflows/scenario-gate.yml";
 
