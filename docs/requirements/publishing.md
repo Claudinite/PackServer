@@ -505,10 +505,11 @@ REQ-ACC-002: `admin`, `claude`, `anthropic`, `claudinite`, `cn`, `fleet`, `local
 - coverage: scenario+unit (the scenario proves the refusal, the hold and the suggestion; the distance and confusable tables are unit tests)
 
 Scope and pack names are ASCII. The check applies to the scope component, the name component and
-the full `@scope/name` id: a name within edit distance 2 of, or visually confusable with, a popular
-pack or a verified scope that it is not is refused with a suggestion; a near miss on a verified
-scope that is not an exact collision holds the version for human review. Handles are checked at
-creation (REQ-ACC-002).
+the full `@scope/name` id: a name within edit distance 2 of (1 for names of three or four characters,
+exact only below that, D58), or visually confusable with, a popular pack or a verified scope that it
+is not is refused with a suggestion; a near miss on a verified scope that is not a confusable holds
+the version for human review, and so does a popular pack's exact name under a scope close to that
+pack's scope (D58). Handles are checked at creation (REQ-ACC-002).
 
 ## REQ-PUB-019 Staged publishing holds a validated version until approval
 
