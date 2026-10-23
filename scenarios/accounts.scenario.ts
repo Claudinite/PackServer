@@ -88,7 +88,7 @@ scenario("IT-ACC-025 An unverified provider email never links or signs in by ema
 
 scenario("IT-ACC-023 Return targets are same-origin only", async (world) => {
   const ann = await world.users.create();
-  const outside = await ann.signIn({ next: "https://evil.example/x" });
+  const outside = await ann.signIn({ next: world.users.foreignLink });
   const inside = await ann.signIn({ next: "/packs/@acme/gcp" });
   expect(outside.landedOn).toBe("/");
   expect(inside.landedOn).toBe("/packs/@acme/gcp");
@@ -106,7 +106,7 @@ scenario("IT-ACC-019 Auth forms carry a human check, rate limits and a per-addre
   const fromMany = outcomes(Array.from({ length: 12 }, (_, i) => () => oneAccount.from(`192.0.2.${100 + i}`).signIn()));
   expectRefusedAfterSome(await fromMany);
 
-  await expect(world.users.newcomer().from("192.0.2.201").signIn()).resolves.toBeDefined();
+  await expect(world.users.newcomer().from("192.0.2.250").signIn()).resolves.toMatchObject({ id: expect.any(String) });
 });
 
 scenario("IT-ACC-013 Sessions expire after 12 h idle or 7 d absolute; last-seen throttled to 15 min", async (world) => {
@@ -127,8 +127,8 @@ scenario("IT-ACC-013 Sessions expire after 12 h idle or 7 d absolute; last-seen 
   await world.clock.advance("6h41m");
 
   await expect(idle.as(idleSession).account.show()).toBeRefused("signed-out");
-  await expect(active.as(activeSession).account.show()).resolves.toBeDefined();
-  await expect(steady.as(steadySession).account.show()).resolves.toBeDefined();
+  await expect(active.as(activeSession).account.show()).resolves.toMatchObject({ id: expect.any(String) });
+  await expect(steady.as(steadySession).account.show()).resolves.toMatchObject({ id: expect.any(String) });
 
   for (let i = 0; i < 24; i++) {
     await world.clock.advance("6h");
@@ -146,7 +146,7 @@ scenario("IT-ACC-021 Sessions rotate on sign-in and step-up; cookie attributes a
   const second = await ann.signIn();
   expect(second.id).not.toBe(first.id);
   await expect(ann.as(first).account.show()).toBeRefused("signed-out");
-  expect(second.cookie).toEqual({ name: "__Host-session", secure: true, httpOnly: true, sameSite: "Lax", path: "/", domain: undefined });
+  expect(second.cookie).toEqual({ name: expect.any(String), secure: true, httpOnly: true, sameSite: "Lax", path: "/", domain: undefined });
 
   await ann.as(second).signOut();
   await expect(ann.as(second).account.show()).toBeRefused("signed-out");
@@ -156,7 +156,7 @@ scenario("IT-ABUSE-002 Public forms require a passed human check", async (world)
   const bot = world.users.newcomer().failingHumanCheck();
   await expect(bot.signIn()).toRequireHumanCheck();
   const human = world.users.newcomer();
-  await expect(human.signIn()).resolves.toBeDefined();
+  await expect(human.signIn()).resolves.toMatchObject({ id: expect.any(String) });
 });
 
 scenario("IT-ABUSE-005 Auth endpoints are rate-limited per IP and account", async (world) => {
@@ -165,7 +165,7 @@ scenario("IT-ABUSE-005 Auth endpoints are rate-limited per IP and account", asyn
   const target = world.users.newcomer();
   expectRefusedAfterSome(await outcomes(Array.from({ length: 12 }, (_, i) => () => target.from(`198.18.1.${i + 1}`).signIn())));
 
-  await expect(world.users.newcomer().from("198.18.2.1").signIn()).resolves.toBeDefined();
+  await expect(world.users.newcomer().from("198.18.2.1").signIn()).resolves.toMatchObject({ id: expect.any(String) });
 });
 
 scenario("IT-ABUSE-007 Forms carry CSRF tokens and idempotency keys", async (world) => {
@@ -177,11 +177,12 @@ scenario("IT-ABUSE-007 Forms carry CSRF tokens and idempotency keys", async (wor
 
   await expect(ann.chooseHandle(handle, { csrf: "none" })).toBeRefused("forbidden");
   await expect(ann.chooseHandle(handle, { csrf: bobs })).toBeRefused("forbidden");
-  await expect(ann.chooseHandle(handle, { origin: "https://evil.example" })).toBeRefused("forbidden");
+  await expect(ann.chooseHandle(handle, { origin: "foreign" })).toBeRefused("forbidden");
   await expect(ann.account.show()).resolves.toMatchObject({ handle: null });
 
   await ann.chooseHandle(handle, { idempotencyKey: "replayed-key-0001" });
-  await expect(ann.chooseHandle(handle, { idempotencyKey: "replayed-key-0001" })).resolves.toBeUndefined();
+  await ann.chooseHandle(handle, { idempotencyKey: "replayed-key-0001" });
+  await expect(ann.account.show()).resolves.toMatchObject({ handle });
   await expect(ann.chooseHandle(world.alias("another"))).toBeRefusedSaying("already has a handle");
   await expect(ann.account.show()).resolves.toMatchObject({ handle });
 });

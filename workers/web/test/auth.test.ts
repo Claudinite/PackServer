@@ -32,6 +32,7 @@ function setup(github: { profile: () => Promise<GitHubProfile> } = { profile: as
       githubLogin: { authorizeUrl: async ({ state }) => `https://github.com/login/oauth/authorize?state=${state}`, ...github },
     },
     services: { mcp: {} as Fetcher, publish: {} as Fetcher },
+    config: { cdnOrigin: undefined },
   };
   const app = createApp(runtime);
   const request = (path: string, init: RequestInit = {}) => app.request(`${ORIGIN}${path}`, init);

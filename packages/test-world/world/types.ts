@@ -37,7 +37,8 @@ export interface AccountInfo {
 export interface FormFaults {
   /** `'none'` sends no CSRF token; a session sends that session's token instead of this one's. */
   csrf?: "none" | Session;
-  origin?: string;
+  /** `'foreign'` sends the form as another site would. */
+  origin?: "foreign";
   idempotencyKey?: string;
 }
 export interface Assertion {

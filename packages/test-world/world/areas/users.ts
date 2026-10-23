@@ -15,6 +15,8 @@ export interface UsersModule {
     create(opts?: UserOpts): Promise<User>;
     /** A GitHub identity with no account yet: the first `signIn` creates one, with no handle. */
     newcomer(opts?: UserOpts): User;
+    /** A link to a site other than this one. */
+    readonly foreignLink: string;
   };
   publishers: { create(opts?: PublisherOpts): Promise<Publisher> };
   personas: {
@@ -27,6 +29,7 @@ export interface UsersModule {
 
 /** The in-process driver addresses a Worker by name; its origin is what the site compares a form's `Origin` with. */
 const ORIGIN = "http://web.internal";
+const FOREIGN_ORIGIN = "https://evil.example";
 const BROWSER = "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0";
 const SESSION_COOKIE = "__Host-session";
 const STATE_COOKIE = "__Host-github-state";
@@ -190,7 +193,7 @@ class Person implements User {
   /** The headers a valid form post carries, each replaceable by a fault. */
   private async formHeaders(session: Session | undefined, faults: FormFaults = {}): Promise<Record<string, string>> {
     const headers: Record<string, string> = {
-      origin: faults.origin ?? ORIGIN,
+      origin: faults.origin === "foreign" ? FOREIGN_ORIGIN : ORIGIN,
       "idempotency-key": faults.idempotencyKey ?? crypto.randomUUID().replaceAll("-", ""),
     };
     if (faults.csrf !== "none") {
@@ -291,6 +294,7 @@ export const createUsers = (driver: Driver, aliases: Aliases): UsersModule => {
 
   return {
     users: {
+      foreignLink: `${FOREIGN_ORIGIN}/x`,
       newcomer: (opts) => newcomer(opts).person,
       async create(opts = {}) {
         const { person, name } = newcomer(opts);
