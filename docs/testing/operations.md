@@ -97,14 +97,14 @@ is the only gate before every Worker goes to 100% (Ariel B7 2026-10-22).
 - **Covers:** REQ-TELEM-001
 - **Runs:** push
 - **Action:** a private download and a private index fetch through the Worker by `cn adopt`, the update task and MCP; a public download recorded in the fake Logpush archive; run the rollup.
-- **Faked:** stats sink, Logpush archive.
+- **Faked:** stats sink, Logpush archive (records as the Transformer delivers them: `ClientNetwork`, no `ClientIP`).
 - **Assert:** points exist with pack, version, hashed principal and fetcher for each private fetch, written after the response (recorder order); the public download is counted from the archive with its /24 network and produced no Worker invocation.
 
 ### IT-TELEM-002 A public download counts once per network, version and day; a private one once per principal
 - **Covers:** REQ-TELEM-002
 - **Runs:** push
 - **Action:** public downloads of one version from 198.51.100.7 five times and from 198.51.100.9 once today, and from 198.51.100.7 once tomorrow, recorded in the fake Logpush archive; one private principal downloads another version 5 times today; read the pack pages.
-- **Faked:** clock, stats sink, Logpush archive.
+- **Faked:** clock, stats sink, Logpush archive (post-Transformer records).
 - **Assert:** after the rollup the public version shows 1 for today (one /24 network) and 1 for tomorrow; the private version shows 1 for today; the pages say "about N fetches" and show no repository count from fetches.
 
 ### IT-TELEM-006 Telemetry never stores raw IPs

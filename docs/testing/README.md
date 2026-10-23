@@ -80,7 +80,7 @@ the test is not about the gate.
 ### 4.2 `http`
 
 The same World with `fetch` against a URL and no fakes, clock, reset or recorder: only `probe-safe`
-and `weekly` entries run under it. Environment: `PACKSERVER_BASE_URL`, `PACKSERVER_VERSION_OVERRIDE`,
+and `weekly` entries run under it. Environment: `PACKSERVER_BASE_URL`, `PACKSERVER_VERSION_OVERRIDE` (with `PACKSERVER_EXPECTED_RELEASE`, the comma-separated release id(s) the candidate reports in `X-PackServer-Version`: the override names version ids, so the driver cannot derive it, and refuses to start with an override and no expected release),
 `CF_ACCESS_CLIENT_ID`/`CF_ACCESS_CLIENT_SECRET` (attached only to the host named in
 `PACKSERVER_ACCESS_HOST`, the canary or admin host), `PACKSERVER_PROBE_TENANT` (default `@probe`).
 The release and monitoring plans invoke it as `npm run scenarios -- --driver=http --tag=probe-safe`
