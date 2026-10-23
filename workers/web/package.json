@@ -11,6 +11,7 @@
     "@packserver/http": "workspace:*",
     "@packserver/ports": "workspace:*",
     "@packserver/schema": "workspace:*",
+    "@packserver/ui": "workspace:*",
     "hono": "catalog:"
   },
   "devDependencies": {

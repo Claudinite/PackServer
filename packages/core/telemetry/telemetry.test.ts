@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { FakeClock } from "@packserver/ports/fakes";
 import {
   analyticsStats, createHasher, createModeCache, createTelemetry, datasetFor, dedupeKey, logRate, network, parseUserAgent,
-  REQUEST_BLOBS, REQUEST_DOUBLES, ANALYTICS_DATASETS, SIGNAL_NAMES, scrubIp, type Fetcher, type PrivateDownload,
+  REQUEST_BLOBS, REQUEST_DOUBLES, ANALYTICS_DATASETS, SIGNAL_NAMES, scrubIp, type DownloadFetcher, type PrivateDownload,
 } from "./index";
 import { TelemetrySink, toHaveRecorded } from "./testing";
 
@@ -209,7 +209,7 @@ describe("telemetry never follows a repository (Ariel's ruling)", () => {
 
   it("writes a point for each fetcher, and none for fields cn did not send", async () => {
     const { sink, telemetry } = setup();
-    for (const fetcher of ["cn_adopt", "cn_update", "mcp"] as Fetcher[]) await telemetry.download(download({ fetcher, repository: undefined, affinityKey: undefined, userAgent: undefined }));
+    for (const fetcher of ["cn_adopt", "cn_update", "mcp"] as DownloadFetcher[]) await telemetry.download(download({ fetcher, repository: undefined, affinityKey: undefined, userAgent: undefined }));
     expect(sink.recorded("download.served").map((r) => r.fields.fetcher)).toEqual(["cn_adopt", "cn_update", "mcp"]);
     expect(sink.recorded("download.served")[0]!.fields).not.toHaveProperty("repository");
   });
@@ -373,11 +373,12 @@ describe("review fixes", () => {
     expect(sink.points).toEqual([]);
   });
 
-  const hidden = ["upstream_10.0.0.1", "a1.2.3.4", "v1.2.3.4", "10.0.0.1x", "x2001:db8::1", "2001%3Adb8%3A%3A1", "%31%30.0.0.1", "2001:db8::1x", "::1", "100% 2001%3Adb8%3A%3A1", "50% off 198%2E51%2E100%2E7", "%ZZ 10%2E0%2E0%2E1", "10%252E0%252E0%252E1", "10%25252E0%25252E0%25252E1", "failed for 2001:db8::1: timeout", "2001:db8:0:0:0:0:0:1:", "a2001:db8::1", "１.２.３.４", "2001：db8：：1", "0x7f.0.0.1", "0xC0.0xA8.0.1"];
+  const hidden = ["upstream_10.0.0.1", "a1.2.3.4", "v1.2.3.4", "10.0.0.1x", "x2001:db8::1", "2001%3Adb8%3A%3A1", "%31%30.0.0.1", "2001:db8::1x", "::1", "100% 2001%3Adb8%3A%3A1", "50% off 198%2E51%2E100%2E7", "%ZZ 10%2E0%2E0%2E1", "10%252E0%252E0%252E1", "10%25252E0%25252E0%25252E1", "failed for 2001:db8::1: timeout", "2001:db8:0:0:0:0:0:1:", "a2001:db8::1", "１.２.３.４", "2001：db8：：1", "0x7f.0.0.1", "0xC0.0xA8.0.1", "%%31%30.0.0.1", "2001:db8::1::2001:db8::2", "1:2:3:4:5:6:2001:db8:a:b:c:d:e:f", "2001:db8::1:2001:db8:0:0:0:0:0:2", "10.0.0.1 and 10.0.0.2"];
   it.each(hidden)("scrubs %s", (text) => {
     const out = scrubIp(text);
     expect(out).toContain("[ip]");
-    expect(out).not.toMatch(/10\.0\.0\.1|1\.2\.3\.4|db8|198|7f|0xC0/);
+    expect([...out].some((ch) => ch.charCodeAt(0) < 32)).toBe(false);
+    expect(out).not.toMatch(/10\.0\.0\.1|1\.2\.3\.4|db8|198|7f|0xC0|2001|:0:0|10\.0\.0\.2|:2$/);
   });
   it.each(["std::vector", "1.2.3", "10:20:30", "1.2.3.256", "v1.2.3-beta", "12:00", "ns::Type<int>", "2026-10-22T10:20:30Z", "2130706433", "127.1", "100% sure", "3.14", "%ZZ"])("leaves %s alone", (text) => {
     expect(scrubIp(text)).toBe(text);
@@ -397,5 +398,26 @@ describe("review fixes", () => {
     expect(event.journey).toBe("adopt [ip]");
     expect([event.d1_ms, event.r2_ms, event.kv_ms, event.cpu_ms]).toEqual([undefined, undefined, 3, undefined]);
     expect(sink.everything()).not.toContain("10.0.0.1");
+  });
+});
+
+describe("scrub cost and edges", () => {
+  it("handles colon-dense and long input quickly", () => {
+    for (const filler of ["a:", ":", "a::", "1:2:"]) {
+      const input = filler.repeat(Math.ceil(20_000 / filler.length));
+      const started = performance.now();
+      scrubIp(input);
+      expect(performance.now() - started).toBeLessThan(50);
+    }
+    expect(scrubIp("x".repeat(5000))).toHaveLength(2048);
+  });
+  it("strips control characters from text that held an address", () => {
+    expect(scrubIp("a\u0000b 10.0.0.1\u0007")).toBe("ab [ip]");
+  });
+  it("keeps a non-finite or negative domain number out of the doubles", () => {
+    const { sink, telemetry } = setup("publish");
+    telemetry.emit("publish.received", { bytes: -1 });
+    telemetry.emit("publish.received", { bytes: Number.NaN });
+    expect(sink.recorded("publish.received").map((r) => r.point.doubles)).toEqual([[-1], [-1]]);
   });
 });

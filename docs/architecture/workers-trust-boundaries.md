@@ -7,29 +7,52 @@ are the only seam where Cloudflare products are touched (`src/bindings.ts` in ea
 
 | Worker | Routes | Bindings and secrets | Must never hold |
 |---|---|---|---|
-| `web` | `registry.claudinite.com/*`, `/api/*` (browse, auth, stars, reviews, comments, reports, dashboard, access, private downloads), the same on `registry-canary` | D1, KV sessions and cache, R2 public and private (read), Turnstile secret, service binding to `mcp` (search), service binding to `publish` (wizard uploads), Rate Limiting, Analytics Engine | GitHub App secrets; write access to `packs-public`; Workflows |
-| `mcp` | `/mcp`, `/.well-known/oauth-*`, `/oauth/*`, the search RPC for `web` | D1 (read mostly), KV oauth, Vectorize, Workers AI (embeddings), R2 private (read), Rate Limiting, Analytics Engine | Any GitHub secret; write access to any bucket |
-| `publish` | `/api/publish/*`, `/api/oidc/*`, `/api/dry-run/*` | D1, R2 staging (presign and write), Workflows (start), Durable Objects `ScopeCoordinator` and `Quota`, KV cache (JWKS), Queue notify (producer) | Signing key; public bucket write |
+| `web` | `registry.claudinite.com/*`, `/api/*` (browse, auth, stars, reviews, comments, reports, dashboard, access, private downloads), the same on `registry-canary` | D1, KV sessions and cache, R2 public and private (read), Turnstile secret, service binding to `mcp` (search), service binding to `publish` (wizard uploads), Queue audit (producer), Rate Limiting, Analytics Engine | GitHub App secrets; write access to `packs-public`; Workflows |
+| `mcp` | `/mcp`, `/.well-known/oauth-*`, `/oauth/*`, the search RPC for `web` | D1 (read mostly), KV oauth, Vectorize, Workers AI (embeddings), R2 private (read), Queue audit (producer: OAuth grants and refused tokens), Rate Limiting, Analytics Engine | Any GitHub secret; write access to any bucket |
+| `publish` | `/api/publish/*`, `/api/oidc/*`, `/api/dry-run/*` | D1, R2 staging (presign and write), service binding to `validator` (the coordinators' signing entrypoint `signScopeIndex`, `signPrivateEntries` and `signAndWriteRoot`; a validation run is started through the same binding, not through a Workflows binding of its own), Durable Objects `ScopeCoordinator`, `Quota` and `RootCoordinator`, KV cache (JWKS), Queue notify (producer), Queue audit (producer) | Signing key; public bucket write; Workflows (a run starts only through the validator) |
 | `github` | `/hooks/github`, weekly public-repository scan | GitHub App private key (Secrets Store), read-only public code-search token, D1 | Workflows; any bucket |
-| `validator` | Internal: `ValidatePackWorkflow`, two Containers, rescans, index and fragment signing | R2 staging (read), R2 public and private (write), `validation-reports`, R2 ops (read: `cn-releases`), D1, Vectorize, Workers AI (model screen, when one ships), Containers, Durable Objects `ScopeCoordinator` and `RootCoordinator` (`script_name: publish`), Queue notify (producer), the active Ed25519 signing key (Secrets Store) | A public route; the standby key |
-| `admin` | `registry-admin.claudinite.com`, internal API over service bindings (REQ-ADMIN-010), crons ([overview.md](overview.md) §Scheduled work) | D1, R2, Workflows, Queue audit (producer), Access certificate check | A `workers.dev` route |
+| `validator` | Internal: `ValidatePackWorkflow`, two Containers, rescans, index and fragment signing | R2 staging (read), R2 public and private (write), `validation-reports`, R2 ops (read: `cn-releases`), D1, Vectorize, Workers AI (model screen, when one ships), Containers, Durable Objects `ScopeCoordinator` and `RootCoordinator` (`script_name: publish`), service binding to `github` (public tree fetch), Queue notify (producer and consumer), Queue reindex (consumer), the active Ed25519 signing key (Secrets Store) | A public route; the standby key |
+| `admin` | `registry-admin.claudinite.com`, internal API over service bindings (REQ-ADMIN-010), crons ([overview.md](overview.md) §Scheduled work) | D1, R2, Workflows, Queue audit (producer and consumer), Queue reindex (producer: `regenerate_index`), Access certificate check | A `workers.dev` route |
 
-Two cross-cutting rules:
+Three cross-cutting rules:
 
 - **Only the validator writes to `packs-public` and `packs-private`, and only the validator signs.**
   The active signing key is a Secrets Store binding on the validator alone; the standby is bound to
   nothing until promoted ([signing-index-revocation.md](signing-index-revocation.md)).
+- **"(read)" on a bucket is enforced at the seam, not by the platform.** An R2 binding cannot be
+  made read-only, so `bindings.ts` hands each read-only bucket to `r2ReadPort` and to nothing else,
+  and the port has no write method. `tools/check-bindings.mjs` asserts that every read-only bucket in
+  the trust table appears in its Worker's `bindings.ts` only as `r2ReadPort(env.X)`. It also flags,
+  outside `bindings.ts` and `packages/ports/cloudflare`, any read of a binding by name, any `.env`
+  member access (a Durable Object's own `this.env` excepted), any `env` key in a destructure, and any
+  import of the `Env` type; and in a Worker's `index.ts` the handler's `env` may be used only as
+  `createRuntime(env)`.
 - **No Worker has a binding to `audit-log`.** The audit consumer writes through the S3 API with an
   object-only token ([data-stores.md](data-stores.md) §Audit log).
 
 Monitoring adds two Workers outside the application: the **gate judge** (cron; evaluates gates and
 alerts, routes `/hooks/monitors`, `/hooks/issues`, `/hooks/witness` with a per-source signature
-check, serves `GET /gates/<version_id>` behind Access; its only binding into the application is the
-admin internal API, limited to the methods REQ-ADMIN-010 names) and the **synthetic prober** (cron;
+check, serves `GET /gates/<version_id>` behind Access and `/judge/__selftest`, so it holds the self-test HMAC
+key (`SELFTEST_HMAC_KEY`) like every other Worker that serves one; its only binding into the
+application is the admin internal API, limited to the methods REQ-ADMIN-010 names) and the **synthetic prober** (cron;
 runs probe-safe scenarios as `@probe`). Analytics Engine datasets are bound along these boundaries:
 `request_outcomes` and `domain_events` everywhere; `synthetic_probes` only to the prober;
 `gate_results` and `budget` only to the judge; `validation_events` only to the validator. A
 compromised public Worker therefore cannot forge a passing probe.
+
+## The test environment
+
+Each Worker's `env.test` block is named `<worker>-test`, has `workers_dev: false` and no routes,
+points its service bindings and `script_name`s at the other `-test` Workers, suffixes its D1, R2,
+queue, workflow and Analytics Engine names with `-test` (`_test`), and takes rate-limit namespace
+ids of its own, so that a stray `wrangler deploy --env test` replaces nothing deployed and writes
+no deployed dataset. The top level of each `wrangler.jsonc` is named `<worker>-local` with no
+bindings, routes or `workers_dev`, so a bare `wrangler deploy` replaces nothing either.
+`tools/check-bindings.mjs` fails when a test Worker name, resource name, D1 or KV id or rate-limit
+namespace equals a staging or production one, and when a KV namespace bound by more than one Worker
+(such as `cache`) has two ids in one environment.
+A fake Worker (`fake-*`) is chosen by `ENVIRONMENT === "test"`, never by the shape of the binding;
+in staging and production a service binding where a product binding belongs is refused.
 
 ## Service bindings and the N/N-1 contract
 
@@ -76,10 +99,10 @@ rule set attached to each change. The Free-plan budget and what is spent of it:
 | Rule type | Free budget | Used | For |
 |---|---|---|---|
 | Transform Rules | 10, no regex | 3 | Strip `Cloudflare-Workers-Version-Overrides`, `Cloudflare-Workers-Version-Key`, `X-Selftest-Signature` and `X-PackServer-Shadow` from every request on `registry.claudinite.com` and `packs.claudinite.com`, unconditionally (SEC-REV M8; ARCH-REV C3); set the version key from the session cookie or client IP on `registry.claudinite.com`; one spare |
-| WAF custom rules | 5, no regex | 1 | Block requests to `/hooks/*` on any host but `registry.claudinite.com` |
+| WAF custom rules | 5, no regex | 1 | Block requests to `/hooks/*` on any host but `registry.claudinite.com` and `registry-staging.claudinite.com` (an `in {…}` set, no regex) |
 | Cache Rules | available | 1 | `packs.claudinite.com`: eligible for cache whatever the file extension, respect origin `Cache-Control`, Smart Tiered Cache (ARCH-REV H5) |
 | Rate limiting rules | 1; expression may use only the request path and Verified Bot, counting by IP, 10-second period and mitigation | 1 | `/api/auth/*`, a path no other hostname in the zone serves (ARCH-REV M1) |
-| Access applications | 500 on Zero Trust Free | 5 | `registry-admin` (hardware-key identity provider only), the staging hosts, `registry-canary` (service tokens for the prober and the controller, plus the team group), `/__selftest*` wherever it is exposed, the gate API; the probe token is a member of the canary and self-test policies only |
+| Access applications | 500 on Zero Trust Free | 6 | `registry-admin` (hardware-key identity provider only), the staging hosts, `registry-canary` (service tokens for the prober and the controller, plus the team group), `/__selftest*` wherever it is exposed, the gate API, and a Bypass application for `registry-staging.claudinite.com/hooks/*` (GitHub cannot present a service token; webhooks authenticate by signature, and this path is the only one the staging-hosts application does not cover); the probe token is a member of the canary and self-test policies only |
 
 The canary host is where candidate versions are reached: the override headers survive there and
 nowhere else, and Access refuses everyone but the named service tokens before any Worker runs

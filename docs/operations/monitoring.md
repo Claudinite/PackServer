@@ -20,6 +20,8 @@ paths, 100% on the validator. Invocation logs are off everywhere. The zone's two
 days with IPs truncated to /24 and query strings stripped; the network-level counts REQ-TELEM-001
 and REQ-TELEM-002 promise come from them.
 
+An unknown measurement is stored as -1 in its Analytics Engine double (the dataset has no null), so a query must filter `doubleN >= 0` before it sums, averages or takes a percentile.
+
 **Sampling and denial of wallet.** Logs on the read-path Workers are head-sampled at 10x scale
 (0.15), never on write paths; synthetic traffic and anonymous 4xx are logged at low rates. A KV
 `telemetry_mode` switch (`normal`, `economy`) lets the gate judge stop anonymous 2xx and 4xx log

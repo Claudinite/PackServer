@@ -62,9 +62,9 @@ export function createRuntime(env: Env): ValidatorRuntime {
       queues: { NOTIFY_QUEUE: queuePort(env.NOTIFY_QUEUE) },
       workflows: { VALIDATE_PACK: workflowPort(env.VALIDATE_PACK) },
       durableObjects: durableObjectsPort({ ScopeCoordinator: env.SCOPE_COORDINATOR, RootCoordinator: env.ROOT_COORDINATOR }),
-      vectors: vectorIndexPort(env.VECTORIZE),
-      embedder: embedderFrom(env.AI),
-      sandbox: sandboxPort(env.SANDBOX_A, env.SANDBOX_B),
+      vectors: vectorIndexPort(env.ENVIRONMENT, env.VECTORIZE),
+      embedder: embedderFrom(env.ENVIRONMENT, env.AI),
+      sandbox: sandboxPort(env.ENVIRONMENT, env.SANDBOX_A, env.SANDBOX_B),
     },
     { github: env.GITHUB },
   );

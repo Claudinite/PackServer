@@ -71,58 +71,81 @@ export function dedupeKey(
 const PART = "(?:0x[0-9a-f]{1,2}|\\d{1,3})";
 const V4 = new RegExp(`(?<![\\d])${PART}(?:\\.${PART}){3}(?!\\d)`, "gi");
 const V6_RUN = /[0-9a-f:]{2,}/gi;
-const HEX_GROUP = /^[0-9a-f]{1,4}$/i;
 const MAX_V6 = 45;
+/** A value longer than this is truncated before it is scanned, which also bounds the scan's cost. */
+export const MAX_SCRUBBED_LENGTH = 2048;
 
-const isIpv6 = (text: string): boolean => {
-  if ((text.match(/:/g) ?? []).length < 2) return false;
-  const halves = text.split("::");
-  if (halves.length > 2) return false;
-  const groups = halves.flatMap((h) => (h === "" ? [] : h.split(":")));
-  if (!groups.every((g) => HEX_GROUP.test(g))) return false;
-  return halves.length === 2 ? groups.length < 8 : groups.length === 8;
-};
+const isHex = (c: string): boolean => (c >= "0" && c <= "9") || (c >= "a" && c <= "f") || (c >= "A" && c <= "F");
 
-const octet = (part: string): number => Number(part.toLowerCase().startsWith("0x") ? part : part);
+/** Each %XX is decoded on its own, so a stray % elsewhere in the text cannot stop it. */
+const decodeOnce = (text: string): string =>
+  text.replace(/%([0-9a-f]{2})/gi, (m, hex: string) => {
+    const code = parseInt(hex, 16);
+    return code < 128 ? String.fromCharCode(code) : m;
+  });
 
-/** Each %XX is decoded on its own (a stray % must not stop the rest), until nothing changes. */
-function decodePercent(text: string): string {
-  let out = text;
-  for (let i = 0; i < 8; i++) {
-    const next = out.replace(/%([0-9a-f]{2})/gi, (m, hex: string) => {
-      const code = parseInt(hex, 16);
-      return code < 128 ? String.fromCharCode(code) : m;
-    });
-    if (next === out) break;
-    out = next;
-  }
-  return out;
-}
-
-function scrubV6Run(run: string, offset: number, whole: string): string {
-  for (let len = Math.min(run.length, MAX_V6); len >= 2; len--) {
-    for (let start = 0; start + len <= run.length; start++) {
-      const candidate = run.slice(start, start + len);
-      if (!isIpv6(candidate)) continue;
-      if (candidate.endsWith("::") && /[A-Za-z_]/.test(whole[offset + start + len] ?? "")) continue;
-      return `${run.slice(0, start)}[ip]${run.slice(start + len)}`;
+/**
+ * Whether some window of the run is a valid address, found by walking forward from each start in
+ * one pass (no allocation, at most MAX_V6 steps per start). `std::vector`'s `d::` is not one.
+ */
+function holdsIpv6(run: string, offset: number, whole: string): boolean {
+  for (let start = 0; start < run.length; start++) {
+    if (run[start] === ":" && run[start + 1] !== ":") continue;
+    let groups = 0;
+    let groupLen = 0;
+    let colons = 0;
+    let doubles = 0;
+    const stop = Math.min(run.length, start + MAX_V6);
+    for (let j = start; j < stop; j++) {
+      const c = run[j] as string;
+      if (isHex(c)) {
+        if (++groupLen > 4) break;
+        if (groupLen === 1) groups++;
+      } else {
+        colons++;
+        if (j > start && run[j - 1] === ":" && ++doubles > 1) break;
+        groupLen = 0;
+      }
+      const endsOnColon = c === ":";
+      if (endsOnColon && !(j > start && run[j - 1] === ":")) continue;
+      if (colons < 2 || (doubles === 1 ? groups >= 8 : groups !== 8 || doubles !== 0)) continue;
+      if (endsOnColon && /[A-Za-z_]/.test(whole[offset + j + 1] ?? "")) continue;
+      return true;
     }
   }
-  return run;
+  return false;
 }
+
+/** One decoding level. A hex/colon run holding any address is replaced whole, so neighbours of it cannot leak. */
+function scrubLevel(text: string): string {
+  return text
+    .replace(V4, (m) => (m.split(".").every((o) => Number(o) <= 255) ? "[ip]" : m))
+    .replace(V6_RUN, (run, offset: number, whole: string) => (holdsIpv6(run, offset, whole) ? "[ip]" : run));
+}
+
+// eslint-disable-next-line no-control-regex -- stripping control characters is the point
+const CONTROL = /[\u0000-\u001f\u007f]/g;
 
 /**
  * Replaces anything that parses as an IPv4 or IPv6 address, wherever it sits in the text and
- * however it is glued to other characters: after NFKC folding (full-width digits and colons) and
- * percent-decoding, with the longest valid IPv6 inside a hex/colon run. Dotted IPv4 with decimal
- * or 0x parts is recognised; the shorthand `127.1` and the bare integer `2130706433` are not,
- * since they cannot be told from versions, decimals, byte counts and timestamps. `std::vector`
- * is left alone. Text with nothing to scrub is returned exactly as given.
+ * however it is glued to other characters. The text is cut to `MAX_SCRUBBED_LENGTH`, folded with
+ * NFKC (full-width digits and colons), and scrubbed at every percent-decoding level, since a
+ * decode can create an address or destroy one. Dotted IPv4 with decimal or `0x` parts is
+ * recognised; the shorthand `127.1` and the bare integer `2130706433` are not, since they cannot
+ * be told from versions, decimals, byte counts and timestamps. `std::vector` is left alone.
+ * Text with nothing to scrub comes back as given (cut to length); text with an address comes
+ * back in its decoded form with control characters removed.
  */
 export function scrubIp(text: string): string {
-  const folded = decodePercent(text.normalize("NFKC"));
-  const out = folded
-    .replace(V4, (m) => (m.split(".").every((o) => octet(o) <= 255) ? "[ip]" : m))
-    .replace(V6_RUN, (m, offset: number, whole: string) => scrubV6Run(m, offset, whole));
-  return out === folded ? text : out;
+  const input = text.length > MAX_SCRUBBED_LENGTH ? text.slice(0, MAX_SCRUBBED_LENGTH) : text;
+  let current = input.normalize("NFKC");
+  let found = false;
+  for (let level = 0; level < 8; level++) {
+    const scrubbed = scrubLevel(current);
+    if (scrubbed !== current) found = true;
+    const next = decodeOnce(scrubbed);
+    current = next;
+    if (next === scrubbed) break;
+  }
+  return found ? current.replace(CONTROL, "") : input;
 }

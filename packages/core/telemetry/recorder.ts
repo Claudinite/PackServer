@@ -38,7 +38,7 @@ export interface RequestObservation {
 }
 
 export const FETCHERS = ["cn_adopt", "cn_update", "mcp"] as const;
-export type Fetcher = (typeof FETCHERS)[number];
+export type DownloadFetcher = (typeof FETCHERS)[number];
 
 /**
  * A fetch of a private pack, public or private repository alike: the caller was validated, so
@@ -52,7 +52,7 @@ export interface PrivateDownload {
   version: string;
   /** The opaque id the bytes are addressed by. */
   versionId: string;
-  fetcher: Fetcher;
+  fetcher: DownloadFetcher;
   principal: { kind: PrincipalKind; id: string };
   ip?: string;
   country?: string;
@@ -124,7 +124,7 @@ export function createTelemetry(options: TelemetryOptions): Telemetry {
     emit(signal, attrs = {}) {
       if (OWN_WRITER.has(signal)) throw new Error(`${signal} has its own writer and cannot be emitted as a domain event`);
       const safe = cleanAttrs(attrs);
-      const doubles = (SIGNAL_NUMBERS[signal] ?? []).map((k) => (typeof safe[k] === "number" ? (safe[k] as number) : UNKNOWN_DOUBLE));
+      const doubles = (SIGNAL_NUMBERS[signal] ?? []).map((k) => (nonNegative(typeof safe[k] === "number" ? (safe[k] as number) : undefined) ?? UNKNOWN_DOUBLE));
       stats.write({ name: signal, index: signal, blobs: [worker, releaseId, versionId, JSON.stringify(safe)], doubles });
     },
 

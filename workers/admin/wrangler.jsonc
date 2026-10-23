@@ -1,6 +1,7 @@
 {
+  "name": "admin-local",
+  "workers_dev": false,
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "admin",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": [
@@ -8,7 +9,8 @@
   ],
   "env": {
     "test": {
-      "name": "admin",
+      "name": "admin-test",
+      "workers_dev": false,
       "vars": {
         "WORKER": "admin",
         "ENVIRONMENT": "test",
@@ -17,7 +19,7 @@
       "d1_databases": [
         {
           "binding": "DB",
-          "database_name": "registry",
+          "database_name": "registry-test",
           "database_id": "00000000-0000-0000-0000-010000000001",
           "migrations_dir": "../../packages/schema/migrations"
         }
@@ -25,40 +27,40 @@
       "r2_buckets": [
         {
           "binding": "PACKS_STAGING",
-          "bucket_name": "packs-staging"
+          "bucket_name": "packs-staging-test"
         },
         {
           "binding": "VALIDATION_REPORTS",
-          "bucket_name": "validation-reports"
+          "bucket_name": "validation-reports-test"
         },
         {
           "binding": "OPS_BUCKET",
-          "bucket_name": "ops"
+          "bucket_name": "ops-test"
         }
       ],
       "queues": {
         "producers": [
           {
             "binding": "AUDIT_QUEUE",
-            "queue": "audit"
+            "queue": "audit-test"
           }
         ],
         "consumers": [
           {
-            "queue": "audit",
+            "queue": "audit-test",
             "max_batch_size": 100,
             "max_batch_timeout": 30,
             "max_retries": 5,
-            "dead_letter_queue": "audit-dlq"
+            "dead_letter_queue": "audit-dlq-test"
           }
         ]
       },
       "workflows": [
         {
           "binding": "VALIDATE_PACK",
-          "name": "validate-pack",
+          "name": "validate-pack-test",
           "class_name": "ValidatePackWorkflow",
-          "script_name": "validator"
+          "script_name": "validator-test"
         }
       ],
       "services": [
@@ -70,11 +72,11 @@
       "analytics_engine_datasets": [
         {
           "binding": "REQUEST_OUTCOMES",
-          "dataset": "request_outcomes"
+          "dataset": "request_outcomes_test"
         },
         {
           "binding": "DOMAIN_EVENTS",
-          "dataset": "domain_events"
+          "dataset": "domain_events_test"
         }
       ],
       "version_metadata": {
