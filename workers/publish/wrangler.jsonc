@@ -1,6 +1,7 @@
 {
+  "name": "publish-local",
+  "workers_dev": false,
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "publish",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": [
@@ -8,7 +9,8 @@
   ],
   "env": {
     "test": {
-      "name": "publish",
+      "name": "publish-test",
+      "workers_dev": false,
       "vars": {
         "WORKER": "publish",
         "ENVIRONMENT": "test",
@@ -17,7 +19,7 @@
       "d1_databases": [
         {
           "binding": "DB",
-          "database_name": "registry",
+          "database_name": "registry-test",
           "database_id": "00000000-0000-0000-0000-010000000001",
           "migrations_dir": "../../packages/schema/migrations"
         }
@@ -31,14 +33,14 @@
       "r2_buckets": [
         {
           "binding": "PACKS_STAGING",
-          "bucket_name": "packs-staging"
+          "bucket_name": "packs-staging-test"
         }
       ],
       "queues": {
         "producers": [
           {
             "binding": "NOTIFY_QUEUE",
-            "queue": "notify"
+            "queue": "notify-test"
           }
         ]
       },
@@ -58,14 +60,6 @@
           }
         ]
       },
-      "workflows": [
-        {
-          "binding": "VALIDATE_PACK",
-          "name": "validate-pack",
-          "class_name": "ValidatePackWorkflow",
-          "script_name": "validator"
-        }
-      ],
       "exports": {
         "ScopeCoordinator": {
           "type": "durable-object",
@@ -83,17 +77,17 @@
       "services": [
         {
           "binding": "VALIDATOR",
-          "service": "validator"
+          "service": "validator-test"
         }
       ],
       "analytics_engine_datasets": [
         {
           "binding": "REQUEST_OUTCOMES",
-          "dataset": "request_outcomes"
+          "dataset": "request_outcomes_test"
         },
         {
           "binding": "DOMAIN_EVENTS",
-          "dataset": "domain_events"
+          "dataset": "domain_events_test"
         }
       ],
       "version_metadata": {
@@ -165,14 +159,6 @@
           }
         ]
       },
-      "workflows": [
-        {
-          "binding": "VALIDATE_PACK",
-          "name": "validate-pack-staging",
-          "class_name": "ValidatePackWorkflow",
-          "script_name": "validator-staging"
-        }
-      ],
       "exports": {
         "ScopeCoordinator": {
           "type": "durable-object",
@@ -291,14 +277,6 @@
           }
         ]
       },
-      "workflows": [
-        {
-          "binding": "VALIDATE_PACK",
-          "name": "validate-pack",
-          "class_name": "ValidatePackWorkflow",
-          "script_name": "validator"
-        }
-      ],
       "exports": {
         "ScopeCoordinator": {
           "type": "durable-object",

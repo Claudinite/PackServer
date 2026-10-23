@@ -51,7 +51,7 @@
       "r2": { "PACKS_STAGING": { "bucket": "packs-staging", "access": "read-write" } },
       "queues": { "NOTIFY_QUEUE": "notify" },
       "queue_consumers": [],
-      "workflows": { "VALIDATE_PACK": "validate-pack" },
+      "workflows": {},
       "durable_objects": {
         "SCOPE_COORDINATOR": { "class": "ScopeCoordinator", "host": "publish" },
         "QUOTA": { "class": "Quota", "host": "publish" },
@@ -158,7 +158,7 @@
         "BUDGET": "budget"
       },
       "ratelimits": [],
-      "secrets": [],
+      "secrets": ["SELFTEST_HMAC_KEY"],
       "fakes": { "ACCESS": "fake-access" }
     },
     "prober": {

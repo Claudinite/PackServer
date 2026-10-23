@@ -65,7 +65,7 @@ export function createRuntime(env: Env): AdminRuntime {
     },
     queues: { AUDIT_QUEUE: queuePort(env.AUDIT_QUEUE) },
     workflows: { VALIDATE_PACK: workflowPort(env.VALIDATE_PACK) },
-    access: accessPort(env.ACCESS),
+    access: accessPort(env.ENVIRONMENT, env.ACCESS),
     auditBucket: lazyAuditBucket(env),
   });
 }
