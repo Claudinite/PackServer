@@ -3,3 +3,5 @@ export { InfrastructureError, NotImplemented } from "./world/errors";
 export { Refusal, NotFound, Ignored, Held } from "./world/outcomes";
 export type * from "./world/types";
 export type { PackBody, VersionBody, Read } from "./world/packs";
+export type { OrgHandle, PeopleView, ProfileView, TransferHandle, Invitation, ScopeRole } from "./world/scopes";
+export type { ScopeOwner } from "./world/areas/scopes";

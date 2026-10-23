@@ -1,3 +1,4 @@
+import type { D1 } from "@packserver/ports";
 import { describe, expect, it } from "vitest";
 import { chooseHandle, judgeHandle, loadHandleFacts } from "../handles.ts";
 import { migratedD1 } from "../testing.ts";
@@ -38,6 +39,8 @@ describe("IT-ACC-002 handle rules", () => {
   });
 });
 
+const ports = (d1: D1) => ({ d1, clock: { now: () => Date.parse(NOW) }, rng: { float: () => 0.5, uuid: () => crypto.randomUUID(), bytes: (n: number) => crypto.getRandomValues(new Uint8Array(n)) } });
+
 describe("handles against the database", () => {
   const seed = () => {
     const { d1, db } = migratedD1();
@@ -56,15 +59,19 @@ describe("handles against the database", () => {
 
   it("treats another person's handle, a scope name and a retired scope name as taken", async () => {
     const d1 = seed();
-    for (const name of ["taken", "gone"]) expect(await chooseHandle(d1, "u2", name)).toMatchObject({ ok: false, reason: "taken" });
+    for (const name of ["taken", "gone"]) expect(await chooseHandle(ports(d1), "u2", name)).toMatchObject({ ok: false, reason: "taken" });
     expect((await loadHandleFacts(d1, "widgets")).taken).toBe(true);
   });
 
   it("claims a handle once, for an account that has none", async () => {
     const d1 = seed();
-    expect(await chooseHandle(d1, "u2", "fresh")).toEqual({ ok: true, handle: "fresh" });
-    expect(await chooseHandle(d1, "u3", "fresh")).toMatchObject({ ok: false, reason: "taken" });
-    expect(await chooseHandle(d1, "u2", "another")).toMatchObject({ ok: false, reason: "taken", message: expect.stringContaining("already has a handle") });
+    expect(await chooseHandle(ports(d1), "u2", "fresh")).toEqual({ ok: true, handle: "fresh" });
+    expect(await chooseHandle(ports(d1), "u3", "fresh")).toMatchObject({ ok: false, reason: "taken" });
+    expect(await chooseHandle(ports(d1), "u2", "another")).toMatchObject({ ok: false, reason: "taken", message: expect.stringContaining("already has a handle") });
     expect((await d1.query("select handle from users where id = 'u2'")).rows).toEqual([{ handle: "fresh" }]);
+    expect((await d1.query("select s.name, s.kind, m.user_id, m.role from scopes s join scope_members m on m.scope_id = s.id where s.name = 'fresh'")).rows).toEqual([
+      { name: "fresh", kind: "user", user_id: "u2", role: "owner" },
+    ]);
+    expect((await d1.query("select count(*) as n from scopes where kind = 'user'")).rows).toEqual([{ n: 1 }]);
   });
 });
