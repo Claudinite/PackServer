@@ -13,7 +13,7 @@ is charged in v1.
 | R2 `packs-public` | Canonical archives, `.sha256`, attestations, `meta.json`, `versions.json`, rendered READMEs, `index/v1/*` | Validator only; versioned keys and scope indexes written once at content-addressed keys; the root rewritten by `RootCoordinator` | CDN cache hits | Yes, for bytes |
 | R2 `packs-private` | Private archives, `meta.json` and the signed per-pack private index entries | Validator only | Through a Worker after an access check | Yes, for bytes |
 | R2 `validation-reports` | Full reports, sandbox output, prose-screen numbers when a model ran (calibration only) | Once per run | Dashboard, admin | Yes |
-| R2 `ops` | Release manifests, N-1 bundles with their digests, the `cn-releases/<version>.tgz` mirror the engine's release workflow fills (REQ-VAL-032), Logpush archive (90 days request records, 30 days firewall events) | CI, the engine's release workflow, Logpush | Release pipeline, validator, rollups, gate judge | No |
+| R2 `ops` | Release manifests, N-1 bundles with their digests, the `cn-releases/<version>.tgz` mirror the engine's release workflow fills (REQ-VAL-032), Logpush archive (90 days request records truncated to `ClientNetwork` by the Transformer, 30 days firewall events) | CI, the engine's release workflow, Logpush | Release pipeline, validator, rollups, gate judge | No |
 | Vectorize `packs` | One `bge-m3` embedding per pack | Upsert per promote, delete per removal | Every semantic search | No (rebuildable) |
 | Download counts | Public: the Logpush `http_requests` archive; private: Analytics Engine `downloads` | Cloudflare and the serving Worker | Hourly rollup into `pack_stats` | No (approximate) |
 | Durable Object `ScopeCoordinator` | Publish lock and index-debounce state per scope, in DO storage | Per publish | Same | Yes |
@@ -70,11 +70,16 @@ numbers are never rendered anywhere. The prune cadences are in
 ## Download counts
 
 `packs.claudinite.com` has no Worker, so public downloads cannot write anything. Two zone Logpush
-jobs deliver `http_requests` records to R2, IPs truncated to /24 and query strings stripped: one
-filtered to CDN cache hits at `sample: 0.1`, one for misses unsampled (ARCH-REV M6). An hourly
-rollup reads the new files and the private `downloads` points, scales sampled rows back up, counts
-downloads and distinct /24 networks per pack over 30 days, and writes `pack_stats`. Counts are
-approximate by design and the page says "about N".
+jobs deliver `http_requests` records to R2: one for CDN cache hits at `sample: 0.1`, one for misses
+unsampled (ARCH-REV M6); a third carries `firewall_events`. Each `http_requests` job has a Logpush
+Transformer (D59), a SQL projection Cloudflare applies to every record before delivery: it selects
+`ClientRequestPath` and the other fields the rollup needs, never `ClientIP` or the URI and query
+fields, and computes `ClientNetwork`, the /24 of an IPv4 address or the /48 of an IPv6 one in CIDR
+form (`198.51.100.0/24`); the hit/miss split is its `WHERE` clause, since a job has a filter or a
+transformer but not both. The raw IP never reaches storage of ours. An hourly rollup reads the new
+files and the private `downloads` points, scales sampled rows back up, counts downloads and distinct
+networks per pack over 30 days, and writes `pack_stats`. Counts are approximate by design and the
+page says "about N".
 
 ## KV
 

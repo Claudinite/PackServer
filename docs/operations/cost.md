@@ -61,7 +61,7 @@ at about 10 holds a day and is the real limit, not money. The daily caps on vali
 |---|---|---|---|
 | Staging environment (same account) | $0–3 | $0–3 | $0–3 |
 | CI minutes (GitHub Actions, free tier 2,000 min) | $0 | $0–10 | $0–10 |
-| Monitoring (Workers Logs, Traces, Analytics Engine, two Logpush jobs with 25 GB included, archive storage, two cron Workers) | ~$0 | ~$1 | ~$32 |
+| Monitoring (Workers Logs, Traces, Analytics Engine, three Logpush jobs with 25 GB included and their Transformer with 1 GB of input included, archive storage, two cron Workers) | ~$0 | ~$1 | ~$32 |
 | Audit log storage (bucket-locked R2) | ~$0 | ~$0.05 | ~$0.50 |
 
 Shadow traffic and its classifier are deferred ([release.md](release.md) §Deferred); their lines
