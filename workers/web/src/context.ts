@@ -1,7 +1,7 @@
 import type { SessionPorts } from "@packserver/core/identity";
 import { resolveSession, type SessionVariables } from "@packserver/http";
 import { syncClock } from "@packserver/ports";
-import type { MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import type { WebRuntime } from "./bindings";
 
 export interface WebVariables extends SessionVariables {
@@ -26,4 +26,12 @@ export function requestContext(runtime: WebRuntime): MiddlewareHandler<WebEnv> {
     await syncClock(runtime.ports.clock);
     return session(c, next);
   };
+}
+
+export const runtimeOf = (c: Context<WebEnv>): WebRuntime => c.get("runtime");
+
+export function cdnOriginOf(c: Context<WebEnv>): string {
+  const origin = runtimeOf(c).config.cdnOrigin;
+  if (!origin) throw new Error("CDN_ORIGIN is not set for this environment");
+  return origin;
 }

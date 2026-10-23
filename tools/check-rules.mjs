@@ -70,6 +70,21 @@ for (const v of versions) {
     }
   }
 
+  if (sc) {
+    const ids = new Set();
+    const sums = Object.fromEntries(PARTS.map((p) => [p, 0]));
+    for (const r of Array.isArray(sc.rules) ? sc.rules : []) {
+      if (ids.has(r?.id)) problems.push(`${v}: duplicate score rule id ${r.id}`);
+      ids.add(r?.id);
+      if (!PARTS.includes(r?.part) || !Number.isInteger(r?.max)) problems.push(`${v}: score rule ${r?.id} needs a known part and an integer max`);
+      else sums[r.part] += r.max;
+      if (!r?.fix) problems.push(`${v}: score rule ${r?.id} has no fix`);
+    }
+    for (const p of PARTS) {
+      if (sums[p] !== sc.parts?.[p]) problems.push(`${v}: score rules of ${p} sum to ${sums[p]}, expected ${sc.parts?.[p]}`);
+    }
+  }
+
   const q = files.questions;
   const t = files.thresholds;
   if (q && t) {

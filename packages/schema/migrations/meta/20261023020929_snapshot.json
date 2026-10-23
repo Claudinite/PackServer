@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "89bd698a-a368-43c7-b3f9-6c102fea8d64",
+  "id": "e8611faf-edb9-4b57-a42e-2b39256b0696",
   "prevId": "282a9096-9dd6-43f0-8424-f12451472c40",
   "tables": {
     "credentials": {
@@ -567,6 +567,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "upload_sha256": {
+          "name": "upload_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "size_bytes": {
           "name": "size_bytes",
           "type": "integer",
@@ -665,6 +672,20 @@
           "name": "pack_versions_state_idx",
           "columns": [
             "state"
+          ],
+          "isUnique": false
+        },
+        "pack_versions_sha256_idx": {
+          "name": "pack_versions_sha256_idx",
+          "columns": [
+            "sha256"
+          ],
+          "isUnique": false
+        },
+        "pack_versions_upload_sha256_idx": {
+          "name": "pack_versions_upload_sha256_idx",
+          "columns": [
+            "upload_sha256"
           ],
           "isUnique": false
         }
@@ -769,142 +790,6 @@
           "value": "\"packs\".\"visibility\" in ('public', 'private')"
         }
       }
-    },
-    "github_org_admins": {
-      "name": "github_org_admins",
-      "columns": {
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "github_org_id": {
-          "name": "github_org_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "github_org_login": {
-          "name": "github_org_login",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "observed_at": {
-          "name": "observed_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "github_org_admins_org_idx": {
-          "name": "github_org_admins_org_idx",
-          "columns": [
-            "github_org_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "github_org_admins_user_id_users_id_fk": {
-          "name": "github_org_admins_user_id_users_id_fk",
-          "tableFrom": "github_org_admins",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "github_org_admins_user_id_github_org_id_pk": {
-          "columns": [
-            "user_id",
-            "github_org_id"
-          ],
-          "name": "github_org_admins_user_id_github_org_id_pk"
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "user_emails": {
-      "name": "user_emails",
-      "columns": {
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "address": {
-          "name": "address",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "source": {
-          "name": "source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "user_emails_address_unique": {
-          "name": "user_emails_address_unique",
-          "columns": [
-            "address"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {
-        "user_emails_user_id_users_id_fk": {
-          "name": "user_emails_user_id_users_id_fk",
-          "tableFrom": "user_emails",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "user_emails_user_id_address_pk": {
-          "columns": [
-            "user_id",
-            "address"
-          ],
-          "name": "user_emails_user_id_address_pk"
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraints": {}
     },
     "recent_activity": {
       "name": "recent_activity",

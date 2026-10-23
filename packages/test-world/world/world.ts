@@ -32,7 +32,7 @@ export function createWorld(driver: Driver, title: string) {
   return {
     driver,
     ...createUsers(driver, aliases),
-    ...createScopes(),
+    ...createScopes(driver, aliases),
     ...createPublishing(),
     ...createValidation(),
     ...createAccess(),
