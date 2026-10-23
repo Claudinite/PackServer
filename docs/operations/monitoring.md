@@ -24,6 +24,8 @@ the network-level counts REQ-TELEM-001 and REQ-TELEM-002 promise come from the a
 is a consistent key, not RFC 5952 canonical (`2001:db8:0::/48`), and readers only compare keys; an
 IPv4-mapped address lands in `0:0:0::/48`, harmless while Cloudflare logs IPv4 clients as dotted quads.
 
+An unknown measurement is stored as -1 in its Analytics Engine double (the dataset has no null), so a query must filter `doubleN >= 0` before it sums, averages or takes a percentile.
+
 **Sampling and denial of wallet.** Logs on the read-path Workers are head-sampled at 10x scale
 (0.15), never on write paths; synthetic traffic and anonymous 4xx are logged at low rates. A KV
 `telemetry_mode` switch (`normal`, `economy`) lets the gate judge stop anonymous 2xx and 4xx log
