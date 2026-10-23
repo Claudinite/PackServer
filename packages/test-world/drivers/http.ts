@@ -17,6 +17,7 @@ export class HttpDriver implements Driver {
   readonly kind = "http" as const;
   readonly capabilities: ReadonlySet<Capability> = new Set(["mcp"]);
   readonly surfaces: readonly WorkerName[] = ["web"];
+  readonly aliasSalt = crypto.randomUUID().slice(0, 8);
   private readonly versions: VersionObserver;
 
   constructor(
