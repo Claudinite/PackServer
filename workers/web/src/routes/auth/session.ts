@@ -3,7 +3,7 @@ import {
   clearedSessionCookie, csrfTokenFor, formFields, idempotency, refusal, requireSession, sessionCaller, sessionCsrf,
 } from "@packserver/http";
 import { Hono } from "hono";
-import { sessionPorts, type WebEnv } from "../../context";
+import { sessionPorts, siteOriginOf, type WebEnv } from "../../context";
 
 export const routes = new Hono<WebEnv>();
 
@@ -39,7 +39,7 @@ routes.get("/auth/sessions", requireSession(), async (c) => {
 routes.post(
   "/auth/signout",
   requireSession(),
-  sessionCsrf<WebEnv>((c) => c.get("runtime").config.siteOrigin),
+  sessionCsrf<WebEnv>(siteOriginOf),
   (c, next) => idempotency({ kv: c.get("runtime").ports.kv.SESSIONS_KV!, caller: sessionCaller })(c, next),
   async (c) => {
     await destroySession(sessionPorts(c.get("runtime")), c.get("session")!);
@@ -51,7 +51,7 @@ routes.post(
 routes.post(
   "/auth/handle",
   requireSession(),
-  sessionCsrf<WebEnv>((c) => c.get("runtime").config.siteOrigin),
+  sessionCsrf<WebEnv>(siteOriginOf),
   (c, next) => idempotency({ kv: c.get("runtime").ports.kv.SESSIONS_KV!, caller: sessionCaller })(c, next),
   async (c) => {
     const fields = await formFields(c);

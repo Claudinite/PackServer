@@ -19,10 +19,14 @@ async function outcomes(attempts: Array<() => Promise<unknown>>): Promise<Attemp
   return out;
 }
 
+/** The most sign-in attempts one address or account may make before a refusal, with room for the cost-6 / 60 per minute design. */
+const MOST_ATTEMPTS_ALLOWED = 20;
+
 /** Refused "after N", never an exact N; the limit's window may roll over mid-run, so only the refusal's first step is held to staying refused. */
 function expectRefusedAfterSome(results: Attempt[]): void {
   const first = results.indexOf("rate-limited");
   expect(first).toBeGreaterThan(0);
+  expect(first).toBeLessThanOrEqual(MOST_ATTEMPTS_ALLOWED);
   expect(results[first + 1] ?? "rate-limited").toBe("rate-limited");
 }
 
@@ -44,6 +48,7 @@ scenario("IT-ACC-001 Sign up by GitHub or passkey; no other provider route exist
 
   const outbound = await world.recorder.invocations({ raw: true });
   expect(outbound.filter((i) => /google|apple/.test(i.target))).toEqual([]);
+  expect(await world.github.writes()).toEqual([]);
 });
 
 scenario("IT-ACC-002 First login must pick a unique, non-reserved, non-confusable handle", async (world) => {

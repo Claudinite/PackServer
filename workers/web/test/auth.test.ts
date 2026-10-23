@@ -7,6 +7,7 @@ import { createApp } from "../src/app";
 import type { WebRuntime } from "../src/bindings";
 
 const ORIGIN = "https://registry.example";
+const CANARY = "https://registry-canary.example";
 const profile: GitHubProfile = {
   id: "1001",
   login: "ann",
@@ -42,17 +43,21 @@ function setup(github: { profile: (request: { codeVerifier: string }) => Promise
       },
     },
     services: { mcp: {} as Fetcher, publish: {} as Fetcher },
-    config: { cdnOrigin: undefined, siteOrigin: ORIGIN },
+    config: { cdnOrigin: undefined, siteOrigins: [ORIGIN, CANARY] },
   };
   const app = createApp(runtime);
-  const request = (path: string, init: RequestInit = {}) => app.request(`${ORIGIN}${path}`, init);
+  let host = ORIGIN;
+  const request = (path: string, init: RequestInit = {}) => app.request(`${host}${path}`, init);
+  const useHost = (origin: string) => {
+    host = origin;
+  };
   const start = (token = TURNSTILE_PASS_TOKEN, next = "") =>
     request("/api/auth/github", {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ "cf-turnstile-response": token, next }),
     });
-  return { request, start, db, fakes, seen };
+  return { request, start, db, fakes, seen, useHost };
 }
 
 const cookies = (res: Response) => Object.fromEntries(res.headers.getSetCookie().map((line) => [line.split("=")[0]!, line]));
@@ -78,6 +83,19 @@ describe("starting GitHub sign-in", () => {
     await flow.callback();
     expect(h.seen.redirectUri).toBe(`${ORIGIN}/api/auth/github/callback`);
     expect(h.seen.codeChallenge).toBe(await pkceChallenge(h.seen.codeVerifier!));
+  });
+
+  it("sends the canary host's sign-in back to the canary host, and any unlisted host to the public one", async () => {
+    const h = setup();
+    h.useHost(CANARY);
+    const flow = await beginFlow(h);
+    expect(h.seen.redirectUri).toBe(`${CANARY}/api/auth/github/callback`);
+    expect((await flow.callback()).status).toBe(303);
+    expect(h.seen.redirectUri).toBe(`${CANARY}/api/auth/github/callback`);
+
+    h.useHost("https://elsewhere.example");
+    await beginFlow(h);
+    expect(h.seen.redirectUri).toBe(`${ORIGIN}/api/auth/github/callback`);
   });
 
   it("refuses without a passing human check", async () => {
@@ -173,6 +191,17 @@ describe("IT-ACC-021 server-side invalidation", () => {
     expect(out.status).toBe(200);
     expect(revoked(h)).toEqual([hash]);
     expect((await h.request("/api/auth/session", { headers: { cookie } })).status).toBe(401);
+  });
+
+  it("accepts a form from the canary host as it does from the public one, and still refuses a foreign origin", async () => {
+    const h = setup();
+    const { cookie } = await signedIn(h);
+    const me = (await (await h.request("/api/auth/session", { headers: { cookie } })).json()) as { csrf: string };
+    const signOut = (origin: string) =>
+      h.request("/api/auth/signout", { method: "POST", headers: { cookie, origin, "x-csrf-token": me.csrf, "idempotency-key": `key-${origin.length}-0000000` } });
+    expect((await signOut("https://elsewhere.example")).status).toBe(403);
+    h.useHost(CANARY);
+    expect((await signOut(CANARY)).status).toBe(200);
   });
 
   it("records the browser's previous session as revoked when a new sign-in replaces it", async () => {

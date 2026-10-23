@@ -4,7 +4,7 @@ import {
 import { consume, formFields, rateLimitClient, rateLimited, refusal, sessionCookie, turnstile } from "@packserver/http";
 import { Hono, type MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
-import { sessionPorts, type WebEnv } from "../../context";
+import { sessionPorts, siteOriginOf, type WebEnv } from "../../context";
 
 export const routes = new Hono<WebEnv>();
 
@@ -35,7 +35,7 @@ routes.post(
     await runtime.ports.kv.SESSIONS_KV!.put(stateKey(await hashSessionId(state)), JSON.stringify({ next, verifier }), { ttl_seconds: STATE_TTL_S });
     const location = await runtime.ports.githubLogin.authorizeUrl({
       state,
-      redirectUri: callbackUri(runtime.config.siteOrigin),
+      redirectUri: callbackUri(siteOriginOf(c)),
       codeChallenge: await pkceChallenge(verifier),
     });
     return new Response(null, { status: 303, headers: { location, "set-cookie": cookie(state, STATE_TTL_S), "cache-control": "no-store" } });
@@ -64,7 +64,7 @@ routes.get("/auth/github/callback", async (c) => {
 
   let profile;
   try {
-    profile = await runtime.ports.githubLogin.profile({ code, redirectUri: callbackUri(runtime.config.siteOrigin), codeVerifier: verifier });
+    profile = await runtime.ports.githubLogin.profile({ code, redirectUri: callbackUri(siteOriginOf(c)), codeVerifier: verifier });
   } catch (error) {
     if (!(error instanceof GitHubLoginError)) throw error;
     console.log(JSON.stringify({ event: "auth.github_failed", reason: error.message }));

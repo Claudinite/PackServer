@@ -78,7 +78,7 @@ function checkEnv(worker, t, env, block) {
   const pairs = (list) => list.map(([a, b]) => `${a}=${b}`);
 
   if (block.workers_dev !== false) problem(where, "workers_dev must be false");
-  if (block.preview_urls !== undefined && block.preview_urls !== false) problem(where, "preview_urls must be false");
+  if (block.preview_urls !== false) problem(where, "preview_urls must be false");
   if (block.name !== workerName(env, worker)) problem(where, `name is "${block.name}", expected "${workerName(env, worker)}"`);
   if (block.vars?.WORKER !== worker) problem(where, `vars.WORKER must be "${worker}"`);
   if (block.vars?.ENVIRONMENT !== env) problem(where, `vars.ENVIRONMENT must be "${env}"`);
@@ -405,6 +405,7 @@ export function checkBindings(rootDir) {
     // A bare `wrangler deploy` reads the top level, so it must name a Worker that exists nowhere and bind and route nothing.
     if (config.name !== `${worker}-local`) problem(`workers/${worker}`, `top-level name is "${config.name}", expected "${worker}-local"`);
     if (config.workers_dev !== false) problem(`workers/${worker}`, "the top level needs workers_dev: false");
+    if (config.preview_urls !== false) problem(`workers/${worker}`, "the top level needs preview_urls: false");
     if (config.routes?.length || config.route) problem(`workers/${worker}`, "the top level must not declare routes");
     for (const key of [...BINDING_KEYS, "triggers"]) if (config[key] !== undefined) problem(`workers/${worker}`, `the top level must not declare ${key}`);
     if (!config.name || !config.main || !config.compatibility_date) problem(`workers/${worker}`, "needs name, main and compatibility_date at the top level");

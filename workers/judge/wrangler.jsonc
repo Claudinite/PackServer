@@ -1,6 +1,7 @@
 {
   "name": "judge-local",
   "workers_dev": false,
+  "preview_urls": false,
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
@@ -11,6 +12,7 @@
     "test": {
       "name": "judge-test",
       "workers_dev": false,
+      "preview_urls": false,
       "vars": {
         "WORKER": "judge",
         "ENVIRONMENT": "test",
@@ -63,6 +65,7 @@
     "staging": {
       "name": "judge-staging",
       "workers_dev": false,
+      "preview_urls": false,
       "routes": [
         {
           "pattern": "registry-staging.claudinite.com/hooks/monitors",
@@ -156,6 +159,7 @@
     "production": {
       "name": "judge",
       "workers_dev": false,
+      "preview_urls": false,
       "routes": [
         {
           "pattern": "registry.claudinite.com/hooks/monitors",

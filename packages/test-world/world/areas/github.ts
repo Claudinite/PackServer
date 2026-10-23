@@ -162,7 +162,8 @@ export function createGitHub(driver: Driver): GitHubModule {
   return {
     github: {
       async writes() {
-        return [...app().writes];
+        const signIn = driver.fakes?.githubLogin.writes() ?? [];
+        return [...app().writes, ...signIn.map(({ method, path }) => ({ method, path }))];
       },
       apiCalls: () => [...app().requests],
       tokensMinted: () => app().tokensMinted,

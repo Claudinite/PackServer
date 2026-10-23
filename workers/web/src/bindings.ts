@@ -10,7 +10,8 @@ export interface Env {
   ENVIRONMENT: string;
   /** Where the custom domain for `packs-public` answers; set per environment in wrangler vars. */
   CDN_ORIGIN?: string;
-  SITE_ORIGIN: string;
+  /** Comma-separated origins this environment serves; the first is the public one. */
+  SITE_ORIGINS: string;
   DB: D1Database;
   SESSIONS_KV: KVNamespace;
   CACHE_KV: KVNamespace;
@@ -43,9 +44,15 @@ export interface WebServices {
   mcp: Fetcher;
   publish: Fetcher;
 }
-export type WebRuntime = WorkerRuntime<WebPorts, WebServices> & { config: { cdnOrigin: string | undefined; siteOrigin: string } };
+export type WebRuntime = WorkerRuntime<WebPorts, WebServices> & { config: { cdnOrigin: string | undefined; siteOrigins: readonly [string, ...string[]] } };
 
 const isolateTelemetry = createIsolateTelemetry();
+
+function siteOriginsOf(value: string): [string, ...string[]] {
+  const [first, ...rest] = value.split(",").map((o) => o.trim()).filter(Boolean);
+  if (!first) throw new Error("SITE_ORIGINS names no origin for this environment");
+  return [first, ...rest];
+}
 
 export function createRuntime(env: Env): WebRuntime {
   const telemetryKv = kvPort(env.TELEMETRY_KV);
@@ -69,7 +76,7 @@ export function createRuntime(env: Env): WebRuntime {
     },
     { mcp: env.MCP, publish: env.PUBLISH },
   );
-  return { ...base, config: { cdnOrigin: env.CDN_ORIGIN, siteOrigin: env.SITE_ORIGIN } };
+  return { ...base, config: { cdnOrigin: env.CDN_ORIGIN, siteOrigins: siteOriginsOf(env.SITE_ORIGINS) } };
 }
 
 /** The credentials come from the Secrets Store, so they are read on first use rather than when the Worker starts. */

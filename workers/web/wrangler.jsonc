@@ -17,7 +17,7 @@
         "WORKER": "web",
         "ENVIRONMENT": "test",
         "CDN_ORIGIN": "https://packs.test.invalid",
-        "SITE_ORIGIN": "http://web.internal",
+        "SITE_ORIGINS": "http://web.internal",
         "TURNSTILE_SECRET": "1x0000000000000000000000000000000AA",
         "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
         "GITHUB_APP_CLIENT_ID": "fake-github-client-id",
@@ -109,7 +109,7 @@
         "WORKER": "web",
         "ENVIRONMENT": "staging",
         "CDN_ORIGIN": "https://packs-staging.claudinite.com",
-        "SITE_ORIGIN": "https://registry-staging.claudinite.com"
+        "SITE_ORIGINS": "https://registry-staging.claudinite.com"
       },
       "d1_databases": [
         {
@@ -231,7 +231,7 @@
         "WORKER": "web",
         "ENVIRONMENT": "production",
         "CDN_ORIGIN": "https://packs.claudinite.com",
-        "SITE_ORIGIN": "https://registry.claudinite.com"
+        "SITE_ORIGINS": "https://registry.claudinite.com,https://registry-canary.claudinite.com"
       },
       "d1_databases": [
         {

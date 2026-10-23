@@ -36,3 +36,10 @@ export function cdnOriginOf(c: Context<WebEnv>): string {
   if (!origin) throw new Error("CDN_ORIGIN is not set for this environment");
   return origin;
 }
+
+/** The request's own origin when this environment serves it (the public host or the canary), otherwise the public one. */
+export function siteOriginOf(c: Context<WebEnv>): string {
+  const origins = runtimeOf(c).config.siteOrigins;
+  const requested = new URL(c.req.url).origin;
+  return origins.includes(requested) ? requested : origins[0];
+}

@@ -102,6 +102,12 @@ describe("check-bindings", { timeout: 20_000 }, () => {
     expect(run(dir).out).toContain("only the validator holds the signing key");
   });
 
+  it("fails on a preview URL setting left out", () => {
+    const dir = copyRepo();
+    edit(dir, "mcp", (c) => delete c.env.staging.preview_urls);
+    expect(run(dir).out).toContain("workers/mcp env.staging: preview_urls must be false");
+  });
+
   it("fails on a preview URL left on", () => {
     const dir = copyRepo();
     edit(dir, "web", (c) => (c.env.production.preview_urls = true));
