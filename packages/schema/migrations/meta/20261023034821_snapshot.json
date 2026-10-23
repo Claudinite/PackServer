@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "da6e17ba-6ea4-448c-9529-d200351c6bc4",
+  "id": "dfb9ec22-371e-4d05-a3c3-596d1170c19b",
   "prevId": "232c3989-6cdc-4633-9d8e-6916c47f6c45",
   "tables": {
     "credentials": {
@@ -927,177 +927,64 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "read_tokens": {
-      "name": "read_tokens",
+    "audit_heads": {
+      "name": "audit_heads",
       "columns": {
-        "id": {
-          "name": "id",
+        "day": {
+          "name": "day",
           "type": "text",
           "primaryKey": true,
           "notNull": true,
           "autoincrement": false
         },
-        "user_id": {
-          "name": "user_id",
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hash": {
+          "name": "hash",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "kind": {
-          "name": "kind",
+        "batch_key": {
+          "name": "batch_key",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "token_hash": {
-          "name": "token_hash",
+        "log_index": {
+          "name": "log_index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "anchored_hash": {
+          "name": "anchored_hash",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "hint": {
-          "name": "hint",
+        "anchored_at": {
+          "name": "anchored_at",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
-        },
-        "label": {
-          "name": "label",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "scope_id": {
-          "name": "scope_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "pack_id": {
-          "name": "pack_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "cidr": {
-          "name": "cidr",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "last_used_at": {
-          "name": "last_used_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "revoked_at": {
-          "name": "revoked_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "revoked_reason": {
-          "name": "revoked_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
           "autoincrement": false
         }
       },
-      "indexes": {
-        "read_tokens_hash_unique": {
-          "name": "read_tokens_hash_unique",
-          "columns": [
-            "token_hash"
-          ],
-          "isUnique": true
-        },
-        "read_tokens_user_idx": {
-          "name": "read_tokens_user_idx",
-          "columns": [
-            "user_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "read_tokens_user_id_users_id_fk": {
-          "name": "read_tokens_user_id_users_id_fk",
-          "tableFrom": "read_tokens",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "read_tokens_scope_id_scopes_id_fk": {
-          "name": "read_tokens_scope_id_scopes_id_fk",
-          "tableFrom": "read_tokens",
-          "tableTo": "scopes",
-          "columnsFrom": [
-            "scope_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "read_tokens_pack_id_packs_id_fk": {
-          "name": "read_tokens_pack_id_packs_id_fk",
-          "tableFrom": "read_tokens",
-          "tableTo": "packs",
-          "columnsFrom": [
-            "pack_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
+      "indexes": {},
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {
-        "read_tokens_kind_check": {
-          "name": "read_tokens_kind_check",
-          "value": "\"read_tokens\".\"kind\" in ('read')"
-        },
-        "read_tokens_revoke_reason_check": {
-          "name": "read_tokens_revoke_reason_check",
-          "value": "\"read_tokens\".\"revoked_reason\" is null or \"read_tokens\".\"revoked_reason\" in ('owner', 'leak-reported')"
-        }
-      }
+      "checkConstraints": {}
     },
     "recent_activity": {
       "name": "recent_activity",

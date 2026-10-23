@@ -6,6 +6,8 @@ import { MemoryAuditBucket } from "@packserver/core/audit/testing";
 import { createFakePorts } from "@packserver/ports/fakes";
 import { SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
 import { CRON_DAILY, CRON_HOURLY, CRON_JOBS, runCron } from "../src/crons";
+import { auditHead } from "../src/crons/audit-head";
+import { auditVerify } from "../src/crons/audit-verify";
 import type { AdminRuntime } from "../src/bindings";
 
 const fakes = createFakePorts({ worker: "admin" });
@@ -39,12 +41,11 @@ describe("admin crons", () => {
     expect(Object.keys(CRON_JOBS).sort()).toEqual([CRON_HOURLY, CRON_DAILY].sort());
   });
 
-  it("runs every job of a trigger and says each one is a stub", async () => {
+  it("runs every stub job of a trigger and says so; the audit jobs have their own test", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
-    await runCron(CRON_DAILY, runtime);
-    expect(log.mock.calls.map(([line]) => JSON.parse(String(line)).entry).sort()).toEqual(
-      ["cron.audit-head", "cron.audit-verify", "cron.domain-recheck", "cron.prune", "cron.trending"],
-    );
+    const stubs = CRON_JOBS[CRON_DAILY]!.filter((job) => job !== auditHead && job !== auditVerify);
+    await Promise.all(stubs.map((job) => job(runtime)));
+    expect(log.mock.calls.map(([line]) => JSON.parse(String(line)).entry).sort()).toEqual(["cron.domain-recheck", "cron.prune", "cron.trending"]);
   });
 
   it("refuses a trigger it has no jobs for", async () => {

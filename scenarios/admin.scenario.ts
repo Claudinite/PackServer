@@ -69,13 +69,37 @@ scenario("IT-AUDIT-005 The record is write-once, hash-chained, anchored and veri
   const queueIds = batches.map((b) => b.header!.message_ids);
   expect(new Set(queueIds.flat()).size).toBe(6);
   expect(batches[0]!.header!.prev_hash).toBe("0".repeat(64));
+
+  // The nightly run comes hours after the events, so none is still in flight.
+  await world.clock.advance("5h");
+  const published = await world.audit.publishHead();
+  expect(published.status).toBe("anchored");
+  const ids = (await world.audit.batches()).flatMap((b) => b.events.map((e) => e.id));
+  const last = (await world.audit.batches()).at(-1)!;
+  const [served] = await world.audit.heads();
+  expect(served).toMatchObject({ seq: last.header!.seq, batch_key: last.key });
+  const [entry] = await world.rekor.entries();
+  expect(world.rekor.signs(entry!, { seq: served!.seq, hash: served!.hash })).toBe(true);
+  expect(served!.log_index).toBe(entry!.logIndex);
+  expect((await world.audit.publishHead()).status).toBe("already_anchored");
+  expect(await world.rekor.entries()).toHaveLength(1);
+
   expect(await world.audit.verify()).toBe("intact");
+  expect(world.audit.alarms()).toEqual([]);
+
+  // An id missing from the copy is a reconciliation gap.
+  world.audit.forgetCopy(ids[0]!);
+  const gap = await world.audit.verify();
+  expect(gap).not.toBe("intact");
+  expect((gap as { problems: Array<{ kind: string }> }).problems.map((p) => p.kind)).toEqual(["reconciliation"]);
+  expect(world.audit.alarms()).toHaveLength(1);
 
   // Any changed byte is seen: at the batch itself when it no longer parses, otherwise at its successor's link.
   world.audit.tamper(1, { alter: true, offset: 400 });
   const found = await world.audit.verify();
   expect(found).not.toBe("intact");
   expect([1, 2]).toContain((found as { mismatch: { batch: number } }).mismatch.batch);
+  expect(world.audit.alarms().some(([, , kind]) => kind === "chain")).toBe(true);
 
   // The record keeps being written while the copy's database is down.
   world.audit.outage.d1(true);
@@ -83,8 +107,7 @@ scenario("IT-AUDIT-005 The record is write-once, hash-chained, anchored and veri
   expect(receipt.copy).toBe("skipped");
   await world.audit.flush();
   world.audit.outage.d1(false);
-  const ids = (await world.audit.batches()).flatMap((b) => b.events.map((e) => e.id));
-  expect(ids).toContain(receipt.id);
+  expect((await world.audit.batches()).flatMap((b) => b.events.map((e) => e.id))).toContain(receipt.id);
 }, NEEDS);
 
 scenario("IT-AUDIT-007 Refusals are audited with a hashed source", async (world) => {
