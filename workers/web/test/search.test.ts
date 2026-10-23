@@ -19,7 +19,7 @@ function app(answer: (url: string, init?: RequestInit) => Response | Promise<Res
   } as unknown as Fetcher;
   const runtime: WebRuntime = {
     worker: "web", environment: "test", version: { versionId: SHELL_VERSION, releaseId: SHELL_RELEASE }, missingBindings: [], missingSecrets: [],
-    ports: createFakePorts({ worker: "web" }), services: { mcp, publish: {} as Fetcher }, config: { cdnOrigin: "https://packs.test.invalid" },
+    ports: { ...createFakePorts({ worker: "web" }), githubLogin: { authorizeUrl: async () => "", profile: async () => { throw new Error("unused"); } } }, services: { mcp, publish: {} as Fetcher }, config: { cdnOrigin: "https://packs.test.invalid", siteOrigins: ["https://registry.test.invalid"] },
   };
   return { app: createApp(runtime), seen };
 }
