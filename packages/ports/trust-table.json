@@ -21,7 +21,7 @@
         "DOWNLOADS": "downloads"
       },
       "ratelimits": ["RATE_LIMIT"],
-      "secrets": ["TURNSTILE_SECRET", "SELFTEST_HMAC_KEY", "IP_HASH_MASTER_KEY", "PRINCIPAL_HASH_KEY"],
+      "secrets": ["TURNSTILE_SECRET", "SELFTEST_HMAC_KEY", "IP_HASH_MASTER_KEY", "PRINCIPAL_HASH_KEY", "GITHUB_APP_CLIENT_ID", "GITHUB_APP_CLIENT_SECRET"],
       "fakes": {}
     },
     "mcp": {

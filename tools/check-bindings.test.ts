@@ -102,6 +102,18 @@ describe("check-bindings", { timeout: 20_000 }, () => {
     expect(run(dir).out).toContain("only the validator holds the signing key");
   });
 
+  it("fails on a preview URL setting left out", () => {
+    const dir = copyRepo();
+    edit(dir, "mcp", (c) => delete c.env.staging.preview_urls);
+    expect(run(dir).out).toContain("workers/mcp env.staging: preview_urls must be false");
+  });
+
+  it("fails on a preview URL left on", () => {
+    const dir = copyRepo();
+    edit(dir, "web", (c) => (c.env.production.preview_urls = true));
+    expect(run(dir).out).toContain("workers/web env.production: preview_urls must be false");
+  });
+
   it("fails on a workers.dev route for the admin Worker", () => {
     const dir = copyRepo();
     edit(dir, "admin", (c) => (c.env.production.workers_dev = true));
@@ -152,6 +164,19 @@ describe("check-bindings", { timeout: 20_000 }, () => {
     const dir = copyRepo();
     edit(dir, "web", (c) => (c.env.staging.vars.TURNSTILE_SECRET = "x"));
     expect(run(dir).out).toContain("secret TURNSTILE_SECRET must not be a plain var outside env.test");
+  });
+
+  it.each([
+    ["web", "GITHUB_APP_PRIVATE_KEY"],
+    ["mcp", "GITHUB_APP_CLIENT_SECRET"],
+  ])("fails when %s holds the GitHub secret %s", (worker, binding) => {
+    const dir = copyRepo();
+    edit(dir, worker, (c) => c.env.production.secrets_store_secrets.push({ binding, store_id: "x", secret_name: "x" }));
+    expect(run(dir).out).toContain(`workers/${worker} env.production: GitHub App secrets belong to the github Worker alone`);
+  });
+
+  it("lets web hold the GitHub App's sign-in client credentials", () => {
+    expect(run(copyRepo()).out).not.toContain("GitHub App secrets belong to the github Worker alone");
   });
 
   it("fails on a binding read outside bindings.ts", () => {

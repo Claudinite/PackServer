@@ -6,5 +6,5 @@ export const auditVerify: CronJob = async ({ ports }) => {
     auditBucket: ports.auditBucket, d1: ports.d1, stats: ports.stats, clock: ports.clock,
     ...(ports.appendedPoints && { appendedPoints: ports.appendedPoints }),
   });
-  console.log(JSON.stringify({ at: "cron.audit-verify", batches: report.batches, events: report.events, reconciledWith: report.reconciledWith, problems: report.problems.length }));
+  console.log(JSON.stringify({ at: "cron.audit-verify", batches: report.batches, events: report.events, reconciledWith: report.reconciledWith, skipped: report.skipped, problems: report.problems.length }));
 };

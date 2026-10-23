@@ -26,10 +26,19 @@ export interface Problem {
   reason: string;
 }
 
+export interface SkippedSource {
+  source: "audit.appended";
+  reason: "failed" | "unwired";
+  /** The error's name for a failed read; absent when nothing was wired. */
+  errorClass?: string;
+}
+
 export interface VerifyReport {
   batches: number;
   events: number;
   reconciledWith: string[];
+  /** Sources the run could not reconcile with, and why; never a chain problem. */
+  skipped: SkippedSource[];
   problems: Problem[];
 }
 
@@ -139,13 +148,19 @@ export async function verifyAuditChain(ports: VerifyPorts): Promise<VerifyReport
   problems.push(...diff("missing_in_chain", "recent_activity", copy, new Set(walked.ids.keys())));
   reconciledWith.push("recent_activity");
 
-  // A failing reader must not hide the chain's own findings; the run says it did not reconcile against the points.
-  const pointIds = ports.appendedPoints
-    ? await ports.appendedPoints(`${windowStart}T00:00:00.000Z`).catch((error: unknown) => {
-        console.error(JSON.stringify({ at: "audit.verify", failed: "points", error: String(error) }));
-        return null;
-      })
-    : null;
+  // A reader that cannot answer must not hide the chain's own findings; the skip is reported on its own point.
+  const skipped: SkippedSource[] = [];
+  let pointIds: string[] | null = null;
+  if (!ports.appendedPoints) skipped.push({ source: "audit.appended", reason: "unwired" });
+  else {
+    try {
+      pointIds = await ports.appendedPoints(`${windowStart}T00:00:00.000Z`);
+    } catch (error) {
+      const errorClass = error instanceof Error ? error.name : typeof error;
+      console.error(JSON.stringify({ at: "audit.verify", failed: "points", errorClass, error: String(error) }));
+      skipped.push({ source: "audit.appended", reason: "failed", errorClass });
+    }
+  }
   if (pointIds) {
     const points = new Set(pointIds);
     problems.push(...diff("missing_in_points", "audit.appended", inWindow, points));
@@ -155,9 +170,17 @@ export async function verifyAuditChain(ports: VerifyPorts): Promise<VerifyReport
     reconciledWith.push("audit.appended");
   }
 
-  for (const p of problems) ports.stats.write({ name: "audit.chain_broken", blobs: [p.key, p.reason, p.kind], doubles: [p.batch] });
-  if (problems.length === 0) {
-    ports.stats.write({ name: "audit.chain_verified", blobs: reconciledWith, doubles: [walked.batches, walked.ids.size] });
+  const skippedLabels = skipped.map((k) => `${k.source}:${k.reason}${k.errorClass ? `:${k.errorClass}` : ""}`).join(",");
+  for (const k of skipped) {
+    ports.stats.write({ name: "audit.reconcile_skipped", blobs: [k.source, k.reason, k.errorClass ?? ""], doubles: [1] });
   }
-  return { batches: walked.batches, events: walked.ids.size, reconciledWith, problems };
+  for (const p of problems) ports.stats.write({ name: "audit.chain_broken", blobs: [p.key, p.reason, p.kind, skippedLabels], doubles: [p.batch] });
+  if (problems.length === 0) {
+    ports.stats.write({
+      name: "audit.chain_verified",
+      blobs: [reconciledWith.join(","), skippedLabels],
+      doubles: [walked.batches, walked.ids.size, skipped.length],
+    });
+  }
+  return { batches: walked.batches, events: walked.ids.size, reconciledWith, skipped, problems };
 }

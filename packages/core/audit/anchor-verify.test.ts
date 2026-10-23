@@ -6,7 +6,7 @@ import { createAudit } from "./emit";
 import type { AuditEvent } from "./event";
 import { ecdsaSigner, headStatement, rawToDer, rekorTransparency } from "./rekor";
 import { MemoryAuditBucket, SqliteD1 } from "./testing";
-import { analyticsAppendedPoints } from "./points";
+import { analyticsAppendedPoints, SampledReadError } from "./points";
 import { HEAD_KEY } from "./chain";
 import { verifyAuditChain } from "./verify";
 import { appendBatch, type ConsumedMessage } from "./writer";
@@ -44,7 +44,12 @@ describe("nightly verifier", () => {
     await batch();
     const report = await verify();
     expect(report).toMatchObject({ batches: 2, events: 4, problems: [], reconciledWith: ["recent_activity"] });
-    expect(fakes.stats.points.map((p) => p.name)).toEqual(["audit.chain_verified"]);
+    expect(report.skipped).toEqual([{ source: "audit.appended", reason: "unwired" }]);
+    expect(fakes.stats.points.map((p) => [p.name, ...p.blobs])).toEqual([
+      ["audit.reconcile_skipped", "audit.appended", "unwired", ""],
+      ["audit.chain_verified", "recent_activity", "audit.appended:unwired"],
+    ]);
+    expect(fakes.stats.points[1]!.doubles).toEqual([2, 4, 1]);
   });
 
   it("flags a changed byte, a dropped middle batch, a dropped tail and a rewritten head", async () => {
@@ -168,13 +173,23 @@ describe("nightly verifier", () => {
       auditBucket: failing.bucket, d1: failing.d1, stats: failing.fakes.stats, clock: failing.fakes.clock,
       appendedPoints: async () => { throw new Error("403"); },
     });
-    expect(survived).toMatchObject({ problems: [], reconciledWith: ["recent_activity"] });
+    expect(survived).toMatchObject({ problems: [], reconciledWith: ["recent_activity"], skipped: [{ source: "audit.appended", reason: "failed", errorClass: "Error" }] });
+    expect(failing.fakes.stats.points.map((p) => [p.name, ...p.blobs])).toContainEqual(["audit.reconcile_skipped", "audit.appended", "failed", "Error"]);
     expect(quiet).toHaveBeenCalled();
     quiet.mockRestore();
 
     const unwired = setup();
     await unwired.batch();
     expect((await unwired.verify(null)).reconciledWith).toEqual(["recent_activity"]);
+
+    const broken = setup();
+    await broken.batch();
+    broken.bucket.tamper(broken.bucket.batchKeys()[0]!, { alter: true, offset: 400 });
+    await broken.verify();
+    const alarms = broken.fakes.stats.points.filter((p) => p.name === "audit.chain_broken");
+    expect(alarms.length).toBeGreaterThan(0);
+    expect(alarms.every((p) => p.blobs[3] === "audit.appended:unwired")).toBe(true);
+    expect(broken.fakes.stats.points.map((p) => p.name)).toContain("audit.reconcile_skipped");
   });
 });
 
@@ -268,8 +283,24 @@ describe("analytics engine points reader", () => {
     expect(ids).toHaveLength(10_001);
     expect(calls[0]).toMatchObject({ url: "https://api.cloudflare.com/client/v4/accounts/acc1/analytics_engine/sql", auth: "Bearer tok" });
     expect(calls[0]!.sql).toContain("index1 = 'audit.appended'");
+    expect(calls[0]!.sql).toContain("_sample_interval AS sample");
     expect(calls[0]!.sql).toContain("toDateTime('2026-07-26 00:00:00')");
     expect(calls[1]!.sql).toContain("OFFSET 10000");
+  });
+
+  it("treats sampled rows as a failed read", async () => {
+    const sampled: typeof fetch = async () => Response.json({ data: [{ id: "a", sample: 1 }, { id: "b", sample: "10" }] });
+    await expect(analyticsAppendedPoints(config, sampled)("2026-07-26T00:00:00.000Z")).rejects.toThrow(SampledReadError);
+    const s = setup();
+    await s.batch();
+    s.fakes.clock.advance(5 * HOUR);
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const report = await verifyAuditChain({
+      auditBucket: s.bucket, d1: s.d1, stats: s.fakes.stats, clock: s.fakes.clock, appendedPoints: analyticsAppendedPoints(config, sampled),
+    });
+    quiet.mockRestore();
+    expect(report.skipped).toEqual([{ source: "audit.appended", reason: "failed", errorClass: "SampledReadError" }]);
+    expect(report.problems).toEqual([]);
   });
 
   it("fails with the service's answer rather than reporting no points", async () => {
