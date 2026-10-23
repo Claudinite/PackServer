@@ -58,7 +58,7 @@ Areas and their signals:
 - **github**: `webhook_received`, `webhook_rejected`, `rate_limit_remaining`, `scan_completed`.
 - **email**: `sent`, `failed`. **queue**: `message_processed`, `dlq`, `backlog`.
   **workflow**: `instance_finished`, `wait_rearmed`. **rollup**: `completed`.
-- **audit**: `appended`, `batch_written`, `chain_verified`, `chain_broken`.
+- **audit**: `appended`, `batch_written`, `chain_verified`, `chain_broken`, `head_rebuilt`.
 - **abuse**: `rate_limited`, `turnstile_failed`, `anomaly_hold`, `daily_cap_hit`.
 - **synthetic**: `probe`. **selftest**: `result`. **gate**: `evaluated`. **budget**: `usage`.
   **monitoring**: `heartbeat`, `alert_sent`, `alert_rejected`, `page_test`.

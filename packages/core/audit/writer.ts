@@ -9,6 +9,8 @@ export interface WrittenBatch {
   written: AuditEvent[];
   /** `fresh` for a new object, `adopted` when an earlier attempt's batch was taken over, `none` when nothing was left to append. */
   object: "fresh" | "adopted" | "none";
+  /** True when the pointer was missing and the chain was found by walking from genesis. */
+  rebuilt: boolean;
 }
 
 export interface ConsumedMessage {
@@ -70,7 +72,9 @@ async function adoptOrphans(bucket: AuditBucket, from: Head | null): Promise<{ h
  * pointer is repaired by adopting the object on the next call.
  */
 export async function appendBatch(bucket: AuditBucket, messages: readonly ConsumedMessage[]): Promise<WrittenBatch | null> {
-  const adopted = await adoptOrphans(bucket, await readHead(bucket));
+  const stored = await readHead(bucket);
+  const adopted = await adoptOrphans(bucket, stored);
+  const rebuilt = stored === null && adopted.events.length > 0;
   let head = adopted.head;
 
   const seen = new Set(head?.message_ids ?? []);
@@ -79,7 +83,7 @@ export async function appendBatch(bucket: AuditBucket, messages: readonly Consum
   const adoptedState = adopted.events.length > 0 ? "adopted" : "none";
   if (fresh.size === 0) {
     if (adopted.events.length > 0) await bucket.put(HEAD_KEY, JSON.stringify(head));
-    return head ? { head, written: adopted.events, object: adoptedState } : null;
+    return head ? { head, written: adopted.events, object: adoptedState, rebuilt } : null;
   }
 
   const batch = await buildBatch({
@@ -93,5 +97,5 @@ export async function appendBatch(bucket: AuditBucket, messages: readonly Consum
   if ((await bucket.put(batch.key, batch.body, { ifAbsent: true })) === "exists") throw new Error(`audit batch ${batch.key} already exists`);
   head = { ...batch.head, message_ids: [...(head?.message_ids ?? []), ...batch.head.message_ids].slice(-RECENT_MESSAGE_IDS) };
   await bucket.put(HEAD_KEY, JSON.stringify(head));
-  return { head, written: [...adopted.events, ...[...fresh.values()].map((m) => m.event)], object: adopted.events.length > 0 ? "adopted" : "fresh" };
+  return { head, written: [...adopted.events, ...[...fresh.values()].map((m) => m.event)], object: adopted.events.length > 0 ? "adopted" : "fresh", rebuilt };
 }

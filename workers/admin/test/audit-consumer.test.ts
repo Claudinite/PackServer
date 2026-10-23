@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AdminRuntime } from "../src/bindings";
 import { prune } from "../src/crons/prune";
 import { consumeAudit } from "../src/consumers/audit";
+import { selfTestChecks } from "../src/selftest";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -98,6 +99,15 @@ describe("admin audit consumer", () => {
     expect(fakes.stats.points.some((p) => p.name === "audit.chain_broken")).toBe(true);
   });
 
+  it("signals audit.head_rebuilt when the pointer had to be found again", async () => {
+    const { runtime, queue, audit, auditBucket, fakes } = setup();
+    await audit({ kind: "system" }, "admin.action", "a");
+    await consumeAudit(messages(queue.messages).batch, runtime);
+    auditBucket.objects.delete("audit/head.json");
+    await consumeAudit(messages(queue.messages).batch, runtime);
+    expect(fakes.stats.points.filter((p) => p.name === "audit.head_rebuilt")).toHaveLength(1);
+  });
+
   it("acks a redelivered batch without writing again", async () => {
     const { runtime, queue, audit, auditBucket } = setup();
     await audit({ kind: "system" }, "admin.action", "x");
@@ -115,5 +125,17 @@ describe("admin audit consumer", () => {
     fakes.clock.advance("91d");
     await prune(runtime);
     expect(d1.rows("select id from recent_activity")).toEqual([]);
+  });
+});
+
+describe("admin audit self-test", () => {
+  it("probes the audit bucket outside env.test and fails when it cannot be reached", async () => {
+    const { runtime, auditBucket } = setup();
+    expect(selfTestChecks(runtime).map((c) => c.name)).not.toContain("outbound.audit-bucket");
+    const live = { ...runtime, environment: "staging" };
+    const check = selfTestChecks(live).find((c) => c.name === "outbound.audit-bucket")!;
+    await expect(check.run()).resolves.toBeUndefined();
+    auditBucket.down = true;
+    await expect(check.run()).rejects.toThrow();
   });
 });

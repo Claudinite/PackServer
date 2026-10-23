@@ -30,9 +30,10 @@ export async function consumeAudit(batch: MessageBatch<unknown>, runtime: AdminR
 
   // The copy is disposable: a D1 outage must not hold back the record.
   const copy = await copyToActivity(d1, result?.written ?? []);
+  if (result?.rebuilt) stats.write({ name: "audit.head_rebuilt", blobs: [result.head.key], doubles: [result.head.seq, result.written.length] });
   for (const e of result?.written ?? []) stats.write({ name: "audit.appended", blobs: [e.action, e.actor.kind, e.id, e.at.slice(0, 10)], doubles: [1] });
   if (result && result.written.length > 0) {
-    stats.write({ name: "audit.batch_written", blobs: [result.head.key, result.object, copy, "if-none-match"], doubles: [result.head.seq, result.written.length] });
+    stats.write({ name: "audit.batch_written", blobs: [result.head.key, result.object, copy], doubles: [result.head.seq, result.written.length] });
   }
   for (const m of accepted) m.message.ack();
 }

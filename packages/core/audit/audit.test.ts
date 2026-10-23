@@ -200,7 +200,7 @@ describe("IT-AUDIT-005 chain half", () => {
     expect(await chainErrors(bucket)).toEqual([]);
   });
 
-  it("records an adopted batch's events even when the head write fails after adoption", async () => {
+  it("records an adopted batch's events even when the batch write fails after adoption", async () => {
     const { audit, bucket, consume, events } = setup();
     for (let i = 0; i < 3; i++) await audit({ kind: "system" }, "admin.action", `t${i}`);
     await consume(0, 1);
@@ -208,7 +208,7 @@ describe("IT-AUDIT-005 chain half", () => {
     await consume(1, 2);
     bucket.objects.set(HEAD_KEY, headBefore);
     const redelivery = [1, 2].map((i) => ({ messageId: `m${i}`, event: events()[i]! }));
-    bucket.failPut = (key) => key === HEAD_KEY;
+    bucket.failPut = (key) => key.endsWith(".ndjson");
     await expect(appendBatch(bucket, redelivery)).rejects.toThrow();
     bucket.failPut = undefined;
     const result = await appendBatch(bucket, redelivery);
@@ -228,6 +228,15 @@ describe("IT-AUDIT-005 chain half", () => {
     await expect(appendBatch(bucket, redelivery)).rejects.toThrow();
     bucket.failPut = undefined;
     expect((await appendBatch(bucket, redelivery))?.written).toEqual([events()[1]]);
+  });
+
+  it("reports a rebuilt head when adoption started without a pointer", async () => {
+    const { audit, bucket, consume } = setup();
+    await audit({ kind: "system" }, "admin.action", "a");
+    await consume(0);
+    bucket.objects.delete(HEAD_KEY);
+    expect(await consume(0)).toMatchObject({ rebuilt: true });
+    expect(await consume(0)).toMatchObject({ rebuilt: false });
   });
 
   it("refuses to walk an unbounded chain when the pointer is missing", async () => {
