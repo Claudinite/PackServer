@@ -1,8 +1,9 @@
-import { expect, scenario, type ScenarioOpts, type World } from "@packserver/test-world";
+import { expect, Refusal, scenario, type ScenarioOpts, type World } from "@packserver/test-world";
 
 const storage: ScenarioOpts = { needs: ["storage"] };
 
 const DAY_MS = 86_400_000;
+const FORBIDDEN_ACTIONS = ["publish", "yank", "mintToken", "setVisibility", "listSessions", "showAccount", "changeEmail", "approveStaged"] as const;
 
 /** An owner of `@acme` with two private packs, signed in, and a pack of another scope they have no part in. */
 async function acme(world: World, handle = "ann") {
@@ -34,8 +35,7 @@ scenario("IT-PUB-012 Mint scoped, restricted, time-limited read tokens shown onc
   const listing = JSON.stringify(await owner.tokens.list());
   for (const minted of [first, scoped, yearLong]) expect(listing).not.toContain(minted.value);
 
-  const withToken = await world.tokens.call(first, "POST", "/api/tokens");
-  expect(withToken.status).toBe(401);
+  expect(await world.tokens.attempt(first, "mintToken", secret)).toBe("refused");
   expect(await owner.tokens.list()).toHaveLength(3);
 
   await expect(owner.tokens.mint({ read: secret, kind: "publish" })).toBeRefusedSaying("only read tokens exist");
@@ -49,36 +49,24 @@ scenario("IT-PUB-013 A token works only within its scopes, restriction and CIDR"
   await owner.tokens.revoke(revoked);
   const shortLived = await owner.tokens.mint({ read: secret, lifetimeDays: 1 });
 
-  expect((await world.tokens.canRead(good, secret, { from: "10.1.2.3" })).status).toBe(200);
-  expect((await world.tokens.canRead(good, secret, { from: "192.0.2.1" })).status).toBe(401);
-  expect((await world.tokens.canRead(good, other, { from: "10.1.2.3" })).status).toBe(404);
-  expect((await world.tokens.canRead(revoked, secret)).status).toBe(401);
-  expect((await world.tokens.canRead(shortLived, secret)).status).toBe(200);
+  expect(await world.tokens.canRead(good, secret, { from: "10.1.2.3" })).toBe("readable");
+  await expect(world.tokens.canRead(good, secret, { from: "192.0.2.1" })).toBeRefused("signed-out");
+  await expect(world.tokens.canRead(good, other, { from: "10.1.2.3" })).toBeNotFound();
+  await expect(world.tokens.canRead(revoked, secret)).toBeRefused("signed-out");
+  expect(await world.tokens.canRead(shortLived, secret)).toBe("readable");
 
   await world.clock.advance("25h");
-  expect((await world.tokens.canRead(shortLived, secret)).status).toBe(401);
-  expect((await world.tokens.canRead(good, secret, { from: "10.1.2.3" })).status).toBe(200);
+  await expect(world.tokens.canRead(shortLived, secret)).toBeRefused("signed-out");
+  expect(await world.tokens.canRead(good, secret, { from: "10.1.2.3" })).toBe("readable");
 }, storage);
 
 scenario("IT-PUB-031 A token never acts beyond its scopes", async (world) => {
   const { owner, secret, elsewhere } = await acme(world);
   const token = await owner.tokens.mint({ read: secret });
-  const attempts: Array<[string, string]> = [
-    ["POST", `/api/publish/${secret.systemName}/1.0.1/upload-url`],
-    ["POST", `/api/packs/${secret.systemName}/1.0.0/yank`],
-    ["POST", "/api/tokens"],
-    ["POST", `/api/packs/${secret.systemName}/visibility`],
-    ["GET", "/api/auth/sessions"],
-    ["GET", "/api/auth/session"],
-    ["POST", "/api/auth/email"],
-    ["POST", "/api/publish/runs/run-1/approve"],
-  ];
-  for (const [method, path] of attempts) {
-    const outcome = await world.tokens.call(token, method, path);
-    expect(outcome.status, `${method} ${path}`).toBeGreaterThanOrEqual(400);
-  }
-  expect((await world.tokens.canRead(token, elsewhere)).status).toBe(404);
-  expect((await world.tokens.canRead(token, secret)).status).toBe(200);
+
+  for (const action of FORBIDDEN_ACTIONS) expect(await world.tokens.attempt(token, action, secret), action).toBe("refused");
+  await expect(world.tokens.canRead(token, elsewhere)).toBeNotFound();
+  expect(await world.tokens.canRead(token, secret)).toBe("readable");
   expect(await owner.tokens.list()).toHaveLength(1);
 }, storage);
 
@@ -86,11 +74,11 @@ scenario("IT-PUB-014 Tokens are prefixed and a leak report revokes at once", asy
   const { owner, secret } = await acme(world);
   const token = await owner.tokens.mint({ read: secret });
   expect(token.value.startsWith("psr_")).toBe(true);
-  expect((await world.tokens.canRead(token, secret)).status).toBe(200);
+  expect(await world.tokens.canRead(token, secret)).toBe("readable");
 
   await world.tokens.leakReport(token.value, { from: "203.0.113.14" });
 
-  expect((await world.tokens.canRead(token, secret)).status).toBe(401);
+  await expect(world.tokens.canRead(token, secret)).toBeRefused("signed-out");
   expect((await owner.tokens.list()).find((t) => t.id === token.id)).toMatchObject({ status: "revoked", revokedReason: "leak-reported" });
 }, storage);
 
@@ -100,19 +88,19 @@ scenario("IT-PUB-032 Leak reports act on the full token only and reveal nothing"
   const from = "203.0.113.32";
 
   const prefix = await world.tokens.leakReport(token.value.slice(0, 12), { from });
-  expect((await world.tokens.canRead(token, secret)).status).toBe(200);
+  expect(await world.tokens.canRead(token, secret)).toBe("readable");
   const random = await world.tokens.leakReport(`psr_${"0123456789abcdef".repeat(4)}`, { from });
   const full = await world.tokens.leakReport(token.value, { from });
-  expect((await world.tokens.canRead(token, secret)).status).toBe(401);
+  await expect(world.tokens.canRead(token, secret)).toBeRefused("signed-out");
 
-  expect(prefix.status).toBe(202);
+  expect(prefix).not.toBeInstanceOf(Refusal);
   await expect(prefix).toLookTheSameAs(random);
   await expect(prefix).toLookTheSameAs(full);
 
-  const burst: number[] = [];
-  for (let i = 0; i < 20; i++) burst.push((await world.tokens.leakReport(`not-a-token-${i}`, { from })).status);
-  expect(burst).toContain(429);
-  expect(burst.at(-1)).toBe(429);
+  const burst = [];
+  for (let i = 0; i < 20; i++) burst.push(await world.tokens.leakReport(`not-a-token-${i}`, { from }));
+  expect(burst.some((report) => report instanceof Refusal)).toBe(true);
+  await expect(burst.at(-1)).toBeRateLimited();
 }, storage);
 
 scenario("IT-AUDIT-006 Token last-used is visible and hourly-accurate", async (world) => {
@@ -121,15 +109,15 @@ scenario("IT-AUDIT-006 Token last-used is visible and hourly-accurate", async (w
   const lastUsed = async () => (await owner.tokens.list()).find((t) => t.id === token.id)!.lastUsed?.getTime();
 
   const t0 = (await world.clock.now()).getTime();
-  expect((await world.tokens.canRead(token, secret)).status).toBe(200);
+  expect(await world.tokens.canRead(token, secret)).toBe("readable");
   expect(await lastUsed()).toBe(t0);
 
   await world.clock.advance("10m");
-  expect((await world.tokens.canRead(token, secret)).status).toBe(200);
+  expect(await world.tokens.canRead(token, secret)).toBe("readable");
   expect(await lastUsed()).toBe(t0);
 
   await world.clock.advance("1h");
-  expect((await world.tokens.canRead(token, secret)).status).toBe(200);
+  expect(await world.tokens.canRead(token, secret)).toBe("readable");
   expect(await lastUsed()).toBe(t0 + 70 * 60_000);
 }, storage);
 
@@ -137,8 +125,8 @@ scenario("IT-PRIV-018 psr_ read tokens serve CI outside GitHub Actions", async (
   const { owner, secret, other } = await acme(world);
   const token = await owner.tokens.mint({ read: secret });
 
-  expect((await world.tokens.canRead(token, secret)).status).toBe(200);
-  expect((await world.tokens.canRead(token, other)).status).toBe(404);
+  expect(await world.tokens.canRead(token, secret)).toBe("readable");
+  await expect(world.tokens.canRead(token, other)).toBeNotFound();
   const listed = await owner.tokens.list();
   expect(listed).toHaveLength(1);
   expect(listed[0]).toMatchObject({ id: token.id, pack: secret.name, status: "active" });
@@ -155,13 +143,13 @@ scenario("JT-008 A psr_ read token serves CI outside Actions, is leaked, and die
   expect(JSON.stringify(await owner.tokens.list())).not.toContain(token.value);
 
   const t0 = (await world.clock.now()).getTime();
-  expect((await world.tokens.canRead(token, secret)).status).toBe(200);
+  expect(await world.tokens.canRead(token, secret)).toBe("readable");
   await world.clock.advance("10m");
-  expect((await world.tokens.canRead(token, secret)).status).toBe(200);
+  expect(await world.tokens.canRead(token, secret)).toBe("readable");
   expect((await owner.tokens.list())[0]!.lastUsed?.getTime()).toBe(t0);
 
-  expect((await world.tokens.canRead(token, other)).status).toBe(404);
-  expect((await world.tokens.call(token, "POST", `/api/publish/${secret.systemName}/1.0.1/upload-url`)).status).toBeGreaterThanOrEqual(400);
+  await expect(world.tokens.canRead(token, other)).toBeNotFound();
+  expect(await world.tokens.attempt(token, "publish", secret)).toBe("refused");
 
   const from = "203.0.113.88";
   const prefix = await world.tokens.leakReport(token.value.slice(0, 12), { from });
@@ -170,8 +158,7 @@ scenario("JT-008 A psr_ read token serves CI outside Actions, is leaked, and die
   await expect(prefix).toLookTheSameAs(random);
   await expect(prefix).toLookTheSameAs(full);
 
-  const after = await world.tokens.canRead(token, secret);
-  expect(after.status).toBe(401);
-  await expect(after).toLookTheSameAs(await world.tokens.canRead(token, nowhere));
+  await expect(world.tokens.canRead(token, secret)).toBeRefused("signed-out");
+  await expect(world.tokens.observeRead(token, secret)).toLookTheSameAs(world.tokens.observeRead(token, nowhere));
   expect((await owner.tokens.list())[0]).toMatchObject({ status: "revoked", revokedReason: "leak-reported" });
 }, storage);

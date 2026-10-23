@@ -1,7 +1,7 @@
 import type { ApiResponse, Driver } from "../drivers/driver";
 import type { Aliases } from "./alias";
 import { InfrastructureError } from "./errors";
-import { Refusal, type Observation } from "./outcomes";
+import { NotFound, Refusal, type Observation, type RefusalReason } from "./outcomes";
 import type { Assertion, Pack, Session, Sensitive, User } from "./types";
 
 const MINT_ACTION = "token.mint";
@@ -48,18 +48,21 @@ export interface UserTokens {
 export interface UseOpts {
   /** The address the call comes from. */
   from?: string;
-  method?: string;
-  path?: string;
 }
+
+/** Things a token must never do; each is a sensitive or account action the token has no business with. */
+export type TokenAttempt = "publish" | "yank" | "mintToken" | "setVisibility" | "listSessions" | "showAccount" | "changeEmail" | "approveStaged";
 
 /** Tokens as seen from outside any account: CI that holds one, and a visitor who found one. */
 export interface WorldTokens {
-  /** The public leak-report form. A token, a prefix of one, or any text. */
-  leakReport(tokenOrPrefix: string, o?: { from?: string }): Promise<Observation>;
-  /** Asks whether the token reads a pack: the token's own gate, which CI calls before it relies on one. */
-  canRead(token: MintedToken | string, pack: Pack, o?: UseOpts): Promise<Observation>;
-  /** Any call carrying the token as its only credential. */
-  call(token: MintedToken | string, method: string, path: string, o?: Pick<UseOpts, "from">): Promise<Observation>;
+  /** The public leak-report form, for a token, a prefix of one, or any text; refused only when the address has reported too much. */
+  leakReport(tokenOrPrefix: string, o?: { from?: string }): Promise<Observation | Refusal>;
+  /** Whether the token reads a pack: the token's own gate, which CI asks before it relies on one. */
+  canRead(token: MintedToken | string, pack: Pack, o?: UseOpts): Promise<"readable" | NotFound | Refusal>;
+  /** The same question, as the response looks. */
+  observeRead(token: MintedToken | string, pack: Pack, o?: UseOpts): Promise<Observation>;
+  /** What happens when the token, as the only credential, tries an action it must never have. */
+  attempt(token: MintedToken | string, action: TokenAttempt, pack: Pack): Promise<"refused" | "allowed">;
   /** Makes the person an owner of the pack's scope, standing in for the scope verbs that arrive with the scopes area. */
   seedOwner(user: User, pack: Pack): Promise<void>;
 }
@@ -136,6 +139,17 @@ export function createUserTokens(actor: TokenActor): UserTokens {
   };
 }
 
+const ATTEMPTS: Record<TokenAttempt, (pack: string) => [string, string]> = {
+  publish: (pack) => ["POST", `/api/publish/${pack}/1.0.1/upload-url`],
+  yank: (pack) => ["POST", `/api/packs/${pack}/1.0.0/yank`],
+  mintToken: () => ["POST", "/api/tokens"],
+  setVisibility: (pack) => ["POST", `/api/packs/${pack}/visibility`],
+  listSessions: () => ["GET", "/api/auth/sessions"],
+  showAccount: () => ["GET", "/api/auth/session"],
+  changeEmail: () => ["POST", "/api/auth/email"],
+  approveStaged: () => ["POST", "/api/publish/runs/run-1/approve"],
+};
+
 export function createWorldTokens(driver: Driver, getAccountId: (user: User) => Promise<string>): WorldTokens {
   const send = (method: string, path: string, headers: Record<string, string>, json?: unknown) =>
     driver.http.request({
@@ -147,16 +161,34 @@ export function createWorldTokens(driver: Driver, getAccountId: (user: User) => 
     });
   const from = (ip: string | undefined): Record<string, string> => (ip ? { "cf-connecting-ip": ip } : {});
   const bearer = (token: MintedToken | string): Record<string, string> => ({ authorization: `Bearer ${valueOf(token)}` });
+  const read = (token: MintedToken | string, pack: Pack, o: UseOpts) =>
+    send("GET", `/api/tokens/check/${pack.systemName}`, { ...bearer(token), ...from(o.from) });
+  const refusal = (res: ApiResponse, what: string): Refusal => {
+    const body = res.json() as { reason?: RefusalReason; message?: string; retry_after_s?: number };
+    if (!body.reason) throw new InfrastructureError(`${what}: ${res.status} without a reason: ${res.text.slice(0, 120)}`);
+    return new Refusal(body.reason, { ...(body.message === undefined ? {} : { message: body.message }), ...(body.retry_after_s === undefined ? {} : { retryAfterS: body.retry_after_s }) });
+  };
 
   return {
     async leakReport(tokenOrPrefix, o = {}) {
-      return observe(await send("POST", "/api/tokens/leak", from(o.from), { token: tokenOrPrefix }));
+      const res = await send("POST", "/api/tokens/leak", from(o.from), { token: tokenOrPrefix });
+      if (res.status === 429) return refusal(res, "tokens.leakReport");
+      if (res.status !== 202) throw new InfrastructureError(`tokens.leakReport answered ${res.status}: ${res.text.slice(0, 120)}`);
+      return observe(res);
     },
     async canRead(token, pack, o = {}) {
-      return observe(await send("GET", `/api/tokens/check/${pack.systemName}`, { ...bearer(token), ...from(o.from) }));
+      const res = await read(token, pack, o);
+      if (res.status === 200) return "readable";
+      if (res.status === 404) return new NotFound();
+      return refusal(res, "tokens.canRead");
     },
-    async call(token, method, path, o = {}) {
-      return observe(await send(method, path, { ...bearer(token), ...from(o.from) }));
+    async observeRead(token, pack, o = {}) {
+      return observe(await read(token, pack, o));
+    },
+    async attempt(token, action, pack) {
+      const [method, path] = ATTEMPTS[action](pack.systemName);
+      const res = await send(method, path, bearer(token));
+      return res.status >= 200 && res.status < 300 ? "allowed" : "refused";
     },
     async seedOwner(user, pack) {
       if (!driver.storage || !driver.capabilities.has("storage")) {

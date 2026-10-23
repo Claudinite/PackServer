@@ -83,7 +83,7 @@ export async function mintToken(ports: TokenPorts, input: MintInput): Promise<Mi
     blocks.push(block);
   }
   if ((input.cidr?.length ?? 0) > MAX_CIDRS) return { ok: false, reason: "cidr" };
-  if (input.label !== undefined && (input.label.length > MAX_LABEL || /[\u0000-\u001f]/.test(input.label))) return { ok: false, reason: "label" };
+  if (input.label !== undefined && (input.label.length > MAX_LABEL || [...input.label].some((ch) => ch.charCodeAt(0) < 32))) return { ok: false, reason: "label" };
 
   const roles = MINTING_ROLES.map(() => "?").join(", ");
   const target = await ports.d1.query(
