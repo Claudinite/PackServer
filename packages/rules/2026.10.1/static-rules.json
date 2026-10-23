@@ -231,6 +231,12 @@
       "description": "Executable content branches on the current date or time."
     },
     {
+      "id": "code.dynamic-access",
+      "class": "hold",
+      "category": "process-execution",
+      "description": "Executable content reaches the global object, or names a command, in a way that cannot be read in advance."
+    },
+    {
       "id": "license.missing",
       "class": "warn",
       "category": "license",

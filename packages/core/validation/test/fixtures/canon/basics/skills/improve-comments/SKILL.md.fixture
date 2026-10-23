@@ -1,0 +1,9 @@
+---
+name: improve-comments
+description: Improve a repo's own comments as a pass of their own: delete, correct, add the why. Never as a side effect of another change.
+disable-model-invocation: true
+metadata:
+  body: workflow
+  usage:
+    expect: judgment
+---

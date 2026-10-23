@@ -28,31 +28,74 @@ export function goImports(toks: readonly Tok[]): Import[] {
   return out;
 }
 
-export interface Registration {
-  event: string;
-  /** Tool names the hook judges; `*` when the matcher is not a plain string. */
-  tools: string[];
+export interface GoCheck {
+  /** The `ID:` of the check, or null when it is not a plain string. */
+  id: string | null;
+  tags: string[];
+  /** False when `Tags:` is not a literal list of strings, so what it names cannot be read. */
+  tagsKnown: boolean;
   line: number;
 }
 
-const NON_GUARD_EVENTS = new Set(["PostToolUse", "SessionStart", "SessionEnd", "UserPromptSubmit", "Stop", "SubagentStop", "Notification", "PreCompact"]);
-export const isGuardEvent = (event: string): boolean => !NON_GUARD_EVENTS.has(event);
+const HOOK_EVENTS = new Set(["PreToolUse", "PostToolUse", "SessionStart", "SessionEnd", "UserPromptSubmit", "Stop", "SubagentStop", "Notification", "PreCompact"]);
 
-/** `RegisterHook(check.PreToolUse, "Bash|Edit", fn)` calls, however the SDK package is imported. */
-export function goRegistrations(toks: readonly Tok[]): Registration[] {
-  const out: Registration[] = [];
-  for (let n = 0; n + 4 < toks.length; n++) {
+/** A tag names a hook event when it is a known one, or is written as an event is (leading capital) rather than as a plain tag such as `world`. */
+export function hookTag(tag: string): { event: string; tools: string[] } | null {
+  const m = /^([A-Za-z]+)\s*(?:[:(]\s*(.*?)\)?)?$/.exec(tag.trim());
+  const event = m?.[1];
+  if (!event || !(HOOK_EVENTS.has(event) || /^[A-Z]/.test(event))) return null;
+  const tools = (m[2] ?? "").split("|").map((t) => t.trim()).filter(Boolean);
+  return { event, tools: tools.length ? tools : ["*"] };
+}
+
+export interface GoChecks {
+  checks: GoCheck[];
+  /** The file names a hook event or hook registration somewhere a `Register(Check{...})` call does not account for. */
+  strayHook: boolean;
+}
+
+/** `checksdk.Register(checksdk.Check{ID: ..., Tags: []string{...}})` calls, whatever the SDK import is called. */
+export function goChecks(toks: readonly Tok[]): GoChecks {
+  const checks: GoCheck[] = [];
+  let strayHook = false;
+  const claimed = new Set<number>();
+  for (let n = 0; n < toks.length; n++) {
     const t = toks[n]!;
-    if (t.k !== "id" || t.v !== "RegisterHook" || toks[n + 1]!.v !== "(") continue;
-    let m = n + 2;
-    if (toks[m + 1]?.v === "." && toks[m]!.k === "id") m += 2;
-    const event = toks[m];
-    if (!event || (event.k !== "id" && event.k !== "str")) continue;
-    const matcher = toks[m + 2];
-    const tools = matcher?.k === "str" && toks[m + 1]?.v === "," ? matcher.v.split("|").map((s) => s.trim()).filter(Boolean) : ["*"];
-    out.push({ event: event.v, tools: tools.length ? tools : ["*"], line: t.line });
+    if (t.k === "id" && t.v === "Register" && toks[n + 1]?.v === "(" && toks[n + 1]!.k === "p") {
+      let depth = 0;
+      let end = n + 1;
+      for (; end < toks.length; end++) {
+        const x = toks[end]!;
+        if (x.k !== "p") continue;
+        if (x.v === "(") depth++;
+        else if (x.v === ")" && --depth === 0) break;
+      }
+      const check: GoCheck = { id: null, tags: [], tagsKnown: true, line: t.line };
+      for (let m = n + 2; m < end; m++) {
+        const x = toks[m]!;
+        if (x.k !== "id" || toks[m + 1]?.v !== ":") continue;
+        if (x.v === "ID" && toks[m + 2]?.k === "str") check.id = toks[m + 2]!.v;
+        if (x.v === "Tags") {
+          let k = m + 2;
+          if (toks[k]?.k === "id" && toks[k]!.v === "string") {
+            k++;
+            for (; k < end && (toks[k]!.k === "str" || toks[k]!.v === ","); k++) {
+              claimed.add(k);
+              if (toks[k]!.k === "str") check.tags.push(toks[k]!.v);
+            }
+          } else check.tagsKnown = false;
+        }
+      }
+      checks.push(check);
+    }
   }
-  return out;
+  for (let n = 0; n < toks.length; n++) {
+    const t = toks[n]!;
+    if (t.k === "str" && HOOK_EVENTS.has(t.v) && !claimed.has(n)) strayHook = true;
+    if (t.k === "id" && (t.v === "RegisterHook" || HOOK_EVENTS.has(t.v))) strayHook = true;
+    if (t.k === "id" && t.v === "Register" && toks[n + 1]?.v !== "(") strayHook = true;
+  }
+  return { checks, strayHook };
 }
 
 export interface JsImports {

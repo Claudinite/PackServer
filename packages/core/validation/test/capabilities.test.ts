@@ -17,31 +17,65 @@ describe("capability extraction (REQ-VAL-027, IT-VAL-027)", () => {
     expect(e.preinstall).toEqual({ guards: [], tasks: [], forced_skills: [], github_actions: [] });
   });
 
-  it("reads a guard and the tool it judges from the checks tag", () => {
+  it("reads a declared check's guardToolCalls as a guard and the tools it judges", () => {
     const e = extract(pack("with-guard"));
     expect(e.capabilities).toEqual(["guard"]);
-    expect(e.preinstall.guards).toEqual([{ name: "pre-deploy-guard", tool_calls: ["Bash"] }]);
+    expect(e.preinstall.guards).toEqual([{ name: "x/pre-deploy-guard", tool_calls: ["Bash"] }]);
   });
 
-  it("splits a matcher list and finds the hook through an alias or a dot import", () => {
-    const go = (call: string, imp = '"github.com/claudinite/check-sdk/check"') => `package checks\nimport ${imp}\nfunc init() { ${call} }\n`;
-    const aliased = extract({ ...cleanFiles(), "checks/a.go": go('c.RegisterHook(c.PreToolUse, "Bash|Edit", f)', 'c "github.com/claudinite/check-sdk/check"') });
-    expect(aliased.preinstall.guards).toEqual([{ name: "a", tool_calls: ["Bash", "Edit"] }]);
-    const dotted = extract({ ...cleanFiles(), "checks/b.go": go('RegisterHook(PreToolUse, "Write", f)', '. "github.com/claudinite/check-sdk/check"') });
-    expect(dotted.preinstall.guards).toEqual([{ name: "b", tool_calls: ["Write"] }]);
-    const computed = extract({ ...cleanFiles(), "checks/c.go": go("check.RegisterHook(check.PreToolUse, matcher, f)") });
-    expect(computed.preinstall.guards).toEqual([{ name: "c", tool_calls: ["*"] }]);
+  it("reads declared checks as a top-level array or a checks list, and the per-skill files", () => {
+    const entry = (id: string, tool: string) => ({ id, guardToolCalls: [{ tool }, { tool: "/^Edit$/" }] });
+    const listed = extract({ ...cleanFiles(), "declared-checks.json": JSON.stringify({ checks: [entry("a", "Bash")] }) });
+    expect(listed.preinstall.guards).toEqual([{ name: "a", tool_calls: ["/^Edit$/", "Bash"] }]);
+    const skill = extract({ ...cleanFiles(), "skills/s/declared-checks.json": JSON.stringify([entry("b", "Write")]) });
+    expect(skill.preinstall.guards.map((g) => g.name)).toEqual(["b"]);
+    const plain = extract({ ...cleanFiles(), "declared-checks.json": JSON.stringify([{ id: "c", matchLines: [] }]) });
+    expect(plain.capabilities).toEqual([]);
   });
 
-  it("is not fooled by a hook registration in a comment or a string", () => {
-    const e = extract({ ...cleanFiles(), "checks/a.go": `package checks\n// check.RegisterHook(check.PreToolUse, "Bash", f)\nvar s = "check.RegisterHook(check.PreToolUse, \\"Bash\\", f)"\n` });
+  it("fails closed on a declared guard it cannot read", () => {
+    for (const body of [{ id: "a", guardToolCalls: [] }, { id: "a", guardToolCalls: [{ nottool: 1 }] }, { id: "a", guardToolCalls: "Bash" }, { id: "a", guardsOn: ["Bash"] }, { id: "a", event: "PreToolUse" }]) {
+      const e = extract({ ...cleanFiles(), "declared-checks.json": JSON.stringify([body]) });
+      expect(e.preinstall.guards, JSON.stringify(body)).toEqual([{ name: "a", tool_calls: expect.arrayContaining(["*"]) }]);
+    }
+    const unreadable = extract({ ...cleanFiles(), "declared-checks.json": '[{"guardToolCalls": [' });
+    expect(unreadable.capabilities).toEqual(["guard"]);
+    expect(extract({ ...cleanFiles(), "declared-checks.json": "[" }).capabilities).toEqual([]);
+  });
+
+  it("makes a Go check tagged with a hook event a guard, whatever the SDK import is called", () => {
+    const go = (imp: string, call: string, tags: string) => `package checks\nimport ${imp}\nfunc init() { ${call}(${imp.split(" ")[0] === '"claudinite.com/checksdk"' ? "checksdk" : "c"}.Check{ID: "p/g", Tags: ${tags}}) }\n`;
+    const plainImp = '"claudinite.com/checksdk"';
+    const g = extract({ ...cleanFiles(), "checks/a.go": go(plainImp, "checksdk.Register", '[]string{"PreToolUse:Bash|Edit", "world"}') });
+    expect(g.capabilities).toEqual(["guard"]);
+    expect(g.preinstall.guards).toEqual([{ name: "p/g", tool_calls: ["Bash", "Edit"] }]);
+    const aliased = extract({ ...cleanFiles(), "checks/a.go": `package checks\nimport c "claudinite.com/checksdk"\nfunc init() { c.Register(c.Check{ID: "p/g", Tags: []string{"UserPromptSubmit"}}) }\n` });
+    expect(aliased.capabilities).toEqual(["guard"]);
+    expect(aliased.preinstall.guards).toEqual([{ name: "p/g", tool_calls: ["*"] }]);
+    const both = extract({ ...cleanFiles(), "checks/a.go": `package checks\nfunc init() {\n checksdk.Register(checksdk.Check{ID: "p/a", Tags: []string{"world"}})\n checksdk.Register(checksdk.Check{ID: "p/b", Tags: []string{"PostToolUse"}})\n}\n` });
+    expect(both.capabilities).toEqual(["coded-check", "guard"]);
+  });
+
+  it("fails closed on a Go check whose tags it cannot read or that hides its registration", () => {
+    const cases = [
+      'func init() { checksdk.Register(checksdk.Check{ID: "p/g", Tags: tags}) }',
+      'func init() { checksdk.Register(checksdk.Check{ID: "p/g", Tags: append([]string{"world"}, extra...)}) }',
+      'func init() { r := checksdk.Register; r(checksdk.Check{ID: "p/g", Tags: []string{"PreToolUse"}}) }',
+      'var tag = "PreToolUse"\nfunc init() { checksdk.Register(checksdk.Check{ID: "p/g", Tags: []string{tag}}) }',
+      'func init() { checksdk.RegisterHook(checksdk.PreToolUse, "Bash", f) }',
+    ];
+    for (const body of cases) {
+      expect(extract({ ...cleanFiles(), "checks/a.go": `package checks\n${body}\n` }).capabilities, body).toContain("guard");
+    }
+  });
+
+  it("is not fooled by a registration in a comment or a string", () => {
+    const e = extract({ ...cleanFiles(), "checks/a.go": `package checks\n// checksdk.Register(checksdk.Check{Tags: []string{"PreToolUse"}})\nvar s = "RegisterHook"\n` });
     expect(e.capabilities).toEqual(["coded-check"]);
   });
 
-  it("calls a check with no pre-tool hook a coded check, and a post hook not a guard", () => {
+  it("calls a check with only plain tags a coded check, not a guard", () => {
     expect(extract(pack("with-coded-check")).capabilities).toEqual(["coded-check"]);
-    const post = extract({ ...cleanFiles(), "checks/p.go": `package checks\nfunc init() { check.RegisterHook(check.PostToolUse, "Bash", f) }\n` });
-    expect(post.capabilities).toEqual(["coded-check"]);
     expect(extract({ ...cleanFiles(), "checks/g_test.go": GUARD_GO }).capabilities).toEqual([]);
   });
 
@@ -49,7 +83,7 @@ describe("capability extraction (REQ-VAL-027, IT-VAL-027)", () => {
     const e = extract(pack("with-task-opens-pr"));
     expect(e.capabilities).toEqual(["task", "task:opens-pr"]);
     expect(e.preinstall.tasks).toEqual([{ name: "rotate", cadence: "weekly", opens_pr: true, agentic_phase: false }]);
-    const agentic = extract({ ...cleanFiles(), "tasks/t/task.json": TASK_JSON({ trigger: { cron: "0 3 * * 1" }, agent: { prompt: "Review." } }) });
+    const agentic = extract({ ...cleanFiles(), "tasks/t/task.json": TASK_JSON({ trigger: { cron: "0 3 * * 1" }, agent_instructions: "task.md" }) });
     expect(agentic.capabilities).toEqual(["task", "task:agentic-phase"]);
     expect(agentic.preinstall.tasks[0]).toMatchObject({ cadence: "0 3 * * 1", opens_pr: false, agentic_phase: true });
     const plain = extract({ ...cleanFiles(), "tasks/t/task.json": TASK_JSON({ pr: false }) });
@@ -131,7 +165,7 @@ describe("the pre-install manifest and its new marks (REQ-VAL-046, IT-VAL-046, J
 
   it("marks nothing new on a prose-only first version, and everything on a first version with code", () => {
     expect(derive(pack("gcp"), null)).toMatchObject({ widening: false, preinstall: { new: [] }, capabilities: [] });
-    expect(derive(pack("with-guard"), null).preinstall.new).toEqual(["guard:pre-deploy-guard"]);
+    expect(derive(pack("with-guard"), null).preinstall.new).toEqual(["guard:x/pre-deploy-guard"]);
   });
 
   it("marks the forced skill and the task new and the guard not, and widens", () => {
@@ -141,7 +175,7 @@ describe("the pre-install manifest and its new marks (REQ-VAL-046, IT-VAL-046, J
     expect(v2.widening).toBe(true);
     expect(v2.preinstall.new.sort()).toEqual(["forced-skill:deploy", "task:rotate"]);
     expect(v2.preinstall).toMatchObject({
-      guards: [{ name: "pre-deploy-guard", tool_calls: ["Bash"] }],
+      guards: [{ name: "x/pre-deploy-guard", tool_calls: ["Bash"] }],
       tasks: [{ name: "rotate", cadence: "weekly", opens_pr: true, agentic_phase: false }],
       forced_skills: ["deploy"],
       github_actions: [],
@@ -150,9 +184,8 @@ describe("the pre-install manifest and its new marks (REQ-VAL-046, IT-VAL-046, J
 
   it("marks a guard new when it starts judging another tool, though the set is unchanged", () => {
     const v1 = derive(pack("with-guard"), null);
-    const wider = GUARD_GO.replace('PreToolUse, "Bash"', 'PreToolUse, "Bash|Write"');
-    const v2 = derive({ ...cleanFiles(), "checks/pre-deploy-guard.go": wider }, v1);
-    expect(v2.preinstall.new).toEqual(["guard:pre-deploy-guard"]);
+    const v2 = derive({ ...cleanFiles(), "declared-checks.json": JSON.stringify([{ id: "x/pre-deploy-guard", guardToolCalls: [{ tool: "Bash" }, { tool: "Write" }] }]) }, v1);
+    expect(v2.preinstall.new).toEqual(["guard:x/pre-deploy-guard"]);
     expect(v2.widening).toBe(false);
   });
 

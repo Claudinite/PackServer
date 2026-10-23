@@ -20,6 +20,8 @@ export function lexJs(text: string): JsLex {
   const braces: ("t" | "b" | "e")[] = [];
   const parens: boolean[] = [];
   let lastClose: "operand" | "regex" = "operand";
+  let regexBlockedUntil = 0;
+  let afterBrace = false;
   let i = 0;
   let line = 1;
 
@@ -39,7 +41,12 @@ export function lexJs(text: string): JsLex {
       const left = toks[toks.length - 2]!;
       toks.length -= 2;
       toks.push({ k: "str", v: (left.v + v).slice(0, MAX_VALUE), len: left.len + len, i: left.i, line: left.line });
-    } else toks.push({ k, v, len, i: start, line: startLine });
+    } else {
+      const tok: Tok = { k, v, len, i: start, line: startLine };
+      if (afterBrace) tok.afterBrace = true;
+      toks.push(tok);
+    }
+    afterBrace = false;
     note(k, v);
   };
 
@@ -51,10 +58,11 @@ export function lexJs(text: string): JsLex {
     return prevV !== "++" && prevV !== "--";
   };
 
-  const scanTemplate = (): void => {
+  // A template is read as the concatenation it stands for: "a" + ( expr ) + "b".
+  const scanTemplate = (resume: boolean): void => {
     const start = i;
     const startLine = line;
-    i++;
+    if (!resume) i++;
     const bodyStart = i;
     for (;;) {
       if (i >= n) return push("str", unescape(text.slice(bodyStart, i)), start, i - start, startLine);
@@ -68,6 +76,8 @@ export function lexJs(text: string): JsLex {
         return;
       } else if (c === 36 && text.charCodeAt(i + 1) === 123) {
         push("str", unescape(text.slice(bodyStart, i)), start, i - start, startLine);
+        push("p", "+", i, 0, line);
+        push("p", "(", i, 0, line);
         braces.push("t");
         i += 2;
         return;
@@ -135,8 +145,8 @@ export function lexJs(text: string): JsLex {
       push("str", unescape(text.slice(start + 1, Math.min(i, n))), start, i - start, startLine);
       if (text.charCodeAt(i) === c) i++;
     } else if (c === 96) {
-      scanTemplate();
-    } else if (c === 47 && regexAllowed()) {
+      scanTemplate(false);
+    } else if (c === 47 && i >= regexBlockedUntil && regexAllowed()) {
       const start = i;
       let j = i + 1;
       let inClass = false;
@@ -157,6 +167,8 @@ export function lexJs(text: string): JsLex {
         while (i < n && isIdPart(text.charCodeAt(i))) i++;
         push("str", "", start, i - start, line);
       } else {
+        // The scan reached the end of the line: a later slash on it cannot close this one, and rescanning would be quadratic.
+        regexBlockedUntil = j;
         push("p", "/", start, 1, line);
         i++;
       }
@@ -176,14 +188,18 @@ export function lexJs(text: string): JsLex {
       } else if (p === "}") {
         const kind = braces.pop();
         if (kind === "t") {
-          scanTemplate();
+          push("p", ")", start, 0, line);
+          push("p", "+", start, 0, line);
+          scanTemplate(true);
           continue;
         }
         lastClose = kind === "b" ? "regex" : "operand";
       } else if (p === "]") lastClose = "operand";
-      // Nothing after the lexer reads these three, and a flood of them is the cheapest way to exhaust memory.
-      if (p === "{" || p === "}" || p === "[" || p === "]") note("p", p);
-      else push("p", p, start, p.length, line);
+      // Braces steer the lexer and are not kept, since a flood of them is the cheapest way to exhaust memory; a token that follows one is marked.
+      if (p === "{" || p === "}") {
+        note("p", p);
+        if (p === "}") afterBrace = true;
+      } else push("p", p, start, p.length, line);
     }
   }
   return { toks, regexBodies };

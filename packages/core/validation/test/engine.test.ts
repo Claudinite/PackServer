@@ -86,6 +86,7 @@ describe("runStaticRules", () => {
       ),
       fakePorts(),
     );
+    const dynamic = await runStaticRules(input({ ...cleanFiles(), "env/setup.sh": "$CMD x\n" }), fakePorts());
     const more = [
       await runStaticRules(input(cleanFiles(), { pack: "@acrne/x" }), fakePorts()),
       await runStaticRules(input(cleanFiles(), { pack: "@acmee/x" }), fakePorts()),
@@ -93,7 +94,7 @@ describe("runStaticRules", () => {
       await runStaticRules(input(cleanFiles({ "pack.json": manifestJson({ skills: [] }), "skills/u/SKILL.md": "x" })), fakePorts()),
       await runStaticRules(input({ ...cleanFiles(), "RULES.md": new Uint8Array([0x61, 0xff, 0x0a]) }), fakePorts()),
     ];
-    for (const f of [...bare.findings, ...lax.findings, ...bad.flatMap((b) => b.findings), ...code.findings, ...more.flatMap((b) => b.findings)]) emitted.add(f.rule);
+    for (const f of [...bare.findings, ...lax.findings, ...bad.flatMap((b) => b.findings), ...code.findings, ...dynamic.findings, ...more.flatMap((b) => b.findings)]) emitted.add(f.rule);
     const missing = listRules(RULES_VERSION).map((x) => x.id).filter((id) => !id.startsWith("archive.") && !emitted.has(id));
     expect(missing).toEqual([]);
   });

@@ -25,9 +25,27 @@ export function binaryMagic(b: Uint8Array): string | null {
   return null;
 }
 
+// Control characters other than whitespace never occur in text anyone writes.
+// eslint-disable-next-line no-control-regex -- the point of the pattern is to match control characters
+const CONTROL = /[\u0000-\u0008\u000b\u000e-\u001f\ufffe\uffff]/;
+
+/** A UTF-16 byte-order mark is a claim to be text; the claim holds only when the rest decodes as clean UTF-16. */
+function utf16Verdict(b: Uint8Array): string | null {
+  if (!(b.length >= 2 && ((b[0] === 0xff && b[1] === 0xfe) || (b[0] === 0xfe && b[1] === 0xff)))) return null;
+  if (b.length % 2 === 1) return "This file starts with a UTF-16 byte-order mark but has an odd number of bytes, so it is not UTF-16 text";
+  try {
+    const text = new TextDecoder(b[0] === 0xff ? "utf-16le" : "utf-16be", { fatal: true, ignoreBOM: true }).decode(b.subarray(2));
+    return CONTROL.test(text) ? "This file starts with a UTF-16 byte-order mark but holds control characters, so it is not text" : null;
+  } catch {
+    return "This file starts with a UTF-16 byte-order mark but is not valid UTF-16, so it is not text";
+  }
+}
+
 function reason(file: TreeFile): string | null {
   const magic = binaryMagic(file.content);
   if (magic) return `This file is ${magic.replace(/^an? /, "")}`;
+  const bom = utf16Verdict(file.content);
+  if (bom) return bom;
   if (decodeText(file) === null) return "This file holds NUL bytes at a path that is not a text path, so it cannot be read as text";
   return null;
 }

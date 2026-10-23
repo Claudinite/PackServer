@@ -23,7 +23,7 @@ unicode/utf8 unique unsafe weak`.split(/\s+/),
 export const GO_NETWORK = new Set(["net", "net/rpc", "net/rpc/jsonrpc", "net/smtp", "net/textproto", "crypto/tls", "syscall", "log/syslog"]);
 export const isGoNetwork = (spec: string): boolean => GO_NETWORK.has(spec) || spec === "net/http" || spec.startsWith("net/http/");
 
-export const CHECK_SDK_ROOT = "github.com/claudinite/check-sdk";
+export const CHECK_SDK_ROOT = "claudinite.com/checksdk";
 export const JS_SDK = "@claudinite/sdk";
 
 const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;

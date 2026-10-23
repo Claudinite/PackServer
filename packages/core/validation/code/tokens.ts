@@ -6,6 +6,8 @@ export interface Tok {
   len: number;
   i: number;
   line: number;
+  /** Set on the token after a closing brace, which is how a destructuring pattern shows. */
+  afterBrace?: true;
 }
 
 export const MAX_VALUE = 4096;

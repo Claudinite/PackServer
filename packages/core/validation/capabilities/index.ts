@@ -2,7 +2,7 @@ import type { Capability, CapabilitySet, PreInstallManifest } from "@packserver/
 import type { Tree } from "../../canonical/index.ts";
 import { decodeText } from "../engine/files.ts";
 import { rawDoc } from "../text/doc.ts";
-import { goRegistrations, isGuardEvent } from "../code/analyze.ts";
+import { goChecks, hookTag } from "../code/analyze.ts";
 import { goLexOf } from "../code/lexcache.ts";
 import type { PackManifest } from "../manifest/index.ts";
 import { executableKind, isEnvSetupPath } from "./paths.ts";
@@ -21,7 +21,11 @@ export interface Extraction {
   declaredActions: string[];
 }
 
-export const normaliseAction = (name: string): string => name.trim().split("@")[0]!.replace(/\/+$/, "").toLowerCase();
+/** `owner/repo` names are case-insensitive on GitHub; a bare name, such as an engine action, is kept as written. */
+export const normaliseAction = (name: string): string => {
+  const base = name.trim().split("@")[0]!.replace(/\/+$/, "");
+  return base.includes("/") ? base.toLowerCase() : base;
+};
 
 const asObject = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
 const truthy = (v: unknown): boolean => v !== undefined && v !== null && v !== false && v !== 0 && v !== "" && !(typeof v === "string" && isFalsyScalar(v));
@@ -39,18 +43,28 @@ function readJson(tree: Tree, path: string): { ok: boolean; value: unknown } | n
 }
 
 function scheduleOf(task: Record<string, unknown>): string {
+  const pre = task.preconditions;
+  if (Array.isArray(pre)) {
+    for (const p of pre) {
+      const m = typeof p === "string" ? /^schedule:\s*(\S+)/.exec(p) : null;
+      if (m) return m[1]!;
+    }
+  }
   const trigger = task.trigger;
-  if (typeof trigger === "string" && trigger.trim()) return trigger.trim();
   const t = asObject(trigger);
   for (const key of ["schedule", "cron", "cadence"]) {
     const v = t?.[key] ?? task[key];
     if (typeof v === "string" && v.trim()) return v.trim();
   }
+  if (typeof trigger === "string" && trigger.trim()) return trigger.trim();
   return "manual";
 }
 
-const AGENTIC_KEYS = ["agentic", "agenticPhase", "agentic_phase", "agent", "agentPrompt", "prompt"];
-const PR_KEYS = ["pr", "opensPr", "opens_pr", "pullRequest"];
+const words = (key: string): string[] => key.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+const KNOWN_TASK_KEYS = new Set(["id", "name", "title", "description", "summary", "trigger", "preconditions", "automerge", "expected_outcome", "code_worker_mjs", "code_work_timeout", "worker", "pr", "opensPr", "opens_pr", "pullRequest"]);
+const CLAIMING_WORDS = new Set(["pr", "pull", "prompt", "prompts", "instructions", "agent", "agentic", "outcome", "model"]);
+const KNOWN_AGENT_KEYS = new Set(["agent_model", "agent_instructions", "agent_execution_timeout"]);
+const PR_WORDS = new Set(["pr", "pull"]);
 
 interface TaskFacts {
   name: string;
@@ -59,16 +73,23 @@ interface TaskFacts {
   agentic_phase: boolean;
 }
 
+/** A recognised key sets its flag; a key this reader does not know that talks about PRs or agents claims both, so a new spelling never undercounts. */
 function taskFacts(name: string, json: { ok: boolean; value: unknown } | null): TaskFacts {
   const task = json?.ok ? asObject(json.value) : null;
   // A task.json that cannot be read claims everything, so the widening check never undercounts it.
   if (!task) return { name, cadence: "manual", opens_pr: true, agentic_phase: true };
-  return {
-    name,
-    cadence: scheduleOf(task),
-    opens_pr: PR_KEYS.some((k) => truthy(task[k])),
-    agentic_phase: AGENTIC_KEYS.some((k) => truthy(task[k])),
-  };
+  let opens = ["pr", "opensPr", "opens_pr", "pullRequest"].some((k) => truthy(task[k]));
+  const outcome = task.expected_outcome;
+  if (typeof outcome === "string" && words(outcome).some((w) => PR_WORDS.has(w))) opens = true;
+  let agentic = false;
+  let unknown = false;
+  for (const [key, value] of Object.entries(task)) {
+    const w = words(key);
+    if (KNOWN_AGENT_KEYS.has(key)) {
+      if (truthy(value)) agentic = true;
+    } else if (!KNOWN_TASK_KEYS.has(key) && w.some((x) => CLAIMING_WORDS.has(x)) && truthy(value)) unknown = true;
+  }
+  return { name, cadence: scheduleOf(task), opens_pr: opens || unknown, agentic_phase: agentic || unknown };
 }
 
 function* strings(value: unknown, depth = 0): Generator<[string, string]> {
@@ -123,40 +144,72 @@ function forcedSkillsOf(tree: Tree, manifest: PackManifest | null): string[] {
   return [...forced].sort();
 }
 
+function declaredGuards(tree: Tree, add: (name: string, tools: string[]) => void): void {
+  for (const f of tree.files) {
+    if (!/^(?:skills\/[^/]+\/)?declared-checks\.json$/.test(f.path)) continue;
+    const d = decodeText(f);
+    if (!d) continue;
+    let list: unknown;
+    try {
+      list = JSON.parse(d.text.replace(/^\ufeff/, ""));
+    } catch {
+      // A file that cannot be read still names guards if it says so; fail closed.
+      if (/guard\w*|hook/i.test(d.text)) add(`${f.path}#unreadable`, ["*"]);
+      continue;
+    }
+    const entries = Array.isArray(list) ? list : (asObject(list)?.checks as unknown);
+    if (!Array.isArray(entries)) continue;
+    entries.forEach((entry, i) => {
+      const o = asObject(entry);
+      if (!o) return;
+      const guardKeys = Object.keys(o).filter((k) => /^guard/i.test(k));
+      const event = o.event ?? o.hook;
+      const hooked = typeof event === "string" ? hookTag(event) : event !== undefined && event !== null && event !== false;
+      if (guardKeys.length === 0 && !hooked) return;
+      const name = typeof o.id === "string" && o.id ? o.id : `${f.path}#${i}`;
+      const calls = o.guardToolCalls;
+      const tools: string[] = [];
+      let readable = Array.isArray(calls) && calls.length > 0 && guardKeys.length === 1;
+      if (Array.isArray(calls)) {
+        for (const c of calls) {
+          const tool = typeof c === "string" ? c : asObject(c)?.tool;
+          if (typeof tool === "string" && tool) tools.push(tool);
+          else readable = false;
+        }
+      }
+      if (typeof event === "string" && hooked && typeof hooked === "object") tools.push(...hooked.tools.filter((t) => t !== "*"));
+      add(name, readable || tools.length ? (readable ? tools : [...tools, "*"]) : ["*"]);
+    });
+  }
+}
+
 function guardsAndChecks(tree: Tree): { guards: PreInstallBody["guards"]; codedChecks: boolean } {
   const guards = new Map<string, Set<string>>();
+  const add = (name: string, tools: string[]) => {
+    const set = guards.get(name) ?? new Set<string>();
+    for (const t of tools) set.add(t);
+    guards.set(name, set);
+  };
   let codedChecks = false;
   for (const f of tree.files) {
     if (executableKind(f.path) !== "go" || /_test\.go$/i.test(f.path)) continue;
     const lex = goLexOf(f);
     if (!lex) continue;
-    const regs = goRegistrations(lex.toks);
-    const name = /([^/]+)\.go$/i.exec(f.path)![1]!;
-    const guardRegs = regs.filter((r) => isGuardEvent(r.event));
-    if (guardRegs.length) {
-      const tools = guards.get(name) ?? new Set<string>();
-      for (const r of guardRegs) for (const t of r.tools) tools.add(t);
-      guards.set(name, tools);
+    const base = /([^/]+)\.go$/i.exec(f.path)![1]!;
+    const { checks, strayHook } = goChecks(lex.toks);
+    let plain = checks.length === 0;
+    for (const c of checks) {
+      const hooks = c.tags.map(hookTag).filter((h) => h !== null);
+      if (hooks.length === 0 && c.tagsKnown) {
+        plain = true;
+        continue;
+      }
+      add(c.id ?? base, c.tagsKnown ? [...new Set(hooks.flatMap((h) => h.tools))] : ["*"]);
     }
-    if (regs.length === 0 || regs.some((r) => !isGuardEvent(r.event))) codedChecks = true;
+    if (strayHook) add(base, ["*"]);
+    if (plain) codedChecks = true;
   }
-  // A declared check that names a PreToolUse hook is a guard too.
-  const declared = readJson(tree, "declared-checks.json");
-  const list = asObject(declared?.value)?.checks;
-  if (Array.isArray(list)) {
-    for (const c of list) {
-      const o = asObject(c);
-      const event = o?.event ?? o?.hook;
-      const eventName = typeof event === "string" ? event : (asObject(event)?.event as unknown);
-      if (typeof eventName !== "string" || eventName.toLowerCase() !== "pretooluse") continue;
-      const id = typeof o?.id === "string" ? o.id.split("/").pop()! : `declared-${guards.size + 1}`;
-      const raw = o?.tools ?? o?.tool ?? o?.matcher ?? asObject(event)?.tools;
-      const tools = (Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split("|") : []).filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim());
-      const set = guards.get(id) ?? new Set<string>();
-      for (const t of tools.length ? tools : ["*"]) set.add(t);
-      guards.set(id, set);
-    }
-  }
+  declaredGuards(tree, add);
   return { guards: [...guards].sort(([a], [b]) => (a < b ? -1 : 1)).map(([name, tools]) => ({ name, tool_calls: [...tools].sort() })), codedChecks };
 }
 

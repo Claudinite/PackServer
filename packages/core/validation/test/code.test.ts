@@ -13,7 +13,7 @@ function findings(files: Files) {
   return checkCode(tree, make, manifest, extractCapabilities(tree, manifest));
 }
 const rulesOf = (files: Files) => [...new Set(findings(files).map((f) => f.rule))].sort();
-const go = (body: string, imports = '"github.com/claudinite/check-sdk/check"') => ({ ...cleanFiles(), "checks/c.go": `package checks\n\nimport ${imports}\n\n${body}\n` });
+const go = (body: string, imports = '"claudinite.com/checksdk"') => ({ ...cleanFiles(), "checks/c.go": `package checks\n\nimport ${imports}\n\n${body}\n` });
 const worker = (body: string, head = 'import { task } from "@claudinite/sdk";') => ({ ...cleanFiles(), "tasks/t/task.json": TASK_JSON(), "tasks/t/worker.mjs": `${head}\n${body}\n` });
 const env = (body: string, name = "env/setup.sh") => ({ ...cleanFiles(), [name]: body });
 
@@ -96,14 +96,14 @@ describe("code.binary-file (REQ-VAL-006)", () => {
 });
 
 describe("code.foreign-import in a Go check (REQ-VAL-006)", () => {
-  const flagged = (imports: string) => rulesOf(go("var _ check.Context", imports)).includes("code.foreign-import");
+  const flagged = (imports: string) => rulesOf(go("var _ checksdk.Repo", imports)).includes("code.foreign-import");
   it("allows the check SDK and the standard library, in every import form", () => {
-    for (const imports of ['"strings"', '"github.com/claudinite/check-sdk/check"', 'c "github.com/claudinite/check-sdk/check"', '. "strings"', '_ "embed"', '(\n\t"fmt"\n\t"os"\n\t"path/filepath"\n)', '"encoding/json"', '"github.com/claudinite/check-sdk/check/testing"', '`strings`']) {
+    for (const imports of ['"strings"', '"claudinite.com/checksdk"', 'c "claudinite.com/checksdk"', '. "strings"', '_ "embed"', '(\n\t"fmt"\n\t"os"\n\t"path/filepath"\n)', '"encoding/json"', '"claudinite.com/checksdk/testing"', '`strings`']) {
       expect(flagged(imports), imports).toBe(false);
     }
   });
   it("fails a third-party, local, relative or cgo import", () => {
-    for (const imports of ['"github.com/evil/lib"', '"golang.org/x/net/http2"', '"mymodule/util"', '"./local"', '"../up"', '"C"', '"github.com/claudinite/check-sdk-evil/check"', '"github.com/claudinite/check-sdk/../x"', '"internal/abi"', '"strings2"', '""', '"github.com/Claudinite/check-sdk/check"']) {
+    for (const imports of ['"github.com/evil/lib"', '"golang.org/x/net/http2"', '"mymodule/util"', '"./local"', '"../up"', '"C"', '"claudinite.com/checksdk-evil"', '"claudinite.com/checksdk/../x"', '"internal/abi"', '"strings2"', '""', '"Claudinite.com/checksdk"']) {
       expect(flagged(imports), imports).toBe(true);
     }
   });
@@ -269,14 +269,26 @@ describe("code.eval", () => {
     }
   });
   it("does not fail a method or word that only resembles it", () => {
-    for (const body of ["ctx.eval(1);", "// eval(x)\n", "const s = 'avoid evaluating';", "setTimeout(() => {}, 1);", "const evaluate = 1;", "this.constructor.name;"]) {
+    for (const body of ["ctx.eval(1);", "// eval(x)\n", "const s = 'avoid evaluating';", "setTimeout(() => {}, 1);", "const evaluate = 1;"]) {
       expect(flagged(body), body).toBe(false);
     }
   });
+  it("fails any read of .constructor, which reaches the Function constructor", () => {
+    for (const body of ["const F = (() => {}).constructor; F('return 1')();", "this.constructor.name;", "x?.constructor", "x['constructor']('1')", "x['con' + 'structor']"]) {
+      expect(flagged(body), body).toBe(true);
+    }
+  });
+  it("fails Go program execution", () => {
+    for (const body of ['var _ = exec.Command("curl", "x")', 'var _, _ = os.StartProcess("/usr/bin/curl", nil, nil)', "var _ = syscall.ForkExec"]) {
+      expect(rulesOf(go(body, '"os/exec"\n\t"os"\n\t"syscall"')), body).toContain("code.eval");
+    }
+    expect(rulesOf(go("var _ = 1", '"os/exec"'))).toContain("code.eval");
+    expect(rulesOf(go("var _ = os.Getenv", '"os"'))).toEqual([]);
+  });
   it("fails Go plugin loading and linkname", () => {
-    expect(rulesOf(go("var _ check.Context", '"plugin"'))).toContain("code.eval");
-    expect(rulesOf(go("//go:linkname hidden runtime.hidden\nvar _ check.Context"))).toContain("code.eval");
-    expect(rulesOf(go("var _ check.Context // go:linkname is a comment word"))).not.toContain("code.eval");
+    expect(rulesOf(go("var _ checksdk.Repo", '"plugin"'))).toContain("code.eval");
+    expect(rulesOf(go("//go:linkname hidden runtime.hidden\nvar _ checksdk.Repo"))).toContain("code.eval");
+    expect(rulesOf(go("var _ checksdk.Repo // go:linkname is a comment word"))).not.toContain("code.eval");
   });
   it("fails eval in env-setup shell", () => {
     expect(rulesOf(env('eval "$X"\n'))).toContain("code.eval");
@@ -292,7 +304,7 @@ describe("code.base64 and code.time-conditional hold", () => {
       const f = findings(worker(body)).find((x) => x.rule === "code.base64");
       expect(f, body).toMatchObject({ class: "hold" });
     }
-    expect(findings(go("var _ check.Context", '"encoding/base64"')).find((f) => f.rule === "code.base64")).toMatchObject({ class: "hold" });
+    expect(findings(go("var _ checksdk.Repo", '"encoding/base64"')).find((f) => f.rule === "code.base64")).toMatchObject({ class: "hold" });
     expect(findings(go(`var p = "${blob}"`)).find((f) => f.rule === "code.base64")).toMatchObject({ class: "hold" });
     expect(rulesOf(env("echo $X | base64 -d\n"))).toContain("code.base64");
     expect(rulesOf(env("base64 --decode f\n"))).toContain("code.base64");
@@ -308,7 +320,7 @@ describe("code.base64 and code.time-conditional hold", () => {
     }
     const goBodies = ["func f() bool { return time.Now().After(t) }", "func f() bool {\n\tnow := time.Now()\n\tif now.Year() > 2026 {\n\t\treturn true\n\t}\n\treturn false\n}", "func f() bool { return time.Since(t) > time.Hour }", "func f() { switch time.Now().Weekday() {} }"];
     for (const body of goBodies) {
-      expect(findings(go(body, '"time"\n\t"github.com/claudinite/check-sdk/check"')).find((x) => x.rule === "code.time-conditional"), body).toMatchObject({ class: "hold" });
+      expect(findings(go(body, '"time"\n\t"claudinite.com/checksdk"')).find((x) => x.rule === "code.time-conditional"), body).toMatchObject({ class: "hold" });
     }
   });
   it("lets a timestamp that steers nothing through", () => {
