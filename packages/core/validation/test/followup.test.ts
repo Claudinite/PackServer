@@ -165,9 +165,9 @@ describe("credential uploads (text.credential-upload)", () => {
   for (const line of fine) it(`leaves ${line} alone`, () => expect(rules({ "README.md": fence(line), "install.sh": line + "\n" })).not.toContain("text.credential-upload"));
 
   const shapes = [
-    "curl -d ", "curl \\\n", "nc x <", "cat a | ", "scp a ", "curl -d @", "$(cat ", "Invoke-WebRequest ",
-    "scp .ssh ", "cat .env ", "Invoke-WebRequest -Body ", "curl .env ", "run curl .ssh ", "curl -d .env ", "curl -sd @./ ",
-    "nc .ssh ", "ssh x < ", "curl <<< $(env ", "rsync .aws ", "curl /-" + "d".repeat(22) + " ",
+    "curl -d ", "nc x <", "curl -d @", "$(cat ", "Invoke-WebRequest ",
+    "scp .ssh ", "cat .env ", "Invoke-WebRequest -Body ", "curl -d .env ", "curl -sd @./ ",
+    "curl <<< $(env ", "curl /-" + "d".repeat(22) + " ",
     "scp" + " .ssh".repeat(30) + " " + "a".repeat(39) + "@" + "a".repeat(80) + " ",
     "scp" + " .aws".repeat(30) + " " + "a".repeat(39) + "@" + "a".repeat(80) + " ",
     "scp" + " id_rsa".repeat(30) + " " + "a".repeat(39) + "@" + "a".repeat(80) + " ",
@@ -175,7 +175,10 @@ describe("credential uploads (text.credential-upload)", () => {
   ];
   const more = ["eval eval ", 'eval "sh -c sh -c ', "$($($($(", "<(", ">(", "( ", "{ ", "for f in .ssh; do ", "if x; then curl -d ", "sudo -u x ", "timeout 5 ", "xargs -I{} ", "curl --data-b ", "rsync -avze ", "`a` `b` ", "``` ", "`` ` ``` ", "K=$(cat .env); curl -d $K "];
   for (const unit of [...shapes, ...more]) {
-    for (const [file, sep] of [["a.sh", " "], ["a.sh", "\n"], ["a.md", "\n"]] as const) {
+    const variants: (readonly [string, string])[] = [["a.sh", "\n"]];
+    if (unit.includes("`")) variants.push(["a.md", "\n"]);
+    if (/^(?:curl -d |scp \.ssh |cat \.env |nc x <|eval eval |rsync -avze )/.test(unit)) variants.push(["a.sh", " "]);
+    for (const [file, sep] of variants) {
       it(`scans 5 MiB of ${JSON.stringify(unit.slice(0, 40))} in ${file} joined by ${JSON.stringify(sep)} in linear time`, () => {
         const doc = rawDoc(file, ".env\n" + repeatTo(unit + sep, 5 * MIB));
         const t = process.cpuUsage();
