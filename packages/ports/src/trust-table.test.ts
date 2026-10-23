@@ -17,7 +17,7 @@ describe("trust table", () => {
   it("gives each Worker's fakes the Worker's real binding names", () => {
     const fakes = createFakePorts({ worker: "validator" });
     expect(Object.keys(fakes.r2).sort()).toEqual(Object.keys(TRUST_TABLE.validator.r2).sort());
-    expect(Object.keys(fakes.kv)).toEqual([]);
+    expect(Object.keys(fakes.kv)).toEqual(["TELEMETRY_KV"]);
     expect(Object.keys(fakes.queues)).toEqual(["NOTIFY_QUEUE"]);
     expect(Object.keys(fakes.rateLimits)).toEqual([]);
   });
@@ -25,7 +25,7 @@ describe("trust table", () => {
   it("gives fakes with no Worker the names of every Worker", () => {
     const fakes = createFakePorts();
     expect(Object.keys(fakes.kv).sort()).toEqual(bindingNames("kv").sort());
-    expect(Object.keys(fakes.kv).sort()).toEqual(["CACHE_KV", "GATES_KV", "OAUTH_KV", "SESSIONS_KV"]);
+    expect(Object.keys(fakes.kv).sort()).toEqual(["CACHE_KV", "GATES_KV", "OAUTH_KV", "SESSIONS_KV", "TELEMETRY_KV"]);
     expect(Object.keys(fakes.rateLimits)).toEqual(["RATE_LIMIT"]);
   });
 });

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 import { createHasher, createModeCache, createTelemetry } from "@packserver/core/telemetry";
 import { TelemetrySink, toHaveRecorded } from "@packserver/core/telemetry/testing";
+import { baseSecurityHeaders } from "@packserver/ui/headers";
 import { FakeClock } from "@packserver/ports/fakes";
 import { AFFINITY_HEADER, recorder, requestTelemetry, VERSION_OVERRIDE_HEADER } from "./recorder-middleware";
 import { createShell } from "./worker-shell";
@@ -91,7 +92,8 @@ describe("recorder middleware", () => {
     await get(app, "/api/packs/abc", { [VERSION_OVERRIDE_HEADER]: 'web="ver-2"' });
     await get(app, "/api/packs/abc");
     await settle();
-    expect(sink.recorded("http.request").map((r) => r.fields.version_override)).toEqual([true, false]);
+    // Each request records on its own schedule, so the two events arrive in either order.
+    expect(sink.recorded("http.request").map((r) => r.fields.version_override === true).sort()).toEqual([false, true]);
   });
 
   it("applies telemetry_mode: economy drops an anonymous line, never the point", async () => {
@@ -175,6 +177,26 @@ describe("recorder isolation", () => {
     }
     expect(lines.join("")).toContain("[ip]");
     expect(lines.join("")).not.toContain("10.0.0.1");
+  });
+});
+
+describe("createShell security headers", () => {
+  it("sets them on handler, error, not-found and self-test responses alike", async () => {
+    const shell = createShell({ worker: "web", releaseId: "rel-1", versionId: "ver-1", clock: new FakeClock(), checks: () => [], selfTestAllowed: () => true });
+    shell.get("/page", (c) => c.html("<p>hi</p>"));
+    shell.get("/data", (c) => c.json({ ok: true }));
+    shell.get("/boom", () => {
+      throw new Error("x");
+    });
+    shell.get("/go", () => Response.redirect("https://example.test/next", 302));
+    for (const path of ["/page", "/data", "/boom", "/missing", "/__selftest", "/go"]) {
+      const res = await shell.request(path);
+      for (const [name, value] of Object.entries(baseSecurityHeaders)) expect(res.headers.get(name), `${path} ${name}`).toBe(value);
+      const csp = res.headers.get("content-security-policy") ?? "";
+      expect(csp, path).toContain("default-src 'none'");
+      expect(csp.includes("nonce-"), path).toBe(path === "/page");
+    }
+    expect((await shell.request("/go")).status).toBe(302);
   });
 });
 
