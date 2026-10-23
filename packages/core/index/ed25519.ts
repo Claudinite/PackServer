@@ -1,6 +1,6 @@
 import * as noble from "@noble/ed25519";
 
-type Subtle = typeof globalThis.crypto.subtle;
+type Subtle = typeof crypto.subtle;
 
 export const SEED_BYTES = 32;
 export const PUBLIC_KEY_BYTES = 32;
@@ -123,7 +123,7 @@ async function probeWebCrypto(subtle: Subtle): Promise<string | null> {
 export function selectEd25519(subtle?: Subtle): Promise<Ed25519> {
   if (subtle) return selectFor(subtle);
   // The runtime's own backend is probed once per isolate; the recorded selection travels with it.
-  defaultSelection ??= selectFor(globalThis.crypto?.subtle);
+  defaultSelection ??= selectFor(crypto?.subtle);
   return defaultSelection;
 }
 
