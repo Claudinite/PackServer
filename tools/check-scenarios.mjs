@@ -393,12 +393,18 @@ function renamesIn(body) {
   return { renames, refused };
 }
 
-/** Every identifier-shaped word in the World's own code and the scenarios of one tree. */
+/** Identifier-shaped words of one tree: `world` is the World's own non-test sources; `all` adds its tests and the scenarios. */
 function wordsOf(src) {
-  const words = new Set();
-  const paths = [...src.list("packages/test-world"), ...src.list("scenarios")].filter((p) => /\.(?:[cm]?[jt]s)$/.test(p) && !p.includes("/node_modules/"));
-  for (const path of paths) for (const w of src.read(path)?.match(/[A-Za-z_$][\w$]*/g) ?? []) words.add(w);
-  return words;
+  const sources = (dir) => src.list(dir).filter((p) => /\.(?:[cm]?[jt]s)$/.test(p) && !p.includes("/node_modules/"));
+  const collect = (paths) => {
+    const words = new Set();
+    for (const path of paths) for (const w of src.read(path)?.match(/[A-Za-z_$][\w$]*/g) ?? []) words.add(w);
+    return words;
+  };
+  const worldPaths = sources("packages/test-world");
+  const world = collect(worldPaths.filter((p) => !/\.test\.[cm]?[jt]s$/.test(p) && !/\/test(?:-browser)?\//.test(p)));
+  const all = collect([...worldPaths, ...sources("scenarios")]);
+  return { world, all };
 }
 
 const escape = (text) => text.replace(/[$]/g, "\\$&");
@@ -423,8 +429,10 @@ export function checkGate(baseSrc, headSrc, prBody) {
     const headWords = wordsOf(headSrc);
     const baseWords = wordsOf(baseSrc);
     for (const [from, to] of renames.splice(0)) {
-      if (headWords.has(from)) refused.push(`${from} -> ${to}: ${from} still exists in the head, so this swaps one existing name for another`);
-      else if (baseWords.has(to)) refused.push(`${from} -> ${to}: ${to} already existed on the base, so this swaps one existing name for another`);
+      if (!baseWords.world.has(from)) refused.push(`${from} -> ${to}: ${from} is not a name in the World's sources on the base`);
+      else if (headWords.all.has(from)) refused.push(`${from} -> ${to}: ${from} still exists in the head, so this swaps one existing name for another`);
+      else if (!headWords.world.has(to)) refused.push(`${to} is not a name in the World's sources in the head (${from} -> ${to})`);
+      else if (baseWords.all.has(to)) refused.push(`${from} -> ${to}: ${to} already existed on the base, so this swaps one existing name for another`);
       else renames.push([from, to]);
     }
   }

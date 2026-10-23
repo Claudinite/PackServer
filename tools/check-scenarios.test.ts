@@ -158,8 +158,12 @@ describe("checkGate", () => {
     expect(weaker.problems[0]).toContain("changed its assertions");
   });
 
+  const worldFile = (words: string) => ({ "packages/test-world/world/matchers.ts": words });
+  const withWorld = (src: ReturnType<typeof memory> & { files: Record<string, string> }, words: string) => memory({ ...src.files, ...worldFile(words) });
+
   it("applies a declared matcher rename", () => {
-    const head = world({ "scenarios/a.scenario.ts": good.replace("toBeSignedIn", "toBeAuthenticated") });
+    const head = withWorld(world({ "scenarios/a.scenario.ts": good.replace("toBeSignedIn", "toBeAuthenticated") }), "toBeAuthenticated");
+    const base = withWorld(world({ "scenarios/a.scenario.ts": good }), "toBeSignedIn");
     expect(checkGate(base, head, "Scenario-Refactor: rename\nrename: toBeSignedIn -> toBeAuthenticated").problems).toEqual([]);
   });
 
@@ -188,6 +192,23 @@ describe("checkGate", () => {
     expect(r3.notes).toEqual([]);
   });
 
+  it("refuses a rename of a name the World's sources do not carry, such as a Vitest built-in", () => {
+    const sources = (words: string) => ({ "packages/test-world/world/matchers.ts": words, "packages/test-world/test/matchers.test.ts": "toBeLessThan toStrictEqual soft toBeGreaterThanOrEqual toBeCloseTo poll" });
+    for (const [from, to] of [["toBeLessThan", "toBeGreaterThanOrEqual"], ["toStrictEqual", "toBeCloseTo"], ["soft", "poll"]] as const) {
+      const text = `import { scenario, expect } from "@packserver/test-world";\nscenario("IT-ACC-001 Sign up", async (world) => {\n  expect.${from}(world.x);\n});\n`;
+      const b = memory({ ...world({ "scenarios/a.scenario.ts": text }).files, ...sources("toBeSignedIn") });
+      const h = memory({ ...world({ "scenarios/a.scenario.ts": text.replace(from, to) }).files, ...sources("toBeSignedIn") });
+      const r = checkGate(b, h, `Scenario-Refactor: x\nrename: ${from} -> ${to}`);
+      expect(r.problems.some((p) => p.includes("not a name in the World's sources"))).toBe(true);
+    }
+  });
+
+  it("refuses a rename whose new name the World's sources do not carry", () => {
+    const b = withWorld(world({ "scenarios/a.scenario.ts": good }), "toBeSignedIn");
+    const h = withWorld(world({ "scenarios/a.scenario.ts": good.replace("toBeSignedIn", "toBeAuthenticated") }), "somethingElse");
+    expect(checkGate(b, h, "Scenario-Refactor: x\nrename: toBeSignedIn -> toBeAuthenticated").problems.some((p) => p.includes("not a name in the World's sources in the head"))).toBe(true);
+  });
+
   it("accepts a rename to a name the base never had, from one the head has dropped", () => {
     const b = memory({ ...world({ "scenarios/a.scenario.ts": good }).files, "packages/test-world/world/matchers.ts": "toBeSignedIn" });
     const h = memory({ ...world({ "scenarios/a.scenario.ts": good.replace("toBeSignedIn", "toBeAuthenticated") }).files, "packages/test-world/world/matchers.ts": "toBeAuthenticated" });
@@ -195,7 +216,8 @@ describe("checkGate", () => {
   });
 
   it("applies a rename on whole identifiers only", () => {
-    const head = world({ "scenarios/a.scenario.ts": good.replaceAll("visitor", "person").replace("signUp", "signUpNow") });
+    const base = withWorld(world({ "scenarios/a.scenario.ts": good }), "visitor signUp");
+    const head = withWorld(world({ "scenarios/a.scenario.ts": good.replaceAll("visitor", "person").replace("signUp", "signUpNow") }), "person signUpNow");
     expect(checkGate(base, head, "Scenario-Refactor: x\nrename: sign -> hacked").problems).not.toEqual([]);
     expect(checkGate(base, head, "Scenario-Refactor: x\nrename: visitor -> person\nrename: signUp -> signUpNow").problems).toEqual([]);
   });
