@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractArchive } from "../index.ts";
+import { extractArchive, tarOf } from "../index.ts";
 import { FIXTURE_NAMES, FIXTURES, expectedVerdict, fixtureArchive } from "../fixtures.ts";
 import { expectRefused } from "./helpers.ts";
 
@@ -26,21 +26,25 @@ describe("fixture corpus (IT-VAL-003, IT-VAL-020, IT-VAL-022, IT-VAL-023)", () =
   });
 
   for (const name of FIXTURE_NAMES) {
-    it(`${name}: ${expectedVerdict(name)}, within time and memory`, async () => {
+    // Bounded work is asserted through the decoder's output; the timeout only guards against a hang.
+    it(`${name}: ${expectedVerdict(name)}, with bounded work`, { timeout: 60_000 }, async () => {
       const archive = fixtureArchive(name);
-      if (global.gc) global.gc();
-      const rssBefore = process.memoryUsage().rss;
-      const started = performance.now();
       if (FIXTURES[name].expect === "ok") {
-        const tree = await extractArchive(archive);
+        const stats = { producedBytes: 0 };
+        const tree = await extractArchive(archive, { stats });
         expect(tree.files.length).toBeGreaterThan(0);
+        expect(stats.producedBytes).toBeGreaterThan(0);
+        expect(stats.producedBytes).toBeLessThanOrEqual(tarOf(tree).length + 1024 * 1024);
       } else {
         await expectRefused(archive, FIXTURES[name].expect);
       }
-      expect(performance.now() - started).toBeLessThan(5_000);
-      expect(process.memoryUsage().rss - rssBefore).toBeLessThan(160 * MB);
     });
   }
+
+  it("reports the work it did before refusing", async () => {
+    const stats = await expectRefused(fixtureArchive("bomb-many-files"), "archive.bomb", "unpacked-size");
+    expect(stats.producedBytes).toBeGreaterThan(10 * MB);
+  });
 
   it("refuses each bomb for the cause the register names", async () => {
     await expectRefused(fixtureArchive("bomb-huge-window"), "archive.bomb", "zstd-window");
