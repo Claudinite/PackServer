@@ -1,0 +1,41 @@
+# Runs from the base branch on pull_request_target, so the pull request cannot change the gate it
+# is judged by. The head is fetched and read as text only: nothing from it is installed or executed.
+name: scenario-gate
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  scenario-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      # The repository is private and checkout keeps no credentials, so this one step is handed the
+      # read-only token, as a header for this single command.
+      - name: fetch the head as data
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          TOKEN: ${{ github.token }}
+        run: |
+          auth=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" fetch --no-tags origin "+refs/pull/${PR}/head:refs/pr/head"
+      - name: check the scenarios and the requirement trail
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: node tools/check-scenarios.mjs --gate --base "$BASE" --head "$HEAD"
