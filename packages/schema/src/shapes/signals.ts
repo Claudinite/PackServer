@@ -22,7 +22,7 @@ export const SIGNALS = {
   queue: ["message_processed", "dlq", "backlog"],
   workflow: ["instance_finished", "wait_rearmed"],
   rollup: ["completed"],
-  audit: ["appended", "batch_written", "chain_verified", "chain_broken", "head_rebuilt"],
+  audit: ["appended", "batch_written", "chain_verified", "chain_broken", "head_rebuilt", "reconcile_skipped"],
   abuse: ["rate_limited", "turnstile_failed", "anomaly_hold", "daily_cap_hit"],
   synthetic: ["probe"],
   selftest: ["result"],

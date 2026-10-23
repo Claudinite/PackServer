@@ -40,8 +40,15 @@
     {
       "idx": 5,
       "version": "6",
-      "when": 1792727248708,
-      "tag": "20261023034728_mfa_passkeys_recovery",
+      "when": 1792727301359,
+      "tag": "20261023034821_audit_heads",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1792728216569,
+      "tag": "20261023040336_mfa_passkeys_recovery",
       "breakpoints": true
     }
   ]
