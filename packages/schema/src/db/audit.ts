@@ -1,4 +1,4 @@
-import { index, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 /**
  * The disposable 90-day copy of the audit record that serves "recent events for this user or scope".
@@ -29,3 +29,23 @@ export const recent_activity = sqliteTable(
     index("recent_activity_at_idx").on(t.at),
   ],
 );
+
+/**
+ * One row per UTC day: the chain head published to the transparency log that day. The web Worker serves these at
+ * `/.well-known/audit-heads`; the log, not this table, is what makes them evidence.
+ */
+export const audit_heads = sqliteTable("audit_heads", {
+  /** `YYYY-MM-DD` (UTC) of the publication. */
+  day: text("day").primaryKey(),
+  seq: integer("seq").notNull(),
+  /** SHA-256 of the head batch object. */
+  hash: text("hash").notNull(),
+  /** The head batch's object key. */
+  batch_key: text("batch_key").notNull(),
+  /** Entry index in the transparency log. */
+  log_index: integer("log_index").notNull(),
+  /** The hash the log says it recorded; equals `hash` or the row is not written. */
+  anchored_hash: text("anchored_hash").notNull(),
+  /** ISO-8601 UTC. */
+  anchored_at: text("anchored_at").notNull(),
+});
