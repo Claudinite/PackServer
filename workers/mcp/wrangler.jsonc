@@ -1,6 +1,7 @@
 {
   "name": "mcp-local",
   "workers_dev": false,
+  "preview_urls": false,
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",

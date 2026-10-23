@@ -104,6 +104,7 @@ No question is open: every spot the spec once marked "Pending decision" is writt
 | 2026-10-22 | Bug reports become a pre-filled GitHub issue the reporter files themselves when a repo is linked, else land in the in-site inbox; security reports are private with a 90-day disclosure timer | No GitHub writes | PR #3 §10 |
 | 2026-10-22 | Abuse reports require sign-in; a high-severity report labels the pack "Reported, under review" and goes to the front of the queue with a 1-hour clock; downloads are held at once only on a Verified Publisher reporter or three reporters with standing, never for a version declared by more than 100 repositories, and otherwise when the hour passes without a human decision | Report counts are a denial-of-service lever against popular packs; the label and the clock give the same protection without it | PR #3 §10; SEC-REV H6, Q2 (D24); PD-REV H9 |
 | 2026-10-22 | Fixed top-level categories plus free tags | Agents filter by a known tree; publishers describe freely | Sitemap decision 11 |
+| 2026-10-23 | Build default for the fixed category list: cloud, data, devtools, docs, frontend, backend, security, testing, workflow, other (`packages/core/search/constants.ts`); Ariel may replace it | The spec fixed the rule but not the members; T-060 needed a list to build against | T-060 (REQ-SEARCH-020) |
 
 ## Operations and release
 

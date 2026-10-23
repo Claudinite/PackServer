@@ -15,9 +15,8 @@ import {
   TRENDING,
   isCategory,
   isSearchPart,
-  type SearchPart,
 } from "./constants";
-import { StoredCard, type PackCard, type Snapshot } from "./listing";
+import { StoredCard, type PackCard } from "./listing";
 import { ftsMatch, normalizeQuery, queryTerms } from "./query";
 import { cardOf, rankCandidates, trendingGrowth, type Candidate } from "./rank";
 
@@ -51,6 +50,11 @@ export class SearchRequestError extends Error {
   ) {
     super(message);
   }
+}
+
+/** Search cannot answer correctly; the caller says so and does not guess. */
+export class SearchUnavailableError extends Error {
+  override readonly name = "SearchUnavailableError";
 }
 
 export function assertConfig(config: SearchConfig, embedder: Pick<Embedder, "model" | "dimensions">): void {
@@ -129,9 +133,11 @@ ${BASE}
 JOIN pack_versions pv ON pv.pack_id = p.id AND pv.state IN (${ELIGIBLE}) AND pv.published_at IS NOT NULL
 LEFT JOIN pack_stats st ON st.pack_id = p.id LEFT JOIN recent r ON r.pack_id = p.id
 WHERE p.visibility = 'public' AND s.kind <> 'synthetic'${w.sql}${restrict}
+ORDER BY ps.seq, pv.id
 LIMIT ${ROW_CAP}`,
     [...w.params, ...(ids === undefined ? [] : [JSON.stringify(ids)])],
   );
+  if (result.rows.length >= ROW_CAP) console.warn(`search: more than ${ROW_CAP} version rows matched; the rest are left out`);
   const newest = new Map<string, Record<string, unknown>>();
   for (const row of result.rows) {
     const id = String(row.pack_id);
@@ -239,38 +245,16 @@ export async function search(ports: SearchPorts, config: SearchConfig, request: 
       if (similarity !== undefined) c.semantic = similarity;
     }
   } catch (error) {
-    const fallback = await fromSnapshots(await semanticPromise, request);
-    if (fallback === null) throw error;
-    console.warn(`search: the database is unavailable, answering from the vector index (${error instanceof Error ? error.message : String(error)})`);
-    return { cards: fallback.slice(request.offset ?? 0, (request.offset ?? 0) + clampLimit(request.limit)), degraded: true };
+    // The vector index alone cannot say who may be found: only D1 knows a pack's visibility now.
+    throw new SearchUnavailableError("the database is unavailable", { cause: error });
   }
 
   const sort = request.sort ?? "score";
   const kept = candidates.filter(passes);
-  const size = sort === "score" && kept.length >= 10 ? await catalogueSize(ports.d1) : 0;
+  const size = browse && sort === "score" && kept.length >= 10 ? await catalogueSize(ports.d1) : 0;
   const ranked = rankCandidates(kept, { terms, engineVersion: request.engine_version, sort, nowMs: ports.clock.now(), catalogueSize: size });
   const offset = request.offset ?? 0;
   return { cards: ranked.slice(offset, offset + clampLimit(request.limit)).map(cardOf), degraded };
-}
-
-/** With D1 down, the vector index's own snapshots answer, best meaning first. */
-async function fromSnapshots(matches: Awaited<ReturnType<typeof semanticHits>>, request: SearchRequestBody): Promise<PackCard[] | null> {
-  if (matches === null || matches.length === 0) return null;
-  const passes = verificationFilter(request);
-  const cards: PackCard[] = [];
-  for (const m of matches) {
-    const text = m.metadata.snapshot;
-    if (typeof text !== "string") continue;
-    const snapshot = JSON.parse(text) as Snapshot;
-    const { card } = snapshot;
-    const holds = (part: SearchPart) => snapshot.parts.includes(part);
-    if (request.category !== undefined && card.category !== request.category) continue;
-    if (request.part !== undefined && !holds(request.part as SearchPart)) continue;
-    if (request.has_repository === true && !snapshot.has_repository) continue;
-    if (!passes({ verified: card.verified, verifiedDomain: card.verified_domain })) continue;
-    cards.push(card);
-  }
-  return cards;
 }
 
 /** The fixed category list with the number of public packs in each. */

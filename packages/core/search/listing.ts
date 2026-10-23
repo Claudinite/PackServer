@@ -16,13 +16,6 @@ export const StoredCard = z.object({
 });
 export type StoredCard = z.infer<typeof StoredCard>;
 
-/** What the vector index keeps beside an embedding, enough to answer when D1 cannot. */
-export interface Snapshot {
-  card: PackCard;
-  parts: SearchPart[];
-  has_repository: boolean;
-}
-
 export interface Listing {
   packId: string;
   /** `@scope/name`. */
@@ -62,7 +55,7 @@ export interface Statement {
 export interface VectorEntry {
   id: string;
   text: string;
-  metadata: { pack: string; category: string; snapshot: string };
+  metadata: { pack: string; category: string };
 }
 
 export interface IndexPlan {
@@ -76,28 +69,6 @@ export function embeddingText(listing: Pick<Listing, "pitch" | "category" | "tag
 }
 
 export const partsOf = (counts: Record<string, number>): SearchPart[] => SEARCH_PARTS.filter((p) => (counts[p] ?? 0) > 0);
-
-export function snapshotOf(listing: Listing, fetches30d = 0): Snapshot {
-  const card: PackCard = {
-    id: listing.name,
-    pitch: listing.pitch,
-    inventory_counts: listing.stored.inventory_counts,
-    context_cost: listing.stored.context_cost,
-    verified: listing.verification.verified,
-    verified_domain: listing.verification.domain,
-    verified_github_org: listing.verification.githubOrg,
-    verdict: listing.stored.verdict,
-    repository: listing.stored.repository,
-    rating: listing.rating,
-    stars: listing.stars,
-    fetches_30d: fetches30d,
-    category: listing.category,
-    score: listing.score,
-    score_parts: [],
-    newest_eligible: { version: listing.newest.version, published_at: listing.newest.publishedAt, min_engine_version: listing.newest.minEngineVersion },
-  };
-  return { card, parts: partsOf(listing.stored.inventory_counts), has_repository: listing.hasRepository };
-}
 
 /**
  * Everything a promotion writes for search: the searchable row, the first-promotion time and the
@@ -126,7 +97,7 @@ ON CONFLICT(pack_id) DO UPDATE SET name = excluded.name, pitch = excluded.pitch,
     vector: {
       id: listing.packId,
       text: embeddingText(listing),
-      metadata: { pack: listing.name, category: listing.category, snapshot: JSON.stringify(snapshotOf(listing)) },
+      metadata: { pack: listing.name, category: listing.category },
     },
   };
 }
@@ -159,8 +130,12 @@ export async function applyIndex(ports: IndexPorts, listing: Listing, nowIso: st
   return { vectorised: true };
 }
 
-export async function applyRemoval(ports: Pick<IndexPorts, "d1" | "vectors">, packId: string): Promise<void> {
+/**
+ * The vector goes first and a failure to delete it fails the call, so the caller retries before the pack is
+ * made private or synthetic: a vector must never outlive the pack's right to be found.
+ */
+export async function applyRemoval(ports: { d1: IndexPorts["d1"]; vectors: Pick<IndexPorts["vectors"], "deleteByIds"> }, packId: string): Promise<void> {
   const plan = removalPlan(packId);
-  await ports.d1.batch(plan.statements);
   await ports.vectors.deleteByIds([plan.vectorId]);
+  await ports.d1.batch(plan.statements);
 }

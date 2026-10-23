@@ -1,7 +1,6 @@
 import { listCategories, search as coreSearch, trending as coreTrending, type SearchPorts, type SearchRequestBody, type SearchResponseBody } from "@packserver/core/search";
 import type { McpRuntime } from "../bindings";
 
-
 function portsOf(runtime: McpRuntime): SearchPorts {
   const { d1, embedder, vectors, clock, kv } = runtime.ports;
   const cache = kv.OAUTH_KV;

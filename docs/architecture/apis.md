@@ -77,7 +77,7 @@ caller as data inside a field, never as instructions (REQ-SEARCH-023).
 
 Search merges FTS5 BM25 with Vectorize nearest neighbours filtered by category, part, visibility and
 verification, and re-ranks by text relevance × pack score × category match × engine compatibility.
-On D1 failure the tool answers from the snapshots Vectorize keeps beside each embedding with `degraded: true`; when the
+On D1 failure the tool answers `503` (only D1 knows who may still be found, so Vectorize alone never answers); when the
 model budget is spent it answers by keyword alone with `degraded: true`, and a query's embedding is cached for 24 hours.
 
 ## CDN objects (`packs.claudinite.com`)

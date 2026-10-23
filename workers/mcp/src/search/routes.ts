@@ -15,7 +15,7 @@ export function routes(runtime: McpRuntime): Hono {
   const unavailable = (error: unknown) => {
     const configured = error instanceof SearchConfigError;
     console.error(`search failed: ${error instanceof Error ? error.message : String(error)}`);
-    return Response.json({ error: configured ? "misconfigured" : "unavailable" }, { status: 503, headers: NO_STORE });
+    return Response.json({ ...(configured ? { error: "misconfigured" } : { error: "unavailable", degraded: true }) }, { status: 503, headers: NO_STORE });
   };
 
   app.post("/search", async (c) => {

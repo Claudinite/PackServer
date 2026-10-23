@@ -1,5 +1,6 @@
 import { expect, scenario, type ScenarioOpts, type SearchFilters, type SearchResults, type World } from "@packserver/test-world";
 
+// Seeds are dated against the system clock (promoted: "10d" is ten days before now) because the Workers do not read the fake clock.
 const storage: ScenarioOpts = { needs: ["storage", "fakes"] };
 // Scenarios that count or order the whole catalogue start from an empty one; the rest keep to words and categories of their own.
 const empty: ScenarioOpts = { needs: ["storage", "fakes", "reset"] };

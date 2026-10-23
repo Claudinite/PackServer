@@ -5,6 +5,7 @@ import { SqliteD1 } from "../audit/testing";
 import {
   SearchConfigError,
   SearchRequestError,
+  SearchUnavailableError,
   applyIndex,
   applyRemoval,
   indexPlan,
@@ -296,6 +297,12 @@ describe("exploration slots", () => {
     expect(plain).toEqual([...plain].sort((a, b) => b - a).filter((s, _, all) => all.includes(s)));
   });
 
+  it("does not apply to a query's results, only to browse", async () => {
+    const t = await catalogue(50);
+    const cards = (await search(t.ports, CONFIG, { query: "a pack", limit: 30 })).cards;
+    expect(cards.some((c) => c.exploration)).toBe(false);
+  });
+
   it("does not apply to an explicit sort", async () => {
     const t = await catalogue(50);
     const cards = (await search(t.ports, CONFIG, { sort: "stars", limit: 30 })).cards;
@@ -349,14 +356,24 @@ describe("meaning", () => {
     expect((await search(t.ports, CONFIG, { query: "deploy to gcp cloud run" })).cards.map((c) => c.id)).toEqual(["@a/k"]);
   });
 
-  it("answers from the vector index when the database is down", async () => {
+  it("answers nothing when the database is down, so a leftover vector can never leak a private or synthetic pack", async () => {
     const t = await meaningCase();
+    const r = await t.db.query("SELECT id FROM packs WHERE name = 'r'");
+    await t.db.query("UPDATE packs SET visibility = 'private' WHERE id = ?", [r.rows[0]?.id]);
+    expect(t.vectors.items.size).toBe(2);
     t.db.down = true;
-    const out = await search(t.ports, CONFIG, { query: "deploy to gcp cloud run", category: "cloud" });
-    expect(out.degraded).toBe(true);
-    expect(out.cards.map((c) => c.id)).toEqual(["@a/r"]);
-    t.embedder.spent = true;
-    await expect(search(t.ports, CONFIG, { query: "other words" })).rejects.toThrow(/unavailable/);
+    await expect(search(t.ports, CONFIG, { query: "deploy to gcp cloud run" })).rejects.toBeInstanceOf(SearchUnavailableError);
+  });
+
+  it("removes the vector before the rows, and fails the removal if the vector stays", async () => {
+    const t = await meaningCase();
+    const r = await t.db.query("SELECT id FROM packs WHERE name = 'r'");
+    const id = String(r.rows[0]?.id);
+    const stuck = { deleteByIds: async () => { throw new Error("vectorize down"); } };
+    await expect(applyRemoval({ d1: t.db, vectors: stuck }, id)).rejects.toThrow(/vectorize down/);
+    expect((await t.db.query("SELECT 1 FROM pack_search WHERE pack_id = ?", [id])).rows).toHaveLength(1);
+    await applyRemoval({ d1: t.db, vectors: t.vectors }, id);
+    expect(t.vectors.items.has(id)).toBe(false);
   });
 });
 
