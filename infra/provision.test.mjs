@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeCloudflare } from "./fake-cloudflare.mjs";
@@ -40,6 +40,18 @@ describe("the plan", () => {
         for (const n of Object.values(w.vectorize)) expect(plan.vectorize).toContain(sfx(n));
       }
     }
+  });
+
+  it("takes the audit token's secret names from the admin Worker's config, and refuses a config without them", () => {
+    expect(planResources("staging").auditSecrets).toEqual({ accessKeyId: "audit-s3-access-key-id-staging", secretAccessKey: "audit-s3-secret-access-key-staging" });
+    expect(planResources("production").auditSecrets).toEqual({ accessKeyId: "audit-s3-access-key-id", secretAccessKey: "audit-s3-secret-access-key" });
+    const root = mkdtempSync(join(tmpdir(), "plan-"));
+    cpSync(join(import.meta.dirname, "..", "workers"), join(root, "workers"), { recursive: true, filter: (p) => !p.includes("node_modules") });
+    mkdirSync(join(root, "packages", "ports"), { recursive: true });
+    cpSync(join(import.meta.dirname, "..", "packages", "ports", "trust-table.json"), join(root, "packages", "ports", "trust-table.json"));
+    const path = join(root, "workers", "admin", "wrangler.jsonc");
+    writeFileSync(path, readFileSync(path, "utf8").replaceAll("AUDIT_S3_SECRET_ACCESS_KEY", "SOMETHING_ELSE"));
+    expect(() => planResources("staging", { root })).toThrow(/AUDIT_S3_SECRET_ACCESS_KEY/);
   });
 
   it("includes the audit dead-letter queue, the extras, and no shadow-records bucket", () => {

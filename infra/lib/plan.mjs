@@ -91,6 +91,9 @@ export function planResources(env, { root = REPO } = {}) {
     if (hosts.has(d)) throw new Error(`${d} is both a Worker route host and an R2 custom domain; a placeholder record would block the bucket`);
   }
   if (!turnstileSecretName) throw new Error(`no ${TURNSTILE_BINDING} secrets_store_secrets entry in env.${env} of any Worker`);
+  for (const [field, binding] of Object.entries(AUDIT_BINDINGS)) {
+    if (!audit[field]) throw new Error(`no ${binding} secrets_store_secrets entry in env.${env} of any Worker`);
+  }
   return {
     env,
     d1: sorted(d1),
@@ -102,12 +105,7 @@ export function planResources(env, { root = REPO } = {}) {
     r2CustomDomains: R2_CUSTOM_DOMAINS[env],
     turnstile: { name: suffixed(env, "packserver"), domains: sorted(webHosts), secretName: turnstileSecretName },
     secretsStore: SECRETS_STORE_NAME,
-    // The admin Worker's own secret names; the fallbacks are the names the admin config is to
-    // declare and can go once it does.
-    auditSecrets: {
-      accessKeyId: audit.accessKeyId ?? suffixed(env, "audit-s3-access-key-id"),
-      secretAccessKey: audit.secretAccessKey ?? suffixed(env, "audit-s3-secret-access-key"),
-    },
+    auditSecrets: audit,
   };
 }
 
