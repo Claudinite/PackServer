@@ -1,10 +1,24 @@
 import { authenticateToken, grantCovers } from "@packserver/core/tokens";
-import { d1Port } from "@packserver/ports/cloudflare";
+import type { D1, D1Result } from "@packserver/ports";
 import type { ApiResponse, Driver } from "../drivers/driver";
 import type { Aliases } from "./alias";
 import { InfrastructureError } from "./errors";
 import { NotFound, Refusal, type Observation, type RefusalReason } from "./outcomes";
 import type { Assertion, Pack, Session, Sensitive, User } from "./types";
+
+type Statement = { all(): Promise<{ results?: Array<Record<string, unknown>>; meta?: { changes?: number; last_row_id?: number } }> };
+
+/** Only `query` is used by the token gate. */
+function d1Over(db: unknown): D1 {
+  const prepare = (db as { prepare(sql: string): { bind(...values: unknown[]): Statement } }).prepare.bind(db);
+  return {
+    async query(sql, params = []): Promise<D1Result> {
+      const out = await prepare(sql).bind(...params).all();
+      return { rows: out.results ?? [], meta: { changes: out.meta?.changes ?? 0, last_row_id: out.meta?.last_row_id ?? null } };
+    },
+    batch: () => Promise.reject(new InfrastructureError("the world's token gate does not batch")),
+  };
+}
 
 const DEFAULT_ADDRESS = "203.0.113.1";
 const MINT_ACTION = "token.mint";
@@ -179,7 +193,7 @@ export function createWorldTokens(driver: Driver, getAccountId: (user: User) => 
       if (!driver.storage || !driver.fakes) throw new InfrastructureError(`the ${driver.kind} driver cannot ask the token gate: it has no storage seam`);
       const now = await driver.fakes.clock.call<number>("now");
       const { db } = await driver.storage();
-      const ports = { d1: d1Port(db as unknown as D1Database), clock: { now: () => now } };
+      const ports = { d1: d1Over(db), clock: { now: () => now } };
       const grant = await authenticateToken(ports, valueOf(token), o.from ?? DEFAULT_ADDRESS);
       if (!grant) return new Refusal("signed-out");
       const [scope, name] = pack.systemName.slice(1).split("/") as [string, string];
