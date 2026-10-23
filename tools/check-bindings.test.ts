@@ -51,8 +51,11 @@ describe("check-bindings", () => {
     expect(run(REPO)).toMatchObject({ ok: true });
   });
 
-  it("exits 0 on the repository and 1 with the problem on stderr when one is broken", () => {
+  it("exits 0 on the repository", () => {
     expect(runCli(REPO).code).toBe(0);
+  });
+
+  it("exits 1 with the problem on stderr when one is broken", () => {
     const dir = copyRepo();
     edit(dir, "mcp", (c) => delete c.env.staging.ratelimits);
     expect(runCli(dir)).toMatchObject({ code: 1, out: expect.stringContaining("workers/mcp env.staging: rate limits is []") });
