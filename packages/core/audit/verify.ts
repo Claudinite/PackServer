@@ -139,7 +139,13 @@ export async function verifyAuditChain(ports: VerifyPorts): Promise<VerifyReport
   problems.push(...diff("missing_in_chain", "recent_activity", copy, new Set(walked.ids.keys())));
   reconciledWith.push("recent_activity");
 
-  const pointIds = ports.appendedPoints ? await ports.appendedPoints(`${windowStart}T00:00:00.000Z`) : null;
+  // A failing reader must not hide the chain's own findings; the run says it did not reconcile against the points.
+  const pointIds = ports.appendedPoints
+    ? await ports.appendedPoints(`${windowStart}T00:00:00.000Z`).catch((error: unknown) => {
+        console.error(JSON.stringify({ at: "audit.verify", failed: "points", error: String(error) }));
+        return null;
+      })
+    : null;
   if (pointIds) {
     const points = new Set(pointIds);
     problems.push(...diff("missing_in_points", "audit.appended", inWindow, points));

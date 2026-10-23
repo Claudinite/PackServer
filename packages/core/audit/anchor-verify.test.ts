@@ -1,6 +1,6 @@
 import { createHash, createVerify, generateKeyPairSync } from "node:crypto";
 import { createFakePorts } from "@packserver/ports/fakes";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { anchorDailyHead, listAnchoredHeads } from "./anchor";
 import { createAudit } from "./emit";
 import type { AuditEvent } from "./event";
@@ -159,6 +159,18 @@ describe("nightly verifier", () => {
     await stray.batch();
     const extra = await stray.verify([...stray.events().map((e) => e.id), "evt-not-in-chain"]);
     expect(reasons(extra)).toEqual(["missing_in_chain:audit.appended:1"]);
+
+    const failing = setup();
+    await failing.batch();
+    failing.fakes.clock.advance(5 * HOUR);
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const survived = await verifyAuditChain({
+      auditBucket: failing.bucket, d1: failing.d1, stats: failing.fakes.stats, clock: failing.fakes.clock,
+      appendedPoints: async () => { throw new Error("403"); },
+    });
+    expect(survived).toMatchObject({ problems: [], reconciledWith: ["recent_activity"] });
+    expect(quiet).toHaveBeenCalled();
+    quiet.mockRestore();
 
     const unwired = setup();
     await unwired.batch();
