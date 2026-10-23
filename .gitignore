@@ -4,3 +4,5 @@ dist/
 .wrangler/
 /reports/
 /.vitest/
+test-results/
+/infra/zone/previous/

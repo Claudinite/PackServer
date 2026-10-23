@@ -8,7 +8,8 @@
     "./canonical/fixtures": "./canonical/fixtures.ts",
     "./index": "./index/index.ts",
     "./mail": "./mail/index.ts",
-    "./mail/testing": "./mail/testing.ts"
+    "./mail/testing": "./mail/testing.ts",
+    "./validation": "./validation/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json && tsc -p canonical/tsconfig.json",
@@ -17,6 +18,7 @@
   "dependencies": {
     "@noble/ed25519": "catalog:",
     "@packserver/ports": "workspace:*",
+    "@packserver/rules": "workspace:*",
     "@packserver/schema": "workspace:*",
     "zod": "catalog:"
   }
