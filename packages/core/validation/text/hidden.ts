@@ -5,7 +5,9 @@ import { matchesOf, type Doc } from "./doc.ts";
 // Default-ignorable code points cover zero-width, soft hyphen, variation selectors, fillers, invisible
 // operators and the tag block; the bidi controls are listed because not all of them are default-ignorable.
 const HIDDEN = new RegExp("[\\p{Default_Ignorable_Code_Point}\\u061c\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]", "gu");
-const TAG_FLAG = new RegExp("\\u{1F3F4}[\\u{E0030}-\\u{E0039}\\u{E0061}-\\u{E007A}]{1,10}\\u{E007F}", "gu");
+const tagged = (word: string) => [...word].map((c) => String.fromCodePoint(0xe0000 + c.charCodeAt(0))).join("") + String.fromCodePoint(0xe007f);
+// England, Scotland and Wales: the only subdivision flags in the emoji set.
+const TAG_FLAG = new RegExp(["gbeng", "gbsct", "gbwls"].map((w) => String.fromCodePoint(0x1f3f4) + tagged(w)).join("|"), "gu");
 const PICTOGRAPH = /^\p{Extended_Pictographic}$/u;
 const MODIFIER = /^\p{Emoji_Modifier}$/u;
 const KEYCAP_BASE = /^[0-9#*]$/;

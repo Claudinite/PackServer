@@ -9,7 +9,7 @@ export interface Doc {
   text: string;
   /** Same length as `text`, with detected secrets and secret-looking URL parameters masked. */
   safe: string;
-  /** `safe` with fenced code blocks of a Markdown file blanked out. */
+  /** `safe` with closed code-language fences of a Markdown file blanked out. */
   prose: string;
   json: boolean;
   lineAt(offset: number): number | null;
@@ -65,26 +65,34 @@ function floorIndex(sorted: readonly number[], value: number): number {
   return lo;
 }
 
+// Fences named for a programming or shell language hold code samples; any other fence is text an agent reads.
+const CODE_LANGUAGES = new Set([
+  "js", "javascript", "jsx", "mjs", "cjs", "ts", "typescript", "tsx", "python", "py", "sh", "shell", "bash", "zsh", "fish",
+  "powershell", "ps1", "go", "golang", "rust", "rs", "java", "kotlin", "c", "cpp", "csharp", "cs", "ruby", "rb", "php", "swift",
+  "sql", "json", "jsonc", "yaml", "yml", "toml", "html", "css", "diff", "dockerfile", "console",
+]);
+
+/** Blanks closed fences of a code language; an unclosed fence, or one with no or another language, stays visible. */
 function blankFences(text: string, starts: readonly number[]): string {
-  let fence: { marker: string } | null = null;
+  const blank = new Array<boolean>(starts.length).fill(false);
+  let open: { marker: string; line: number; code: boolean } | null = null;
+  const lineAt = (i: number) => text.slice(starts[i]!, i + 1 < starts.length ? starts[i + 1]! - 1 : text.length);
+  for (let i = 0; i < starts.length; i++) {
+    const m = /^ {0,3}(`{3,}|~{3,})(.{0,200})/.exec(lineAt(i));
+    if (!m) continue;
+    const marker = m[1]!;
+    if (!open) {
+      const lang = m[2]!.trim().split(/[\s{,]/)[0]!.toLowerCase();
+      open = { marker, line: i, code: CODE_LANGUAGES.has(lang) };
+    } else if (marker[0] === open.marker[0] && marker.length >= open.marker.length && m[2]!.trim() === "") {
+      if (open.code) for (let k = open.line; k <= i; k++) blank[k] = true;
+      open = null;
+    }
+  }
   const parts: string[] = [];
   for (let i = 0; i < starts.length; i++) {
-    const from = starts[i]!;
-    const to = i + 1 < starts.length ? starts[i + 1]! - 1 : text.length;
-    const line = text.slice(from, to);
-    const m = /^ {0,3}(`{3,}|~{3,})(.{0,200})/.exec(line);
-    let blank = fence !== null;
-    if (m) {
-      const marker = m[1]!;
-      if (!fence) {
-        fence = { marker };
-        blank = true;
-      } else if (marker[0] === fence.marker[0] && marker.length >= fence.marker.length && m[2]!.trim() === "") {
-        fence = null;
-        blank = true;
-      }
-    }
-    parts.push(blank ? " ".repeat(line.length) : line);
+    const line = lineAt(i);
+    parts.push(blank[i] ? " ".repeat(line.length) : line);
   }
   return parts.join("\n");
 }

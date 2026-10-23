@@ -18,6 +18,8 @@ export interface TextHygiene {
   findings: Finding[];
   /** Every URL in the archive with its classification, secrets masked (REQ-VAL-026). */
   urls: UrlEntry[];
+  /** True when the inventory stopped at its per-file or per-tree bound. */
+  urlsTruncated: boolean;
 }
 
 /** A report lists this many findings of one rule per file; a hostile file cannot flood it. */
@@ -60,5 +62,5 @@ export function checkText(tree: Tree, make: MakeFinding): TextHygiene {
     ...injectionFindings(content, make),
     ...markdownStyle(files, make),
   ]);
-  return { findings, urls: urls.entries };
+  return { findings, urls: urls.entries, urlsTruncated: urls.truncated };
 }

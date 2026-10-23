@@ -57,7 +57,7 @@ export function dependencyFindings(files: readonly TextFile[], docs: readonly Do
     if (!DEPENDENCY_FILE.test(f.text)) return;
     const d = docs[i]!;
     for (const m of matchesOf(DEPENDENCY_LINE, d.safe)) {
-      out.push(make("text.floating-version", { file: f.path, line: d.lineAt(m.index), quote: excerpt(d.safe, m.index, m[0].length), hint: "This dependency version floats. Pin an exact version." }));
+      out.push(make("text.floating-version", { file: f.path, line: d.lineAt(m.index), quote: m[0], hint: "This dependency version floats. Pin an exact version." }));
     }
   });
   return out;

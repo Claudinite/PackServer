@@ -14,9 +14,25 @@ const TEXT_PATH = /\.(md|markdown|txt|json|jsonc|ya?ml|toml|go|mjs|cjs|js|ts|sh|
 
 export const stripBom = (text: string): string => (text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
 
-function lineOfIndex(text: string, index: number): number {
+const strict = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+const lenient = new TextDecoder("utf-8", { fatal: false, ignoreBOM: true });
+
+function isValidUtf8(b: Uint8Array): boolean {
+  try {
+    strict.decode(b);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** One-based line of the first byte the lenient decode replaced or dropped. */
+function firstBadLine(b: Uint8Array, decoded: string): number {
+  const again = new TextEncoder().encode(decoded);
+  let i = 0;
+  while (i < b.length && i < again.length && b[i] === again[i]) i++;
   let line = 1;
-  for (let i = text.indexOf("\n"); i !== -1 && i < index; i = text.indexOf("\n", i + 1)) line++;
+  for (let k = 0; k < i; k++) if (b[k] === 10) line++;
   return line;
 }
 
@@ -31,16 +47,15 @@ export function decodeText(file: TreeFile): TextFile | null {
   }
   const hasNul = b.includes(0);
   if (hasNul && !TEXT_PATH.test(file.path)) return null;
-  let decoded = new TextDecoder("utf-8", { fatal: false, ignoreBOM: true }).decode(b);
+  const valid = isValidUtf8(b);
+  let decoded = lenient.decode(b);
   let invalidLine: number | null = null;
-  const bad = decoded.indexOf("\ufffd");
-  if (bad !== -1) invalidLine = lineOfIndex(decoded, bad);
+  if (!valid) invalidLine = firstBadLine(b, decoded);
   if (hasNul) {
-    const nul = decoded.indexOf("\0");
-    invalidLine ??= lineOfIndex(decoded, nul);
+    invalidLine ??= firstBadLine(b, decoded.replaceAll("\0", "\u{fffd}"));
     decoded = decoded.replaceAll("\0", "");
   }
-  return { path: file.path, text: decoded, validUtf8: bad === -1 && !hasNul, invalidLine };
+  return { path: file.path, text: decoded, validUtf8: valid && !hasNul, invalidLine };
 }
 
 export function textFiles(tree: Tree): TextFile[] {

@@ -37,7 +37,7 @@ function classify(url: string, before: string, after: string, file: string): Url
     const label = open >= 0 ? before.slice(open + 1, before.length - 2) : "";
     if (image) return "prose";
     if (executable && /\b(download|run|install|execute)\b/i.test(label)) return "execute";
-    return /^\s*(install|download|get|set ?up)\b/i.test(label) ? "install" : "prose";
+    return /^\s*(?:(?:install|download|set ?up)\b|get\s)/i.test(label) ? "install" : "prose";
   }
 
   if (executable && (FETCH_WORD.test(before) || RUN_WORD.test(before))) return "execute";
@@ -52,11 +52,16 @@ function classify(url: string, before: string, after: string, file: string): Url
 }
 
 /** Every URL with its classification, and the findings the classes lead to. Reads the masked text. */
-export function scanUrls(docs: readonly Doc[], make: MakeFinding): { entries: UrlEntry[]; findings: Finding[] } {
+export const MAX_URLS_PER_FILE = 1000;
+export const MAX_URLS_PER_TREE = 10_000;
+
+export function scanUrls(docs: readonly Doc[], make: MakeFinding): { entries: UrlEntry[]; findings: Finding[]; truncated: boolean } {
   const entries: UrlEntry[] = [];
+  let truncated = false;
   const findings: Finding[] = [];
   for (const d of docs) {
     if (!d.safe.includes("://")) continue;
+    let inFile = 0;
     for (const m of matchesOf(URL_RE, d.safe)) {
       const url = m[0].replace(/[.,;:!?]+$/, "");
       const end = m.index + m[0].length;
@@ -67,7 +72,12 @@ export function scanUrls(docs: readonly Doc[], make: MakeFinding): { entries: Ur
       if (nl !== -1) after = after.slice(0, nl);
       const classification = classify(url, before, after, d.file);
       const line = d.lineAt(m.index);
-      entries.push({ url, file: d.file, line, classification });
+      if (inFile < MAX_URLS_PER_FILE && entries.length < MAX_URLS_PER_TREE) {
+        entries.push({ url, file: d.file, line, classification });
+        inFile++;
+      } else {
+        truncated = true;
+      }
       const quote = excerpt(d.safe, m.index, m[0].length);
       if (classification === "execute") {
         findings.push(make("text.url-executable", { file: d.file, line, quote, hint: "Code or prose here fetches an executable from a URL. Ship the file in the pack instead." }));
@@ -76,5 +86,5 @@ export function scanUrls(docs: readonly Doc[], make: MakeFinding): { entries: Ur
       }
     }
   }
-  return { entries, findings };
+  return { entries, findings, truncated };
 }

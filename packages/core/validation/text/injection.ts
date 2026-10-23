@@ -11,6 +11,7 @@ const INJECTION: readonly RegExp[] = [
   /\b(?:do\s{1,8}not|don'?t|never)\s{1,8}(?:tell|inform|mention|reveal|show|alert|notify|let)\s{1,8}(?:this\s{1,8}to\s{1,8})?the\s{1,8}(?:user|human|developer|operator|owner)/gi,
   /\bwithout\s{1,8}(?:telling|informing|notifying|alerting|asking)\s{1,8}the\s{1,8}(?:user|human|developer|operator|owner)/gi,
   /\b(?:disable|turn\s{1,8}off|circumvent|evade|bypass)\s{1,8}(?:(?:all|any|the|every)\s{1,8}){0,3}(?:safety|security|guards?|validation|sandbox|permission(?:s|\s{1,8}prompts?)?)\b/gi,
+  /\b(?:disable|skip|bypass|remove|turn\s{1,8}off)\s{1,8}(?:(?:the|all|any|every|pre-commit|git|ci|cn)\s{1,8}){0,3}(?:hooks?|checks?|guards?)\b(?=\s{0,8}(?:[.;!:]|$|and\b|then\b|before\b|so\b|first\b|to\s{1,8}(?:push|commit|merge|land)))|--no-verify\b/gim,
   /(?:^|\s)<\s{0,4}(?:important|system|instructions?|secret)\s{0,4}>/gi,
   /\[\s{0,4}(?:INST|SYSTEM)\s{0,4}\]|<\|(?:im_start|system|endoftext)\|>/gi,
   /\b(?:reveal|print|output|repeat|leak)\s{1,8}(?:your|the)\s{1,8}(?:system\s{1,8}prompt|hidden\s{1,8}instructions?|initial\s{1,8}instructions?)/gi,
