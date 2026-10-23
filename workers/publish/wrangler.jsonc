@@ -1,0 +1,344 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "publish",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "env": {
+    "test": {
+      "name": "publish",
+      "vars": {
+        "WORKER": "publish",
+        "ENVIRONMENT": "test",
+        "SELFTEST_HMAC_KEY": "test-selftest-hmac-key"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "registry",
+          "database_id": "00000000-0000-0000-0000-010000000001",
+          "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "CACHE_KV",
+          "id": "00000000000000000000020000000003"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "PACKS_STAGING",
+          "bucket_name": "packs-staging"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "NOTIFY_QUEUE",
+            "queue": "notify"
+          }
+        ]
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "SCOPE_COORDINATOR",
+            "class_name": "ScopeCoordinator"
+          },
+          {
+            "name": "QUOTA",
+            "class_name": "Quota"
+          },
+          {
+            "name": "ROOT_COORDINATOR",
+            "class_name": "RootCoordinator"
+          }
+        ]
+      },
+      "workflows": [
+        {
+          "binding": "VALIDATE_PACK",
+          "name": "validate-pack",
+          "class_name": "ValidatePackWorkflow",
+          "script_name": "validator"
+        }
+      ],
+      "exports": {
+        "ScopeCoordinator": {
+          "type": "durable-object",
+          "storage": "sqlite"
+        },
+        "Quota": {
+          "type": "durable-object",
+          "storage": "sqlite"
+        },
+        "RootCoordinator": {
+          "type": "durable-object",
+          "storage": "sqlite"
+        }
+      },
+      "services": [
+        {
+          "binding": "VALIDATOR",
+          "service": "validator"
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    },
+    "staging": {
+      "name": "publish-staging",
+      "workers_dev": false,
+      "routes": [
+        {
+          "pattern": "registry-staging.claudinite.com/api/publish/*",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry-staging.claudinite.com/api/oidc/*",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry-staging.claudinite.com/api/dry-run/*",
+          "zone_name": "claudinite.com"
+        }
+      ],
+      "vars": {
+        "WORKER": "publish",
+        "ENVIRONMENT": "staging"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "registry-staging",
+          "database_id": "00000000-0000-0000-0000-110000000001",
+          "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "CACHE_KV",
+          "id": "00000000000000000000120000000003"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "PACKS_STAGING",
+          "bucket_name": "packs-staging-staging"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "NOTIFY_QUEUE",
+            "queue": "notify-staging"
+          }
+        ]
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "SCOPE_COORDINATOR",
+            "class_name": "ScopeCoordinator"
+          },
+          {
+            "name": "QUOTA",
+            "class_name": "Quota"
+          },
+          {
+            "name": "ROOT_COORDINATOR",
+            "class_name": "RootCoordinator"
+          }
+        ]
+      },
+      "workflows": [
+        {
+          "binding": "VALIDATE_PACK",
+          "name": "validate-pack-staging",
+          "class_name": "ValidatePackWorkflow",
+          "script_name": "validator-staging"
+        }
+      ],
+      "exports": {
+        "ScopeCoordinator": {
+          "type": "durable-object",
+          "storage": "sqlite"
+        },
+        "Quota": {
+          "type": "durable-object",
+          "storage": "sqlite"
+        },
+        "RootCoordinator": {
+          "type": "durable-object",
+          "storage": "sqlite"
+        }
+      },
+      "services": [
+        {
+          "binding": "VALIDATOR",
+          "service": "validator-staging"
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes_staging"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events_staging"
+        }
+      ],
+      "secrets_store_secrets": [
+        {
+          "binding": "SELFTEST_HMAC_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "selftest-hmac-key-staging"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    },
+    "production": {
+      "name": "publish",
+      "workers_dev": false,
+      "routes": [
+        {
+          "pattern": "registry.claudinite.com/api/publish/*",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry.claudinite.com/api/oidc/*",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry.claudinite.com/api/dry-run/*",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry-canary.claudinite.com/api/publish/*",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry-canary.claudinite.com/api/oidc/*",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry-canary.claudinite.com/api/dry-run/*",
+          "zone_name": "claudinite.com"
+        }
+      ],
+      "vars": {
+        "WORKER": "publish",
+        "ENVIRONMENT": "production"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "registry",
+          "database_id": "00000000-0000-0000-0000-210000000001",
+          "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "CACHE_KV",
+          "id": "00000000000000000000220000000003"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "PACKS_STAGING",
+          "bucket_name": "packs-staging"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "NOTIFY_QUEUE",
+            "queue": "notify"
+          }
+        ]
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "SCOPE_COORDINATOR",
+            "class_name": "ScopeCoordinator"
+          },
+          {
+            "name": "QUOTA",
+            "class_name": "Quota"
+          },
+          {
+            "name": "ROOT_COORDINATOR",
+            "class_name": "RootCoordinator"
+          }
+        ]
+      },
+      "workflows": [
+        {
+          "binding": "VALIDATE_PACK",
+          "name": "validate-pack",
+          "class_name": "ValidatePackWorkflow",
+          "script_name": "validator"
+        }
+      ],
+      "exports": {
+        "ScopeCoordinator": {
+          "type": "durable-object",
+          "storage": "sqlite"
+        },
+        "Quota": {
+          "type": "durable-object",
+          "storage": "sqlite"
+        },
+        "RootCoordinator": {
+          "type": "durable-object",
+          "storage": "sqlite"
+        }
+      },
+      "services": [
+        {
+          "binding": "VALIDATOR",
+          "service": "validator"
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events"
+        }
+      ],
+      "secrets_store_secrets": [
+        {
+          "binding": "SELFTEST_HMAC_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "selftest-hmac-key"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    }
+  }
+}

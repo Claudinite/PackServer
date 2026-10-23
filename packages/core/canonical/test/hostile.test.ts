@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { extractArchive, LIMITS } from "../index.ts";
 import { pax, rawTar, sparseNoise, zstd, type RawEntry } from "../fixtures.ts";
@@ -136,14 +137,51 @@ describe("nested archives (IT-VAL-020)", () => {
     ["gzip", [0x1f, 0x8b, 8, 0]],
     ["zip", [0x50, 0x4b, 3, 4, 0]],
     ["xz", [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0]],
-    ["bzip2", [0x42, 0x5a, 0x68, 0x39]],
+    ["bzip2", [0x42, 0x5a, 0x68, 0x39, 0x31, 0x41, 0x59, 0x26, 0x53, 0x59]],
     ["7z", [0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]],
-    ["rar", [0x52, 0x61, 0x72, 0x21, 0x1a]],
+    ["rar", [0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x00]],
     ["lz4", [0x04, 0x22, 0x4d, 0x18]],
   ];
   for (const [what, head] of magics) {
     it(`refuses a file that is ${what} under an innocent name`, async () => {
       await expectRefused(up([{ name: "docs/notes.txt", content: Uint8Array.from(head) }]), "archive.unsafe", "nested-archive");
+    });
+  }
+  const hex = (h: string) => Uint8Array.from(Buffer.from(h, "hex"));
+  const bz2Real = hex("425a68393141592653591931653d00000081000244a000219a68334d07338bb9229c28480c98b29e80");
+  const bz2Empty = hex("425a683917724538509000000000");
+  const xzReal = hex("fd377a585a000004e6d6b4460200210116000000742fe5a301000468656c6c6f00000000b137b9dbe5da1e9b00011d05b82d80af1fb6f37d010000000004595a");
+  const real: [string, Uint8Array][] = [
+    ["a real bzip2 stream", bz2Real],
+    ["an empty bzip2 stream", bz2Empty],
+    ["an empty bzip2 stream followed by a real one", Uint8Array.from([...bz2Empty, ...bz2Real])],
+    ["a real xz stream", xzReal],
+    ["a legacy LZ4 frame", Uint8Array.from([0x02, 0x21, 0x4c, 0x18, 0, 0, 0, 0])],
+    ["a zstd stream that starts with a skippable frame", Uint8Array.from([0x5a, 0x2a, 0x4d, 0x18, 0, 0, 0, 0])],
+    ["a skippable frame of the lowest magic", Uint8Array.from([0x50, 0x2a, 0x4d, 0x18, 0, 0, 0, 0])],
+  ];
+  for (const [what, content] of real) {
+    it(`refuses ${what}`, async () => {
+      await expectRefused(up([{ name: "docs/notes.txt", content }]), "archive.unsafe", "nested-archive");
+    });
+  }
+  it("accepts a skippable-looking magic with another low byte", async () => {
+    await extractArchive(up([{ name: "a.bin", content: Uint8Array.from([0x4f, 0x2a, 0x4d, 0x18, 0]) }]));
+  });
+  it("refuses a real gzip file", async () => {
+    await expectRefused(up([{ name: "docs/notes.txt", content: gzipSync("hello") }]), "archive.unsafe", "nested-archive");
+  });
+  const lookalikes: [string, number[]][] = [
+    ["1f 8b with another method", [0x1f, 0x8b, 0x07, 0x00, 1, 2, 3, 4]],
+    ["1f 8b 08 with reserved flag bits", [0x1f, 0x8b, 0x08, 0xe0, 1, 2, 3, 4]],
+    ["BZh without the block magic", [0x42, 0x5a, 0x68, 0x39, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]],
+    ["BZh with a level of 0", [0x42, 0x5a, 0x68, 0x30, 0x31, 0x41, 0x59, 0x26, 0x53, 0x59]],
+    ["7z signature without the version bytes", [0x37, 0x7a, 0xbc, 0xaf, 0x00, 0x00]],
+    ["Rar! without the marker tail", [0x52, 0x61, 0x72, 0x21, 0x00, 0x00, 0x00]],
+  ];
+  for (const [what, head] of lookalikes) {
+    it(`accepts a binary that only resembles an archive: ${what}`, async () => {
+      expect((await extractArchive(up([{ name: "assets/blob.bin", content: Uint8Array.from(head) }]))).files).toHaveLength(1);
     });
   }
   it("refuses an uncompressed tar inside the pack", async () => {

@@ -1,0 +1,122 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "prober",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "env": {
+    "test": {
+      "name": "prober",
+      "vars": {
+        "WORKER": "prober",
+        "ENVIRONMENT": "test",
+        "SELFTEST_HMAC_KEY": "test-selftest-hmac-key"
+      },
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events"
+        },
+        {
+          "binding": "SYNTHETIC_PROBES",
+          "dataset": "synthetic_probes"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    },
+    "staging": {
+      "name": "prober-staging",
+      "workers_dev": false,
+      "routes": [
+        {
+          "pattern": "registry-staging.claudinite.com/prober/__selftest",
+          "zone_name": "claudinite.com"
+        }
+      ],
+      "triggers": {
+        "crons": [
+          "*/5 * * * *"
+        ]
+      },
+      "vars": {
+        "WORKER": "prober",
+        "ENVIRONMENT": "staging"
+      },
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes_staging"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events_staging"
+        },
+        {
+          "binding": "SYNTHETIC_PROBES",
+          "dataset": "synthetic_probes_staging"
+        }
+      ],
+      "secrets_store_secrets": [
+        {
+          "binding": "SELFTEST_HMAC_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "selftest-hmac-key-staging"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    },
+    "production": {
+      "name": "prober",
+      "workers_dev": false,
+      "routes": [
+        {
+          "pattern": "registry-canary.claudinite.com/prober/__selftest",
+          "zone_name": "claudinite.com"
+        }
+      ],
+      "triggers": {
+        "crons": [
+          "*/5 * * * *"
+        ]
+      },
+      "vars": {
+        "WORKER": "prober",
+        "ENVIRONMENT": "production"
+      },
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events"
+        },
+        {
+          "binding": "SYNTHETIC_PROBES",
+          "dataset": "synthetic_probes"
+        }
+      ],
+      "secrets_store_secrets": [
+        {
+          "binding": "SELFTEST_HMAC_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "selftest-hmac-key"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    }
+  }
+}

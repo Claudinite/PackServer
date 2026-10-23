@@ -1,0 +1,450 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "validator",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "env": {
+    "test": {
+      "name": "validator",
+      "vars": {
+        "WORKER": "validator",
+        "ENVIRONMENT": "test",
+        "SIGNING_KEY_ACTIVE": "test-signing-key-active",
+        "SELFTEST_HMAC_KEY": "test-selftest-hmac-key"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "registry",
+          "database_id": "00000000-0000-0000-0000-010000000001",
+          "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "PACKS_STAGING",
+          "bucket_name": "packs-staging"
+        },
+        {
+          "binding": "PACKS_PUBLIC",
+          "bucket_name": "packs-public"
+        },
+        {
+          "binding": "PACKS_PRIVATE",
+          "bucket_name": "packs-private"
+        },
+        {
+          "binding": "VALIDATION_REPORTS",
+          "bucket_name": "validation-reports"
+        },
+        {
+          "binding": "OPS_BUCKET",
+          "bucket_name": "ops"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "NOTIFY_QUEUE",
+            "queue": "notify"
+          }
+        ]
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "SCOPE_COORDINATOR",
+            "class_name": "ScopeCoordinator",
+            "script_name": "publish"
+          },
+          {
+            "name": "ROOT_COORDINATOR",
+            "class_name": "RootCoordinator",
+            "script_name": "publish"
+          }
+        ]
+      },
+      "workflows": [
+        {
+          "binding": "VALIDATE_PACK",
+          "name": "validate-pack",
+          "class_name": "ValidatePackWorkflow"
+        }
+      ],
+      "exports": {
+        "SandboxA": {
+          "type": "durable-object",
+          "storage": "sqlite"
+        },
+        "SandboxB": {
+          "type": "durable-object",
+          "storage": "sqlite"
+        },
+        "ValidatePackWorkflow": {
+          "type": "workflow",
+          "name": "validate-pack"
+        }
+      },
+      "services": [
+        {
+          "binding": "GITHUB",
+          "service": "github"
+        },
+        {
+          "binding": "AI",
+          "service": "fake-ai"
+        },
+        {
+          "binding": "VECTORIZE",
+          "service": "fake-vectorize"
+        },
+        {
+          "binding": "SANDBOX_A",
+          "service": "fake-sandbox-a"
+        },
+        {
+          "binding": "SANDBOX_B",
+          "service": "fake-sandbox-b"
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events"
+        },
+        {
+          "binding": "VALIDATION_EVENTS",
+          "dataset": "validation_events"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    },
+    "staging": {
+      "name": "validator-staging",
+      "workers_dev": false,
+      "routes": [
+        {
+          "pattern": "registry-staging.claudinite.com/validator/__selftest",
+          "zone_name": "claudinite.com"
+        }
+      ],
+      "triggers": {
+        "crons": [
+          "0 4 * * *",
+          "0 5 * * 1"
+        ]
+      },
+      "vars": {
+        "WORKER": "validator",
+        "ENVIRONMENT": "staging"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "registry-staging",
+          "database_id": "00000000-0000-0000-0000-110000000001",
+          "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "PACKS_STAGING",
+          "bucket_name": "packs-staging-staging"
+        },
+        {
+          "binding": "PACKS_PUBLIC",
+          "bucket_name": "packs-public-staging"
+        },
+        {
+          "binding": "PACKS_PRIVATE",
+          "bucket_name": "packs-private-staging"
+        },
+        {
+          "binding": "VALIDATION_REPORTS",
+          "bucket_name": "validation-reports-staging"
+        },
+        {
+          "binding": "OPS_BUCKET",
+          "bucket_name": "ops-staging"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "NOTIFY_QUEUE",
+            "queue": "notify-staging"
+          }
+        ]
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "SCOPE_COORDINATOR",
+            "class_name": "ScopeCoordinator",
+            "script_name": "publish-staging"
+          },
+          {
+            "name": "ROOT_COORDINATOR",
+            "class_name": "RootCoordinator",
+            "script_name": "publish-staging"
+          },
+          {
+            "name": "SANDBOX_A",
+            "class_name": "SandboxA"
+          },
+          {
+            "name": "SANDBOX_B",
+            "class_name": "SandboxB"
+          }
+        ]
+      },
+      "workflows": [
+        {
+          "binding": "VALIDATE_PACK",
+          "name": "validate-pack-staging",
+          "class_name": "ValidatePackWorkflow"
+        }
+      ],
+      "exports": {
+        "SandboxA": {
+          "type": "durable-object",
+          "storage": "sqlite"
+        },
+        "SandboxB": {
+          "type": "durable-object",
+          "storage": "sqlite"
+        },
+        "ValidatePackWorkflow": {
+          "type": "workflow",
+          "name": "validate-pack-staging"
+        }
+      },
+      "containers": [
+        {
+          "class_name": "SandboxA",
+          "image": "../../sandbox/image-a/Dockerfile",
+          "instance_type": "basic",
+          "max_instances": 2
+        },
+        {
+          "class_name": "SandboxB",
+          "image": "../../sandbox/image-b/Dockerfile",
+          "instance_type": "basic",
+          "max_instances": 2
+        }
+      ],
+      "vectorize": [
+        {
+          "binding": "VECTORIZE",
+          "index_name": "packs-staging"
+        }
+      ],
+      "ai": {
+        "binding": "AI"
+      },
+      "services": [
+        {
+          "binding": "GITHUB",
+          "service": "github-staging"
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes_staging"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events_staging"
+        },
+        {
+          "binding": "VALIDATION_EVENTS",
+          "dataset": "validation_events_staging"
+        }
+      ],
+      "secrets_store_secrets": [
+        {
+          "binding": "SIGNING_KEY_ACTIVE",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "signing-key-active-staging"
+        },
+        {
+          "binding": "SELFTEST_HMAC_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "selftest-hmac-key-staging"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    },
+    "production": {
+      "name": "validator",
+      "workers_dev": false,
+      "routes": [
+        {
+          "pattern": "registry-canary.claudinite.com/validator/__selftest",
+          "zone_name": "claudinite.com"
+        }
+      ],
+      "triggers": {
+        "crons": [
+          "0 4 * * *",
+          "0 5 * * 1"
+        ]
+      },
+      "vars": {
+        "WORKER": "validator",
+        "ENVIRONMENT": "production"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "registry",
+          "database_id": "00000000-0000-0000-0000-210000000001",
+          "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "PACKS_STAGING",
+          "bucket_name": "packs-staging"
+        },
+        {
+          "binding": "PACKS_PUBLIC",
+          "bucket_name": "packs-public"
+        },
+        {
+          "binding": "PACKS_PRIVATE",
+          "bucket_name": "packs-private"
+        },
+        {
+          "binding": "VALIDATION_REPORTS",
+          "bucket_name": "validation-reports"
+        },
+        {
+          "binding": "OPS_BUCKET",
+          "bucket_name": "ops"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "NOTIFY_QUEUE",
+            "queue": "notify"
+          }
+        ]
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "SCOPE_COORDINATOR",
+            "class_name": "ScopeCoordinator",
+            "script_name": "publish"
+          },
+          {
+            "name": "ROOT_COORDINATOR",
+            "class_name": "RootCoordinator",
+            "script_name": "publish"
+          },
+          {
+            "name": "SANDBOX_A",
+            "class_name": "SandboxA"
+          },
+          {
+            "name": "SANDBOX_B",
+            "class_name": "SandboxB"
+          }
+        ]
+      },
+      "workflows": [
+        {
+          "binding": "VALIDATE_PACK",
+          "name": "validate-pack",
+          "class_name": "ValidatePackWorkflow"
+        }
+      ],
+      "exports": {
+        "SandboxA": {
+          "type": "durable-object",
+          "storage": "sqlite"
+        },
+        "SandboxB": {
+          "type": "durable-object",
+          "storage": "sqlite"
+        },
+        "ValidatePackWorkflow": {
+          "type": "workflow",
+          "name": "validate-pack"
+        }
+      },
+      "containers": [
+        {
+          "class_name": "SandboxA",
+          "image": "../../sandbox/image-a/Dockerfile",
+          "instance_type": "basic",
+          "max_instances": 10
+        },
+        {
+          "class_name": "SandboxB",
+          "image": "../../sandbox/image-b/Dockerfile",
+          "instance_type": "basic",
+          "max_instances": 10
+        }
+      ],
+      "vectorize": [
+        {
+          "binding": "VECTORIZE",
+          "index_name": "packs"
+        }
+      ],
+      "ai": {
+        "binding": "AI"
+      },
+      "services": [
+        {
+          "binding": "GITHUB",
+          "service": "github"
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events"
+        },
+        {
+          "binding": "VALIDATION_EVENTS",
+          "dataset": "validation_events"
+        }
+      ],
+      "secrets_store_secrets": [
+        {
+          "binding": "SIGNING_KEY_ACTIVE",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "signing-key-active"
+        },
+        {
+          "binding": "SELFTEST_HMAC_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "selftest-hmac-key"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    }
+  }
+}

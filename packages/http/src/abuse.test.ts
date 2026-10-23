@@ -12,7 +12,7 @@ function formApp() {
   const app = new Hono();
   app.use(
     csrf({ secret: SECRET, allowedOrigins: [ORIGIN], sessionId: (c) => c.req.header("x-session") }),
-    idempotency({ kv: ports.kv.sessions!, caller: (c) => c.req.header("x-session") }),
+    idempotency({ kv: ports.kv.SESSIONS_KV!, caller: (c) => c.req.header("x-session") }),
   );
   app.post("/review", async (c) => {
     created.push((await c.req.parseBody()).text as string);
@@ -76,7 +76,7 @@ describe("idempotency details", () => {
     const ports = createFakePorts();
     const app = new Hono();
     const runs: string[] = [];
-    app.use(idempotency({ kv: ports.kv.sessions!, caller }));
+    app.use(idempotency({ kv: ports.kv.SESSIONS_KV!, caller }));
     app.post("/x", async (c) => {
       const status = Number(c.req.header("x-status") ?? 201);
       runs.push(String(status));
@@ -113,12 +113,12 @@ describe("idempotency details", () => {
     const second = await send(anon);
     expect(second.headers.get("idempotent-replay")).toBeNull();
     expect(runs).toHaveLength(2);
-    expect(await ports.kv.sessions!.list("idem:")).toEqual([]);
+    expect(await ports.kv.SESSIONS_KV!.list("idem:")).toEqual([]);
   });
 
   it("gives the in-progress marker a short TTL and the result a long one", async () => {
     const { send, ports } = app2();
-    const kv = ports.kv.sessions!;
+    const kv = ports.kv.SESSIONS_KV!;
     const put = kv.put.bind(kv);
     const ttls: Array<[string, number | undefined]> = [];
     kv.put = async (k, v, o) => {
@@ -159,7 +159,7 @@ describe("idempotency details", () => {
     const { ports } = app2();
     const app = new Hono();
     const runs: number[] = [];
-    app.use(idempotency({ kv: ports.kv.sessions!, caller: () => "s1" }));
+    app.use(idempotency({ kv: ports.kv.SESSIONS_KV!, caller: () => "s1" }));
     app.post("/up", (c) => {
       runs.push(1);
       return c.text("ok", 201);

@@ -1,4 +1,5 @@
 import type { Ports } from "../src/ports";
+import { bindingNames, rateLimitNames, type WorkerName } from "../src/trust-table";
 import {
   FakeAuditSink, FakeCache, FakeClock, FakeD1, FakeDurableObjects, FakeKV, FakeQueue, FakeR2, FakeRateLimit, FakeRng, FakeStats,
   FakeTransparency, FakeUploads, FakeWorkflow,
@@ -27,7 +28,9 @@ export type FakePorts = Fakes & {
 
 export interface FakePortsOptions {
   seed?: number;
-  /** Binding names; a Worker's real names come from its wrangler.jsonc. */
+  /** The Worker whose binding names the fakes carry; with none, the names of every Worker. */
+  worker?: WorkerName;
+  /** Overrides for the binding names the trust table gives. */
   r2?: string[];
   kv?: string[];
   queues?: string[];
@@ -35,10 +38,13 @@ export interface FakePortsOptions {
   rateLimits?: Record<string, { limit: number; periodMs: number }>;
 }
 
+const DEFAULT_RATE_LIMIT = { limit: 10, periodMs: 60_000 };
+
 const byName = <T>(names: string[], make: () => T): Record<string, T> => Object.fromEntries(names.map((n) => [n, make()]));
 
 export function createFakePorts(options: FakePortsOptions = {}): FakePorts {
   const clock = new FakeClock();
+  const { worker } = options;
   return {
     clock,
     rng: new FakeRng(options.seed),
@@ -59,12 +65,12 @@ export function createFakePorts(options: FakePortsOptions = {}): FakePorts {
     transparency: new FakeTransparency(),
     d1: new FakeD1(),
     durableObjects: new FakeDurableObjects(),
-    r2: byName(options.r2 ?? ["public", "private", "staging", "validation-reports"], () => new FakeR2()),
-    kv: byName(options.kv ?? ["sessions", "cache"], () => new FakeKV(clock)),
-    queues: byName(options.queues ?? ["notify", "audit"], () => new FakeQueue()),
-    workflows: byName(options.workflows ?? ["validate-pack"], () => new FakeWorkflow()),
+    r2: byName(options.r2 ?? bindingNames("r2", worker), () => new FakeR2()),
+    kv: byName(options.kv ?? bindingNames("kv", worker), () => new FakeKV(clock)),
+    queues: byName(options.queues ?? bindingNames("queues", worker), () => new FakeQueue()),
+    workflows: byName(options.workflows ?? bindingNames("workflows", worker), () => new FakeWorkflow()),
     rateLimits: Object.fromEntries(
-      Object.entries(options.rateLimits ?? { default: { limit: 10, periodMs: 60_000 } }).map(([n, c]) => [
+      Object.entries(options.rateLimits ?? Object.fromEntries(rateLimitNames(worker).map((n) => [n, DEFAULT_RATE_LIMIT]))).map(([n, c]) => [
         n,
         new FakeRateLimit(clock, c.limit, c.periodMs),
       ]),

@@ -211,6 +211,9 @@ export interface R2 {
   list(prefix: string): Promise<string[]>;
 }
 
+/** A bucket a Worker may only read: the type has no write method, so a write cannot be written. */
+export type R2Read = Pick<R2, "get" | "head" | "list">;
+
 export interface KV {
   get(key: string): Promise<string | null>;
   put(key: string, value: string, options?: { ttl_seconds?: number }): Promise<void>;

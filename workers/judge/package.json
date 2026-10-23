@@ -1,0 +1,19 @@
+{
+  "name": "@packserver/worker-judge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@packserver/http": "workspace:*",
+    "@packserver/ports": "workspace:*",
+    "@packserver/schema": "workspace:*",
+    "hono": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "catalog:"
+  }
+}

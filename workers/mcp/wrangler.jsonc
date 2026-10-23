@@ -1,0 +1,258 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "env": {
+    "test": {
+      "name": "mcp",
+      "vars": {
+        "WORKER": "mcp",
+        "ENVIRONMENT": "test",
+        "SELFTEST_HMAC_KEY": "test-selftest-hmac-key"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "registry",
+          "database_id": "00000000-0000-0000-0000-010000000001",
+          "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "OAUTH_KV",
+          "id": "00000000000000000000020000000005"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "PACKS_PRIVATE",
+          "bucket_name": "packs-private"
+        }
+      ],
+      "services": [
+        {
+          "binding": "AI",
+          "service": "fake-ai"
+        },
+        {
+          "binding": "VECTORIZE",
+          "service": "fake-vectorize"
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events"
+        },
+        {
+          "binding": "DOWNLOADS",
+          "dataset": "downloads"
+        }
+      ],
+      "ratelimits": [
+        {
+          "name": "RATE_LIMIT",
+          "namespace_id": "1002",
+          "simple": {
+            "limit": 60,
+            "period": 60
+          }
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    },
+    "staging": {
+      "name": "mcp-staging",
+      "workers_dev": false,
+      "routes": [
+        {
+          "pattern": "registry-staging.claudinite.com/mcp*",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry-staging.claudinite.com/.well-known/oauth-*",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry-staging.claudinite.com/oauth/*",
+          "zone_name": "claudinite.com"
+        }
+      ],
+      "vars": {
+        "WORKER": "mcp",
+        "ENVIRONMENT": "staging"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "registry-staging",
+          "database_id": "00000000-0000-0000-0000-110000000001",
+          "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "OAUTH_KV",
+          "id": "00000000000000000000120000000005"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "PACKS_PRIVATE",
+          "bucket_name": "packs-private-staging"
+        }
+      ],
+      "vectorize": [
+        {
+          "binding": "VECTORIZE",
+          "index_name": "packs-staging"
+        }
+      ],
+      "ai": {
+        "binding": "AI"
+      },
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes_staging"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events_staging"
+        },
+        {
+          "binding": "DOWNLOADS",
+          "dataset": "downloads_staging"
+        }
+      ],
+      "ratelimits": [
+        {
+          "name": "RATE_LIMIT",
+          "namespace_id": "2002",
+          "simple": {
+            "limit": 60,
+            "period": 60
+          }
+        }
+      ],
+      "secrets_store_secrets": [
+        {
+          "binding": "SELFTEST_HMAC_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "selftest-hmac-key-staging"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    },
+    "production": {
+      "name": "mcp",
+      "workers_dev": false,
+      "routes": [
+        {
+          "pattern": "registry.claudinite.com/mcp*",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry.claudinite.com/.well-known/oauth-*",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry.claudinite.com/oauth/*",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry-canary.claudinite.com/mcp*",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry-canary.claudinite.com/.well-known/oauth-*",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry-canary.claudinite.com/oauth/*",
+          "zone_name": "claudinite.com"
+        }
+      ],
+      "vars": {
+        "WORKER": "mcp",
+        "ENVIRONMENT": "production"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "registry",
+          "database_id": "00000000-0000-0000-0000-210000000001",
+          "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "OAUTH_KV",
+          "id": "00000000000000000000220000000005"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "PACKS_PRIVATE",
+          "bucket_name": "packs-private"
+        }
+      ],
+      "vectorize": [
+        {
+          "binding": "VECTORIZE",
+          "index_name": "packs"
+        }
+      ],
+      "ai": {
+        "binding": "AI"
+      },
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events"
+        },
+        {
+          "binding": "DOWNLOADS",
+          "dataset": "downloads"
+        }
+      ],
+      "ratelimits": [
+        {
+          "name": "RATE_LIMIT",
+          "namespace_id": "1002",
+          "simple": {
+            "limit": 60,
+            "period": 60
+          }
+        }
+      ],
+      "secrets_store_secrets": [
+        {
+          "binding": "SELFTEST_HMAC_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "selftest-hmac-key"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    }
+  }
+}

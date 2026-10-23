@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     projects: [
       {
-        test: { name: "infra", include: ["infra/**/*.test.mjs"] },
+        test: { name: "infra", include: ["infra/**/*.test.mjs", "tools/**/*.test.{mjs,ts}"] },
       },
       {
         test: {
