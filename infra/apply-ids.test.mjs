@@ -17,7 +17,7 @@ function copyRepo() {
 }
 
 const resources = (env, n) => ({
-  secrets_store_id: `store-${env}`,
+  secrets_store_id: "store-one",
   d1: { [env === "staging" ? "registry-staging" : "registry"]: { id: `d1-${env}` } },
   kv: Object.fromEntries(["sessions", "oauth", "cache", "gates"].map((k) => [env === "staging" ? `${k}-staging` : k, { id: `kv-${env}-${k}-${n}` }])),
 });
@@ -42,7 +42,7 @@ describe("apply", () => {
     const web = readConfigs(root).find((c) => c.worker === "web").config.env.staging;
     expect(web.d1_databases[0].database_id).toBe("d1-staging");
     expect(web.kv_namespaces.map((k) => k.id)).toEqual(["kv-staging-sessions-1", "kv-staging-cache-1"]);
-    expect(web.secrets_store_secrets.every((s) => s.store_id === "store-staging")).toBe(true);
+    expect(web.secrets_store_secrets.every((s) => s.store_id === "store-one")).toBe(true);
   });
 
   it("refuses when a needed id is missing", () => {
@@ -79,6 +79,21 @@ describe("audit endpoint", () => {
 });
 
 describe("check", () => {
+  it("lets staging and production share the account's one Secrets Store", () => {
+    const root = copyRepo();
+    for (const env of ["staging", "production"]) writeFileSync(join(root, "infra", `resources.${env}.json`), JSON.stringify(resources(env, 1)));
+    applyIds("staging", { root });
+    applyIds("production", { root });
+    expect(checkIds({ root })).toEqual([]);
+  });
+
+  it("fails when the two resources files name different stores", () => {
+    const root = copyRepo();
+    writeFileSync(join(root, "infra", "resources.staging.json"), JSON.stringify(resources("staging", 1)));
+    writeFileSync(join(root, "infra", "resources.production.json"), JSON.stringify({ ...resources("production", 1), secrets_store_id: "other-store" }));
+    expect(checkIds({ root }).join("\n")).toContain("one Secrets Store");
+  });
+
   it("fails when staging and production share an id", () => {
     const root = copyRepo();
     const shared = resources("staging", 1);

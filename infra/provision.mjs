@@ -14,6 +14,7 @@ import { DEFAULT_EMBEDDING_MODEL, ENVS, ZONE, embeddingDimensions, planResources
 
 const REPO = join(import.meta.dirname, "..");
 const PER_PAGE = 100;
+const TOKENS_PER_PAGE = 50;
 
 export const resourcesPath = (env, dir = import.meta.dirname) => join(dir, `resources.${env}.json`);
 
@@ -42,23 +43,28 @@ account; CLOUDFLARE_SECRETS_STORE_ID is not used (the store is found or created 
   --help              this text
 `;
 
-// One API path read to its last page. A page that cannot be shown to be the last is an error.
-async function listAll(api, path, pick) {
+// One API path read to its last page. Completeness comes from what the server reports: total_pages,
+// else total_count, else the page size it echoes (it may cap the one we asked for). A listing that
+// cannot be shown to be complete is an error.
+async function listAll(api, path, pick, perPage = PER_PAGE) {
   const items = [];
   const sep = path.includes("?") ? "&" : "?";
   for (let page = 1; ; page++) {
-    const json = await api("GET", `${path}${sep}page=${page}&per_page=${PER_PAGE}`);
+    const json = await api("GET", `${path}${sep}page=${page}&per_page=${perPage}`);
     const got = pick(json);
     if (!Array.isArray(got)) throw new Error(`unrecognised listing shape for ${path}`);
     items.push(...got);
-    const totalPages = json.result_info?.total_pages;
-    if (Number.isInteger(totalPages)) {
-      if (page >= totalPages) return items;
-    } else if (got.length < PER_PAGE) {
-      return items;
+    const info = json.result_info ?? {};
+    if (Number.isInteger(info.total_pages)) {
+      if (page >= info.total_pages) return items;
+    } else if (Number.isInteger(info.total_count)) {
+      if (items.length >= info.total_count) return items;
+    } else if (Number.isInteger(info.per_page) && info.per_page > 0) {
+      if (got.length < info.per_page) return items;
     } else {
       throw new Error(`cannot tell whether ${path} was listed completely`);
     }
+    if (got.length === 0) throw new Error(`${path} ended before its reported total`);
   }
 }
 
@@ -84,6 +90,14 @@ export async function provision(env, opts, deps) {
   const ids = { env, account_id: accountId };
   const acct = (method, path, body) => call(fetchImpl, token, method, `/accounts/${accountId}${path}`, body);
   const api = (method, path, body) => call(fetchImpl, token, method, path, body);
+  const revoke = async (tokenId) => {
+    try {
+      await acct("DELETE", `/tokens/${tokenId}`);
+      return `the token ${tokenId} was revoked`;
+    } catch (e) {
+      return `the token ${tokenId} could NOT be revoked (${e.message}); revoke it by hand`;
+    }
+  };
   const attempt = async (label, fn) => {
     try {
       return await fn();
@@ -128,13 +142,28 @@ export async function provision(env, opts, deps) {
 
   // Secrets Store
   const store = await attempt("secrets store", async () => {
-    const relist = async () => new Map((await listAll(acct, "/secrets_store/stores", (j) => j.result)).map((s) => [s.name, s]));
-    return ensure("secrets-store", plan.secretsStore, relist, async () => {
-      const json = await acct("POST", "/secrets_store/stores", [{ name: plan.secretsStore }]);
+    const list = () => listAll(acct, "/secrets_store/stores", (j) => j.result);
+    const adopt = (stores) => {
+      if (stores.length > 1) throw new Error(`${stores.length} Secrets Stores found; the beta allows one per account, so this is unexpected`);
+      return stores[0];
+    };
+    const found = adopt(await list());
+    if (found) {
+      out(`ok       secrets-store ${found.name}`);
+      return found;
+    }
+    try {
+      const json = await acct("POST", "/secrets_store/stores", { name: plan.secretsStore });
       const made = Array.isArray(json.result) ? json.result[0] : json.result;
       if (!made?.id) throw new Error("create answered without a store id");
+      out(`created  secrets-store ${plan.secretsStore}`);
       return made;
-    });
+    } catch (e) {
+      const again = adopt(await list());
+      if (!again) throw e;
+      out(`ok       secrets-store ${again.name} (existed after a refused create)`);
+      return again;
+    }
   });
   ids.secrets_store_id = store?.id;
   const secrets = store ? createSecretsStore({ fetch: fetchImpl, token, accountId, storeId: store.id }) : undefined;
@@ -269,6 +298,7 @@ export async function provision(env, opts, deps) {
 
   // Turnstile. The secret is readable only when created, so it goes straight to the Secrets Store.
   await attempt(`turnstile ${plan.turnstile.name}`, async () => {
+    if (!secrets) throw new Error("no Secrets Store to hold the widget secret; not creating the widget, because its secret is readable only when it is created");
     let created;
     const relist = async () => new Map((await listAll(acct, "/challenges/widgets", (j) => j.result)).map((w) => [w.name, w]));
     const w = await ensure("turnstile", plan.turnstile.name, relist, async () => {
@@ -290,13 +320,15 @@ export async function provision(env, opts, deps) {
   ids.tokens = {};
   if (secrets) {
     await attempt("r2 object tokens", async () => {
-      const groups = await listAll(acct, "/tokens/permission_groups", (j) => j.result);
-      const groupId = (name) => {
-        const g = groups.find((x) => x.name === name);
+      // The groups endpoint is unpaginated and returns hundreds, so each is asked for by name.
+      const groupId = async (name) => {
+        const json = await acct("GET", `/tokens/permission_groups?name=${encodeURIComponent(name)}`);
+        if (!Array.isArray(json.result)) throw new Error("unrecognised permission group listing");
+        const g = json.result.find((x) => x.name === name);
         if (!g) throw new Error(`permission group "${name}" is not offered to this token; not guessing another`);
         return g.id;
       };
-      const existing = new Map((await listAll(acct, "/tokens", (j) => j.result)).map((t) => [t.name, t]));
+      const existing = new Map((await listAll(acct, "/tokens", (j) => j.result, TOKENS_PER_PAGE)).map((t) => [t.name, t]));
       const names = await secrets.listNames();
       for (const spec of TOKEN_SPECS) {
         const bucket = suffixed(env, spec.bucket);
@@ -314,11 +346,14 @@ export async function provision(env, opts, deps) {
           ids.tokens[name] = { id: have.id, bucket };
           continue;
         }
+        const permission_groups = [];
+        for (const p of spec.permissions) permission_groups.push({ id: await groupId(p) });
         const json = await acct("POST", "/tokens", {
           name,
-          policies: [{ effect: "allow", resources: { [`com.cloudflare.edge.r2.bucket.${accountId}_default_${bucket}`]: "*" }, permission_groups: spec.permissions.map((p) => ({ id: groupId(p) })) }],
+          policies: [{ effect: "allow", resources: { [`com.cloudflare.edge.r2.bucket.${accountId}_default_${bucket}`]: "*" }, permission_groups }],
         });
         const { id, value } = json.result ?? {};
+        if (id && !value) throw new Error(`token ${name} was created without a value; ${await revoke(id)}`);
         if (!id || !value) throw new Error(`token ${name} was created without a usable id and value`);
         const secretAccessKey = createHash("sha256").update(value).digest("hex");
         if (spec.audit) {
@@ -326,8 +361,7 @@ export async function provision(env, opts, deps) {
             await secrets.create(plan.auditSecrets.accessKeyId, id, `${name} (${env})`);
             await secrets.create(plan.auditSecrets.secretAccessKey, secretAccessKey, `${name} (${env})`);
           } catch (e) {
-            await acct("DELETE", `/tokens/${id}`).catch(() => {});
-            throw new Error(`could not store ${name}: ${e.message}; the token was revoked`, { cause: e });
+            throw new Error(`could not store ${name}: ${e.message}; ${await revoke(id)}`, { cause: e });
           }
           out(`created  token ${name} -> Secrets Store ${Object.values(plan.auditSecrets).join(", ")}`);
         } else {
@@ -345,15 +379,17 @@ export async function provision(env, opts, deps) {
   return { ids, failures };
 }
 
-function mergeExisting(path, ids) {
-  let prior = {};
-  if (existsSync(path)) {
-    try {
-      prior = JSON.parse(readFileSync(path, "utf8"));
-    } catch {
-      prior = {};
-    }
+// An existing file that cannot be read stops the run: replacing it would drop ids found earlier.
+function readPrior(path) {
+  if (!existsSync(path)) return {};
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch (e) {
+    throw new ConfigError(`${path} is not valid JSON (${e.message}); fix or remove it, nothing was provisioned`);
   }
+}
+
+function mergeExisting(prior, ids) {
   const merged = { ...prior };
   for (const [k, v] of Object.entries(ids)) {
     if (v === undefined) continue;
@@ -425,6 +461,14 @@ export async function main(argv, envVars, deps = {}) {
     for (const l of dryRunLines(plan, opts)) out(l);
     return 0;
   }
+  const path = deps.resourcesPath ?? resourcesPath(values.env);
+  let prior;
+  try {
+    prior = readPrior(path);
+  } catch (e) {
+    err(e.message);
+    return 2;
+  }
   let cfg;
   try {
     cfg = await resolveCloudflareConfig(envVars, deps.fetch ?? fetch);
@@ -433,8 +477,7 @@ export async function main(argv, envVars, deps = {}) {
     return e instanceof ConfigError ? 2 : 1;
   }
   const { ids, failures } = await provision(values.env, opts, { fetch: deps.fetch ?? fetch, token: cfg.token, accountId: cfg.accountId, out, plan });
-  const path = deps.resourcesPath ?? resourcesPath(values.env);
-  writeFileSync(path, `${JSON.stringify(mergeExisting(path, ids), null, 2)}\n`);
+  writeFileSync(path, `${JSON.stringify(mergeExisting(prior, ids), null, 2)}\n`);
   out(`wrote ${path}`);
   out("The packs host serves only default file types until the Cache Rule from infra/zone (T-011) is applied.");
   out("Bucket lock on audit-log is the owner's step (M-11); this script never touches it.");

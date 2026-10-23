@@ -20,10 +20,15 @@ export function fakeCloudflare({ failGet = [], seed = {}, failPost = [], r2DevEn
   const id = (p) => `${p}-${String(++n).padStart(4, "0")}`;
   const json = (status, body) => ({ ok: status < 400, status, json: async () => body });
   const ok = (result, info) => json(200, { success: true, result, ...(info ? { result_info: info } : {}) });
-  const page = (list, url) => {
-    const per = pageSize ?? Number(url.searchParams.get("per_page") ?? 100);
+  // result_info as the real endpoints send it: total_pages only where Cloudflare documents it
+  // (Queues, Secrets Store, DNS); the rest carry count and total_count; tokens cap per_page at 50.
+  const page = (list, url, { totalPages = false, maxPerPage = 1000 } = {}) => {
+    const per = Math.min(pageSize ?? Number(url.searchParams.get("per_page") ?? 20), maxPerPage);
     const p = Number(url.searchParams.get("page") ?? 1);
-    return ok(list.slice((p - 1) * per, p * per), { page: p, per_page: per, total_pages: Math.max(1, Math.ceil(list.length / per)) });
+    const items = list.slice((p - 1) * per, p * per);
+    const info = { page: p, per_page: per, count: items.length, total_count: list.length };
+    if (totalPages) info.total_pages = Math.max(1, Math.ceil(list.length / per));
+    return ok(items, info);
   };
 
   const fetch = async (rawUrl, init = {}) => {
@@ -31,7 +36,7 @@ export function fakeCloudflare({ failGet = [], seed = {}, failPost = [], r2DevEn
     const method = init.method ?? "GET";
     const path = url.pathname.replace("/client/v4", "");
     const body = init.body ? JSON.parse(init.body) : undefined;
-    calls.push({ method, path, body });
+    calls.push({ method, path, body, query: url.search });
     if (method === "GET" && failGet.some((f) => (typeof f === "string" ? path.includes(f) : f.test(path)))) {
       return json(failGet.status ?? 500, { success: false, errors: [{ code: 1, message: "boom" }] });
     }
@@ -41,13 +46,15 @@ export function fakeCloudflare({ failGet = [], seed = {}, failPost = [], r2DevEn
     if (path === "/accounts") return ok([{ id: "acct" }]);
     if (path === "/zones") return ok([{ id: "zone1", name: url.searchParams.get("name") }]);
     if ((r = m(/^\/accounts\/acct\/secrets_store\/stores$/))) {
-      if (method === "GET") return page(state.stores, url);
-      const made = { id: id("store"), name: body[0].name };
+      if (method === "GET") return page(state.stores, url, { totalPages: true });
+      if (Array.isArray(body) || typeof body?.name !== "string") return json(400, { success: false, errors: [{ code: 400, message: "body must be an object with name" }] });
+      if (state.stores.length >= 1) return json(409, { success: false, errors: [{ code: 409, message: "one store per account" }] });
+      const made = { id: id("store"), name: body.name };
       state.stores.push(made);
-      return ok([made]);
+      return ok(made);
     }
     if ((r = m(/^\/accounts\/acct\/secrets_store\/stores\/([^/]+)\/secrets$/))) {
-      if (method === "GET") return page(state.secrets.map((name) => ({ name })), url);
+      if (method === "GET") return page(state.secrets.map((name) => ({ name })), url, { totalPages: true });
       for (const s of body) {
         if (state.secrets.includes(s.name)) return json(409, { success: false, errors: [{ code: 3, message: "duplicate" }] });
         state.secrets.push(s.name);
@@ -89,7 +96,7 @@ export function fakeCloudflare({ failGet = [], seed = {}, failPost = [], r2DevEn
       return ok(made);
     }
     if (path === "/accounts/acct/queues") {
-      if (method === "GET") return page(state.queues, url);
+      if (method === "GET") return page(state.queues, url, { totalPages: true });
       const made = { queue_id: id("queue"), queue_name: body.queue_name };
       state.queues.push(made);
       return ok(made);
@@ -103,21 +110,25 @@ export function fakeCloudflare({ failGet = [], seed = {}, failPost = [], r2DevEn
     if ((r = m(/^\/zones\/zone1\/dns_records$/))) {
       if (method === "GET") {
         const name = url.searchParams.get("name");
-        return ok(state.dns.filter((d) => d.name === name));
+        return page(state.dns.filter((d) => d.name === name), url, { totalPages: true });
       }
       const made = { id: id("dns"), name: body.name, proxied: body.proxied, type: body.type };
       state.dns.push(made);
       return ok(made);
     }
     if (path === "/accounts/acct/tokens/permission_groups") {
-      return ok([
+      // Not paginated: every group comes back, with no page counts.
+      const groups = [
+        ...Array.from({ length: 300 }, (_, i) => ({ id: `pg-filler-${i}`, name: `Filler Permission ${i}` })),
         { id: "pg-read", name: "Workers R2 Storage Bucket Item Read" },
         { id: "pg-write", name: "Workers R2 Storage Bucket Item Write" },
         { id: "pg-admin", name: "Workers R2 Storage Write" },
-      ], { total_pages: 1 });
+      ];
+      const want = url.searchParams.get("name");
+      return ok(want ? groups.filter((g) => g.name === want) : groups);
     }
     if (path === "/accounts/acct/tokens") {
-      if (method === "GET") return page(state.tokens, url);
+      if (method === "GET") return page(state.tokens, url, { maxPerPage: 50 });
       const made = { id: id("tok"), name: body.name, value: `value-of-${body.name}`, policies: body.policies };
       state.tokens.push({ id: made.id, name: made.name, policies: made.policies });
       return ok(made);

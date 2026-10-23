@@ -118,7 +118,8 @@ export function checkIds({ root = REPO, resourcesDir = join(root, "infra") } = {
       if (!config.env?.[envName]) continue;
       const resourceEnv = envName === "test" ? "production" : envName;
       for (const slot of idSlots(sf, envName, trust[worker]?.kv ?? {}, resourceEnv)) {
-        if (slot.kind === "endpoint") continue;
+        // The account has one Secrets Store, so every environment legitimately names the same one.
+        if (slot.kind === "endpoint" || slot.resource[0] === "secrets_store_id") continue;
         const value = slot.node.text;
         if (!seen[envName].has(value)) seen[envName].set(value, `${worker} ${slot.label}`);
       }
@@ -144,6 +145,7 @@ export function checkIds({ root = REPO, resourcesDir = join(root, "infra") } = {
   }
   const [staging, production] = ENVS.map((e) => loadResources(e, resourcesDir));
   if (staging && production) {
+    if (staging.secrets_store_id !== production.secrets_store_id) problems.push("staging and production resources files name different Secrets Stores; the account has one Secrets Store");
     const a = collectResourceIds(staging);
     for (const id of collectResourceIds(production)) if (a.has(id)) problems.push(`staging and production resources files share id ${id}`);
   }
@@ -153,7 +155,6 @@ export function checkIds({ root = REPO, resourcesDir = join(root, "infra") } = {
 function collectResourceIds(resources) {
   const ids = new Set();
   for (const kind of ["d1", "kv", "queues"]) for (const v of Object.values(resources[kind] ?? {})) if (v.id) ids.add(v.id);
-  if (resources.secrets_store_id) ids.add(resources.secrets_store_id);
   return ids;
 }
 

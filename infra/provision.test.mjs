@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeCloudflare } from "./fake-cloudflare.mjs";
@@ -13,7 +13,10 @@ async function run(argv, cf, extra = {}) {
   const err = [];
   const dir = mkdtempSync(join(tmpdir(), "prov-"));
   const resourcesPath = join(dir, "resources.json");
-  const code = await main(argv, ENV, { fetch: cf?.fetch, out: (s) => out.push(s), err: (s) => err.push(s), resourcesPath, ...extra });
+  if (extra.prior !== undefined) writeFileSync(resourcesPath, extra.prior);
+  const deps = { ...extra };
+  delete deps.prior;
+  const code = await main(argv, ENV, { fetch: cf?.fetch, out: (s) => out.push(s), err: (s) => err.push(s), resourcesPath, ...deps });
   let file;
   try {
     file = JSON.parse(readFileSync(resourcesPath, "utf8"));
@@ -56,6 +59,19 @@ describe("the plan", () => {
       expect(bound.has(n)).toBe(false);
       expect([...p.r2, ...p.queues]).toContain(n);
     }
+  });
+});
+
+describe("hostnames", () => {
+  it("keeps routed hosts and R2 custom-domain hosts disjoint", () => {
+    for (const env of ["staging", "production"]) {
+      const p = planResources(env);
+      for (const d of Object.values(p.r2CustomDomains)) expect(p.hosts).not.toContain(d);
+    }
+  });
+  it("lists the web Worker's routed hosts, canary included, as the Turnstile domains", () => {
+    expect(planResources("production").turnstile.domains).toEqual(["registry-canary.claudinite.com", "registry.claudinite.com"]);
+    expect(planResources("staging").turnstile.domains).toEqual(["registry-staging.claudinite.com"]);
   });
 });
 
@@ -249,5 +265,99 @@ describe("object tokens", () => {
     const r = await run(["--env", "production"], { ...cf, fetch });
     expect(r.code).toBe(1);
     expect(cf.state.tokens).toEqual([]);
+  });
+});
+
+describe("against the real API's shapes", () => {
+  const auditSecrets = ["audit-s3-access-key-id", "audit-s3-secret-access-key"];
+  const manyTokens = (n) => Array.from({ length: n }, (_, i) => ({ id: `old-${i}`, name: `unrelated-${i}` }));
+
+  it("finds an existing token on the second page of a 50-per-page listing", async () => {
+    const tokens = [...manyTokens(55), { id: "have", name: "packserver-audit-log" }];
+    const cf = fakeCloudflare({ seed: { tokens, stores: [{ id: "s1", name: "default" }], secrets: auditSecrets } });
+    const r = await run(["--env", "production"], cf);
+    expect(r.err).toBe("");
+    expect(cf.calls.filter((c) => c.method === "POST" && c.path.endsWith("/tokens"))).toEqual([]);
+    expect(r.file.tokens["packserver-audit-log"].id).toBe("have");
+  });
+
+  it("looks permission groups up by name instead of listing hundreds", async () => {
+    const cf = fakeCloudflare();
+    await run(["--env", "production", "--print-ops-token"], cf);
+    const lookups = cf.calls.filter((c) => c.path.endsWith("/permission_groups"));
+    expect(lookups.length).toBeGreaterThan(0);
+    expect(lookups.every((c) => c.query?.includes("name="))).toBe(true);
+  });
+
+  it("adopts the account's single Secrets Store whatever it is called", async () => {
+    const cf = fakeCloudflare({ seed: { stores: [{ id: "dash-default", name: "Default Secrets Store" }] } });
+    const r = await run(["--env", "production"], cf);
+    expect(r.code).toBe(0);
+    expect(r.file.secrets_store_id).toBe("dash-default");
+    expect(cf.state.stores).toHaveLength(1);
+  });
+
+  it("creates the store with an object body only when the listing is empty", async () => {
+    const cf = fakeCloudflare();
+    await run(["--env", "production"], cf);
+    const post = cf.calls.find((c) => c.method === "POST" && c.path.endsWith("/secrets_store/stores"));
+    expect(post.body).toEqual({ name: "packserver" });
+  });
+
+  it("does not create the Turnstile widget while it has no store to hold the secret", async () => {
+    const cf = fakeCloudflare({ failGet: ["/secrets_store/stores"] });
+    const r = await run(["--env", "production"], cf);
+    expect(r.code).toBe(1);
+    expect(cf.calls.some((c) => c.method === "POST" && c.path.endsWith("/challenges/widgets"))).toBe(false);
+    expect(r.err).toContain("turnstile");
+  });
+
+  it("creates the widget with every web-routed host", async () => {
+    const cf = fakeCloudflare();
+    await run(["--env", "production"], cf);
+    const post = cf.calls.find((c) => c.method === "POST" && c.path.endsWith("/challenges/widgets"));
+    expect(post.body.domains).toEqual(["registry-canary.claudinite.com", "registry.claudinite.com"]);
+  });
+});
+
+describe("failure reporting", () => {
+  it("says so when a token could not be revoked", async () => {
+    const cf = fakeCloudflare();
+    const original = cf.fetch;
+    const fetch = async (url, init) => {
+      const path = new URL(url).pathname;
+      if (init?.method === "POST" && /secrets$/.test(path) && JSON.parse(init.body)[0].name.startsWith("audit-s3")) return { ok: false, status: 400, json: async () => ({ success: false, errors: [] }) };
+      if (init?.method === "DELETE") return { ok: false, status: 500, json: async () => ({ success: false, errors: [] }) };
+      return original(url, init);
+    };
+    const r = await run(["--env", "production"], { ...cf, fetch });
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("could NOT be revoked");
+    expect(r.err).not.toContain("the token was revoked");
+  });
+
+  it("revokes a token that came back without a value", async () => {
+    const cf = fakeCloudflare();
+    const original = cf.fetch;
+    const fetch = async (url, init) => {
+      const res = await original(url, init);
+      if (init?.method === "POST" && new URL(url).pathname.endsWith("/tokens")) {
+        const body = await res.json();
+        delete body.result.value;
+        return { ok: true, status: 200, json: async () => body };
+      }
+      return res;
+    };
+    const r = await run(["--env", "production"], { ...cf, fetch });
+    expect(r.code).toBe(1);
+    expect(cf.state.tokens).toEqual([]);
+  });
+
+  it("stops before any call when the resources file cannot be parsed", async () => {
+    const cf = fakeCloudflare();
+    const r = await run(["--env", "production"], cf, { prior: "{ not json" });
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("not valid JSON");
+    expect(cf.calls).toEqual([]);
   });
 });

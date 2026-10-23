@@ -25,6 +25,7 @@ export const R2_CUSTOM_DOMAINS = {
   staging: { "packs-public-staging": `packs-staging.${ZONE}` },
 };
 
+// Created only when the account has no store; the beta allows one store per account.
 export const SECRETS_STORE_NAME = "packserver";
 export const TURNSTILE_BINDING = "TURNSTILE_SECRET";
 export const AUDIT_BINDINGS = { accessKeyId: "AUDIT_S3_ACCESS_KEY_ID", secretAccessKey: "AUDIT_S3_SECRET_ACCESS_KEY" };
@@ -58,6 +59,7 @@ export function planResources(env, { root = REPO } = {}) {
   const vectorize = new Set();
   const hosts = new Map();
   let turnstileSecretName;
+  const webHosts = new Set();
   const audit = {};
   for (const { worker, path, config } of readConfigs(root)) {
     const block = config.env?.[env];
@@ -76,6 +78,7 @@ export function planResources(env, { root = REPO } = {}) {
     }
     for (const r of block.routes ?? []) {
       const [host, ...rest] = (typeof r === "string" ? r : r.pattern).split("/");
+      if (worker === "web") webHosts.add(host);
       if (!hosts.has(host)) hosts.set(host, new Set());
       hosts.get(host).add(`${block.name ?? worker} /${rest.join("/")}`);
     }
@@ -84,6 +87,9 @@ export function planResources(env, { root = REPO } = {}) {
   for (const w of Object.values(readTrustTable(root).workers)) for (const name of Object.values(w.kv)) kv.add(suffixed(env, name));
   for (const n of EXTRAS.r2) r2.add(suffixed(env, n));
   for (const n of EXTRAS.queues) queues.add(suffixed(env, n));
+  for (const d of Object.values(R2_CUSTOM_DOMAINS[env])) {
+    if (hosts.has(d)) throw new Error(`${d} is both a Worker route host and an R2 custom domain; a placeholder record would block the bucket`);
+  }
   if (!turnstileSecretName) throw new Error(`no ${TURNSTILE_BINDING} secrets_store_secrets entry in env.${env} of any Worker`);
   return {
     env,
@@ -94,7 +100,7 @@ export function planResources(env, { root = REPO } = {}) {
     queues: sorted(queues),
     hosts: sorted(hosts.keys()),
     r2CustomDomains: R2_CUSTOM_DOMAINS[env],
-    turnstile: { name: suffixed(env, "packserver"), domains: sorted([...hosts.keys()].filter((h) => h.startsWith(env === "staging" ? "registry-staging." : "registry."))), secretName: turnstileSecretName },
+    turnstile: { name: suffixed(env, "packserver"), domains: sorted(webHosts), secretName: turnstileSecretName },
     secretsStore: SECRETS_STORE_NAME,
     // The admin Worker's own secret names; the fallbacks are the names the admin config is to
     // declare and can go once it does.
