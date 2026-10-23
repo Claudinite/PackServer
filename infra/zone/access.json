@@ -1,0 +1,61 @@
+{
+  "maxApplications": 500,
+  "serviceTokens": [
+    { "role": "prober", "env": "production", "name": "packserver-prober" },
+    { "role": "controller", "env": "production", "name": "packserver-controller" },
+    { "role": "ci", "env": "staging", "name": "packserver-ci-staging" }
+  ],
+  "teamGroup": "packserver-team",
+  "applications": [
+    {
+      "name": "packserver-admin",
+      "env": "production",
+      "destinations": ["registry-admin.claudinite.com"],
+      "adminIdpOnly": true,
+      "sessionDuration": "8h",
+      "policies": [{ "name": "admins", "decision": "allow", "include": [{ "admins": true }] }]
+    },
+    {
+      "name": "packserver-staging-hosts",
+      "env": "staging",
+      "destinations": ["registry-staging.claudinite.com", "packs-staging.claudinite.com", "registry-admin-staging.claudinite.com"],
+      "policies": [
+        { "name": "team", "decision": "allow", "include": [{ "team": true }] },
+        { "name": "ci", "decision": "non_identity", "include": [{ "serviceToken": "ci" }] }
+      ]
+    },
+    {
+      "name": "packserver-staging-hooks-bypass",
+      "env": "staging",
+      "destinations": ["registry-staging.claudinite.com/hooks/*"],
+      "policies": [{ "name": "webhooks authenticate by signature", "decision": "bypass", "include": [{ "everyone": true }] }]
+    },
+    {
+      "name": "packserver-canary",
+      "env": "production",
+      "destinations": ["registry-canary.claudinite.com"],
+      "policies": [
+        { "name": "team", "decision": "allow", "include": [{ "team": true }] },
+        { "name": "prober and controller", "decision": "non_identity", "include": [{ "serviceToken": "prober" }, { "serviceToken": "controller" }] }
+      ]
+    },
+    {
+      "name": "packserver-selftest",
+      "env": "production",
+      "destinations": ["registry.claudinite.com/__selftest*", "registry-admin.claudinite.com/__selftest*"],
+      "policies": [
+        { "name": "team", "decision": "allow", "include": [{ "team": true }] },
+        { "name": "prober and controller", "decision": "non_identity", "include": [{ "serviceToken": "prober" }, { "serviceToken": "controller" }] }
+      ]
+    },
+    {
+      "name": "packserver-gates",
+      "env": "production",
+      "destinations": ["registry-canary.claudinite.com/gates/*"],
+      "policies": [
+        { "name": "team", "decision": "allow", "include": [{ "team": true }] },
+        { "name": "controller", "decision": "non_identity", "include": [{ "serviceToken": "controller" }] }
+      ]
+    }
+  ]
+}

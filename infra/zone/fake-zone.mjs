@@ -1,0 +1,98 @@
+// An in-memory stand-in for the Cloudflare endpoints infra/zone uses, layered on the T-010 fake
+// (zones, accounts, Secrets Store). Shapes follow the endpoints named in each handler. Test support only.
+import { fakeCloudflare } from "../fake-cloudflare.mjs";
+
+export function fakeZone({ seed = {}, failGet = [], failWrite = [], idps, base } = {}) {
+  const inner = base ?? fakeCloudflare({ seed: { stores: [{ id: "store1", name: "packserver" }], ...(seed.base ?? {}) } });
+  const state = {
+    rulesets: structuredClone(seed.rulesets ?? {}),
+    tiered: seed.tiered ?? "off",
+    tokens: structuredClone(seed.tokens ?? []),
+    groups: structuredClone(seed.groups ?? []),
+    apps: structuredClone(seed.apps ?? []),
+    idps: idps ?? [{ id: "idp-hw", name: "Hardware key", type: "saml" }],
+    jobs: structuredClone(seed.jobs ?? []),
+    lifecycle: structuredClone(seed.lifecycle ?? {}),
+    inner: inner.state,
+  };
+  const calls = [];
+  let n = 0;
+  const id = (p) => `${p}-${String(++n).padStart(4, "0")}`;
+  const json = (status, body) => ({ ok: status < 400, status, json: async () => body });
+  const ok = (result, info) => json(200, { success: true, result, ...(info ? { result_info: info } : {}) });
+  const fail = (status, code, message) => json(status, { success: false, errors: [{ code, message }] });
+  const page = (list, url, maxPerPage = 1000) => {
+    const per = Math.min(Number(url.searchParams.get("per_page") ?? 20), maxPerPage);
+    const p = Number(url.searchParams.get("page") ?? 1);
+    return ok(list.slice((p - 1) * per, p * per), { page: p, per_page: per, count: Math.min(per, Math.max(0, list.length - (p - 1) * per)), total_count: list.length });
+  };
+  const ruleView = (r) => ({ ...r, id: r.id ?? id("rule"), version: "1", last_updated: "2026-10-23T00:00:00Z" });
+
+  const fetch = async (rawUrl, init = {}) => {
+    const url = new URL(rawUrl);
+    const method = init.method ?? "GET";
+    const path = url.pathname.replace("/client/v4", "");
+    const body = init.body ? JSON.parse(init.body) : undefined;
+    const mine = /^\/(zones\/zone1\/(rulesets|cache|logpush)|accounts\/acct\/(access|r2\/buckets\/[^/]+\/lifecycle))/.test(path);
+    if (!mine) return inner.fetch(rawUrl, init);
+    calls.push({ method, path, body });
+    if (method === "GET" && failGet.some((f) => path.includes(f))) return fail(500, 1, "boom");
+    if (method !== "GET" && failWrite.some((f) => path.includes(f))) return fail(500, 2, "refused");
+    let r;
+    if ((r = path.match(/^\/zones\/zone1\/rulesets\/phases\/([^/]+)\/entrypoint$/))) {
+      const rs = state.rulesets[r[1]];
+      return rs ? ok(rs) : fail(404, 10003, "could not find entrypoint ruleset");
+    }
+    if (path === "/zones/zone1/rulesets" && method === "POST") {
+      const made = { id: id("rs"), phase: body.phase, kind: body.kind, rules: body.rules.map(ruleView) };
+      state.rulesets[body.phase] = made;
+      return ok(made);
+    }
+    if ((r = path.match(/^\/zones\/zone1\/rulesets\/([^/]+)$/)) && method === "PUT") {
+      const rs = Object.values(state.rulesets).find((x) => x.id === r[1]);
+      if (!rs) return fail(404, 1, "no such ruleset");
+      rs.rules = body.rules.map(ruleView);
+      return ok(rs);
+    }
+    if (path === "/zones/zone1/cache/tiered_cache_smart_topology_enable") {
+      if (method === "PATCH") state.tiered = body.value;
+      return ok({ id: "tiered_cache_smart_topology_enable", value: state.tiered });
+    }
+    if (path === "/accounts/acct/access/identity_providers") return ok(state.idps);
+    const collection = { "/accounts/acct/access/service_tokens": ["tokens", "tok"], "/accounts/acct/access/groups": ["groups", "grp"], "/accounts/acct/access/apps": ["apps", "app"] }[path];
+    if (collection) {
+      const [key, prefix] = collection;
+      if (method === "GET") return page(state[key], url, 100);
+      const made = { id: id(prefix), ...body };
+      if (key === "tokens") Object.assign(made, { client_id: `${made.id}.access`, client_secret: `secret-of-${made.id}` });
+      state[key].push(key === "tokens" ? { id: made.id, name: made.name } : made);
+      return ok(made);
+    }
+    if ((r = path.match(/^\/accounts\/acct\/access\/(groups|apps|service_tokens)\/([^/]+)$/))) {
+      const key = r[1] === "service_tokens" ? "tokens" : r[1];
+      const i = state[key].findIndex((x) => x.id === r[2]);
+      if (i < 0) return fail(404, 1, "not found");
+      if (method === "PUT") state[key][i] = { id: r[2], ...body };
+      if (method === "DELETE") state[key].splice(i, 1);
+      return ok({ id: r[2] });
+    }
+    if (path === "/zones/zone1/logpush/jobs") {
+      if (method === "GET") return ok(state.jobs.map((j) => ({ ...j, destination_conf: j.destination_conf.split("&access-key-id=")[0] })));
+      const made = { id: state.jobs.length + 1, ...body };
+      state.jobs.push(made);
+      return ok(made);
+    }
+    if ((r = path.match(/^\/zones\/zone1\/logpush\/jobs\/(\d+)$/)) && method === "PUT") {
+      const i = state.jobs.findIndex((j) => String(j.id) === r[1]);
+      state.jobs[i] = { id: Number(r[1]), ...body };
+      return ok(state.jobs[i]);
+    }
+    if ((r = path.match(/^\/accounts\/acct\/r2\/buckets\/([^/]+)\/lifecycle$/))) {
+      if (method === "PUT") state.lifecycle[r[1]] = { rules: body.rules };
+      return ok(state.lifecycle[r[1]] ?? { rules: [] });
+    }
+    return fail(404, 404, `fake has no ${method} ${path}`);
+  };
+  const writes = () => [...calls.filter((c) => c.method !== "GET"), ...inner.creates()];
+  return { fetch, state, calls, inner, writes };
+}

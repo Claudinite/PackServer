@@ -1,0 +1,75 @@
+{
+  "budgets": {
+    "http_request_late_transform": { "kind": "Transform Rules", "max": 10 },
+    "http_request_firewall_custom": { "kind": "WAF custom rules", "max": 5 },
+    "http_request_cache_settings": { "kind": "Cache Rules", "max": 10 },
+    "http_ratelimit": { "kind": "Rate limiting rules", "max": 1 }
+  },
+  "smartTieredCache": true,
+  "phases": {
+    "http_request_late_transform": [
+      {
+        "ref": "packserver_strip_edge_headers",
+        "description": "PackServer: strip version-override and self-test headers from public hosts",
+        "expression": "(http.host in {\"registry.claudinite.com\" \"packs.claudinite.com\"})",
+        "action": "rewrite",
+        "action_parameters": {
+          "headers": {
+            "Cloudflare-Workers-Version-Overrides": { "operation": "remove" },
+            "Cloudflare-Workers-Version-Key": { "operation": "remove" },
+            "X-Selftest-Signature": { "operation": "remove" },
+            "X-PackServer-Shadow": { "operation": "remove" }
+          }
+        }
+      },
+      {
+        "ref": "packserver_version_key_from_session",
+        "description": "PackServer: version key from the session cookie",
+        "expression": "(http.host eq \"registry.claudinite.com\" and http.cookie contains \"__Host-session=\")",
+        "action": "rewrite",
+        "action_parameters": {
+          "headers": {
+            "Cloudflare-Workers-Version-Key": { "operation": "set", "expression": "http.request.cookies[\"__Host-session\"][0]" }
+          }
+        }
+      },
+      {
+        "ref": "packserver_version_key_from_ip",
+        "description": "PackServer: version key from the client IP when there is no session cookie",
+        "expression": "(http.host eq \"registry.claudinite.com\" and not http.cookie contains \"__Host-session=\")",
+        "action": "rewrite",
+        "action_parameters": {
+          "headers": {
+            "Cloudflare-Workers-Version-Key": { "operation": "set", "expression": "to_string(ip.src)" }
+          }
+        }
+      }
+    ],
+    "http_request_firewall_custom": [
+      {
+        "ref": "packserver_hooks_registry_only",
+        "description": "PackServer: webhooks are served by the registry hosts only",
+        "expression": "(starts_with(http.request.uri.path, \"/hooks/\") and not http.host in {\"registry.claudinite.com\" \"registry-staging.claudinite.com\"})",
+        "action": "block"
+      }
+    ],
+    "http_request_cache_settings": [
+      {
+        "ref": "packserver_packs_cacheable",
+        "description": "PackServer: every object on the packs hosts is cacheable, origin Cache-Control respected",
+        "expression": "(http.host in {\"packs.claudinite.com\" \"packs-staging.claudinite.com\"})",
+        "action": "set_cache_settings",
+        "action_parameters": { "cache": true, "edge_ttl": { "mode": "respect_origin" } }
+      }
+    ],
+    "http_ratelimit": [
+      {
+        "ref": "packserver_auth_rate",
+        "description": "PackServer: sign-in endpoints, per client IP",
+        "expression": "(starts_with(http.request.uri.path, \"/api/auth/\"))",
+        "action": "block",
+        "ratelimit": { "characteristics": ["ip.src"], "period": 10, "requests_per_period": 20, "mitigation_timeout": 10 }
+      }
+    ]
+  }
+}

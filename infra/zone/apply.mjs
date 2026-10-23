@@ -1,0 +1,161 @@
+#!/usr/bin/env node
+// Applies the zone rules, Access applications and Logpush jobs declared in this folder.
+//
+//   (no mode)  validates the declarations offline and prints what they define; no network
+//   --plan     reads the account and reports what --apply would change; writes nothing
+//   --apply    makes the changes
+//
+// Nothing is created from a listing that failed or was read only in part. Rule sets keep every
+// rule this folder does not own, and the previous rule set of a phase is saved before it changes.
+import { join } from "node:path";
+import { parseArgs } from "node:util";
+import { pathToFileURL } from "node:url";
+import { ConfigError, call, createSecretsStore, resolveCloudflareConfig } from "../lib/secrets-store.mjs";
+import { ENVS, ZONE } from "../lib/plan.mjs";
+import { appsFor, envHosts, loadSpec, tokensFor, validateSpec } from "./lib/spec.mjs";
+import { ensurePhase, ensureSmartTieredCache } from "./lib/rulesets.mjs";
+import { ensureAccess, readAccessConfig } from "./lib/access.mjs";
+import { ensureLogpush, readLogpushCredentials } from "./lib/logpush.mjs";
+
+export const SECTIONS = ["rules", "access", "logpush"];
+const DEFAULT_BACKUP_DIR = join(import.meta.dirname, "previous");
+
+const USAGE = `Usage: node infra/zone/apply.mjs --env <staging|production> [--plan | --apply] [--only <rules,access,logpush>]
+                              [--backup-dir <dir>]
+
+  (default)     validate the declarations offline and print them
+  --plan        read the account and report the changes --apply would make
+  --apply       make the changes
+  --only        limit to some sections (default: all three)
+  --backup-dir  where the previous rule set of each changed phase is saved (default infra/zone/previous)
+
+The zone rules are zone-wide and name both environments' hosts, so either --env applies all of
+them. Access applications, service tokens and Logpush jobs are those of the chosen environment.
+
+Requires CF_BOOTSTRAP_TOKEN (CLOUDFLARE_ACCOUNT_ID when the token sees several accounts).
+  access:   ACCESS_TEAM_EMAILS; for production also ACCESS_ADMIN_IDP_ID (manual task M-03, #101)
+            and ACCESS_ADMIN_EMAILS
+  logpush:  CF_LOGPUSH_R2_ACCESS_KEY_ID and CF_LOGPUSH_R2_SECRET_ACCESS_KEY (R2 object write on the ops bucket)
+`;
+
+export function describe(spec, env) {
+  const lines = [`env=${env}`];
+  for (const [phase, rules] of Object.entries(spec.rules.phases)) {
+    lines.push(`  ${spec.rules.budgets[phase].kind} (${rules.length} of ${spec.rules.budgets[phase].max}): ${rules.map((r) => r.ref).join(", ")}`);
+  }
+  lines.push(`  access applications: ${appsFor(spec, env).map((a) => a.name).join(", ") || "(none)"}`);
+  lines.push(`  service tokens: ${tokensFor(spec, env).map((t) => t.name).join(", ") || "(none)"}`);
+  lines.push(`  logpush jobs: ${spec.logpush.jobs.map((j) => `${j.dataset}/${j.key}`).join(", ")} -> ${spec.logpush.destinationBucket}`);
+  return lines;
+}
+
+export async function main(argv, envVars, deps = {}) {
+  const out = deps.out ?? ((s) => process.stdout.write(`${s}\n`));
+  const err = deps.err ?? ((s) => process.stderr.write(`${s}\n`));
+  let values;
+  try {
+    ({ values } = parseArgs({
+      args: argv,
+      options: { env: { type: "string" }, plan: { type: "boolean" }, apply: { type: "boolean" }, only: { type: "string" }, "backup-dir": { type: "string" }, help: { type: "boolean" } },
+      strict: true,
+    }));
+  } catch (e) {
+    err(`${e.message}\n\n${USAGE}`);
+    return 2;
+  }
+  if (values.help) {
+    out(USAGE);
+    return 0;
+  }
+  if (!values.env || !ENVS.includes(values.env)) {
+    err(`--env <${ENVS.join("|")}> is required\n\n${USAGE}`);
+    return 2;
+  }
+  if (values.plan && values.apply) {
+    err(`--plan and --apply are exclusive\n\n${USAGE}`);
+    return 2;
+  }
+  const only = values.only ? values.only.split(",") : SECTIONS;
+  if (only.some((s) => !SECTIONS.includes(s))) {
+    err(`--only takes ${SECTIONS.join(", ")}\n\n${USAGE}`);
+    return 2;
+  }
+  const env = values.env;
+  const spec = deps.spec ?? loadSpec();
+  const problems = validateSpec(spec, { root: deps.root });
+  if (problems.length) {
+    err(`the declarations are invalid:\n  ${problems.join("\n  ")}`);
+    return 2;
+  }
+  if (!values.plan && !values.apply) {
+    for (const l of describe(spec, env)) out(l);
+    out("validated offline; nothing was read or changed. Use --plan to compare with the account, --apply to change it.");
+    return 0;
+  }
+  const write = values.apply === true;
+
+  let accessCfg;
+  let logpushCreds;
+  try {
+    if (only.includes("access")) accessCfg = readAccessConfig(envVars, spec, env);
+    if (only.includes("logpush") && write) logpushCreds = readLogpushCredentials(envVars);
+  } catch (e) {
+    err(e instanceof ConfigError ? `${e.message}\n\n${USAGE}` : e.message);
+    return 2;
+  }
+  let cfg;
+  const fetchImpl = deps.fetch ?? fetch;
+  try {
+    cfg = await resolveCloudflareConfig(envVars, fetchImpl);
+  } catch (e) {
+    err(e instanceof ConfigError ? `${e.message}\n\n${USAGE}` : `failed: ${e.message}`);
+    return e instanceof ConfigError ? 2 : 1;
+  }
+  const api = (method, path, body) => call(fetchImpl, cfg.token, method, path, body);
+  const failures = [];
+  const attempt = async (label, fn) => {
+    try {
+      await fn();
+    } catch (e) {
+      failures.push(`${label}: ${e.message}`);
+      out(`FAILED ${label}: ${e.message}`);
+    }
+  };
+
+  let zoneId;
+  try {
+    const list = await api("GET", `/zones?name=${ZONE}&account.id=${cfg.accountId}`);
+    if (!Array.isArray(list.result)) throw new Error("unrecognised zone listing");
+    zoneId = list.result.find((z) => z.name === ZONE)?.id;
+    if (!zoneId) throw new Error(`zone ${ZONE} is not visible to this token (not "absent": nothing is created from this)`);
+  } catch (e) {
+    err(`zone: ${e.message}`);
+    return 1;
+  }
+
+  out(`${write ? "applying" : "planning"} env=${env} (${only.join(", ")})`);
+  if (only.includes("rules")) {
+    const backupDir = values["backup-dir"] ?? deps.backupDir ?? DEFAULT_BACKUP_DIR;
+    const now = deps.now ?? (() => new Date().toISOString());
+    for (const [phase, desired] of Object.entries(spec.rules.phases)) {
+      await attempt(phase, () => ensurePhase({ api, zoneId, phase, desired, budget: spec.rules.budgets[phase], write, out, backupDir, now }));
+    }
+    if (spec.rules.smartTieredCache) await attempt("smart tiered cache", () => ensureSmartTieredCache({ api, zoneId, write, out }));
+  }
+  if (only.includes("access")) {
+    const secrets = createSecretsStore({ fetch: fetchImpl, token: cfg.token, accountId: cfg.accountId, storeId: cfg.storeId });
+    await ensureAccess({ api, accountId: cfg.accountId, env, spec, cfg: accessCfg, secrets, write, out, failures });
+  }
+  if (only.includes("logpush")) {
+    await ensureLogpush({ api, accountId: cfg.accountId, zoneId, env, spec, hosts: envHosts(env, deps.root), creds: logpushCreds, write, out, failures });
+  }
+  if (failures.length) {
+    err(`${failures.length} item(s) not converged:\n  ${failures.join("\n  ")}`);
+    return 1;
+  }
+  return 0;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  process.exitCode = await main(process.argv.slice(2), process.env);
+}
