@@ -26,6 +26,12 @@ async function run(argv, zone, { env = BASE_ENV, ...deps } = {}) {
 }
 
 const without = (obj, key) => Object.fromEntries(Object.entries(obj).filter(([k]) => k !== key));
+// Both runs of a staging rollout; their outputs and errors are joined for the never-printed checks.
+async function converge(zone, env) {
+  const a = await run(["--zone", "--apply"], zone);
+  const b = await run(["--env", env, "--apply"], zone);
+  return { code: a.code || b.code, out: `${a.out}\n${b.out}`, err: `${a.err}\n${b.err}`.trim(), backupDir: a.backupDir };
+}
 const clone = () => structuredClone(loadSpec());
 const rulesOf = (zone, phase) => zone.state.rulesets[phase].rules;
 
@@ -34,11 +40,11 @@ describe("the declarations", () => {
 
   it("are valid and spend the Free-plan budget as the trust table says", () => {
     expect(validateSpec(spec)).toEqual([]);
-    expect(spec.rules.phases.http_request_late_transform).toHaveLength(3);
+    expect(spec.rules.phases.http_request_late_transform).toHaveLength(2);
     expect(spec.rules.phases.http_request_firewall_custom).toHaveLength(1);
     expect(spec.rules.phases.http_request_cache_settings).toHaveLength(1);
     expect(spec.rules.phases.http_ratelimit).toHaveLength(1);
-    expect(spec.access.applications).toHaveLength(6);
+    expect(spec.access.applications).toHaveLength(7);
     expect(spec.logpush.jobs.filter((j) => j.dataset === "http_requests").map((j) => j.sampleRate).sort()).toEqual([0.1, 1]);
   });
 
@@ -68,10 +74,25 @@ describe("the declarations", () => {
     expect(spec.rules.smartTieredCache).toBe(true);
   });
 
-  it("rate-limit /api/auth/* by path and IP alone", () => {
+  it("rate-limit /api/auth/* by path with the Free-plan characteristics, period and timeout", () => {
     const [rate] = spec.rules.phases.http_ratelimit;
     expect(rate.expression).toBe('(starts_with(http.request.uri.path, "/api/auth/"))');
-    expect(rate.ratelimit.characteristics).toEqual(["ip.src"]);
+    expect(rate.ratelimit).toMatchObject({ characteristics: ["cf.colo.id", "ip.src"], period: 10, mitigation_timeout: 10 });
+  });
+
+  it("set the version key from the client IP on the registry host only, with Free-plan fields", () => {
+    const set = spec.rules.phases.http_request_late_transform[1];
+    expect(set.expression).toBe('(http.host eq "registry.claudinite.com")');
+    expect(set.action_parameters.headers["Cloudflare-Workers-Version-Key"]).toEqual({ operation: "set", expression: "to_string(ip.src)" });
+  });
+
+  it("mirror the production admin application on the staging admin host, which staging-hosts does not cover", () => {
+    const admin = spec.access.applications.find((a) => a.name === "packserver-admin");
+    const staging = spec.access.applications.find((a) => a.name === "packserver-staging-admin");
+    expect(staging).toMatchObject({ env: "staging", destinations: ["registry-admin-staging.claudinite.com"], adminIdpOnly: true, policies: admin.policies, sessionDuration: admin.sessionDuration });
+    const hosts = spec.access.applications.find((a) => a.name === "packserver-staging-hosts");
+    expect(hosts.destinations).not.toContain("registry-admin-staging.claudinite.com");
+    expect(hosts.destinations).toContain("registry-admin-staging.claudinite.com/__selftest*");
   });
 
   it("have a Bypass on the staging webhook path and keep service tokens out of the admin application", () => {
@@ -99,6 +120,23 @@ describe("the declarations", () => {
     host.access.applications[0].destinations = ["nowhere.claudinite.com"];
     expect(validateSpec(host).join()).toContain("nowhere.claudinite.com");
 
+    const pro = clone();
+    pro.rules.phases.http_request_late_transform[1].action_parameters.headers["Cloudflare-Workers-Version-Key"].expression = 'http.request.cookies["__Host-session"][0]';
+    expect(validateSpec(pro).join()).toContain("http.request.cookies is not on the Free-plan field list");
+    const proMatch = clone();
+    proMatch.rules.phases.http_request_firewall_custom[0].expression = "(cf.bot_management.score lt 30)";
+    expect(validateSpec(proMatch).join()).toContain("cf.bot_management.score");
+
+    const rate = clone();
+    rate.rules.phases.http_ratelimit[0].ratelimit.characteristics = ["ip.src"];
+    expect(validateSpec(rate).join()).toContain('exactly ["cf.colo.id","ip.src"]');
+    rate.rules.phases.http_ratelimit[0].ratelimit = { characteristics: ["cf.colo.id", "ip.src"], period: 60, mitigation_timeout: 600 };
+    expect(validateSpec(rate).join()).toContain("10-second period");
+
+    const drift = clone();
+    drift.access.applications.find((a) => a.name === "packserver-staging-admin").sessionDuration = "24h";
+    expect(validateSpec(drift).join()).toContain("mirror each other");
+
     const foreign = clone();
     foreign.rules.phases.http_request_late_transform[0].ref = "strip";
     expect(validateSpec(foreign).join()).toContain("must start with");
@@ -125,7 +163,7 @@ describe("the command", () => {
 
   it("--plan reads the account and writes nothing", async () => {
     const zone = fakeZone();
-    const r = await run(["--env", "staging", "--plan"], zone);
+    const r = await run(["--zone", "--env", "staging", "--plan"], zone);
     expect(r.code).toBe(0);
     expect(zone.writes()).toEqual([]);
     expect(r.out).toContain("would    update Transform Rules");
@@ -135,13 +173,13 @@ describe("the command", () => {
 
   it("--apply on staging converges, and a second run changes nothing", async () => {
     const zone = fakeZone();
-    const first = await run(["--env", "staging", "--apply"], zone);
+    const first = await converge(zone, "staging");
     expect(first.err).toBe("");
     expect(first.code).toBe(0);
-    expect(rulesOf(zone, "http_request_late_transform").map((r) => r.ref)).toHaveLength(3);
+    expect(rulesOf(zone, "http_request_late_transform").map((r) => r.ref)).toHaveLength(2);
     expect(rulesOf(zone, "http_request_firewall_custom")[0].action).toBe("block");
     expect(zone.state.tiered).toBe("on");
-    expect(zone.state.apps.map((a) => a.name).sort()).toEqual(["packserver-staging-hooks-bypass", "packserver-staging-hosts"]);
+    expect(zone.state.apps.map((a) => a.name).sort()).toEqual(["packserver-staging-admin", "packserver-staging-hooks-bypass", "packserver-staging-hosts"]);
     expect(zone.state.jobs.map((j) => j.name).sort()).toEqual([
       "packserver-staging-firewall-events",
       "packserver-staging-http-cache-hits",
@@ -150,7 +188,7 @@ describe("the command", () => {
     expect(zone.state.lifecycle["ops-staging"].rules).toHaveLength(2);
 
     const writesAfterFirst = zone.writes().length;
-    const second = await run(["--env", "staging", "--apply"], zone);
+    const second = await converge(zone, "staging");
     expect(second.code).toBe(0);
     expect(zone.writes()).toHaveLength(writesAfterFirst);
     expect(second.out).not.toMatch(/^(created|updated|saved)/m);
@@ -158,15 +196,19 @@ describe("the command", () => {
 
   it("stores a service token's secret in the Secrets Store and never prints it", async () => {
     const zone = fakeZone();
-    const r = await run(["--env", "staging", "--apply"], zone);
+    const r = await converge(zone, "staging");
     const names = tokenSecretNames("staging", "ci");
     expect(Object.keys(zone.inner.state.secretValues)).toEqual(expect.arrayContaining([names.clientId, names.clientSecret]));
-    expect(r.out).not.toContain(zone.inner.state.secretValues[names.clientSecret]);
+    const secret = zone.inner.state.secretValues[names.clientSecret];
+    expect(secret).toBeTruthy();
+    expect(r.out).not.toContain(secret);
+    expect(r.err).not.toContain(secret);
+    for (const f of readdirSync(r.backupDir)) expect(readFileSync(join(r.backupDir, f), "utf8")).not.toContain(secret);
   });
 
   it("the staging Bypass covers the webhook path and the staging-hosts application does not exempt it", async () => {
     const zone = fakeZone();
-    await run(["--env", "staging", "--apply"], zone);
+    await run(["--env", "staging", "--apply", "--only", "access"], zone);
     const bypass = zone.state.apps.find((a) => a.name === "packserver-staging-hooks-bypass");
     expect(bypass.destinations).toEqual([{ type: "public", uri: "registry-staging.claudinite.com/hooks/*" }]);
     expect(bypass.policies[0]).toMatchObject({ decision: "bypass", include: [{ everyone: {} }] });
@@ -175,7 +217,7 @@ describe("the command", () => {
   it("keeps unmanaged rules, saves the previous rule set, and refuses to exceed the budget", async () => {
     const foreign = { id: "foreign", ref: "website_rule", action: "rewrite", expression: "(http.host eq \"claudinite.com\")", enabled: true };
     const zone = fakeZone({ seed: { rulesets: { http_request_late_transform: { id: "rs-t", phase: "http_request_late_transform", rules: [foreign] } } } });
-    const r = await run(["--env", "staging", "--apply", "--only", "rules"], zone);
+    const r = await run(["--zone", "--apply"], zone);
     expect(r.code).toBe(0);
     expect(rulesOf(zone, "http_request_late_transform").map((x) => x.ref)).toEqual(["website_rule", ...loadSpec().rules.phases.http_request_late_transform.map((x) => x.ref)]);
     const saved = readdirSync(r.backupDir);
@@ -184,7 +226,7 @@ describe("the command", () => {
     expect(JSON.parse(readFileSync(join(r.backupDir, saved[0]), "utf8")).rules).toEqual([foreign]);
 
     const full = fakeZone({ seed: { rulesets: { http_ratelimit: { id: "rs-r", phase: "http_ratelimit", rules: [{ id: "x", ref: "website_limit", action: "block", expression: "(true)" }] } } } });
-    const over = await run(["--env", "staging", "--apply", "--only", "rules"], full);
+    const over = await run(["--zone", "--apply"], full);
     expect(over.code).toBe(1);
     expect(over.out).toContain("over the Free-plan limit of 1");
     expect(rulesOf(full, "http_ratelimit").map((x) => x.ref)).toEqual(["website_limit"]);
@@ -192,7 +234,7 @@ describe("the command", () => {
 
   it("does not treat a failed ruleset read as an absent ruleset", async () => {
     const zone = fakeZone({ failGet: ["/rulesets/phases/http_ratelimit/entrypoint"] });
-    const r = await run(["--env", "staging", "--apply", "--only", "rules"], zone);
+    const r = await run(["--zone", "--apply"], zone);
     expect(r.code).toBe(1);
     expect(zone.state.rulesets.http_ratelimit).toBeUndefined();
     expect(zone.calls.filter((c) => c.method === "POST" && c.body?.phase === "http_ratelimit")).toEqual([]);
@@ -290,6 +332,64 @@ describe("the command", () => {
     await run(["--env", "production", "--apply"], full);
     await run(["--env", "staging", "--apply"], full);
     expect(full.inner.calls.filter((c) => c.path.includes("dns_records"))).toEqual([]);
+  });
+
+  it("--env alone never touches the edge rules, and --zone alone needs no Access or Logpush input", async () => {
+    const zone = fakeZone();
+    await run(["--env", "staging", "--apply"], zone);
+    expect(zone.calls.filter((c) => c.path.includes("/rulesets") || c.path.includes("/cache/"))).toEqual([]);
+
+    const only = fakeZone();
+    const r = await run(["--zone", "--apply"], only, { env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" } });
+    expect(r.code).toBe(0);
+    expect(only.calls.filter((c) => c.path.includes("/access") || c.path.includes("/logpush"))).toEqual([]);
+    expect(Object.keys(only.state.rulesets).sort()).toEqual(["http_ratelimit", "http_request_cache_settings", "http_request_firewall_custom", "http_request_late_transform"]);
+  });
+
+  it("a rules failure does not skip Access, and both are reported", async () => {
+    const zone = fakeZone({ failGet: ["/rulesets/phases/http_ratelimit/entrypoint"] });
+    const r = await run(["--zone", "--env", "staging", "--apply"], zone);
+    expect(r.code).toBe(1);
+    expect(zone.state.apps).toHaveLength(3);
+    expect(zone.state.jobs).toHaveLength(3);
+    expect(r.err).toContain("http_ratelimit");
+  });
+
+  it("rolls back a half-stored service token and says what is left", async () => {
+    const zone = fakeZone({ failSecretNumber: 2 });
+    const r = await run(["--env", "staging", "--apply", "--only", "access"], zone);
+    const names = tokenSecretNames("staging", "ci");
+    expect(r.code).toBe(1);
+    expect(zone.state.tokens).toEqual([]);
+    expect(zone.inner.state.secrets).not.toContain(names.clientId);
+    expect(r.err).toContain("the token was deleted");
+    expect(r.err).toContain("nothing was left in the Secrets Store");
+  });
+
+  it("sends unmanaged rules back without their read-only fields", async () => {
+    const foreign = { id: "foreign", version: "3", last_updated: "2025-01-01T00:00:00Z", ref: "website_rule", action: "rewrite", expression: "(true)", enabled: true };
+    const zone = fakeZone({ seed: { rulesets: { http_request_late_transform: { id: "rs-t", phase: "http_request_late_transform", rules: [foreign] } } } });
+    await run(["--zone", "--apply"], zone);
+    const put = zone.calls.find((c) => c.method === "PUT" && c.path === "/zones/zone1/rulesets/rs-t");
+    expect(put.body.rules[0]).toEqual({ ref: "website_rule", action: "rewrite", expression: "(true)", enabled: true });
+  });
+
+  it("treats fields the API adds to our rules as converged", async () => {
+    const [rule] = loadSpec().rules.phases.http_ratelimit;
+    const served = { ...rule, id: "r1", version: "1", last_updated: "x", enabled: true, logging: { enabled: true }, ratelimit: { ...rule.ratelimit, requests_to_origin: false, counting_expression: "" } };
+    const zone = fakeZone({ seed: { rulesets: { http_ratelimit: { id: "rs-r", phase: "http_ratelimit", rules: [served] } } } });
+    const r = await run(["--zone", "--apply"], zone);
+    expect(r.out).toContain("ok       Rate limiting rules");
+    expect(zone.calls.filter((c) => c.path.includes("rs-r") && c.method !== "GET")).toEqual([]);
+  });
+
+  it("counts the other Transform phases against the same Free-plan 10", async () => {
+    const others = Array.from({ length: 9 }, (_, i) => ({ id: `o${i}`, ref: `site_${i}`, action: "rewrite", expression: "(true)" }));
+    const zone = fakeZone({ seed: { rulesets: { http_response_headers_transform: { id: "rs-o", phase: "http_response_headers_transform", rules: others } } } });
+    const r = await run(["--zone", "--apply"], zone);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("over the Free-plan limit of 10");
+    expect(zone.state.rulesets.http_request_late_transform).toBeUndefined();
   });
 
   it("needs a token and an explicit mode", async () => {

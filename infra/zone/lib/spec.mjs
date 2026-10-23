@@ -22,6 +22,12 @@ export function envHosts(env, root) {
   return [...new Set([...plan.hosts, ...Object.values(plan.r2CustomDomains)])].sort();
 }
 
+// Dotted field names in an expression, ignoring string literals.
+export const fieldsIn = (expression) =>
+  [...new Set(expression.replace(/"(?:[^"\\]|\\.)*"/g, '""').match(/\b(?:http|ip|cf)\.[a-z_]+(?:\.[a-z_]+)*/g) ?? [])].sort();
+
+const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
 export function validateSpec(spec, { root } = {}) {
   const problems = [];
   const known = new Set(ENVS.flatMap((e) => envHosts(e, root)));
@@ -38,6 +44,10 @@ export function validateSpec(spec, { root } = {}) {
       if (!r.ref?.startsWith(MANAGED_PREFIX)) problems.push(`${phase}: rule ref "${r.ref}" must start with ${MANAGED_PREFIX} so unmanaged rules are never touched`);
       if (/\bmatches\b|regex_replace|sha256/.test(r.expression)) problems.push(`${r.ref}: the Free plan has no regex or sha256 in expressions`);
       for (const h of hostsIn(r.expression)) knownHost(h, r.ref);
+      const valueExpressions = Object.values(r.action_parameters?.headers ?? {}).map((h) => h.expression).filter(Boolean);
+      for (const f of [r.expression, ...valueExpressions].flatMap(fieldsIn)) {
+        if (!rules.freeFields.includes(f)) problems.push(`${r.ref}: field ${f} is not on the Free-plan field list (rules.json freeFields)`);
+      }
     }
     const refs = list.map((r) => r.ref);
     if (new Set(refs).size !== refs.length) problems.push(`${phase}: duplicate rule refs`);
@@ -45,13 +55,22 @@ export function validateSpec(spec, { root } = {}) {
   const rate = rules.phases.http_ratelimit ?? [];
   for (const r of rate) {
     if (!/^\(starts_with\(http\.request\.uri\.path, "[^"]+"\)\)$/.test(r.expression)) problems.push(`${r.ref}: a Free-plan rate rule may use only the request path`);
-    if (JSON.stringify(r.ratelimit?.characteristics) !== '["ip.src"]') problems.push(`${r.ref}: a Free-plan rate rule counts by IP only`);
+    const rl = r.ratelimit ?? {};
+    if (!sameJson(rl.characteristics, ["cf.colo.id", "ip.src"])) problems.push(`${r.ref}: a Free-plan rate rule counts by exactly ["cf.colo.id","ip.src"]`);
+    if (rl.period !== 10) problems.push(`${r.ref}: a Free-plan rate rule has a 10-second period`);
+    if (rl.mitigation_timeout !== 10) problems.push(`${r.ref}: a Free-plan rate rule has a 10-second mitigation timeout`);
   }
   for (const r of rules.phases.http_request_cache_settings ?? []) {
     if (/registry/.test(r.expression)) problems.push(`${r.ref}: no Cache Rule may touch a registry host (REQ-DELIV-013)`);
   }
 
   const { access } = spec;
+  const adminApps = access.applications.filter((a) => a.adminIdpOnly);
+  const policiesOf = (a) => a.policies;
+  if (adminApps.length !== ENVS.length || new Set(adminApps.map((a) => a.env)).size !== ENVS.length) problems.push("each environment needs exactly one admin application");
+  if (adminApps.length > 1 && !adminApps.every((a) => sameJson(policiesOf(a), policiesOf(adminApps[0])) && a.sessionDuration === adminApps[0].sessionDuration)) {
+    problems.push("the admin applications must mirror each other exactly");
+  }
   if (access.applications.length > access.maxApplications) problems.push(`${access.applications.length} Access applications declared, the plan allows ${access.maxApplications}`);
   const names = access.applications.map((a) => a.name);
   if (new Set(names).size !== names.length) problems.push("duplicate Access application names");

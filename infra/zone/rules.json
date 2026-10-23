@@ -1,9 +1,25 @@
 {
   "budgets": {
-    "http_request_late_transform": { "kind": "Transform Rules", "max": 10 },
-    "http_request_firewall_custom": { "kind": "WAF custom rules", "max": 5 },
-    "http_request_cache_settings": { "kind": "Cache Rules", "max": 10 },
-    "http_ratelimit": { "kind": "Rate limiting rules", "max": 1 }
+    "http_request_late_transform": {
+      "kind": "Transform Rules",
+      "max": 10,
+      "alsoCounts": [
+        "http_request_transform",
+        "http_response_headers_transform"
+      ]
+    },
+    "http_request_firewall_custom": {
+      "kind": "WAF custom rules",
+      "max": 5
+    },
+    "http_request_cache_settings": {
+      "kind": "Cache Rules",
+      "max": 10
+    },
+    "http_ratelimit": {
+      "kind": "Rate limiting rules",
+      "max": 1
+    }
   },
   "smartTieredCache": true,
   "phases": {
@@ -15,32 +31,32 @@
         "action": "rewrite",
         "action_parameters": {
           "headers": {
-            "Cloudflare-Workers-Version-Overrides": { "operation": "remove" },
-            "Cloudflare-Workers-Version-Key": { "operation": "remove" },
-            "X-Selftest-Signature": { "operation": "remove" },
-            "X-PackServer-Shadow": { "operation": "remove" }
-          }
-        }
-      },
-      {
-        "ref": "packserver_version_key_from_session",
-        "description": "PackServer: version key from the session cookie",
-        "expression": "(http.host eq \"registry.claudinite.com\" and http.cookie contains \"__Host-session=\")",
-        "action": "rewrite",
-        "action_parameters": {
-          "headers": {
-            "Cloudflare-Workers-Version-Key": { "operation": "set", "expression": "http.request.cookies[\"__Host-session\"][0]" }
+            "Cloudflare-Workers-Version-Overrides": {
+              "operation": "remove"
+            },
+            "Cloudflare-Workers-Version-Key": {
+              "operation": "remove"
+            },
+            "X-Selftest-Signature": {
+              "operation": "remove"
+            },
+            "X-PackServer-Shadow": {
+              "operation": "remove"
+            }
           }
         }
       },
       {
         "ref": "packserver_version_key_from_ip",
-        "description": "PackServer: version key from the client IP when there is no session cookie",
-        "expression": "(http.host eq \"registry.claudinite.com\" and not http.cookie contains \"__Host-session=\")",
+        "description": "PackServer: version key from the client IP",
+        "expression": "(http.host eq \"registry.claudinite.com\")",
         "action": "rewrite",
         "action_parameters": {
           "headers": {
-            "Cloudflare-Workers-Version-Key": { "operation": "set", "expression": "to_string(ip.src)" }
+            "Cloudflare-Workers-Version-Key": {
+              "operation": "set",
+              "expression": "to_string(ip.src)"
+            }
           }
         }
       }
@@ -59,7 +75,12 @@
         "description": "PackServer: every object on the packs hosts is cacheable, origin Cache-Control respected",
         "expression": "(http.host in {\"packs.claudinite.com\" \"packs-staging.claudinite.com\"})",
         "action": "set_cache_settings",
-        "action_parameters": { "cache": true, "edge_ttl": { "mode": "respect_origin" } }
+        "action_parameters": {
+          "cache": true,
+          "edge_ttl": {
+            "mode": "respect_origin"
+          }
+        }
       }
     ],
     "http_ratelimit": [
@@ -68,8 +89,22 @@
         "description": "PackServer: sign-in endpoints, per client IP",
         "expression": "(starts_with(http.request.uri.path, \"/api/auth/\"))",
         "action": "block",
-        "ratelimit": { "characteristics": ["ip.src"], "period": 10, "requests_per_period": 20, "mitigation_timeout": 10 }
+        "ratelimit": {
+          "characteristics": [
+            "cf.colo.id",
+            "ip.src"
+          ],
+          "period": 10,
+          "requests_per_period": 20,
+          "mitigation_timeout": 10
+        }
       }
     ]
-  }
+  },
+  "freeFields": [
+    "http.host",
+    "http.request.uri.path",
+    "http.cookie",
+    "ip.src"
+  ]
 }

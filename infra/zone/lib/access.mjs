@@ -61,10 +61,13 @@ const summarise = (a) => ({
 const summariseDesired = (b) => summarise({ ...b, policies: b.policies });
 
 export async function ensureAccess({ api, accountId, env, spec, cfg, secrets, write, out, failures }) {
+  // Failures of this section only; `failures` is shared with the other sections.
+  let accessFailed = false;
   const attempt = async (label, fn) => {
     try {
       return await fn();
     } catch (e) {
+      accessFailed = true;
       failures.push(`${label}: ${e.message}`);
       out(`FAILED ${label}: ${e.message}`);
       return undefined;
@@ -82,7 +85,7 @@ export async function ensureAccess({ api, accountId, env, spec, cfg, secrets, wr
       if (idp.type === "onetimepin") throw new Error(`identity provider ${cfg.idpId} is One-time PIN; the admin application needs the hardware-key provider`);
       out(`ok       identity provider ${idp.name ?? idp.id} (${idp.type})`);
     });
-    if (failures.length) return;
+    if (accessFailed) return;
   }
 
   // Service tokens: the secret is readable once, so it goes straight to the Secrets Store.
@@ -108,16 +111,29 @@ export async function ensureAccess({ api, accountId, env, spec, cfg, secrets, wr
       const made = (await acct("POST", "/access/service_tokens", { name: t.name, duration: TOKEN_DURATION })).result;
       if (!made?.id || !made.client_id || !made.client_secret) throw new Error(`token ${t.name} was created without a usable id and secret; delete it in the dashboard and re-run`);
       tokenIds[t.role] = made.id;
+      const stored = [];
       try {
         await secrets.create(names.clientId, made.client_id, `${t.name} (${env})`);
+        stored.push(names.clientId);
         await secrets.create(names.clientSecret, made.client_secret, `${t.name} (${env})`);
       } catch (e) {
+        delete tokenIds[t.role];
+        const left = [];
+        for (const n of stored) {
+          try {
+            await secrets.remove(n);
+          } catch (re) {
+            left.push(`${n} (${re.message})`);
+          }
+        }
+        let tokenState = "the token was deleted";
         try {
           await acct("DELETE", `/access/service_tokens/${made.id}`);
-        } catch {
-          // The original error is the one to report.
+        } catch (de) {
+          tokenState = `the token ${made.id} could NOT be deleted (${de.message}); delete it in the dashboard`;
         }
-        throw new Error(`could not store ${t.name}: ${e.message}; the token was deleted, re-run`, { cause: e });
+        const secretState = left.length ? `; left in the Secrets Store: ${left.join(", ")}; delete by hand` : "; nothing was left in the Secrets Store";
+        throw new Error(`could not store ${t.name}: ${e.message}; ${tokenState}${secretState}; re-run once fixed`, { cause: e });
       }
       out(`created  service token ${t.name} -> Secrets Store ${Object.values(names).join(", ")}`);
     });

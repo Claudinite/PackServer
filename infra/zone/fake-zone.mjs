@@ -2,7 +2,7 @@
 // (zones, accounts, Secrets Store). Shapes follow the endpoints named in each handler. Test support only.
 import { fakeCloudflare } from "../fake-cloudflare.mjs";
 
-export function fakeZone({ seed = {}, failGet = [], failWrite = [], idps, base } = {}) {
+export function fakeZone({ seed = {}, failGet = [], failWrite = [], failSecretNumber, idps, base } = {}) {
   const inner = base ?? fakeCloudflare({ seed: { stores: [{ id: "store1", name: "packserver" }], ...(seed.base ?? {}) } });
   const state = {
     rulesets: structuredClone(seed.rulesets ?? {}),
@@ -16,6 +16,7 @@ export function fakeZone({ seed = {}, failGet = [], failWrite = [], idps, base }
     inner: inner.state,
   };
   const calls = [];
+  let secretPosts = 0;
   let n = 0;
   const id = (p) => `${p}-${String(++n).padStart(4, "0")}`;
   const json = (status, body) => ({ ok: status < 400, status, json: async () => body });
@@ -33,6 +34,21 @@ export function fakeZone({ seed = {}, failGet = [], failWrite = [], idps, base }
     const method = init.method ?? "GET";
     const path = url.pathname.replace("/client/v4", "");
     const body = init.body ? JSON.parse(init.body) : undefined;
+    let sm;
+    if ((sm = path.match(/^\/accounts\/acct\/secrets_store\/stores\/[^/]+\/secrets(?:\/([^/]+))?$/))) {
+      // The T-010 fake lists names only; here a secret's id is its name, so it can be deleted.
+      if (method === "POST" && ++secretPosts >= failSecretNumber) return fail(403, 2, "refused");
+      if (method === "GET") {
+        const res = await inner.fetch(rawUrl, init);
+        const j = await res.json();
+        return ok(j.result.map((x) => ({ ...x, id: x.name })), j.result_info);
+      }
+      if (method === "DELETE") {
+        inner.state.secrets = inner.state.secrets.filter((x) => x !== sm[1]);
+        delete (inner.state.secretValues ?? {})[sm[1]];
+        return ok({ id: sm[1] });
+      }
+    }
     const mine = /^\/(zones\/zone1\/(rulesets|cache|logpush)|accounts\/acct\/(access|r2\/buckets\/[^/]+\/lifecycle))/.test(path);
     if (!mine) return inner.fetch(rawUrl, init);
     calls.push({ method, path, body });

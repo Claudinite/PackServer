@@ -13,24 +13,29 @@ import { pathToFileURL } from "node:url";
 import { ConfigError, call, createSecretsStore, resolveCloudflareConfig } from "../lib/secrets-store.mjs";
 import { ENVS, ZONE } from "../lib/plan.mjs";
 import { appsFor, envHosts, loadSpec, tokensFor, validateSpec } from "./lib/spec.mjs";
-import { ensurePhase, ensureSmartTieredCache } from "./lib/rulesets.mjs";
+import { countRules, ensurePhase, ensureSmartTieredCache } from "./lib/rulesets.mjs";
 import { ensureAccess, readAccessConfig } from "./lib/access.mjs";
 import { ensureLogpush, readLogpushCredentials } from "./lib/logpush.mjs";
 
-export const SECTIONS = ["rules", "access", "logpush"];
+export const SECTIONS = ["access", "logpush"];
 const DEFAULT_BACKUP_DIR = join(import.meta.dirname, "previous");
 
-const USAGE = `Usage: node infra/zone/apply.mjs --env <staging|production> [--plan | --apply] [--only <rules,access,logpush>]
-                              [--backup-dir <dir>]
+const USAGE = `Usage: node infra/zone/apply.mjs [--env <staging|production>] [--zone] [--plan | --apply]
+                              [--only <access,logpush>] [--backup-dir <dir>]
 
   (default)     validate the declarations offline and print them
   --plan        read the account and report the changes --apply would make
   --apply       make the changes
-  --only        limit to some sections (default: all three)
+  --zone        the zone-wide rules (Transform, WAF, Cache, rate limit, Smart Tiered Cache); never implied by --env
+  --only        limit --env to some sections (default: access and logpush)
   --backup-dir  where the previous rule set of each changed phase is saved (default infra/zone/previous)
 
-The zone rules are zone-wide and name both environments' hosts, so either --env applies all of
-them. Access applications, service tokens and Logpush jobs are those of the chosen environment.
+Zone rules name both environments' hosts and take effect on production the moment they are
+applied, so they run only with --zone. Rollout order:
+  1. --env staging --apply     staging Access applications, service token and Logpush jobs
+  2. --zone --apply            the zone rules, once staging is verified
+  3. --env production --apply  production Access applications, service tokens and Logpush jobs
+Access applications, service tokens and Logpush jobs are those of the chosen --env.
 
 Requires CF_BOOTSTRAP_TOKEN (CLOUDFLARE_ACCOUNT_ID when the token sees several accounts).
   access:   ACCESS_TEAM_EMAILS; for production also ACCESS_ADMIN_IDP_ID (manual task M-03, #101)
@@ -38,11 +43,16 @@ Requires CF_BOOTSTRAP_TOKEN (CLOUDFLARE_ACCOUNT_ID when the token sees several a
   logpush:  CF_LOGPUSH_R2_ACCESS_KEY_ID and CF_LOGPUSH_R2_SECRET_ACCESS_KEY (R2 object write on the ops bucket)
 `;
 
-export function describe(spec, env) {
-  const lines = [`env=${env}`];
-  for (const [phase, rules] of Object.entries(spec.rules.phases)) {
-    lines.push(`  ${spec.rules.budgets[phase].kind} (${rules.length} of ${spec.rules.budgets[phase].max}): ${rules.map((r) => r.ref).join(", ")}`);
+export function describe(spec, env, zoneRules) {
+  const lines = [];
+  if (zoneRules) {
+    lines.push("zone-wide rules:");
+    for (const [phase, rules] of Object.entries(spec.rules.phases)) {
+      lines.push(`  ${spec.rules.budgets[phase].kind} (${rules.length} of ${spec.rules.budgets[phase].max}): ${rules.map((r) => r.ref).join(", ")}`);
+    }
   }
+  if (!env) return lines;
+  lines.push(`env=${env}`);
   lines.push(`  access applications: ${appsFor(spec, env).map((a) => a.name).join(", ") || "(none)"}`);
   lines.push(`  service tokens: ${tokensFor(spec, env).map((t) => t.name).join(", ") || "(none)"}`);
   lines.push(`  logpush jobs: ${spec.logpush.jobs.map((j) => `${j.dataset}/${j.key}`).join(", ")} -> ${spec.logpush.destinationBucket}`);
@@ -56,7 +66,7 @@ export async function main(argv, envVars, deps = {}) {
   try {
     ({ values } = parseArgs({
       args: argv,
-      options: { env: { type: "string" }, plan: { type: "boolean" }, apply: { type: "boolean" }, only: { type: "string" }, "backup-dir": { type: "string" }, help: { type: "boolean" } },
+      options: { env: { type: "string" }, zone: { type: "boolean" }, plan: { type: "boolean" }, apply: { type: "boolean" }, only: { type: "string" }, "backup-dir": { type: "string" }, help: { type: "boolean" } },
       strict: true,
     }));
   } catch (e) {
@@ -67,20 +77,29 @@ export async function main(argv, envVars, deps = {}) {
     out(USAGE);
     return 0;
   }
-  if (!values.env || !ENVS.includes(values.env)) {
-    err(`--env <${ENVS.join("|")}> is required\n\n${USAGE}`);
+  if (values.env !== undefined && !ENVS.includes(values.env)) {
+    err(`--env takes ${ENVS.join(" or ")}\n\n${USAGE}`);
+    return 2;
+  }
+  if (!values.env && !values.zone) {
+    err(`give --env <${ENVS.join("|")}>, --zone, or both\n\n${USAGE}`);
+    return 2;
+  }
+  if (!values.env && values.only) {
+    err(`--only limits --env sections; give --env\n\n${USAGE}`);
     return 2;
   }
   if (values.plan && values.apply) {
     err(`--plan and --apply are exclusive\n\n${USAGE}`);
     return 2;
   }
-  const only = values.only ? values.only.split(",") : SECTIONS;
+  const only = values.env ? (values.only ? values.only.split(",") : SECTIONS) : [];
   if (only.some((s) => !SECTIONS.includes(s))) {
     err(`--only takes ${SECTIONS.join(", ")}\n\n${USAGE}`);
     return 2;
   }
   const env = values.env;
+  const zoneRules = values.zone === true;
   const spec = deps.spec ?? loadSpec();
   const problems = validateSpec(spec, { root: deps.root });
   if (problems.length) {
@@ -88,7 +107,7 @@ export async function main(argv, envVars, deps = {}) {
     return 2;
   }
   if (!values.plan && !values.apply) {
-    for (const l of describe(spec, env)) out(l);
+    for (const l of describe(spec, env, zoneRules)) out(l);
     out("validated offline; nothing was read or changed. Use --plan to compare with the account, --apply to change it.");
     return 0;
   }
@@ -133,12 +152,17 @@ export async function main(argv, envVars, deps = {}) {
     return 1;
   }
 
-  out(`${write ? "applying" : "planning"} env=${env} (${only.join(", ")})`);
-  if (only.includes("rules")) {
+  out(`${write ? "applying" : "planning"} ${[zoneRules && "zone rules", env && `env=${env} (${only.join(", ")})`].filter(Boolean).join(" and ")}`);
+  if (zoneRules) {
     const backupDir = values["backup-dir"] ?? deps.backupDir ?? DEFAULT_BACKUP_DIR;
     const now = deps.now ?? (() => new Date().toISOString());
     for (const [phase, desired] of Object.entries(spec.rules.phases)) {
-      await attempt(phase, () => ensurePhase({ api, zoneId, phase, desired, budget: spec.rules.budgets[phase], write, out, backupDir, now }));
+      await attempt(phase, async () => {
+        const budget = spec.rules.budgets[phase];
+        let otherRules = 0;
+        for (const other of budget.alsoCounts ?? []) otherRules += await countRules(api, zoneId, other);
+        await ensurePhase({ api, zoneId, phase, desired, budget, write, out, backupDir, now, otherRules });
+      });
     }
     if (spec.rules.smartTieredCache) await attempt("smart tiered cache", () => ensureSmartTieredCache({ api, zoneId, write, out }));
   }
