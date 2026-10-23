@@ -29,6 +29,13 @@
       "when": 1792722340207,
       "tag": "20261023022540_github_webhook_state",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792724430789,
+      "tag": "20261023030030_search_index",
+      "breakpoints": true
     }
   ]
 }

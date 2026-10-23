@@ -14,6 +14,8 @@
       "vars": {
         "WORKER": "mcp",
         "ENVIRONMENT": "test",
+        "EMBEDDING_MODEL": "@cf/baai/bge-m3",
+        "EMBEDDING_DIMENSIONS": "1024",
         "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
         "IP_HASH_MASTER_KEY": "test-ip-hash-master-key",
         "PRINCIPAL_HASH_KEY": "test-principal-hash-key"
@@ -99,7 +101,9 @@
       ],
       "vars": {
         "WORKER": "mcp",
-        "ENVIRONMENT": "staging"
+        "ENVIRONMENT": "staging",
+        "EMBEDDING_MODEL": "@cf/baai/bge-m3",
+        "EMBEDDING_DIMENSIONS": "1024"
       },
       "d1_databases": [
         {
@@ -210,7 +214,9 @@
       ],
       "vars": {
         "WORKER": "mcp",
-        "ENVIRONMENT": "production"
+        "ENVIRONMENT": "production",
+        "EMBEDDING_MODEL": "@cf/baai/bge-m3",
+        "EMBEDDING_DIMENSIONS": "1024"
       },
       "d1_databases": [
         {

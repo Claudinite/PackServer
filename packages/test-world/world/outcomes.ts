@@ -3,7 +3,7 @@
 
 export type RefusalReason =
   | "step-up" | "mfa-required" | "oidc.fork" | "oidc.workflow" | "oidc.environment" | "oidc.invalid" | "signature" | "signed-out"
-  | "rate-limited" | "human-check" | "forbidden" | "exists" | "trusted-only" | "quota" | "unknown-tool" | "scope";
+  | "rate-limited" | "human-check" | "forbidden" | "exists" | "trusted-only" | "quota" | "unknown-tool" | "scope" | "category";
 
 export class Refusal {
   constructor(

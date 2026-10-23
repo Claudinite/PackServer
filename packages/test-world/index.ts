@@ -3,3 +3,4 @@ export { InfrastructureError, NotImplemented } from "./world/errors";
 export { Refusal, NotFound, Ignored, Held } from "./world/outcomes";
 export type * from "./world/types";
 export type { PackBody, VersionBody, Read } from "./world/packs";
+export type { ListingSeed, SignalsSeed, Filters as SearchFilters, Results as SearchResults, ResultCard } from "./world/areas/search";

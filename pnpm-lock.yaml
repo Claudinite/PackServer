@@ -271,6 +271,9 @@ importers:
 
   workers/mcp:
     dependencies:
+      '@packserver/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@packserver/http':
         specifier: workspace:*
         version: link:../../packages/http

@@ -13,6 +13,7 @@ const runtime = (missingBindings: string[] = []): McpRuntime => ({
   missingSecrets: [],
   ports: fakes,
   services: {},
+  config: { search: { embeddingModel: "@cf/baai/bge-m3", embeddingDimensions: 1024 } },
 });
 
 describeWorkerShell({

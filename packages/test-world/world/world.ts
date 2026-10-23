@@ -11,6 +11,7 @@ import { createModeration } from "./areas/moderation";
 import { createOperator } from "./areas/operator";
 import { createPublishing } from "./areas/publishing";
 import { createScopes } from "./areas/scopes";
+import { createSearch } from "./areas/search";
 import { createTelemetry } from "./areas/telemetry";
 import { createUsers } from "./areas/users";
 import { createValidation } from "./areas/validation";
@@ -43,6 +44,7 @@ export function createWorld(driver: Driver, title: string) {
     ...createAgents(),
     ...createGitHub(driver),
     ...createAuditModule(driver),
+    ...createSearch(driver, aliases),
     ...createTelemetry(),
     operator: createOperator(driver),
     clock: createClock(driver),
