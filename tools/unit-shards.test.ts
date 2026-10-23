@@ -1,7 +1,10 @@
+import { execFile } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
+const run = promisify(execFile);
 const REPO = join(import.meta.dirname, "..");
 
 function workspaceDirs(): string[] {
@@ -24,6 +27,22 @@ describe("unit shards", () => {
     expect(scripts.length).toBeGreaterThan(0);
     for (const [dir, test] of scripts) expect([dir, test]).toEqual([dir, "vitest run"]);
   });
+
+  // The shards pass `--passWithNoTests`, so a package whose include pattern stops matching would
+  // otherwise pass silently in both.
+  it("finds at least one test file in every package with a test script", async () => {
+    const dirs = workspaceDirs().filter((dir) => {
+      const manifest = join(REPO, dir, "package.json");
+      return existsSync(manifest) && (JSON.parse(readFileSync(manifest, "utf8")) as { scripts?: { test?: string } }).scripts?.test !== undefined;
+    });
+    const listed = await Promise.all(
+      dirs.map(async (dir) => {
+        const { stdout } = await run("pnpm", ["exec", "vitest", "list", "--filesOnly"], { cwd: join(REPO, dir) }).catch((error: { stdout?: string }) => ({ stdout: error.stdout ?? "" }));
+        return [dir, stdout.split("\n").filter((line) => /\.(test|spec)\./.test(line)).length > 0] as const;
+      }),
+    );
+    expect(listed.filter(([, found]) => !found).map(([dir]) => dir)).toEqual([]);
+  }, 120_000);
 
   it("runs every shard of the matrix against all packages", () => {
     const yml = readFileSync(join(REPO, ".github/workflows/ci.yml"), "utf8");
