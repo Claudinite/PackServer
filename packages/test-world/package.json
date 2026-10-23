@@ -1,0 +1,29 @@
+{
+  "name": "@packserver/test-world",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./vitest": "./vitest.ts",
+    "./browser": "./drivers/browser.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json && tsc -p fake-workers/tsconfig.json",
+    "test": "vitest run",
+    "test:browser": "playwright test"
+  },
+  "dependencies": {
+    "@packserver/core": "workspace:*",
+    "@packserver/http": "workspace:*",
+    "@packserver/ports": "workspace:*",
+    "@packserver/schema": "workspace:*",
+    "msw": "catalog:",
+    "undici": "catalog:",
+    "wrangler": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "catalog:",
+    "@playwright/test": "catalog:"
+  }
+}

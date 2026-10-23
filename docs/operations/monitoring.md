@@ -17,7 +17,7 @@ and as an Analytics Engine point in `request_outcomes` with `index1 = version_id
 us. Domain events go to `domain_events` indexed by signal name. Workers Traces run at 5% on read
 paths, 100% on the validator. Invocation logs are off everywhere. The zone's three Logpush jobs
 (`http_requests` cache hits at `sample: 0.1`, `http_requests` misses unsampled, ARCH-REV M6;
-`firewall_events`) archive to R2 for 90 days (firewall events 30). A Logpush Transformer (D58)
+`firewall_events`) archive to R2 for 90 days (firewall events 30). A Logpush Transformer (D59)
 rewrites each `http_requests` record before Cloudflare delivers it: `ClientIP` becomes
 `ClientNetwork` (/24 for IPv4, /48 for IPv6) and only the path is selected, never the URI or query;
 the network-level counts REQ-TELEM-001 and REQ-TELEM-002 promise come from the archive.

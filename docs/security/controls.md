@@ -86,7 +86,7 @@ brackets.
   reconciled; no Worker binding; CI without R2 admin [REQ-AUDIT-005].
 - Hashed IPs everywhere: `ip_hash = HMAC(k_day, ip)` with a daily key derived from a 90-day-rotated
   master; `principal_hash` under a separate stable key; request records carry the client network
-  (/24, /48) in place of the IP, rewritten by the Logpush Transformer before delivery (D58), and
+  (/24, /48) in place of the IP, rewritten by the Logpush Transformer before delivery (D59), and
   the path without its query; 90-day retention [REQ-AUDIT-004, REQ-TELEM-006, 008].
 - Platform logs that copy data are tamed: invocation logs off, parameterised SQL only, trace
   exports without `Logs`, no identifiers in URLs or span attributes.

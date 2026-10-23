@@ -72,7 +72,7 @@ numbers are never rendered anywhere. The prune cadences are in
 `packs.claudinite.com` has no Worker, so public downloads cannot write anything. Two zone Logpush
 jobs deliver `http_requests` records to R2: one for CDN cache hits at `sample: 0.1`, one for misses
 unsampled (ARCH-REV M6); a third carries `firewall_events`. Each `http_requests` job has a Logpush
-Transformer (D58), a SQL projection Cloudflare applies to every record before delivery: it selects
+Transformer (D59), a SQL projection Cloudflare applies to every record before delivery: it selects
 `ClientRequestPath` and the other fields the rollup needs, never `ClientIP` or the URI and query
 fields, and computes `ClientNetwork`, the /24 of an IPv4 address or the /48 of an IPv6 one in CIDR
 form (`198.51.100.0/24`); the hit/miss split is its `WHERE` clause, since a job has a filter or a

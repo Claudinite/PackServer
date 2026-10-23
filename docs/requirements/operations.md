@@ -234,7 +234,7 @@ totals.
 - status: active
 - since: 2026-10
 - actor: system (security)
-- source: DATA; docs/decisions.md D6 (90-day request records with truncated IPs), D58 (truncated before delivery)
+- source: DATA; docs/decisions.md D6 (90-day request records with truncated IPs), D59 (truncated before delivery)
 - coverage: scenario
 
 Raw IP addresses are never stored; request records keep only the client network (/24 for IPv4, /48
