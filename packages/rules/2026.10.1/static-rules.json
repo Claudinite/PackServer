@@ -126,7 +126,7 @@
       "id": "text.credential-upload",
       "class": "fail",
       "category": "credentials",
-      "description": "A command uploads a credential file or secret variable to a network destination."
+      "description": "A command uploads a credential file or the whole environment to a network destination."
     },
     {
       "id": "text.network-sink-in-prose",

