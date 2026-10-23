@@ -1,6 +1,7 @@
 {
   "name": "admin-local",
   "workers_dev": false,
+  "preview_urls": false,
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
@@ -11,6 +12,7 @@
     "test": {
       "name": "admin-test",
       "workers_dev": false,
+      "preview_urls": false,
       "vars": {
         "WORKER": "admin",
         "ENVIRONMENT": "test",
@@ -18,7 +20,9 @@
         "AUDIT_S3_ACCESS_KEY_ID": "test-audit-access-key-id",
         "AUDIT_S3_SECRET_ACCESS_KEY": "test-audit-secret-access-key",
         "IP_HASH_MASTER_KEY": "test-ip-hash-master-key",
-        "PRINCIPAL_HASH_KEY": "test-principal-hash-key"
+        "PRINCIPAL_HASH_KEY": "test-principal-hash-key",
+        "AUDIT_HEAD_SIGNING_KEY": "test-audit-head-signing-key",
+        "ANALYTICS_READ_TOKEN": "test-analytics-read-token"
       },
       "d1_databases": [
         {
@@ -97,6 +101,7 @@
     "staging": {
       "name": "admin-staging",
       "workers_dev": false,
+      "preview_urls": false,
       "routes": [
         {
           "pattern": "registry-admin-staging.claudinite.com/*",
@@ -112,7 +117,8 @@
       "vars": {
         "WORKER": "admin",
         "ENVIRONMENT": "staging",
-        "AUDIT_S3_ENDPOINT": "https://ACCOUNT_ID.r2.cloudflarestorage.com/audit-log-staging"
+        "AUDIT_S3_ENDPOINT": "https://ACCOUNT_ID.r2.cloudflarestorage.com/audit-log-staging",
+        "POINTS_DATASET": "domain_events_staging"
       },
       "d1_databases": [
         {
@@ -203,6 +209,16 @@
           "binding": "PRINCIPAL_HASH_KEY",
           "store_id": "00000000000000000000190000000004",
           "secret_name": "principal-hash-key-staging"
+        },
+        {
+          "binding": "AUDIT_HEAD_SIGNING_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "audit-head-signing-key-staging"
+        },
+        {
+          "binding": "ANALYTICS_READ_TOKEN",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "analytics-read-token-staging"
         }
       ],
       "version_metadata": {
@@ -212,6 +228,7 @@
     "production": {
       "name": "admin",
       "workers_dev": false,
+      "preview_urls": false,
       "routes": [
         {
           "pattern": "registry-admin.claudinite.com/*",
@@ -227,7 +244,8 @@
       "vars": {
         "WORKER": "admin",
         "ENVIRONMENT": "production",
-        "AUDIT_S3_ENDPOINT": "https://ACCOUNT_ID.r2.cloudflarestorage.com/audit-log"
+        "AUDIT_S3_ENDPOINT": "https://ACCOUNT_ID.r2.cloudflarestorage.com/audit-log",
+        "POINTS_DATASET": "domain_events"
       },
       "d1_databases": [
         {
@@ -318,6 +336,16 @@
           "binding": "PRINCIPAL_HASH_KEY",
           "store_id": "00000000000000000000290000000004",
           "secret_name": "principal-hash-key"
+        },
+        {
+          "binding": "AUDIT_HEAD_SIGNING_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "audit-head-signing-key"
+        },
+        {
+          "binding": "ANALYTICS_READ_TOKEN",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "analytics-read-token"
         }
       ],
       "version_metadata": {

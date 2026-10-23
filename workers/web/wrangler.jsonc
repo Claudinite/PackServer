@@ -1,6 +1,7 @@
 {
   "name": "web-local",
   "workers_dev": false,
+  "preview_urls": false,
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
@@ -11,12 +12,16 @@
     "test": {
       "name": "web-test",
       "workers_dev": false,
+      "preview_urls": false,
       "vars": {
         "WORKER": "web",
         "ENVIRONMENT": "test",
         "CDN_ORIGIN": "https://packs.test.invalid",
+        "SITE_ORIGINS": "http://web.internal",
         "TURNSTILE_SECRET": "1x0000000000000000000000000000000AA",
         "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
+        "GITHUB_APP_CLIENT_ID": "fake-github-client-id",
+        "GITHUB_APP_CLIENT_SECRET": "fake-github-client-secret",
         "IP_HASH_MASTER_KEY": "test-ip-hash-master-key",
         "PRINCIPAL_HASH_KEY": "test-principal-hash-key"
       },
@@ -93,6 +98,7 @@
     "staging": {
       "name": "web-staging",
       "workers_dev": false,
+      "preview_urls": false,
       "routes": [
         {
           "pattern": "registry-staging.claudinite.com/*",
@@ -102,7 +108,8 @@
       "vars": {
         "WORKER": "web",
         "ENVIRONMENT": "staging",
-        "CDN_ORIGIN": "https://packs-staging.claudinite.com"
+        "CDN_ORIGIN": "https://packs-staging.claudinite.com",
+        "SITE_ORIGINS": "https://registry-staging.claudinite.com"
       },
       "d1_databases": [
         {
@@ -182,6 +189,16 @@
           "secret_name": "selftest-hmac-key-staging"
         },
         {
+          "binding": "GITHUB_APP_CLIENT_ID",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "github-app-client-id-staging"
+        },
+        {
+          "binding": "GITHUB_APP_CLIENT_SECRET",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "github-app-client-secret-staging"
+        },
+        {
           "binding": "IP_HASH_MASTER_KEY",
           "store_id": "00000000000000000000190000000004",
           "secret_name": "ip-hash-master-key-staging"
@@ -199,6 +216,7 @@
     "production": {
       "name": "web",
       "workers_dev": false,
+      "preview_urls": false,
       "routes": [
         {
           "pattern": "registry.claudinite.com/*",
@@ -212,7 +230,8 @@
       "vars": {
         "WORKER": "web",
         "ENVIRONMENT": "production",
-        "CDN_ORIGIN": "https://packs.claudinite.com"
+        "CDN_ORIGIN": "https://packs.claudinite.com",
+        "SITE_ORIGINS": "https://registry.claudinite.com,https://registry-canary.claudinite.com"
       },
       "d1_databases": [
         {
@@ -290,6 +309,16 @@
           "binding": "SELFTEST_HMAC_KEY",
           "store_id": "00000000000000000000290000000004",
           "secret_name": "selftest-hmac-key"
+        },
+        {
+          "binding": "GITHUB_APP_CLIENT_ID",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "github-app-client-id"
+        },
+        {
+          "binding": "GITHUB_APP_CLIENT_SECRET",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "github-app-client-secret"
         },
         {
           "binding": "IP_HASH_MASTER_KEY",

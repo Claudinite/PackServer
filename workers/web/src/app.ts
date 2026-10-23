@@ -1,7 +1,7 @@
 import { createShell, type WorkerShellOptions } from "@packserver/http";
 import type { Hono } from "hono";
 import type { WebRuntime } from "./bindings";
-import type { WebEnv } from "./context";
+import { requestContext, type WebEnv } from "./context";
 import { selfTestChecks } from "./selftest";
 import { routes as auth } from "./routes/auth";
 import { routes as scopes } from "./routes/scopes";
@@ -50,10 +50,7 @@ export function createApp(runtime: WebRuntime, options: AppOptions = {}): Hono<W
     checks: () => selfTestChecks(runtime),
     selfTestAllowed: options.selfTestAllowed,
   });
-  app.use(async (c, next) => {
-    c.set("runtime", runtime);
-    await next();
-  });
+  app.use(requestContext(runtime));
   for (const api of [auth, scopes, orgs, tokens, packs, private_, access, trustedPublishers, abuse, apiLeak, publishApproval, reportHashMismatch]) {
     app.route("/api", api);
   }

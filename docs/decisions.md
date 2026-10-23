@@ -43,6 +43,7 @@ No question is open: every spot the spec once marked "Pending decision" is writt
 | 2026-10-22 | Sensitive actions take a passkey assertion bound to the action and target; there is no re-authentication window | A stolen session must not be able to publish | Ariel (CONFLICT-2); data-stores decision 1 |
 | 2026-10-22 | Sessions in KV, 12 h idle / 7 d absolute, last-seen refreshed at most every 15 min; about 60 s revocation delay accepted, sensitive actions also check D1 `session_revocations` | KV is the right store for per-request reads; the delay is harmless because sensitive actions re-assert | Ariel; open-questions D11 |
 | 2026-10-22 | Recovery with no factor and no linked GitHub waits 72 h for manual review | Takeover resistance | PR #3 §4 |
+| 2026-10-23 | Build-lead default, for Ariel to confirm: the `web` Worker holds the GitHub App's OAuth client id and secret for sign-in; the App's private key and webhook secret stay in `github` | The client secret exchanges a code only for a registered callback and cannot mint installation tokens; the App's permissions are read-only; `web` already holds every session, so a separate auth Worker adds a hop and a deploy unit without shrinking the blast radius | T-020 review (PR #143) |
 
 ## Scopes and verification
 

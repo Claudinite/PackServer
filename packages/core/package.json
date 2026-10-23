@@ -9,6 +9,8 @@
     "./canonical": "./canonical/index.ts",
     "./canonical/fixtures": "./canonical/fixtures.ts",
     "./capabilities": "./validation/capabilities/inspector.ts",
+    "./identity": "./identity/index.ts",
+    "./identity/testing": "./identity/testing.ts",
     "./catalog": "./catalog/view.ts",
     "./github": "./github/index.ts",
     "./index": "./index/index.ts",

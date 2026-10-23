@@ -1,10 +1,10 @@
-import { s3AuditBucket, type AuditBucket } from "@packserver/core/audit";
+import { analyticsAppendedPoints, ecdsaSigner, rekorTransparency, s3AuditBucket, type AppendedPoints, type AuditBucket } from "@packserver/core/audit";
 import { analyticsStats, createIsolateTelemetry } from "@packserver/http";
 import {
   accessPort, cryptoRng, d1Port, kvPort, queuePort, r2Port, r2ReadPort, readSecret, systemClock, workerRuntime, workflowPort,
   type WorkerRuntime,
 } from "@packserver/ports/cloudflare";
-import type { Ports, R2, R2Read } from "@packserver/ports";
+import type { Ports, R2, R2Read, Transparency } from "@packserver/ports";
 
 export interface Env {
   WORKER: string;
@@ -26,14 +26,24 @@ export interface Env {
   AUDIT_S3_ENDPOINT?: string;
   AUDIT_S3_ACCESS_KEY_ID: string | SecretsStoreSecret;
   AUDIT_S3_SECRET_ACCESS_KEY: string | SecretsStoreSecret;
+  /** PKCS#8 PEM of the P-256 key that signs the daily audit head before it goes to the transparency log. */
+  AUDIT_HEAD_SIGNING_KEY: string | SecretsStoreSecret;
+  /** Dataset the nightly verifier reads `audit.appended` points back from, in the account of the audit endpoint; absent, the verifier skips that reconciliation and says so. */
+  POINTS_DATASET?: string;
+  /** API token with Account Analytics read, for the Analytics Engine SQL API. */
+  ANALYTICS_READ_TOKEN: string | SecretsStoreSecret;
+  /** The transparency log's base URL; the public Sigstore log when absent. */
+  REKOR_URL?: string;
   CF_VERSION_METADATA: WorkerVersionMetadata;
 }
 
 /** The admin Worker writes no public or private bucket; reports and `ops` are read-only here. */
-export type AdminPorts = Pick<Ports, "clock" | "rng" | "d1" | "stats" | "queues" | "workflows" | "access" | "telemetry" | "kv"> & {
+export type AdminPorts = Pick<Ports, "clock" | "rng" | "d1" | "stats" | "queues" | "workflows" | "access" | "telemetry" | "kv" | "transparency"> & {
   r2: Readonly<{ PACKS_STAGING: R2; VALIDATION_REPORTS: R2Read; OPS_BUCKET: R2Read }>;
   /** The audit chain's bucket over the S3 API with an object-only token; not an R2 binding. */
   auditBucket: AuditBucket;
+  /** Reads `audit.appended` points back for the nightly reconciliation; unset where the account and dataset are not configured. */
+  appendedPoints?: AppendedPoints;
 };
 
 /** Reads the token from Secrets Store on first use, so a missing secret fails the batch rather than the isolate. */
@@ -54,6 +64,23 @@ function lazyAuditBucket(env: Env): AuditBucket {
     list: async (prefix, limit, startAfter) => (await resolve()).list(prefix, limit, startAfter),
   };
 }
+function lazyTransparency(env: Env): Transparency {
+  let log: Promise<Transparency> | undefined;
+  return {
+    anchor: async (head) =>
+      (await (log ??= (async () =>
+        rekorTransparency({ signer: await ecdsaSigner(await readSecret(env.AUDIT_HEAD_SIGNING_KEY)), ...(env.REKOR_URL && { url: env.REKOR_URL }) }))())).anchor(head),
+  };
+}
+
+const optional = <K extends string, V>(key: K, value: V | undefined): { [P in K]?: V } => (value === undefined ? {} : ({ [key]: value } as { [P in K]?: V }));
+
+function pointsReader(env: Env): AppendedPoints | undefined {
+  const accountId = env.AUDIT_S3_ENDPOINT && /^https:\/\/([^./]+)\.r2\.cloudflarestorage\.com/.exec(env.AUDIT_S3_ENDPOINT)?.[1];
+  if (!accountId || !env.POINTS_DATASET) return undefined;
+  return analyticsAppendedPoints({ accountId, dataset: env.POINTS_DATASET, token: () => readSecret(env.ANALYTICS_READ_TOKEN) });
+}
+
 export type AdminRuntime = WorkerRuntime<AdminPorts>;
 
 const isolateTelemetry = createIsolateTelemetry();
@@ -79,5 +106,7 @@ export function createRuntime(env: Env): AdminRuntime {
     workflows: { VALIDATE_PACK: workflowPort(env.VALIDATE_PACK) },
     access: accessPort(env.ENVIRONMENT, env.ACCESS),
     auditBucket: lazyAuditBucket(env),
+    transparency: lazyTransparency(env),
+    ...optional("appendedPoints", pointsReader(env)),
   });
 }

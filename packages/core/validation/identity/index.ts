@@ -1,11 +1,12 @@
 import type { Finding } from "@packserver/schema";
 import type { MakeFinding } from "../engine/rules.ts";
 import type { StaticRulePorts } from "../engine/types.ts";
+import { RESERVED_WORDS } from "./reserved.ts";
 import { isNearMiss, skeleton } from "./similarity.ts";
 
 export { editDistance, isNearMiss, skeleton } from "./similarity.ts";
 
-export const RESERVED_WORDS: readonly string[] = ["admin", "claude", "anthropic", "claudinite", "cn", "fleet", "local", "global", "canon", "temp"];
+export { RESERVED_WORDS };
 
 const RESERVED_SKELETONS = RESERVED_WORDS.map((w) => [w, skeleton(w)] as const);
 

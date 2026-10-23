@@ -1,6 +1,7 @@
 {
   "name": "validator-local",
   "workers_dev": false,
+  "preview_urls": false,
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
@@ -11,6 +12,7 @@
     "test": {
       "name": "validator-test",
       "workers_dev": false,
+      "preview_urls": false,
       "vars": {
         "WORKER": "validator",
         "ENVIRONMENT": "test",
@@ -141,6 +143,7 @@
     "staging": {
       "name": "validator-staging",
       "workers_dev": false,
+      "preview_urls": false,
       "routes": [
         {
           "pattern": "registry-staging.claudinite.com/validator/__selftest",
@@ -316,6 +319,7 @@
     "production": {
       "name": "validator",
       "workers_dev": false,
+      "preview_urls": false,
       "routes": [
         {
           "pattern": "registry-canary.claudinite.com/validator/__selftest",
