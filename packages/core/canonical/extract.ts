@@ -129,6 +129,7 @@ export async function extractArchive(archive: Uint8Array, opts: { canonical?: bo
   } finally {
     source.destroy();
     decoder.destroy();
+    if (opts.stats) opts.stats.producedBytes = produced;
   }
   if (produced === 0) throw unsafe("tar-empty");
   tar.finish();

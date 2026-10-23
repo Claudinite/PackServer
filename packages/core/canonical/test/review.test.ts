@@ -128,9 +128,13 @@ describe("hostile inputs stay cheap (REQ-VAL-023)", () => {
       const comps = Array.from({ length: 31 }, (_, d) => (d === 0 ? `t${i}-` : `l${d}-`).padEnd(125, "a"));
       entries.push({ name: "p", type: "x", content: pax({ path: [...comps, "f"].join("/") }) }, file("ignored", ""));
     }
-    const up = zstd(rawTar(entries), 19);
+    const tar = rawTar(entries);
+    const up = zstd(tar, 19);
     expect(up.length).toBeLessThan(40_000);
-    await expectRefused(up, "archive.bomb", "unpacked-size");
+    const stats = await expectRefused(up, "archive.bomb", "unpacked-size");
+    // Refused before the stream ended, so before the tree (and its canonical tar) could be built.
+    expect(stats.producedBytes).toBeGreaterThan(0);
+    expect(stats.producedBytes).toBeLessThan(tar.length);
   });
 
   it("keeps the running canonical size equal to the size of the tar it predicts", () => {
