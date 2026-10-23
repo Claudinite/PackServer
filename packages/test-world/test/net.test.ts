@@ -1,3 +1,4 @@
+import { createServer, type Server } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createTestHarness, type TestHarness } from "wrangler";
@@ -14,6 +15,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 beforeAll(async () => {
   net.use((request) => (new URL(request.url).host === "faked.test" ? new Response("from the fake") : undefined));
   net.use(turnstileHandler(createFakePorts().turnstile));
+  net.freeze();
   net.listen();
   server = createTestHarness({
     workers: [{ config: { name: "egress", main: join(here, "egress-worker.ts"), compatibility_date: "2026-10-01" } as never }],
@@ -34,11 +36,34 @@ describe("outbound traffic is fail-closed", () => {
     expect(net.requests().map((r) => [r.target, r.op])).toContainEqual(["faked.test", "GET /x"]);
   });
 
-  it("fails a host nobody faked instead of reaching the network, and tells the Worker so", async () => {
+  it("never reaches a reachable host nobody faked, tells the Worker so, and remembers the call for the scenario", async () => {
+    let reached = 0;
+    const listener: Server = createServer((_req, res) => {
+      reached++;
+      res.end("the real network");
+    });
+    await new Promise<void>((r) => listener.listen(0, "127.0.0.1", r));
+    try {
+      net.reset();
+      const { port } = listener.address() as { port: number };
+      const res = await call(`http://127.0.0.1:${port}/secret`);
+      expect(res.status).toBe(500);
+      expect(await res.text()).not.toContain("the real network");
+      expect(reached).toBe(0);
+      expect(net.requests()).toEqual([]);
+      expect(net.unfaked()).toEqual([`GET http://127.0.0.1:${port}/secret`]);
+      net.reset();
+      expect(net.unfaked()).toEqual([]);
+    } finally {
+      listener.close();
+    }
+  });
+
+  it("drops handlers a scenario added at reset, and keeps the standing ones", async () => {
+    net.use(() => new Response("scenario only"));
     net.reset();
-    const res = await call("https://nobody-faked-this.test/");
-    expect(res.status).toBe(500);
-    expect(net.requests()).toEqual([]);
+    expect((await call("https://faked.test/x")).status).toBe(200);
+    expect((await call("https://other.test/x")).status).toBe(500);
   });
 
   it("serves the Turnstile siteverify fake from the ports fake: only the always-pass token succeeds", async () => {

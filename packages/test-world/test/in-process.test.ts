@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { InProcessDriver } from "../drivers/inprocess";
+import { InProcessDriver, stripCredentials } from "../drivers/inprocess";
 import { InfrastructureError } from "../world/errors";
 
 const driver = new InProcessDriver();
@@ -40,6 +40,23 @@ describe("the in-process driver", () => {
     const res = await driver.http.request({ surface: "mcp", method: "GET", path: "/nowhere" });
     expect([res.status, res.headers.get("x-packserver-version")]).toEqual([404, "unreleased"]);
     expect(driver.observedVersions().has("unreleased")).toBe(true);
+  });
+
+  it("beginScenario returns the recorder, observed versions and logs to empty", async () => {
+    await driver.http.request({ surface: "web", method: "GET", path: "/x" });
+    expect(driver.observedVersions().size).toBe(1);
+    await driver.beginScenario();
+    expect(driver.observedVersions().size).toBe(0);
+    expect(driver.recorder.invocations()).toEqual([]);
+    expect(driver.server.getLogs()).toEqual([]);
+    expect(driver.fakes.net.unfaked()).toEqual([]);
+  });
+
+  it("strips credentials from the logs it attaches to a failure", () => {
+    const text = 'authorization: Bearer pks_abc123 cf-access-client-secret="s3cr3t" cookie=sid=1 token eyJhbGciOi.eyJzdWIi.sig plain';
+    const out = stripCredentials(text);
+    for (const leaked of ["pks_abc123", "s3cr3t", "sid=1", "eyJhbGciOi"]) expect(out).not.toContain(leaked);
+    expect(out).toContain("plain");
   });
 
   it("refuses to address a Worker that is not booted", async () => {

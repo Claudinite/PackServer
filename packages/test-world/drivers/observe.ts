@@ -16,6 +16,10 @@ export class VersionObserver {
     }
   }
 
+  clear(): void {
+    this.seen.clear();
+  }
+
   get observed(): ReadonlySet<string> {
     return this.seen;
   }

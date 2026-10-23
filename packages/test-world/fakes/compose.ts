@@ -4,7 +4,7 @@ import type { SandboxAReport, SandboxBReport } from "@packserver/ports";
 import { Net } from "./net";
 import { turnstileHandler } from "./turnstile";
 
-export const EPOCH = "2026-01-15T10:00:00Z";
+export { EPOCH } from "../fake-workers/epoch";
 
 /** The test process's handle on one fake Worker's control plane. */
 export class FakeWorkerClient {
@@ -60,6 +60,7 @@ export class WorldFakes {
       if (booted.includes(name)) this.workers[key as keyof FakeWorkers] = new FakeWorkerClient(server, name);
     }
     this.net.use((request) => turnstileHandler(this.ports.turnstile)(request));
+    this.net.freeze();
   }
 
   get clock(): FakeWorkerClient {

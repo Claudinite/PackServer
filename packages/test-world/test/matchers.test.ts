@@ -27,6 +27,7 @@ describe("refusals", () => {
     await expect(new Refusal("signature")).toBeRefusedForVerification();
     await expect(new Refusal("oidc.fork", { claimDiff: { repository: { expected: "a/b", actual: "c/d" } } })).toBeRefusedWithClaimDiff({ repository: "a/b" });
     await expect(new Refusal("oidc.fork")).not.toBeRefusedWithClaimDiff({ repository: "a/b" });
+    await expect(new Refusal("oidc.fork", { claimDiff: { repository: { expected: "x/y", actual: "c/d" } } })).not.toBeRefusedWithClaimDiff({ repository: "a/b" });
   });
 });
 
@@ -72,6 +73,7 @@ describe("collections and observations", () => {
     await expect([{ at: 4 }]).not.toHaveBeenAskedBefore({ at: 3 });
     await expect([]).not.toHaveBeenAsked();
     await expect([{ egress_attempts: [] }]).toHaveAttemptedNoEgress();
+    await expect([]).not.toHaveAttemptedNoEgress();
     await expect([{ egress_attempts: ["evil.example"] }]).not.toHaveAttemptedNoEgress();
   });
 

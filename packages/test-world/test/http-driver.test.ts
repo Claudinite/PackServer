@@ -61,6 +61,22 @@ describe("the http driver's requests", () => {
     expect(canary.sent[0]!.headers["CF-Access-Client-Id"]).toBe("id");
   });
 
+  it("does not follow a redirect, so the Access token never travels to another host", async () => {
+    const seen: RequestInit[] = [];
+    const doFetch: Fetch = async (_url, init) => {
+      seen.push(init ?? {});
+      return new Response(null, { status: 302, headers: { location: "https://evil.example/", "x-packserver-version": "r1" } });
+    };
+    const driver = new HttpDriver(
+      readHttpEnv({ PACKSERVER_BASE_URL: "https://registry-canary.claudinite.com", CF_ACCESS_CLIENT_ID: "id", CF_ACCESS_CLIENT_SECRET: "s", PACKSERVER_ACCESS_HOST: "registry-canary.claudinite.com" }),
+      doFetch,
+    );
+    const res = await driver.http.request({ surface: "web", method: "GET", path: "/" });
+    expect(res.status).toBe(302);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.redirect).toBe("manual");
+  });
+
   it("fails the run on a response without the version header", async () => {
     const { driver } = driverWith({}, () => respond(null));
     await expect(driver.http.request({ surface: "web", method: "GET", path: "/" })).rejects.toThrow(/without X-PackServer-Version/);

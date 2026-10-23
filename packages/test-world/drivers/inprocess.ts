@@ -8,6 +8,14 @@ import type { ApiRequest, ApiResponse, Capability, Driver, McpCredentials, UiAct
 import { McpClient } from "./mcp";
 import { encodeBody, toApiResponse, VersionObserver } from "./observe";
 
+/** Failure attachments reach reporters, so credentials never travel in them. */
+export function stripCredentials(text: string): string {
+  return text
+    .replace(/(authorization|cookie|set-cookie|cf-access-[a-z-]+|x-selftest-signature)(["']?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;]+(?: [^\s,;]+)?)/gi, "$1$2<redacted>")
+    .replace(/\b(pks_|ghs_|ghp_|whsec_|psr_)\w+/g, "<redacted>")
+    .replace(/\beyJ[\w-]+\.[\w-]+\.[\w-]+/g, "<redacted>");
+}
+
 /** What the harness serves when a version is uploaded without a release tag. */
 const HARNESS_RELEASE = "unreleased";
 const MIGRATION_BINDING = "DB";
@@ -82,6 +90,9 @@ export class InProcessDriver implements Driver {
 
   async beginScenario(): Promise<void> {
     await this.fakes.reset();
+    this.harness.server.clearLogs();
+    this.logCursor = 0;
+    this.versions.clear();
   }
 
   recorder = {
@@ -94,7 +105,7 @@ export class InProcessDriver implements Driver {
     const logs = this.harness.server.getLogs().slice(this.logCursor);
     return {
       driver: this.kind,
-      logs: logs.map((l) => `${l.level} ${l.message}`),
+      logs: logs.map((l) => stripCredentials(`${l.level} ${l.message}`)),
       invocations: this.recorder.invocations(),
       egress: this.fakes.net.requests(),
     };

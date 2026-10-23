@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from "vitest";
 import "./world/matchers";
 import { createDriver } from "./drivers";
 import type { Capability, Driver } from "./drivers/driver";
+import { InfrastructureError } from "./world/errors";
 import { createWorld, type World } from "./world/world";
 import { loadSpecs } from "./registry";
 
@@ -47,6 +48,8 @@ function run(title: string, tags: string[], fn: (world: World) => Promise<void>,
     const world = createWorld(d, title);
     try {
       await fn(world);
+      const unfaked = d.fakes?.net.unfaked() ?? [];
+      if (unfaked.length > 0) throw new InfrastructureError(`the system called outside hosts no fake claims: ${unfaked.join(", ")}`);
     } catch (error) {
       await annotate(JSON.stringify(await d.diagnostics()), "diagnostics");
       throw error;

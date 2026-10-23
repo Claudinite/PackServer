@@ -12,6 +12,8 @@ interface Rpc {
   now(): Promise<number>;
 }
 
+/** A 1024-wide unit vector leaning on one axis, the width of bge-m3. */
+const unit = (axis: number, other = 0) => Array.from({ length: 1024 }, (_, i) => (i === axis ? 1 : i === axis + 1 ? other : 0));
 const driver = new InProcessDriver();
 /** The service bindings the product Workers hold under env.test, as they see them. */
 /** Calls through a binding stub can throw before they return a promise; a rejection is what a test means. */
@@ -29,18 +31,20 @@ describe("the fake Workers behind the service bindings", () => {
     const ai = await binding("mcp", "AI");
     const [a] = await ai.embed(["deploy to GCP"]);
     expect(await ai.embed(["deploy to GCP"])).toEqual([a]);
-    expect(a).toHaveLength(16);
-    await driver.fakes.workers.ai!.call("remember", { text: "meaning", vector: [1, 0] });
-    expect(await ai.embed(["meaning"])).toEqual([[1, 0]]);
+    expect(a).toHaveLength(1024);
+    await driver.fakes.workers.ai!.call("remember", { text: "meaning", vector: unit(0) });
+    expect(await ai.embed(["meaning"])).toEqual([unit(0)]);
     expect(await driver.fakes.workers.ai!.call<number>("cost")).toBeGreaterThan(0);
   });
 
   it("fake-vectorize ranks by cosine and forgets on reset", async () => {
     const index = await binding("mcp", "VECTORIZE");
-    await index.upsert([{ id: "near", vector: [1, 0] }, { id: "far", vector: [0, 1] }]);
-    expect((await index.query([1, 0.1], { topK: 2 })).map((m) => m.id)).toEqual(["near", "far"]);
+    await index.upsert([{ id: "near", vector: unit(0) }, { id: "far", vector: unit(5) }]);
+    expect((await index.query(unit(0, 0.1), { topK: 2 })).map((m) => m.id)).toEqual(["near", "far"]);
+    await expect(rejection(() => index.upsert([{ id: "short", vector: [1, 0] }]))).rejects.toThrow(/has 2 dimensions, the index has 1024/);
+    await expect(rejection(() => index.query([1, 0], { topK: 1 }))).rejects.toThrow(/1024/);
     await driver.fakes.reset();
-    expect(await index.query([1, 0], { topK: 2 })).toEqual([]);
+    expect(await index.query(unit(0), { topK: 2 })).toEqual([]);
   });
 
   it("the sandbox fakes answer only what is scripted, each from its own script", async () => {

@@ -35,7 +35,7 @@ expect.extend({
   async toBeRefusedWithClaimDiff(received: unknown, claims: Record<string, unknown>): Promise<Pass> {
     const value = await settle(received);
     const diff = value instanceof Refusal ? value.detail.claimDiff : undefined;
-    const pass = diff !== undefined && Object.keys(claims).every((k) => k in diff);
+    const pass = diff !== undefined && Object.entries(claims).every(([k, v]) => k in diff && this.equals(diff[k]?.expected, v));
     return { pass, message: () => `expected a refusal naming the mismatched claims ${Object.keys(claims).join(", ")}, got ${show(value)}` };
   },
   async toBeIgnored(received: unknown): Promise<Pass> {
@@ -124,7 +124,7 @@ expect.extend({
   async toHaveAttemptedNoEgress(received: unknown): Promise<Pass> {
     const calls = (await settle(received)) as Array<{ egress_attempts?: string[] }>;
     const attempts = calls.flatMap((c) => c.egress_attempts ?? []);
-    return { pass: attempts.length === 0, message: () => `expected no egress attempts, the sandbox recorded ${show(attempts)}` };
+    return { pass: calls.length > 0 && attempts.length === 0, message: () => (calls.length === 0 ? "the sandbox never ran, so it proves no absence of egress" : `expected no egress attempts, the sandbox recorded ${show(attempts)}`) };
   },
 });
 

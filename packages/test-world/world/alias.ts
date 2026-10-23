@@ -1,7 +1,5 @@
 import { FakeRng } from "@packserver/ports/fakes";
 
-let worlds = 0;
-
 function seedOf(text: string): number {
   let h = 2166136261;
   for (const ch of text) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
@@ -15,10 +13,9 @@ function seedOf(text: string): number {
 export class Aliases {
   private readonly table = new Map<string, string>();
   private readonly rng: FakeRng;
-  private readonly world = ++worlds;
 
   constructor(title: string) {
-    this.rng = new FakeRng(seedOf(title) ^ (this.world * 0x9e3779b1));
+    this.rng = new FakeRng(seedOf(title));
   }
 
   alias(name: string): string {

@@ -19,10 +19,11 @@ describe("per-area stubs", () => {
 });
 
 describe("aliasing", () => {
-  it("is stable within a world, different across worlds, and reversible in the system's own text", () => {
+  it("is stable within a world, repeatable for a title, different across titles, and reversible in the system's own text", () => {
     const a = new Aliases("t");
-    const b = new Aliases("t");
+    const b = new Aliases("u");
     expect(a.alias("acme")).toBe(a.alias("acme"));
+    expect(new Aliases("t").alias("acme")).toBe(a.alias("acme"));
     expect(a.alias("acme")).not.toBe(b.alias("acme"));
     expect(a.alias("acme")).toMatch(/^acme-[0-9a-f]{4}$/);
     expect(a.unalias(`error: ${a.alias("acme")} not found`)).toBe("error: acme not found");

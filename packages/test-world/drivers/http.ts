@@ -40,7 +40,7 @@ export class HttpDriver implements Driver {
         headers["CF-Access-Client-Secret"] = this.env.access.clientSecret;
       }
       const body = encodeBody(req.body, headers);
-      const res = await this.doFetch(url.toString(), { method: req.method, headers, ...(body === undefined ? {} : { body }) });
+      const res = await this.doFetch(url.toString(), { method: req.method, headers, redirect: "manual", ...(body === undefined ? {} : { body }) });
       const out = await toApiResponse(res);
       this.versions.check(url.toString(), out);
       return out;

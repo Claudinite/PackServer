@@ -1,4 +1,4 @@
-import { http } from "msw";
+import { http, HttpResponse } from "msw";
 import { setupServer, type SetupServer } from "msw/node";
 import { Agent, setGlobalDispatcher } from "undici";
 import type { InvocationView } from "../world/recorder";
@@ -13,6 +13,8 @@ export type NetHandler = (request: Request) => Promise<Response | undefined> | R
 export class Net {
   private readonly handlers: NetHandler[] = [];
   private readonly seen: InvocationView[] = [];
+  private readonly refused: string[] = [];
+  private baseHandlers = 0;
   private server: SetupServer | undefined;
 
   use(handler: NetHandler): void {
@@ -38,14 +40,27 @@ export class Net {
             return res;
           }
         }
-        return undefined;
+        this.refused.push(`${request.method} ${request.url}`);
+        return HttpResponse.error();
       }),
     );
     this.server.listen({ onUnhandledFrame: "error" });
   }
 
+  /** Calls no fake claimed since the last `reset`; the scenario that made them fails. */
+  unfaked(): string[] {
+    return [...this.refused];
+  }
+
   reset(): void {
     this.seen.length = 0;
+    this.refused.length = 0;
+    this.handlers.length = this.baseHandlers;
+  }
+
+  /** Handlers registered before this call survive every `reset`; later ones are per scenario. */
+  freeze(): void {
+    this.baseHandlers = this.handlers.length;
   }
 
   close(): void {
