@@ -99,11 +99,19 @@ jobs:
     timeout-minutes: 2
     permissions:
       contents: read
+    outputs:
+      burndown: ${{ steps.coverage.outputs.burndown }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: node docs/testing/coverage.mjs --check
+      - id: coverage
+        run: |
+          status=0
+          out=$(node docs/testing/coverage.mjs --check) || status=$?
+          echo "$out"
+          echo "burndown=$(echo "$out" | grep '^burndown:')" >> "$GITHUB_OUTPUT"
+          exit "$status"
 
   checks:
     needs: changes
@@ -186,8 +194,10 @@ jobs:
           RESULTS: ${{ join(needs.*.result, ' ') }}
           START: ${{ needs.changes.outputs.start }}
           ATTEMPT: ${{ github.run_attempt }}
+          BURNDOWN: ${{ needs.coverage.outputs.burndown }}
         run: |
           echo "job results: $RESULTS"
+          echo "$BURNDOWN"
           if [ -n "$START" ]; then
             elapsed=$(( $(date +%s) - START ))
             echo "elapsed: ${elapsed}s (budget 120s)"

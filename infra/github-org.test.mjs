@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ENVIRONMENTS, EXTRA_REPOS, GATE_CHECK, MAIN_CHECKS, MAIN_REPO, ORG, environmentBody, main, rulesetBody } from "./github-org.mjs";
+import { ENVIRONMENTS, EXTRA_REPOS, GATE_CHECK, GATE_WORKFLOW, MAIN_CHECKS, MAIN_REPO, ORG, environmentBody, main, rulesetBody } from "./github-org.mjs";
 
 // An in-memory GitHub: just enough of repos, rulesets and environments to apply and read back.
 function fakeGitHub({ repos = [MAIN_REPO], failRulesetList = false, gate = false, hidePrivate = false, tamper } = {}) {
@@ -87,6 +87,12 @@ describe("intended state", () => {
     const reported = ciContexts();
     expect(reported).toEqual(expect.arrayContaining(["scenarios (1)", "scenarios (2)"]));
     for (const c of MAIN_CHECKS) expect(reported).toContain(c);
+  });
+
+  it("names the scenario-gate workflow's job as the context it requires", () => {
+    const yml = readFileSync(new URL("../.github/workflows/scenario-gate.yml", import.meta.url), "utf8");
+    expect(yml.split(/^jobs:\n/m)[1]).toMatch(new RegExp(`^ {2}${GATE_CHECK}:`, "m"));
+    expect(GATE_WORKFLOW).toBe(".github/workflows/scenario-gate.yml");
   });
 
   it("has no bypass actors, no force push, PR-only and no code-owner approval requirement", () => {
