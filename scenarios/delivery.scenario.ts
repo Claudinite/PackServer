@@ -1,6 +1,6 @@
 import { expect, scenario, type ScenarioOpts } from "@packserver/test-world";
 import { Refusal } from "@packserver/test-world";
-import type { PackBody } from "../packages/test-world/world/packs";
+import type { PackBody } from "@packserver/test-world";
 
 const storage: ScenarioOpts = { needs: ["storage"] };
 
@@ -38,8 +38,8 @@ scenario("IT-DELIV-008 Yanked versions fetch by exact version only", async (worl
   const pack = await world.packs.public("@acme/gcp", { versions: ["1.0.0", "1.1.0", "1.2.0"] });
   await pack.version("1.2.0").seed({ status: "yanked", reason: "breaks on cn 1.61004.1" });
 
-  const exact = (await pack.read({ version: "1.2.0" })) as PackBody & { http: number };
-  expect(exact.http).toBe(200);
+  const exact = (await pack.read({ version: "1.2.0" })) as PackBody & { outcome: string };
+  expect(exact.outcome).toBe("found");
   expect(exact.version).toMatchObject({ version: "1.2.0", status: "yanked", yanked: true, reason: "breaks on cn 1.61004.1" });
   expect(exact.latest_eligible).toBe("1.1.0");
 
@@ -52,7 +52,7 @@ scenario("IT-DELIV-008 Yanked versions fetch by exact version only", async (worl
 scenario("IT-DELIV-009 Removed packs and hard-deleted versions answer status: removed", async (world) => {
   const gone = await world.packs.public("@acme/gone");
   await gone.seedRemoved();
-  expect(await gone.read()).toMatchObject({ http: 410, status: "removed", latest_eligible: null });
+  expect(await gone.read()).toMatchObject({ outcome: "removed", status: "removed", latest_eligible: null });
   expect((await gone.read()) as object).not.toHaveProperty("version.sha256");
 
   const kept = await world.packs.public("@acme/gcp", { versions: ["1.0.0", "1.1.0"] });
@@ -63,7 +63,7 @@ scenario("IT-DELIV-009 Removed packs and hard-deleted versions answer status: re
   expect(entry).toMatchObject({ version: "1.1.0", status: "removed" });
   expect(entry).not.toHaveProperty("sha256");
   expect(await kept.version("1.1.0").status()).toBe("removed");
-  expect(await kept.read({ version: "1.1.0" })).toMatchObject({ http: 410 });
+  expect(await kept.read({ version: "1.1.0" })).toMatchObject({ outcome: "removed" });
   await expect(world.packs.verify(await kept.version("1.0.0").sha256(), { ip: "203.0.113.9" })).resolves.toMatchObject({ result: "canonical" });
 }, storage);
 
@@ -133,7 +133,7 @@ scenario("IT-DELIV-021 Anyone can verify an archive by hash", async (world) => {
   expect(await world.packs.verify(hidden.canonicalSha256, { ip })).toEqual(random);
   expect(await world.packs.verify(hidden.uploadSha256, { ip })).toEqual(random);
 
-  const burst = "203.0.113.200";
+  const burst = "203.0.113.77";
   const answers = [];
   for (let i = 0; i < 100; i++) answers.push(await world.packs.verify(canonical.canonicalSha256, { ip: burst }));
   expect(answers.slice(0, 10).every((a) => !(a instanceof Refusal))).toBe(true);
