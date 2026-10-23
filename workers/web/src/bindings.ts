@@ -7,6 +7,8 @@ import type { Ports, R2Read } from "@packserver/ports";
 export interface Env {
   WORKER: string;
   ENVIRONMENT: string;
+  /** Where the custom domain for `packs-public` answers; set per environment in wrangler vars. */
+  CDN_ORIGIN?: string;
   DB: D1Database;
   SESSIONS_KV: KVNamespace;
   CACHE_KV: KVNamespace;
@@ -34,13 +36,13 @@ export interface WebServices {
   mcp: Fetcher;
   publish: Fetcher;
 }
-export type WebRuntime = WorkerRuntime<WebPorts, WebServices>;
+export type WebRuntime = WorkerRuntime<WebPorts, WebServices> & { config: { cdnOrigin: string | undefined } };
 
 const isolateTelemetry = createIsolateTelemetry();
 
 export function createRuntime(env: Env): WebRuntime {
   const telemetryKv = kvPort(env.TELEMETRY_KV);
-  return workerRuntime(
+  const base = workerRuntime(
     "web",
     env,
     {
@@ -59,4 +61,5 @@ export function createRuntime(env: Env): WebRuntime {
     },
     { mcp: env.MCP, publish: env.PUBLISH },
   );
+  return { ...base, config: { cdnOrigin: env.CDN_ORIGIN } };
 }

@@ -8,6 +8,14 @@
         "http_response_headers_transform"
       ]
     },
+    "http_response_headers_transform": {
+      "kind": "Transform Rules",
+      "max": 10,
+      "alsoCounts": [
+        "http_request_transform",
+        "http_request_late_transform"
+      ]
+    },
     "http_request_firewall_custom": {
       "kind": "WAF custom rules",
       "max": 5
@@ -56,6 +64,22 @@
             "Cloudflare-Workers-Version-Key": {
               "operation": "set",
               "expression": "to_string(ip.src)"
+            }
+          }
+        }
+      }
+    ],
+    "http_response_headers_transform": [
+      {
+        "ref": "packserver_packs_nosniff",
+        "description": "PackServer: archive contents are never sniffed into a renderable type on the packs hosts",
+        "expression": "(http.host in {\"packs.claudinite.com\" \"packs-staging.claudinite.com\"})",
+        "action": "rewrite",
+        "action_parameters": {
+          "headers": {
+            "X-Content-Type-Options": {
+              "operation": "set",
+              "value": "nosniff"
             }
           }
         }

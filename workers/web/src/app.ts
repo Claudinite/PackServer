@@ -1,6 +1,7 @@
 import { createShell, type WorkerShellOptions } from "@packserver/http";
 import type { Hono } from "hono";
 import type { WebRuntime } from "./bindings";
+import type { WebEnv } from "./context";
 import { selfTestChecks } from "./selftest";
 import { routes as auth } from "./routes/auth";
 import { routes as scopes } from "./routes/scopes";
@@ -38,8 +39,8 @@ export interface AppOptions {
 }
 
 /** API routers declare their paths relative to /api; page routers and well-known declare absolute paths. */
-export function createApp(runtime: WebRuntime, options: AppOptions = {}): Hono {
-  const app = createShell({
+export function createApp(runtime: WebRuntime, options: AppOptions = {}): Hono<WebEnv> {
+  const app = createShell<WebEnv>({
     worker: "web",
     releaseId: runtime.version.releaseId,
     versionId: runtime.version.versionId,
@@ -48,6 +49,10 @@ export function createApp(runtime: WebRuntime, options: AppOptions = {}): Hono {
     telemetry: runtime.ports.telemetry,
     checks: () => selfTestChecks(runtime),
     selfTestAllowed: options.selfTestAllowed,
+  });
+  app.use(async (c, next) => {
+    c.set("runtime", runtime);
+    await next();
   });
   for (const api of [auth, scopes, orgs, tokens, packs, private_, access, trustedPublishers, abuse, apiLeak, publishApproval, reportHashMismatch]) {
     app.route("/api", api);
