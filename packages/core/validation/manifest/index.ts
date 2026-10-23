@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Finding } from "@packserver/schema";
 import type { Tree } from "../../canonical/index.ts";
 import { readFile } from "../../canonical/index.ts";
-import { decodeText } from "../engine/files.ts";
+import { decodeText, stripBom } from "../engine/files.ts";
 import type { MakeFinding } from "../engine/rules.ts";
 import type { StaticRuleInput, StaticRulePorts } from "../engine/types.ts";
 import { compareThreePart, isThreePart } from "./semver.ts";
@@ -19,8 +19,8 @@ export const PackManifest = z.looseObject({
   pitch: z.string().optional(),
   tags: strings.optional(),
   license: z.string().optional(),
-  relevanceDetector: z.string().optional(),
-  ruleRoutingGuidance: z.string().optional(),
+  relevanceDetector: z.unknown().optional(),
+  ruleRoutingGuidance: z.unknown().optional(),
   githubActions: strings.optional(),
   skills: strings.optional(),
   checks: strings.optional(),
@@ -33,11 +33,11 @@ export type ManifestRead = { ok: true; manifest: PackManifest } | { ok: false; f
 export function readManifest(tree: Tree, make: MakeFinding): ManifestRead {
   const file = readFile(tree, "pack.json");
   if (!file) return { ok: false, findings: [make("manifest.missing", { file: "pack.json", hint: "Add a pack.json at the root of the archive." })] };
-  const text = decodeText(file);
+  const decoded = decodeText(file);
   let json: unknown;
   try {
-    if (text === null) throw new Error("not text");
-    json = JSON.parse(text.replace(/^\ufeff/, ""));
+    if (decoded === null) throw new Error("not text");
+    json = JSON.parse(stripBom(decoded.text));
   } catch {
     return { ok: false, findings: [make("manifest.malformed", { file: "pack.json", hint: "pack.json is not valid JSON." })] };
   }
@@ -65,12 +65,13 @@ export function extractedParts(tree: Tree): { skills: string[]; checks: string[]
   return { skills: [...skills].sort(), checks: [...checks].sort(), tasks: [...tasks].sort() };
 }
 
-/** Parts in the archive that pack.json does not declare; shown as extracted, never a failure (D53). */
+/** Parts in the archive that a declared list of pack.json omits; shown as extracted, never a failure (D53). A part kind pack.json does not list at all claims nothing. */
 export function undeclaredParts(tree: Tree, manifest: PackManifest): { kind: "skills" | "checks" | "tasks"; name: string }[] {
   const extracted = extractedParts(tree);
   const out: { kind: "skills" | "checks" | "tasks"; name: string }[] = [];
   for (const kind of ["skills", "checks", "tasks"] as const) {
-    const declared = new Set(manifest[kind] ?? []);
+    if (!manifest[kind]) continue;
+    const declared = new Set(manifest[kind]);
     for (const name of extracted[kind]) if (!declared.has(name)) out.push({ kind, name });
   }
   return out;
@@ -115,6 +116,10 @@ export async function checkManifest(
         findings.push(make("manifest.declared-part-missing", { file, hint: `pack.json declares ${kind.slice(0, -1)} "${name}" but the archive has no ${path}.` }));
       }
     }
+  }
+
+  for (const u of undeclaredParts(input.tree, manifest)) {
+    findings.push(make("manifest.undeclared-part", { file, hint: `The archive holds ${u.kind.slice(0, -1)} "${u.name}" that pack.json does not declare; it is shown as extracted.` }));
   }
 
   if (!manifest.license?.trim() && !hasLicenseFile(input.tree)) {

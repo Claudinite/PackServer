@@ -40,10 +40,13 @@ describe("near misses (IT-PUB-034)", () => {
   });
 
   it("compares the full id and ignores the popular pack's own scope", async () => {
-    expect(await rulesOf("@acm/gcp")).toContain("identity.near-popular-pack");
+    expect(await rulesOf("@acm/gcp")).toContain("identity.same-name-near-scope");
+    expect(await rulesOf("@acme-io/gcp")).toEqual(["identity.same-name-near-scope"]);
+    expect((await check("@acme-io/gcp"))[0]!.class).toBe("hold");
     expect(await rulesOf("@acme/gcp-extra")).toEqual([]);
     expect(await rulesOf("@acme/gcp")).toEqual([]);
     expect(await rulesOf("@z/gcp")).toEqual([]);
+    expect(await rulesOf("@somebody/gcp")).toEqual([]);
   });
 
   it("catches lookalike letters and digits", async () => {
@@ -61,5 +64,26 @@ describe("near misses (IT-PUB-034)", () => {
     expect(editDistance("kitten", "sitting")).toBe(3);
     expect(isNearMiss("pack", "pack")).toBe(false);
     expect(skeleton("\u0430pple")).toBe(skeleton("apple"));
+  });
+});
+
+describe("rulings after review", () => {
+  it("normalises reserved words through confusables and separators", async () => {
+    for (const name of ["c1aude", "cl-aude", "claude-", "f1eet", "Cn"]) {
+      expect(await rulesOf(`@z/${name.toLowerCase()}`), name).toContain("identity.reserved-word");
+    }
+    expect(await rulesOf("@z/clauded")).toEqual([]);
+  });
+
+  it("refuses an ASCII lookalike of a verified scope and holds a plain near miss", async () => {
+    const f = await check("@acrne/tools");
+    expect(f.map((x) => [x.rule, x.class])).toEqual([["identity.confusable-verified-scope", "fail"]]);
+    expect((await check("@acmee/tools"))[0]!.class).toBe("hold");
+  });
+
+  it("passes a name equal to a verified scope that is not a domain label", async () => {
+    expect(await rulesOf("@z/claudinite-notes")).toEqual([]);
+    const ports = fakePorts({ verifiedScopes: async () => ["acme", "stripe"] });
+    expect(await rulesOf("@z/stripe", ports)).toEqual([]);
   });
 });

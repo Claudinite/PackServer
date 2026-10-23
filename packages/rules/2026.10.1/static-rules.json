@@ -63,6 +63,12 @@
       "description": "A part declared in pack.json is absent from the archive."
     },
     {
+      "id": "manifest.undeclared-part",
+      "class": "warn",
+      "category": "manifest",
+      "description": "The archive holds a part that pack.json does not declare; it is shown as extracted."
+    },
+    {
       "id": "identity.name-not-ascii",
       "class": "fail",
       "category": "identity",
@@ -91,6 +97,18 @@
       "class": "hold",
       "category": "identity",
       "description": "The name is a near miss on a verified scope."
+    },
+    {
+      "id": "identity.confusable-verified-scope",
+      "class": "fail",
+      "category": "identity",
+      "description": "The name is visually confusable with a verified scope."
+    },
+    {
+      "id": "identity.same-name-near-scope",
+      "class": "hold",
+      "category": "identity",
+      "description": "The name is a popular pack's name published under a scope close to that pack's scope."
     },
     {
       "id": "text.secret",
@@ -139,6 +157,12 @@
       "class": "fail",
       "category": "text",
       "description": "A bidirectional control, zero-width or tag code point appears in text."
+    },
+    {
+      "id": "text.invalid-encoding",
+      "class": "fail",
+      "category": "text",
+      "description": "A text file is not valid UTF-8, so a scanner and an agent may read it differently."
     },
     {
       "id": "text.injection",

@@ -1,5 +1,6 @@
 import { loadRules, type RulesVersion } from "@packserver/rules";
 import type { Finding } from "@packserver/schema";
+import { maskSecrets } from "../text/doc.ts";
 
 export interface RuleListing {
   id: string;
@@ -29,7 +30,7 @@ export function findingFactory(version: RulesVersion): MakeFinding {
   return (rule, where) => {
     const cls = classes.get(rule);
     if (!cls) throw new Error(`rules ${version.version} has no rule ${rule}`);
-    return { rule, class: cls, file: where.file ?? null, line: where.line ?? null, quote: where.quote ?? null, hint: where.hint };
+    return { rule, class: cls, file: where.file ?? null, line: where.line ?? null, quote: where.quote == null ? null : maskSecrets(where.quote), hint: maskSecrets(where.hint) };
   };
 }
 

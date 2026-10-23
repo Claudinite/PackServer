@@ -65,11 +65,22 @@ describe("manifest (IT-VAL-004, IT-VAL-007)", () => {
     expect(r.findings[0]!.hint).toContain("ghost");
 
     const extra = cleanFiles({ "pack.json": manifestJson({ skills: ["a"] }), "skills/a/SKILL.md": "x", "skills/b/SKILL.md": "y" });
-    expect(rulesOf(await run(extra))).toEqual([]);
+    const warned = await run(extra);
+    expect(rulesOf(warned)).toEqual(["manifest.undeclared-part"]);
+    expect(warned.findings[0]).toMatchObject({ class: "warn", file: "pack.json" });
+    expect(warned.findings[0]!.hint).toContain('"b"');
     const tree = treeOf(extra);
     const read = readManifest(tree, make);
     expect(read.ok && undeclaredParts(tree, read.manifest)).toEqual([{ kind: "skills", name: "b" }]);
     expect(extractedParts(tree).skills).toEqual(["a", "b"]);
+  });
+
+  it("claims nothing for a part kind pack.json does not list, and accepts object guidance fields", async () => {
+    const files = cleanFiles({
+      "pack.json": manifestJson({ ruleRoutingGuidance: { belongs: "x", excludes: "y" }, relevanceDetector: { about: "z", paths: "^a$" }, seededByDefault: true }),
+      "skills/a/SKILL.md": "x",
+    });
+    expect(rulesOf(await run(files))).toEqual([]);
   });
 
   it("warns on a missing license, README and fixtures, and accepts a LICENSE file", async () => {

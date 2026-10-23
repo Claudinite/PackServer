@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { loadRules } from "@packserver/rules";
 import { ArchiveRefusal } from "../../canonical/index.ts";
 import { archiveFinding, listRules, runStaticRules } from "../index.ts";
-import { cleanFiles, fakePorts, input, make, RULES_VERSION } from "./helpers.ts";
+import { cleanFiles, fakePorts, input, make, manifestJson, RULES_VERSION } from "./helpers.ts";
 
 describe("rules registry (IT-VAL-024)", () => {
   const data = loadRules(RULES_VERSION).staticRules;
@@ -76,7 +76,14 @@ describe("runStaticRules", () => {
       await runStaticRules(input({ "pack.json": "{" }), fakePorts()),
       await runStaticRules(input({ "pack.json": JSON.stringify({ version: "1.2", minEngineVersion: "1.0.0" }) }), fakePorts()),
     ];
-    for (const f of [...bare.findings, ...lax.findings, ...bad.flatMap((b) => b.findings)]) emitted.add(f.rule);
+    const more = [
+      await runStaticRules(input(cleanFiles(), { pack: "@acrne/x" }), fakePorts()),
+      await runStaticRules(input(cleanFiles(), { pack: "@acmee/x" }), fakePorts()),
+      await runStaticRules(input(cleanFiles(), { pack: "@acme-io/gcp" }), fakePorts()),
+      await runStaticRules(input(cleanFiles({ "pack.json": manifestJson({ skills: [] }), "skills/u/SKILL.md": "x" })), fakePorts()),
+      await runStaticRules(input({ ...cleanFiles(), "RULES.md": new Uint8Array([0x61, 0xff, 0x0a]) }), fakePorts()),
+    ];
+    for (const f of [...bare.findings, ...lax.findings, ...bad.flatMap((b) => b.findings), ...more.flatMap((b) => b.findings)]) emitted.add(f.rule);
     const missing = listRules(RULES_VERSION).map((x) => x.id).filter((id) => !id.startsWith("archive.") && !emitted.has(id));
     expect(missing).toEqual([]);
   });
