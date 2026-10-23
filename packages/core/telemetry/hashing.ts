@@ -72,6 +72,7 @@ const PART = "(?:0x[0-9a-f]{1,2}|\\d{1,3})";
 const V4 = new RegExp(`(?<![\\d])${PART}(?:\\.${PART}){3}(?!\\d)`, "gi");
 const V6_RUN = /[0-9a-f:]{2,}/gi;
 const MAX_V6 = 45;
+const MAX_DECODE_LEVELS = 8;
 /** A value longer than this is truncated before it is scanned, which also bounds the scan's cost. */
 export const MAX_SCRUBBED_LENGTH = 2048;
 
@@ -148,10 +149,10 @@ const CONTROL = /[\u0000-\u001f\u007f]/g;
  * back in its decoded form with control characters removed.
  */
 export function scrubIp(text: string): string {
-  const input = cut(text);
-  let current = input.normalize("NFKC");
+  const { input, folded } = cut(text);
+  let current = folded;
   let found = false;
-  for (let level = 0; level < 8; level++) {
+  for (let level = 0; level < MAX_DECODE_LEVELS; level++) {
     const scrubbed = scrubLevel(current);
     if (scrubbed !== current) found = true;
     current = decodeOnce(scrubbed);
@@ -162,8 +163,27 @@ export function scrubIp(text: string): string {
   return found ? last.replace(CONTROL, "") : input;
 }
 
-/** A cut value loses any trailing run of address-like characters, so the cut cannot leave half an address. */
-function cut(text: string): string {
-  if (text.length <= MAX_SCRUBBED_LENGTH) return text;
-  return text.slice(0, MAX_SCRUBBED_LENGTH).replace(/[0-9a-f:.%]+$/i, "");
+/**
+ * The most characters one address can take once encoded: 45 for the longest IPv6 text, each
+ * character at most `2 * levels + 1` long after `levels` rounds of percent-encoding.
+ */
+export const MAX_ENCODED_ADDRESS = 45 * (2 * MAX_DECODE_LEVELS + 1);
+
+/**
+ * Folds the value, then cuts it to `MAX_SCRUBBED_LENGTH`. A cut loses the trailing run of
+ * address-like characters, at most `MAX_ENCODED_ADDRESS` of them, so the cut cannot leave half an
+ * address; a run of hex letters alone (a word such as `accede`) holds no address and stays.
+ */
+function cut(text: string): { input: string; folded: string } {
+  const long = text.length > MAX_SCRUBBED_LENGTH;
+  let folded = (long ? text.slice(0, MAX_SCRUBBED_LENGTH) : text).normalize("NFKC");
+  let cutHere = long;
+  if (folded.length > MAX_SCRUBBED_LENGTH) {
+    folded = folded.slice(0, MAX_SCRUBBED_LENGTH);
+    cutHere = true;
+  }
+  if (!cutHere) return { input: text, folded };
+  const tail = new RegExp(`[0-9a-f:.%]{1,${MAX_ENCODED_ADDRESS}}$`, "i").exec(folded)?.[0];
+  if (tail !== undefined && /[0-9:.%]/.test(tail)) folded = folded.slice(0, folded.length - tail.length);
+  return { input: folded, folded };
 }

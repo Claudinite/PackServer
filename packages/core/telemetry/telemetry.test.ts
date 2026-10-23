@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { FakeClock } from "@packserver/ports/fakes";
 import {
-  analyticsStats, createHasher, createModeCache, createTelemetry, datasetFor, dedupeKey, logRate, network, parseUserAgent,
+  MAX_ENCODED_ADDRESS, analyticsStats, createHasher, createModeCache, createTelemetry, datasetFor, dedupeKey, logRate, network, parseUserAgent,
   REQUEST_BLOBS, REQUEST_DOUBLES, ANALYTICS_DATASETS, SIGNAL_NAMES, scrubIp, type DownloadFetcher, type PrivateDownload,
 } from "./index";
 import { TelemetrySink, toHaveRecorded } from "./testing";
@@ -422,6 +422,21 @@ describe("scrub cost and edges", () => {
     const v6 = scrubIp("x".repeat(2030) + "2001:db8:85a3:0:0:8a2e:370:7334");
     expect(v6).not.toMatch(/\d/);
     expect(v6.length).toBeLessThanOrEqual(2048);
+  });
+  it("keeps a long known value as known: only an address-sized tail is dropped at the cut", () => {
+    expect(scrubIp("a".repeat(5000))).toBe("a".repeat(2048));
+    expect(scrubIp("deadbeef".repeat(1000))).toBe("deadbeef".repeat(256));
+    const digits = scrubIp("1".repeat(5000));
+    expect(digits.length).toBeGreaterThanOrEqual(2048 - MAX_ENCODED_ADDRESS);
+    expect(digits).toMatch(/^1+$/);
+  });
+  it("keeps a trailing word of hex letters at the cut", () => {
+    expect(scrubIp("x".repeat(2042) + "accede" + "zzzz")).toBe("x".repeat(2042) + "accede");
+  });
+  it("folds full-width characters before cutting, so an address across the cut leaves no fragment", () => {
+    const out = scrubIp("x".repeat(2040) + "１９８.５１.１００.７７");
+    expect(out).toBe("x".repeat(2040));
+    expect(scrubIp("x".repeat(2040) + "１９８．５１．１００．７７")).toBe("x".repeat(2040));
   });
   it("strips control characters from text that held an address", () => {
     expect(scrubIp("a\u0000b 10.0.0.1\u0007")).toBe("ab [ip]");
