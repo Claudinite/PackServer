@@ -91,7 +91,8 @@ describe("recorder middleware", () => {
     await get(app, "/api/packs/abc", { [VERSION_OVERRIDE_HEADER]: 'web="ver-2"' });
     await get(app, "/api/packs/abc");
     await settle();
-    expect(sink.recorded("http.request").map((r) => r.fields.version_override)).toEqual([true, false]);
+    // Each request records on its own schedule, so the two events arrive in either order.
+    expect(sink.recorded("http.request").map((r) => r.fields.version_override === true).sort()).toEqual([false, true]);
   });
 
   it("applies telemetry_mode: economy drops an anonymous line, never the point", async () => {
