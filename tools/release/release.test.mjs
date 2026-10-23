@@ -274,6 +274,7 @@ describe("promote", () => {
 
   it("rolls back only the Workers already moved when one fails, and leaves nothing live", () => {
     const store = verified(["validator", "publish", "github"]);
+    writeLive(store, "1.0.0+aaaaaaa");
     const { run, calls } = fakeWrangler({ failOn: (w, a) => w === "github" && a[1] === "deploy" });
     expect(() => promote({ run, store, id, log: quiet })).toThrow(/promote stopped at github/);
     expect(calls.filter((c) => c.args[0] === "rollback").map((c) => [c.worker, c.args[1]])).toEqual([["publish", "old-publish"], ["validator", "old-validator"]]);
@@ -283,6 +284,7 @@ describe("promote", () => {
 
   it("leaves a defined failed state when Workers moved but there is no incumbent to go back to", () => {
     const store = verified(["validator", "publish"]);
+    writeLive(store, "1.0.0+aaaaaaa");
     update(store, id, (m) => ({ ...m, workers: { ...m.workers, validator: { ...m.workers.validator, incumbent: null } } }));
     const { run } = fakeWrangler({ failOn: (w, a) => w === "publish" && a[1] === "deploy" });
     expect(() => promote({ run, store, id, log: quiet })).toThrow(/1 Worker/);
@@ -304,6 +306,7 @@ describe("rollback", () => {
   it("rolls each changed Worker back to its recorded incumbent in reverse order and repoints live", () => {
     const store = verifyingRelease(["validator", "web", "admin"]);
     update(store, id, (m) => withState(withState(m, "rolling", "t"), "live", "t"));
+    writeLive(store, id);
     const { run, calls } = fakeWrangler();
     const record = rollbackRelease({ run, store, id, reason: "bad", now: "t", log: quiet });
     expect(calls.map((c) => [c.worker, c.args[0], c.args[1]])).toEqual([["admin", "rollback", "old-admin"], ["web", "rollback", "old-web"], ["validator", "rollback", "old-validator"]]);
@@ -354,14 +357,14 @@ describe("rollback", () => {
     expect(liveRecord(store)).toEqual({ release_id: "1.0.0+aaaaaaa", rolled_back_from: id });
   });
 
-  it("leaves live alone when a finished rollback is re-run after a newer release went live", () => {
+  it("refuses to roll back a superseded release, before any wrangler call", () => {
     const store = verifyingRelease(["web"]);
     update(store, id, (m) => withState(withState(m, "rolling", "t"), "live", "t"));
     writeLive(store, id);
     rollbackRelease({ run: fakeWrangler().run, store, id, reason: "bad", now: "t", log: quiet });
     writeLive(store, "3.0.0+ddddddd");
     const again = fakeWrangler();
-    rollbackRelease({ run: again.run, store, id, reason: "bad", now: "u", log: quiet });
+    expect(() => rollbackRelease({ run: again.run, store, id, reason: "bad", now: "u", log: quiet })).toThrow(/rollback-deep/);
     expect(again.calls).toEqual([]);
     expect(liveRecord(store)).toEqual({ release_id: "3.0.0+ddddddd" });
   });
@@ -369,6 +372,7 @@ describe("rollback", () => {
   it("is idempotent once rolled back", () => {
     const store = verifyingRelease(["web"]);
     update(store, id, (m) => withState(withState(m, "rolling", "t"), "live", "t"));
+    writeLive(store, id);
     rollbackRelease({ run: fakeWrangler().run, store, id, reason: "bad", now: "t", log: quiet });
     const again = fakeWrangler();
     rollbackRelease({ run: again.run, store, id, reason: "bad", now: "u", log: quiet });
@@ -379,6 +383,7 @@ describe("rollback", () => {
   it("finishes a failed promote by rolling back only the Workers it had moved", () => {
     const store = verifyingRelease(["validator", "web"]);
     update(store, id, (m) => ({ ...withState(withState(m, "rolling", "t"), "failed", "t"), failure: { reason: "x", moved: ["validator"] } }));
+    writeLive(store, "1.0.0+aaaaaaa");
     const { run, calls } = fakeWrangler();
     rollbackRelease({ run, store, id, reason: "retry", now: "t", log: quiet });
     expect(calls.map((c) => c.worker)).toEqual(["validator"]);
@@ -387,6 +392,7 @@ describe("rollback", () => {
 
   it("refuses a release with no incumbent to go back to", () => {
     const store = verifyingRelease();
+    writeLive(store, id);
     update(store, id, (m) => ({ ...withState(withState(m, "rolling", "t"), "live", "t"), workers: { ...m.workers, web: { ...m.workers.web, incumbent: null } } }));
     expect(() => rollbackRelease({ run: fakeWrangler().run, store, id, reason: "x", log: quiet })).toThrow(/no incumbent for web/);
   });
