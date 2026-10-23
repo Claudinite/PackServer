@@ -22,7 +22,7 @@ import { filterInvocations, type InvocationFilter, type InvocationView, type Rec
 
 /** One per scenario: owns the driver handle, the clock, the recorder view, the aliases and the area modules. */
 export function createWorld(driver: Driver, title: string) {
-  const aliases = new Aliases(title);
+  const aliases = new Aliases(title, driver.aliasSalt);
   const recorder: RecorderView = {
     async invocations(filter: InvocationFilter = {}): Promise<InvocationView[]> {
       if (!driver.recorder) throw new InfrastructureError(`the ${driver.kind} driver has no recorder`);

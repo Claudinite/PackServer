@@ -1,6 +1,7 @@
 import { githubLogin, type GitHubLogin } from "@packserver/core/identity";
+import { analyticsStats } from "@packserver/http";
 import {
-  clockFrom, cryptoRng, d1Port, kvPort, r2ReadPort, rateLimitPort, readSecret, statsPort, turnstilePort, workerRuntime,
+  clockFrom, cryptoRng, d1Port, kvPort, r2ReadPort, rateLimitPort, readSecret, turnstilePort, workerRuntime,
   type WorkerRuntime,
 } from "@packserver/ports/cloudflare";
 import type { Ports, R2Read } from "@packserver/ports";
@@ -47,7 +48,7 @@ export function createRuntime(env: Env): WebRuntime {
       clock: clockFrom(env.ENVIRONMENT, env.CLOCK),
       rng: cryptoRng,
       d1: d1Port(env.DB),
-      stats: statsPort({ request: env.REQUEST_OUTCOMES, domain: env.DOMAIN_EVENTS }),
+      stats: analyticsStats({ request_outcomes: env.REQUEST_OUTCOMES, domain_events: env.DOMAIN_EVENTS, downloads: env.DOWNLOADS }),
       turnstile: turnstilePort(() => readSecret(env.TURNSTILE_SECRET)),
       kv: { SESSIONS_KV: kvPort(env.SESSIONS_KV), CACHE_KV: kvPort(env.CACHE_KV) },
       r2: { PACKS_PUBLIC: r2ReadPort(env.PACKS_PUBLIC), PACKS_PRIVATE: r2ReadPort(env.PACKS_PRIVATE) },

@@ -3,12 +3,13 @@
 // as data in packages/ports/trust-table.json) and keeps Cloudflare bindings behind each Worker's bindings.ts.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { TEST_STRINGS } from "./test-strings.mjs";
 
-const root = process.argv[2] ?? join(import.meta.dirname, "..");
+let root;
 const ENVS = ["test", "staging", "production"];
-const problems = [];
+let problems;
 const problem = (where, message) => problems.push(`${where}: ${message}`);
 
 const BINDING_KEYS = [
@@ -324,9 +325,14 @@ function handlerEnvOnlyReachesRuntime(sourceFile) {
   return ok;
 }
 
+// Repeated runs in one process (the tests) re-read mostly unchanged sources, so a parse is kept per text.
+const parsed = new Map();
 function parse(file) {
   const text = readFileSync(file, "utf8");
-  return { text, sourceFile: ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS) };
+  const tsx = file.endsWith("x");
+  const key = `${tsx}\0${text}`;
+  if (!parsed.has(key)) parsed.set(key, ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, tsx ? ts.ScriptKind.TSX : ts.ScriptKind.TS));
+  return { text, sourceFile: parsed.get(key) };
 }
 
 /** A read-only bucket is read-only because `bindings.ts` hands it to `r2ReadPort` and to nothing else; the platform has no such binding. */
@@ -380,46 +386,55 @@ function checkSeam(table) {
   }
 }
 
-const table = JSON.parse(readFileSync(join(root, "packages/ports/trust-table.json"), "utf8")).workers;
-const configs = {};
-for (const [worker, t] of Object.entries(table)) {
-  const path = join(root, "workers", worker, "wrangler.jsonc");
-  if (!existsSync(path)) {
-    problem(`workers/${worker}`, "has no wrangler.jsonc");
-    continue;
-  }
-  const config = readJsonc(path);
-  configs[worker] = config;
-  if (!readFileSync(path, "utf8").endsWith("\n")) problem(`workers/${worker}`, "wrangler.jsonc must end with a newline");
-  // A bare `wrangler deploy` reads the top level, so it must name a Worker that exists nowhere and bind and route nothing.
-  if (config.name !== `${worker}-local`) problem(`workers/${worker}`, `top-level name is "${config.name}", expected "${worker}-local"`);
-  if (config.workers_dev !== false) problem(`workers/${worker}`, "the top level needs workers_dev: false");
-  if (config.routes?.length || config.route) problem(`workers/${worker}`, "the top level must not declare routes");
-  for (const key of [...BINDING_KEYS, "triggers"]) if (config[key] !== undefined) problem(`workers/${worker}`, `the top level must not declare ${key}`);
-  if (!config.name || !config.main || !config.compatibility_date) problem(`workers/${worker}`, "needs name, main and compatibility_date at the top level");
-  sameSet(`workers/${worker}`, "environments", Object.keys(config.env ?? {}), ENVS);
-  for (const env of ENVS) {
-    const block = config.env?.[env];
-    if (!block) continue;
-    checkEnv(worker, t, env, block);
-    checkRoutes(worker, env, block);
-    checkInvariants(worker, t, env, block);
-    if (env !== "test" && ["github", "validator", "admin", "judge", "prober"].includes(worker) && !block.triggers?.crons?.length) {
-      problem(`workers/${worker} env.${env}`, "needs cron triggers");
+/** Runs every check against the repository at rootDir and returns the problems found. */
+export function checkBindings(rootDir) {
+  root = rootDir;
+  problems = [];
+  const table = JSON.parse(readFileSync(join(root, "packages/ports/trust-table.json"), "utf8")).workers;
+  const configs = {};
+  for (const [worker, t] of Object.entries(table)) {
+    const path = join(root, "workers", worker, "wrangler.jsonc");
+    if (!existsSync(path)) {
+      problem(`workers/${worker}`, "has no wrangler.jsonc");
+      continue;
+    }
+    const config = readJsonc(path);
+    configs[worker] = config;
+    if (!readFileSync(path, "utf8").endsWith("\n")) problem(`workers/${worker}`, "wrangler.jsonc must end with a newline");
+    // A bare `wrangler deploy` reads the top level, so it must name a Worker that exists nowhere and bind and route nothing.
+    if (config.name !== `${worker}-local`) problem(`workers/${worker}`, `top-level name is "${config.name}", expected "${worker}-local"`);
+    if (config.workers_dev !== false) problem(`workers/${worker}`, "the top level needs workers_dev: false");
+    if (config.routes?.length || config.route) problem(`workers/${worker}`, "the top level must not declare routes");
+    for (const key of [...BINDING_KEYS, "triggers"]) if (config[key] !== undefined) problem(`workers/${worker}`, `the top level must not declare ${key}`);
+    if (!config.name || !config.main || !config.compatibility_date) problem(`workers/${worker}`, "needs name, main and compatibility_date at the top level");
+    sameSet(`workers/${worker}`, "environments", Object.keys(config.env ?? {}), ENVS);
+    for (const env of ENVS) {
+      const block = config.env?.[env];
+      if (!block) continue;
+      checkEnv(worker, t, env, block);
+      checkRoutes(worker, env, block);
+      checkInvariants(worker, t, env, block);
+      if (env !== "test" && ["github", "validator", "admin", "judge", "prober"].includes(worker) && !block.triggers?.crons?.length) {
+        problem(`workers/${worker} env.${env}`, "needs cron triggers");
+      }
     }
   }
+  const writers = Object.entries(table).filter(([, t]) => Object.values(t.r2).some((v) => v.access !== "read" && ["packs-public", "packs-private"].includes(v.bucket))).map(([w]) => w);
+  sameSet("trust table", "Workers that can write the public and private buckets", writers, ["validator"]);
+  for (const [w, t] of Object.entries(table)) {
+    for (const f of Object.keys(t.fakes)) if (!/^[A-Z][A-Z0-9_]*$/.test(f)) problem(`trust table ${w}`, `fake binding ${f} is not an env name`);
+  }
+  checkSeam(table);
+  checkResources(table, configs);
+  return { problems, workers: Object.keys(table).length };
 }
-const writers = Object.entries(table).filter(([, t]) => Object.values(t.r2).some((v) => v.access !== "read" && ["packs-public", "packs-private"].includes(v.bucket))).map(([w]) => w);
-sameSet("trust table", "Workers that can write the public and private buckets", writers, ["validator"]);
-for (const [w, t] of Object.entries(table)) {
-  for (const f of Object.keys(t.fakes)) if (!/^[A-Z][A-Z0-9_]*$/.test(f)) problem(`trust table ${w}`, `fake binding ${f} is not an env name`);
-}
-checkSeam(table);
-checkResources(table, configs);
 
-if (problems.length > 0) {
-  console.error(problems.map((p) => `check-bindings: ${p}`).join("\n"));
-  process.exitCode = 1;
-} else {
-  console.log(`check-bindings: ${Object.keys(table).length} Workers, ${ENVS.length} environments each, ok`);
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const { problems: found, workers } = checkBindings(process.argv[2] ?? join(import.meta.dirname, ".."));
+  if (found.length > 0) {
+    console.error(found.map((p) => `check-bindings: ${p}`).join("\n"));
+    process.exitCode = 1;
+  } else {
+    console.log(`check-bindings: ${workers} Workers, ${ENVS.length} environments each, ok`);
+  }
 }

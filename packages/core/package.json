@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./audit": "./audit/index.ts",
+    "./audit/testing": "./audit/testing.ts",
     "./canonical": "./canonical/index.ts",
     "./canonical/fixtures": "./canonical/fixtures.ts",
     "./identity": "./identity/index.ts",
@@ -11,6 +13,8 @@
     "./index": "./index/index.ts",
     "./mail": "./mail/index.ts",
     "./mail/testing": "./mail/testing.ts",
+    "./telemetry": "./telemetry/index.ts",
+    "./telemetry/testing": "./telemetry/testing.ts",
     "./validation": "./validation/index.ts"
   },
   "scripts": {
@@ -22,6 +26,7 @@
     "@packserver/ports": "workspace:*",
     "@packserver/rules": "workspace:*",
     "@packserver/schema": "workspace:*",
+    "aws4fetch": "catalog:",
     "zod": "catalog:"
   }
 }

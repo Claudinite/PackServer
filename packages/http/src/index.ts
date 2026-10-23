@@ -9,3 +9,5 @@ export * from "./selftest-runner";
 export * from "./body";
 export * from "./worker-shell";
 export * from "./selftest-local";
+export * from "./recorder-middleware";
+export { analyticsStats } from "@packserver/core/telemetry";
