@@ -20,7 +20,9 @@ paths, 100% on the validator. Invocation logs are off everywhere. The zone's thr
 `firewall_events`) archive to R2 for 90 days (firewall events 30). A Logpush Transformer (D59)
 rewrites each `http_requests` record before Cloudflare delivers it: `ClientIP` becomes
 `ClientNetwork` (/24 for IPv4, /48 for IPv6) and only the path is selected, never the URI or query;
-the network-level counts REQ-TELEM-001 and REQ-TELEM-002 promise come from the archive.
+the network-level counts REQ-TELEM-001 and REQ-TELEM-002 promise come from the archive. The network
+is a consistent key, not RFC 5952 canonical (`2001:db8:0::/48`), and readers only compare keys; an
+IPv4-mapped address lands in `0:0:0::/48`, harmless while Cloudflare logs IPv4 clients as dotted quads.
 
 **Sampling and denial of wallet.** Logs on the read-path Workers are head-sampled at 10x scale
 (0.15), never on write paths; synthetic traffic and anonymous 4xx are logged at low rates. A KV

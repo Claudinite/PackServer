@@ -294,20 +294,83 @@ describe("the command", () => {
     expect(selftest.destinations.map((d) => d.uri)).toContain("registry-admin.claudinite.com/__selftest*");
   });
 
-  it("scopes each environment's Logpush jobs to its own hosts and ops bucket, with no raw IP field", async () => {
+  it("gives each http_requests job a transformer holding its hosts and cache condition, and an empty filter", async () => {
     const zone = fakeZone();
-    await run(["--env", "production", "--apply", "--only", "logpush"], zone);
+    const r = await run(["--env", "production", "--apply", "--only", "logpush"], zone);
+    expect(r.err).toBe("");
+    const names = zone.state.transformers.map((t) => t.name).sort();
+    expect(names).toEqual(["packserver-production-http-cache-hits", "packserver-production-http-cache-misses"]);
     const hits = zone.state.jobs.find((j) => j.name === "packserver-production-http-cache-hits");
-    expect(hits.output_options.sample_rate).toBe(0.1);
-    expect(hits.destination_conf).toContain("r2://ops/logs/http-requests/hits/{DATE}");
-    const filter = JSON.parse(hits.filter).where.and;
-    expect(filter[0].value).toEqual(expect.arrayContaining(["registry.claudinite.com", "packs.claudinite.com"]));
-    expect(filter[0].value).not.toContain("registry-staging.claudinite.com");
-    expect(filter[1]).toEqual({ key: "CacheCacheStatus", operator: "eq", value: "hit" });
     const misses = zone.state.jobs.find((j) => j.name === "packserver-production-http-cache-misses");
+    expect(hits.output_options.sample_rate).toBe(0.1);
     expect(misses.output_options.sample_rate).toBe(1);
-    expect(JSON.parse(misses.filter).where.and[1].operator).toBe("!eq");
-    for (const j of zone.state.jobs) expect(j.output_options.field_names).not.toContain("ClientIP");
+    expect(hits.destination_conf).toContain("r2://ops/logs/http-requests/hits/{DATE}");
+    for (const j of [hits, misses]) {
+      expect(j.filter).toBe("");
+      expect(j.output_options.output_type).toBe("ndjson");
+      expect(j.transformer_id).toBe(zone.state.transformers.find((t) => t.name.endsWith(j.name.split("production-")[1])).id);
+    }
+    const sql = zone.state.transformers.find((t) => t.name.endsWith("cache-hits")).code;
+    expect(sql).toContain("'registry.claudinite.com'");
+    expect(sql).toContain("'packs.claudinite.com'");
+    expect(sql).not.toContain("registry-staging");
+    expect(sql).toContain("CacheCacheStatus = 'hit'");
+    expect(zone.state.transformers.find((t) => t.name.endsWith("cache-misses")).code).toContain("CacheCacheStatus <> 'hit'");
+    const fw = zone.state.jobs.find((j) => j.name === "packserver-production-firewall-events");
+    expect(fw.transformer_id).toBeUndefined();
+    expect(JSON.parse(fw.filter).where.and[0].value).not.toContain("registry-staging.claudinite.com");
+    for (const j of zone.state.jobs) expect(j.output_options.field_names ?? []).not.toContain("ClientIP");
+  });
+
+  it("--plan previews the transformer on IPv4 and IPv6 vectors and writes nothing", async () => {
+    const zone = fakeZone();
+    const r = await run(["--env", "staging", "--plan", "--only", "logpush"], zone);
+    expect(r.code).toBe(0);
+    expect(zone.writes()).toEqual([]);
+    expect(r.out).toContain("preview packserver-staging-http-cache-hits");
+    const previews = zone.calls.filter((c) => c.path.endsWith("/transformers/preview"));
+    const vectors = loadSpec().logpush.vectors;
+    expect(previews.length).toBe(2 * (vectors.length + 2));
+    const inputs = previews.map((c) => c.body.input.ClientIP);
+    for (const ip of ["2001:db8::1", "::1", "2001::", "2001:DB8:ABCD:1234::1", "2001:0db8:0001:abcd::1"]) expect(inputs).toContain(ip);
+    expect(r.out).toContain("would    create transformer packserver-staging-http-cache-hits");
+  });
+
+  it("refuses to create a job when the preview still shows ClientIP", async () => {
+    const zone = fakeZone({ previewLeaksIp: true });
+    const r = await run(["--env", "staging", "--apply", "--only", "logpush"], zone);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("still has ClientIP");
+    expect(zone.state.transformers).toEqual([]);
+    expect(zone.state.jobs.map((j) => j.name)).toEqual(["packserver-staging-firewall-events"]);
+  });
+
+  it("reports a 403 from the transformers API as its own state and creates no http_requests job", async () => {
+    const zone = fakeZone({ transformersForbidden: true });
+    const r = await run(["--env", "staging", "--apply", "--only", "logpush"], zone);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("TRANSFORMERS FORBIDDEN (403)");
+    expect(r.err).toContain("not read as");
+    expect(zone.state.jobs.map((j) => j.name)).toEqual(["packserver-staging-firewall-events"]);
+  });
+
+  it("migrates a filtered job by clearing the filter and setting the transformer in one update", async () => {
+    const old = { id: 7, name: "packserver-staging-http-cache-hits", dataset: "http_requests", enabled: true, destination_conf: "r2://ops-staging/logs/http-requests/hits/{DATE}?account-id=acct", filter: JSON.stringify({ where: { key: "CacheCacheStatus", operator: "eq", value: "hit" } }), output_options: { field_names: ["ClientIP"], sample_rate: 0.1 } };
+    const zone = fakeZone({ seed: { jobs: [old] } });
+    const r = await run(["--env", "staging", "--apply", "--only", "logpush"], zone);
+    expect(r.err).toBe("");
+    const put = zone.calls.find((c) => c.method === "PUT" && c.path.endsWith("/logpush/jobs/7"));
+    expect(put.body.filter).toBe("");
+    expect(put.body.transformer_id).toBeGreaterThan(0);
+    const again = await run(["--env", "staging", "--apply", "--only", "logpush"], zone);
+    expect(again.out).not.toMatch(/^(created|updated)/m);
+  });
+
+  it("updates a transformer whose SQL drifted", async () => {
+    const zone = fakeZone({ seed: { transformers: [{ id: 5, name: "packserver-staging-http-cache-hits", code: "SELECT ClientIP FROM http_requests" }] } });
+    const r = await run(["--env", "staging", "--apply", "--only", "logpush"], zone);
+    expect(r.out).toContain("updated  transformer packserver-staging-http-cache-hits");
+    expect(zone.state.transformers.find((t) => t.id === 5).code).not.toContain("SELECT ClientIP");
   });
 
   it("keeps other lifecycle rules on the ops bucket", async () => {

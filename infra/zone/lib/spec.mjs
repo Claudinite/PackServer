@@ -3,6 +3,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ENVS, ZONE, planResources } from "../../lib/plan.mjs";
+import { checkTransformer, readTemplate, renderTransformer } from "./transformer.mjs";
 
 const DIR = join(import.meta.dirname, "..");
 export const MANAGED_PREFIX = "packserver_";
@@ -94,6 +95,15 @@ export function validateSpec(spec, { root } = {}) {
     if (!(j.sampleRate > 0 && j.sampleRate <= 1)) problems.push(`${j.key}: sampleRate must be in (0, 1]`);
     for (const f of j.fields) {
       if (logpush.forbiddenFields.includes(f)) problems.push(`${j.key}: field ${f} would put a raw IP or query string in the archive`);
+    }
+    if (j.dataset === "http_requests" && !j.transformer) problems.push(`${j.key}: an http_requests job must go through the transformer, or ClientIP reaches the archive`);
+    if (j.transformer) {
+      if (!j.where || !["hit", "miss"].includes(j.previewCacheStatus)) problems.push(`${j.key}: a transformer job needs a SQL where and a previewCacheStatus`);
+      else {
+        const sql = renderTransformer(readTemplate(spec, j), j, envHosts("staging", root));
+        if (sql.length > 32768) problems.push(`${j.key}: the transformer SQL is over the 32 KB API limit`);
+        problems.push(...checkTransformer(sql, logpush.vectors, logpush.forbiddenFields).map((p) => `${j.key}: ${p}`));
+      }
     }
     const retained = logpush.retention.some((r) => j.prefix.startsWith(r.prefix));
     if (!retained) problems.push(`${j.key}: no retention rule covers ${j.prefix}`);

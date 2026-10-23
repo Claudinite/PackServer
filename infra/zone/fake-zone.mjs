@@ -1,8 +1,9 @@
 // An in-memory stand-in for the Cloudflare endpoints infra/zone uses, layered on the T-010 fake
 // (zones, accounts, Secrets Store). Shapes follow the endpoints named in each handler. Test support only.
 import { fakeCloudflare } from "../fake-cloudflare.mjs";
+import { evaluateNetwork, parseNetworkCase } from "./lib/transformer.mjs";
 
-export function fakeZone({ seed = {}, failGet = [], failWrite = [], failSecretNumber, idps, base } = {}) {
+export function fakeZone({ seed = {}, failGet = [], failWrite = [], failSecretNumber, idps, base, transformersForbidden = false, previewLeaksIp = false } = {}) {
   const inner = base ?? fakeCloudflare({ seed: { stores: [{ id: "store1", name: "packserver" }], ...(seed.base ?? {}) } });
   const state = {
     rulesets: structuredClone(seed.rulesets ?? {}),
@@ -12,6 +13,7 @@ export function fakeZone({ seed = {}, failGet = [], failWrite = [], failSecretNu
     apps: structuredClone(seed.apps ?? []),
     idps: idps ?? [{ id: "idp-hw", name: "Hardware key", type: "saml" }],
     jobs: structuredClone(seed.jobs ?? []),
+    transformers: structuredClone(seed.transformers ?? []),
     lifecycle: structuredClone(seed.lifecycle ?? {}),
     inner: inner.state,
   };
@@ -49,7 +51,7 @@ export function fakeZone({ seed = {}, failGet = [], failWrite = [], failSecretNu
         return ok({ id: sm[1] });
       }
     }
-    const mine = /^\/(zones\/zone1\/(rulesets|cache|logpush)|accounts\/acct\/(access|r2\/buckets\/[^/]+\/lifecycle))/.test(path);
+    const mine = /^\/(zones\/zone1\/(rulesets|cache|logpush)|accounts\/acct\/(access|logpush|r2\/buckets\/[^/]+\/lifecycle))/.test(path);
     if (!mine) return inner.fetch(rawUrl, init);
     calls.push({ method, path, body });
     if (method === "GET" && failGet.some((f) => path.includes(f))) return fail(500, 1, "boom");
@@ -92,13 +94,41 @@ export function fakeZone({ seed = {}, failGet = [], failWrite = [], failSecretNu
       if (method === "DELETE") state[key].splice(i, 1);
       return ok({ id: r[2] });
     }
+    if (path.startsWith("/accounts/acct/logpush/transformers")) {
+      if (transformersForbidden) return fail(403, 1000, "transformer feature is not available for this account");
+      const view = (t) => ({ id: t.id, name: t.name, dataset: "http_requests" });
+      if (path === "/accounts/acct/logpush/transformers") {
+        if (method === "GET") return ok(state.transformers.map(view));
+        const made = { id: state.transformers.length + 1, name: body.name, code: body.code };
+        state.transformers.push(made);
+        return ok(view(made));
+      }
+      if (path === "/accounts/acct/logpush/transformers/preview") {
+        // Evaluates the CASE the SQL carries; the WHERE is read from the SQL text.
+        const { sql, input } = body;
+        const hosts = [...(sql.match(/ClientRequestHost IN \(([^)]*)\)/)?.[1] ?? "").matchAll(/'([^']+)'/g)].map((m) => m[1]);
+        const hit = input.CacheCacheStatus === "hit";
+        const keeps = hosts.includes(input.ClientRequestHost) && (sql.includes("CacheCacheStatus = 'hit'") ? hit : !hit);
+        if (!keeps) return ok([]);
+        const { ClientIP, ...rest } = input;
+        return ok([{ ...rest, ...(previewLeaksIp ? { ClientIP } : {}), ClientNetwork: evaluateNetwork(parseNetworkCase(sql), ClientIP) }]);
+      }
+      const r2 = path.match(/^\/accounts\/acct\/logpush\/transformers\/(\d+)(\/content)?$/);
+      const t = r2 && state.transformers.find((x) => String(x.id) === r2[1]);
+      if (!t) return fail(400, 1001, "transformer not found for this account");
+      if (r2[2]) return ok({ content: t.code });
+      if (method === "PUT") t.code = body.code ?? t.code;
+      return ok(view(t));
+    }
     if (path === "/zones/zone1/logpush/jobs") {
       if (method === "GET") return ok(state.jobs.map((j) => ({ ...j, destination_conf: j.destination_conf.split("&access-key-id=")[0] })));
+      if (body.transformer_id && body.filter) return fail(400, 1002, "a job cannot have both a filter and a transformer configured; use one or the other");
       const made = { id: state.jobs.length + 1, ...body };
       state.jobs.push(made);
       return ok(made);
     }
     if ((r = path.match(/^\/zones\/zone1\/logpush\/jobs\/(\d+)$/)) && method === "PUT") {
+      if (body.transformer_id && body.filter) return fail(400, 1002, "a job cannot have both a filter and a transformer configured; use one or the other");
       const i = state.jobs.findIndex((j) => String(j.id) === r[1]);
       state.jobs[i] = { id: Number(r[1]), ...body };
       return ok(state.jobs[i]);
@@ -109,6 +139,6 @@ export function fakeZone({ seed = {}, failGet = [], failWrite = [], failSecretNu
     }
     return fail(404, 404, `fake has no ${method} ${path}`);
   };
-  const writes = () => [...calls.filter((c) => c.method !== "GET"), ...inner.creates()];
+  const writes = () => [...calls.filter((c) => c.method !== "GET" && !c.path.endsWith("/transformers/preview")), ...inner.creates()];
   return { fetch, state, calls, inner, writes };
 }

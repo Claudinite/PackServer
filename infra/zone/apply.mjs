@@ -40,7 +40,9 @@ Access applications, service tokens and Logpush jobs are those of the chosen --e
 Requires CF_BOOTSTRAP_TOKEN (CLOUDFLARE_ACCOUNT_ID when the token sees several accounts).
   access:   ACCESS_TEAM_EMAILS; for production also ACCESS_ADMIN_IDP_ID (manual task M-03, #101)
             and ACCESS_ADMIN_EMAILS
-  logpush:  CF_LOGPUSH_R2_ACCESS_KEY_ID and CF_LOGPUSH_R2_SECRET_ACCESS_KEY (R2 object write on the ops bucket)
+  logpush:  CF_LOGPUSH_R2_ACCESS_KEY_ID and CF_LOGPUSH_R2_SECRET_ACCESS_KEY (R2 object write on the ops bucket);
+            the token needs Logs Write for the Transformers API. --plan and --apply preview each
+            http_requests transformer in Cloudflare against IPv4 and IPv6 vectors first.
 `;
 
 export function describe(spec, env, zoneRules) {

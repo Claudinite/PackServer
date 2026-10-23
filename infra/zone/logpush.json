@@ -1,9 +1,21 @@
 {
   "destinationBucket": "ops",
-  "forbiddenFields": ["ClientIP", "ClientRequestURI", "ClientRequestQuery", "ClientRequestReferer", "ClientSrcPort"],
+  "forbiddenFields": [
+    "ClientIP",
+    "ClientRequestURI",
+    "ClientRequestQuery",
+    "ClientRequestReferer",
+    "ClientSrcPort"
+  ],
   "retention": [
-    { "prefix": "logs/http-requests/", "days": 90 },
-    { "prefix": "logs/firewall-events/", "days": 30 }
+    {
+      "prefix": "logs/http-requests/",
+      "days": 90
+    },
+    {
+      "prefix": "logs/firewall-events/",
+      "days": 30
+    }
   ],
   "jobs": [
     {
@@ -11,31 +23,157 @@
       "dataset": "http_requests",
       "prefix": "logs/http-requests/hits/{DATE}",
       "sampleRate": 0.1,
-      "where": { "key": "CacheCacheStatus", "operator": "eq", "value": "hit" },
       "fields": [
-        "CacheCacheStatus", "CacheResponseStatus", "CacheTieredFill", "ClientASN", "ClientCountry", "ClientRequestHost",
-        "ClientRequestMethod", "ClientRequestPath", "ClientRequestProtocol", "ClientRequestUserAgent", "EdgeEndTimestamp",
-        "EdgeResponseBytes", "EdgeResponseStatus", "EdgeStartTimestamp", "OriginResponseStatus", "RayID"
-      ]
+        "CacheCacheStatus",
+        "CacheResponseStatus",
+        "CacheTieredFill",
+        "ClientASN",
+        "ClientCountry",
+        "ClientRequestHost",
+        "ClientRequestMethod",
+        "ClientRequestPath",
+        "ClientRequestProtocol",
+        "ClientRequestUserAgent",
+        "EdgeEndTimestamp",
+        "EdgeResponseBytes",
+        "EdgeResponseStatus",
+        "EdgeStartTimestamp",
+        "OriginResponseStatus",
+        "RayID"
+      ],
+      "transformer": "http-requests.sql",
+      "where": "CacheCacheStatus = 'hit'",
+      "previewCacheStatus": "hit"
     },
     {
       "key": "http-cache-misses",
       "dataset": "http_requests",
       "prefix": "logs/http-requests/misses/{DATE}",
       "sampleRate": 1,
-      "where": { "key": "CacheCacheStatus", "operator": "!eq", "value": "hit" },
       "fields": [
-        "CacheCacheStatus", "CacheResponseStatus", "CacheTieredFill", "ClientASN", "ClientCountry", "ClientRequestHost",
-        "ClientRequestMethod", "ClientRequestPath", "ClientRequestProtocol", "ClientRequestUserAgent", "EdgeEndTimestamp",
-        "EdgeResponseBytes", "EdgeResponseStatus", "EdgeStartTimestamp", "OriginResponseStatus", "RayID"
-      ]
+        "CacheCacheStatus",
+        "CacheResponseStatus",
+        "CacheTieredFill",
+        "ClientASN",
+        "ClientCountry",
+        "ClientRequestHost",
+        "ClientRequestMethod",
+        "ClientRequestPath",
+        "ClientRequestProtocol",
+        "ClientRequestUserAgent",
+        "EdgeEndTimestamp",
+        "EdgeResponseBytes",
+        "EdgeResponseStatus",
+        "EdgeStartTimestamp",
+        "OriginResponseStatus",
+        "RayID"
+      ],
+      "transformer": "http-requests.sql",
+      "where": "(CacheCacheStatus IS NULL OR CacheCacheStatus <> 'hit')",
+      "previewCacheStatus": "miss"
     },
     {
       "key": "firewall-events",
       "dataset": "firewall_events",
       "prefix": "logs/firewall-events/{DATE}",
       "sampleRate": 1,
-      "fields": ["Action", "ClientASN", "ClientCountry", "ClientRequestHost", "ClientRequestMethod", "ClientRequestPath", "Datetime", "EdgeResponseStatus", "RayID", "RuleID", "Source"]
+      "fields": [
+        "Action",
+        "ClientASN",
+        "ClientCountry",
+        "ClientRequestHost",
+        "ClientRequestMethod",
+        "ClientRequestPath",
+        "Datetime",
+        "EdgeResponseStatus",
+        "RayID",
+        "RuleID",
+        "Source"
+      ]
+    }
+  ],
+  "transformerDir": "transformers",
+  "sampleRecord": {
+    "CacheCacheStatus": "hit",
+    "CacheResponseStatus": 200,
+    "CacheTieredFill": false,
+    "ClientASN": 64496,
+    "ClientCountry": "us",
+    "ClientRequestMethod": "GET",
+    "ClientRequestPath": "/@claudinite/x/1.0.0/pack.tar.zst",
+    "ClientRequestProtocol": "HTTP/2",
+    "ClientRequestUserAgent": "cn/1.0.0",
+    "EdgeEndTimestamp": "2026-10-23T00:00:01Z",
+    "EdgeResponseBytes": 1024,
+    "EdgeResponseStatus": 200,
+    "EdgeStartTimestamp": "2026-10-23T00:00:00Z",
+    "OriginResponseStatus": 200,
+    "RayID": "8e2a1c60ef9e1c9a"
+  },
+  "vectors": [
+    {
+      "ip": "198.51.100.7",
+      "network": "198.51.100.0/24"
+    },
+    {
+      "ip": "2001:db8::1",
+      "network": "2001:db8:0::/48"
+    },
+    {
+      "ip": "2001::1",
+      "network": "2001:0:0::/48"
+    },
+    {
+      "ip": "2001::",
+      "network": "2001:0:0::/48"
+    },
+    {
+      "ip": "::1",
+      "network": "0:0:0::/48"
+    },
+    {
+      "ip": "::",
+      "network": "0:0:0::/48"
+    },
+    {
+      "ip": "2001:DB8:ABCD:1234::1",
+      "network": "2001:db8:abcd::/48"
+    },
+    {
+      "ip": "2001:0db8:0001:abcd::1",
+      "network": "2001:db8:1::/48"
+    },
+    {
+      "ip": "2001:db8:0:0:1::1",
+      "network": "2001:db8:0::/48"
+    },
+    {
+      "ip": "2001:db8:abcd:1234:5678:9abc:def0:1234",
+      "network": "2001:db8:abcd::/48"
+    },
+    {
+      "ip": "fe80::1:2",
+      "network": "fe80:0:0::/48"
+    },
+    {
+      "ip": "::ffff:192.0.2.1",
+      "network": "0:0:0::/48"
+    },
+    {
+      "ip": "not-an-ip",
+      "network": null
+    },
+    {
+      "ip": "198.51.100.7:80",
+      "network": null
+    },
+    {
+      "ip": "1.2.3",
+      "network": null
+    },
+    {
+      "ip": "",
+      "network": null
     }
   ]
 }

@@ -2,6 +2,7 @@
 import { ConfigError } from "../../lib/secrets-store.mjs";
 import { suffixed } from "../../lib/plan.mjs";
 import { same } from "./rulesets.mjs";
+import { readTemplate, renderTransformer } from "./transformer.mjs";
 
 export function readLogpushCredentials(envVars) {
   const accessKeyId = envVars.CF_LOGPUSH_R2_ACCESS_KEY_ID;
@@ -17,21 +18,25 @@ const destinationBase = (accountId, bucket, prefix) => `r2://${bucket}/${prefix}
 const destinationWithKey = (base, creds) =>
   `${base}&access-key-id=${encodeURIComponent(creds.accessKeyId)}&secret-access-key=${encodeURIComponent(creds.secretAccessKey)}`;
 
-export function desiredJob({ job, env, hosts, accountId, bucket, creds }) {
-  const conditions = [{ key: "ClientRequestHost", operator: "in", value: hosts }];
-  if (job.where) conditions.push(job.where);
+// A job has a filter or a transformer, never both: a transformer job carries its host and cache
+// conditions in the SQL WHERE clause and an empty filter.
+export function desiredJob({ job, env, hosts, accountId, bucket, creds, transformerId }) {
   const base = destinationBase(accountId, bucket, job.prefix);
-  return {
-    base,
-    body: {
-      name: jobName(env, job.key),
-      dataset: job.dataset,
-      enabled: true,
-      destination_conf: creds ? destinationWithKey(base, creds) : base,
-      output_options: { field_names: job.fields, timestamp_format: "rfc3339", sample_rate: job.sampleRate, "CVE-2021-44228": false },
-      filter: JSON.stringify({ where: { and: conditions } }),
-    },
+  const body = {
+    name: jobName(env, job.key),
+    dataset: job.dataset,
+    enabled: true,
+    destination_conf: creds ? destinationWithKey(base, creds) : base,
   };
+  if (job.transformer) {
+    body.output_options = { output_type: "ndjson", timestamp_format: "rfc3339", sample_rate: job.sampleRate, "CVE-2021-44228": false };
+    body.filter = "";
+    body.transformer_id = transformerId;
+  } else {
+    body.output_options = { field_names: job.fields, timestamp_format: "rfc3339", sample_rate: job.sampleRate, "CVE-2021-44228": false };
+    body.filter = JSON.stringify({ where: { and: [{ key: "ClientRequestHost", operator: "in", value: hosts }] } });
+  }
+  return { base, body };
 }
 
 // The destination's keys are redacted on read, so only the part before them is compared.
@@ -42,7 +47,48 @@ const summarise = (j) => ({
   fields: j.output_options?.field_names,
   sample_rate: j.output_options?.sample_rate ?? 1,
   filter: j.filter ? JSON.parse(j.filter) : null,
+  transformer_id: j.transformer_id ?? null,
 });
+
+export const transformerName = (env, key) => `packserver-${env}-${key}`;
+
+// 403 is its own state: the account lacks Transformers (or the token lacks Logs Write). It is not
+// "absent", so nothing is created for the jobs that need one.
+async function readTransformers(api, accountId) {
+  try {
+    const list = (await api("GET", `/accounts/${accountId}/logpush/transformers`)).result;
+    if (!Array.isArray(list)) throw new Error("unrecognised transformer listing");
+    return { byName: new Map(list.map((t) => [t.name, t])) };
+  } catch (e) {
+    if (e.status === 403) {
+      return { forbidden: `TRANSFORMERS FORBIDDEN (403): ${e.message}. The account may lack Transformers or the token Logs Write; this is not read as "no transformers", and no http_requests job is created without one. D59 fallback: an HTTPS Logpush destination doing the same rewrite` };
+    }
+    throw e;
+  }
+}
+
+// Runs the rendered SQL through the preview endpoint against every vector, and records that must be dropped.
+export async function previewTransformer({ api, accountId, sql, job, hosts, spec }) {
+  const { vectors, sampleRecord } = spec.logpush;
+  const passing = { ...sampleRecord, CacheCacheStatus: job.previewCacheStatus, ClientRequestHost: hosts[0] };
+  const run = async (input) => {
+    const res = await api("POST", `/accounts/${accountId}/logpush/transformers/preview`, { sql, input });
+    if (!Array.isArray(res.result)) throw new Error("unrecognised preview answer");
+    return res.result;
+  };
+  for (const v of vectors) {
+    const rows = await run({ ...passing, ClientIP: v.ip });
+    if (rows.length !== 1) throw new Error(`preview of ${JSON.stringify(v.ip)} returned ${rows.length} records, expected 1`);
+    const [row] = rows;
+    if ("ClientIP" in row) throw new Error(`preview of ${JSON.stringify(v.ip)} still has ClientIP`);
+    if (!("ClientNetwork" in row)) throw new Error(`preview of ${JSON.stringify(v.ip)} has no ClientNetwork`);
+    if ((row.ClientNetwork ?? null) !== v.network) throw new Error(`preview of ${JSON.stringify(v.ip)} gave ClientNetwork ${JSON.stringify(row.ClientNetwork)}, expected ${JSON.stringify(v.network)}`);
+    if (v.ip && Object.values(row).some((x) => typeof x === "string" && x.toLowerCase() === v.ip.toLowerCase())) throw new Error(`preview of ${JSON.stringify(v.ip)} carries the raw address in a field`);
+  }
+  const otherStatus = passing.CacheCacheStatus === "hit" ? "miss" : "hit";
+  if ((await run({ ...passing, CacheCacheStatus: otherStatus, ClientIP: "198.51.100.7" })).length !== 0) throw new Error("preview kept a record of the other cache status");
+  if ((await run({ ...passing, ClientRequestHost: "elsewhere.example.com", ClientIP: "198.51.100.7" })).length !== 0) throw new Error("preview kept a record of a host outside the environment");
+}
 
 export async function ensureLogpush({ api, accountId, zoneId, env, spec, hosts, creds, write, out, failures }) {
   const bucket = suffixed(env, spec.logpush.destinationBucket);
@@ -67,11 +113,50 @@ export async function ensureLogpush({ api, accountId, zoneId, env, spec, hosts, 
     out(`FAILED logpush jobs: ${e.message}`);
     return;
   }
+  let transformers;
+  if (spec.logpush.jobs.some((j) => j.transformer)) {
+    try {
+      transformers = await readTransformers(api, accountId);
+    } catch (e) {
+      transformers = { error: e.message };
+    }
+  }
   for (const job of spec.logpush.jobs) {
     await attempt(`logpush ${jobName(env, job.key)}`, async () => {
-      const want = desiredJob({ job, env, hosts, accountId, bucket, creds });
+      let transformerId;
+      if (job.transformer) {
+        if (transformers.forbidden) throw new Error(transformers.forbidden);
+        if (transformers.error) throw new Error(`could not list transformers: ${transformers.error}`);
+        const name = transformerName(env, job.key);
+        const sql = renderTransformer(readTemplate(spec, job), job, hosts);
+        await previewTransformer({ api, accountId, sql, job, hosts, spec });
+        out(`ok       preview ${name}: ${spec.logpush.vectors.length} vectors give ClientNetwork and no ClientIP`);
+        const have = transformers.byName.get(name);
+        if (have) {
+          const content = (await api("GET", `/accounts/${accountId}/logpush/transformers/${have.id}/content`)).result?.content;
+          if (typeof content !== "string") throw new Error("unrecognised transformer content answer");
+          transformerId = have.id;
+          if (content.trimEnd() === sql) {
+            out(`ok       transformer ${name}`);
+          } else if (!write) {
+            out(`would    update transformer ${name}`);
+          } else {
+            await api("PUT", `/accounts/${accountId}/logpush/transformers/${have.id}`, { name, code: sql });
+            out(`updated  transformer ${name}`);
+          }
+        } else if (!write) {
+          out(`would    create transformer ${name}`);
+        } else {
+          const made = (await api("POST", `/accounts/${accountId}/logpush/transformers`, { name, code: sql })).result;
+          if (!Number.isInteger(made?.id)) throw new Error("create answered without a transformer id");
+          transformerId = made.id;
+          out(`created  transformer ${name}`);
+        }
+      }
+      const want = desiredJob({ job, env, hosts, accountId, bucket, creds, transformerId });
       const have = existing.get(want.body.name);
-      if (have && same(summarise(have), summarise(want.body))) {
+      const known = !job.transformer || transformerId !== undefined;
+      if (have && known && same(summarise(have), summarise(want.body))) {
         out(`ok       logpush ${want.body.name}`);
         return;
       }
