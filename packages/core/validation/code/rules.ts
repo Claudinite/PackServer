@@ -81,10 +81,9 @@ const CLOCK_METHODS = new Set(["now", "getTime", "valueOf"]);
 const COMPARATORS = new Set(["<", ">", "<=", ">=", "==", "!=", "===", "!==", "?", "&&", "||"]);
 const CALENDAR_GETTERS = new Set(["Year", "Month", "Day", "Weekday", "YearDay", "Hour", "Minute", "getFullYear", "getMonth", "getDate", "getDay", "getHours", "getMinutes", "getUTCFullYear", "getUTCMonth", "getUTCDate", "getUTCDay", "getUTCHours"]);
 const DATE_STRING = /^\d{4}-\d{2}(?:-\d{2})?/;
-/** A number the size of an epoch timestamp (seconds or milliseconds), or a date written out. */
-function isDateConstant(t: Tok): boolean {
-  if (t.k === "num") return /^\d{10,}$/.test(t.v.replace(/_/g, ""));
-  return t.k === "str" && DATE_STRING.test(t.v);
+/** The number a token spells, or NaN for anything not plainly decimal. */
+function numberOf(t: Tok): number {
+  return t.k === "num" && /^[\d_]+$/.test(t.v) ? Number(t.v.replace(/_/g, "")) : NaN;
 }
 const DYNAMIC_HINT = "A name or object built at run time cannot be checked against the network and eval rules. Write the name out, or do not reach the global object this way.";
 
@@ -242,17 +241,31 @@ function timeRules(toks: readonly Tok[], clocks: readonly number[], src: Source,
   if (clocks.length === 0) return;
   const calendar = new Set<number>();
   const compares = new Set<number>();
-  const constants = new Set<number>();
+  const switches = new Set<number>();
+  const dates = new Set<number>();
+  const seconds = new Set<number>();
+  const scaled = new Set<number>();
   toks.forEach((t, n) => {
     if (t.k === "id" && CALENDAR_GETTERS.has(t.v) && isP(toks[n + 1], "(")) calendar.add(t.line);
+    if (t.k === "id" && (t.v === "switch" || t.v === "case")) switches.add(t.line);
     if (t.k === "p" && COMPARATORS.has(t.v)) compares.add(t.line);
-    if (isDateConstant(t)) constants.add(t.line);
+    if (t.k === "str" && DATE_STRING.test(t.v)) dates.add(t.line);
+    const value = numberOf(t);
+    // A millisecond epoch is 1e12 or more; a second epoch (1e9 up) only counts beside the conversion to or from milliseconds.
+    if (value >= 1e12) dates.add(t.line);
+    else if (value >= 1e9) seconds.add(t.line);
+    if (value === 1000 && isP(toks[n - 1], "/")) scaled.add(t.line);
+    if (t.k === "id" && t.v === "Unix" && isP(toks[n + 1], "(")) scaled.add(t.line);
   });
-  const decides = (line: number) => calendar.has(line) || (compares.has(line) && constants.has(line));
-  const stored = new Set<string>();
+  const isDuration = (at: number) => toks[at]?.v === "time" && (toks[at + 2]?.v === "Since" || toks[at + 2]?.v === "Until");
+  const decides = (line: number, duration: boolean) =>
+    (calendar.has(line) && (compares.has(line) || switches.has(line))) ||
+    (!duration && compares.has(line) && (dates.has(line) || (seconds.has(line) && scaled.has(line))));
+  const stored = new Map<string, boolean>();
   for (const at of clocks) {
     const t = toks[at]!;
-    if (decides(t.line)) {
+    const duration = isDuration(at);
+    if (decides(t.line, duration)) {
       emit("code.time-conditional", { file: src.file, line: t.line, quote: excerpt(src.text, t.i, 12), hint: TIME_HINT });
       continue;
     }
@@ -260,11 +273,11 @@ function timeRules(toks: readonly Tok[], clocks: readonly number[], src: Source,
     let op = at - 1;
     if (toks[op]?.v === "new") op--;
     const name = toks[op - 1];
-    if ((isP(toks[op], ":=") || isP(toks[op], "=")) && name?.k === "id" && name.line === t.line) stored.add(name.v);
+    if ((isP(toks[op], ":=") || isP(toks[op], "=")) && name?.k === "id" && name.line === t.line) stored.set(name.v, duration);
   }
   if (stored.size === 0) return;
   toks.forEach((t, k) => {
-    if (t.k === "id" && stored.has(t.v) && decides(t.line) && !isP(toks[k + 1], ":=") && !isP(toks[k + 1], "=")) {
+    if (t.k === "id" && stored.has(t.v) && decides(t.line, stored.get(t.v)!) && !isP(toks[k + 1], ":=") && !isP(toks[k + 1], "=")) {
       emit("code.time-conditional", { file: src.file, line: t.line, quote: excerpt(src.text, t.i, t.v.length), hint: TIME_HINT });
     }
   });

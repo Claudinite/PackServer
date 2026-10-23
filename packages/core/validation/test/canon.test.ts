@@ -242,6 +242,14 @@ describe("further evasions and their contrasts", () => {
     expect(go('strings.Title("preToolUse")')).toEqual([{ name: "c", tool_calls: ["*"] }]);
     expect(go('"world", strings.Title("preToolUse")')).toEqual([{ name: "c", tool_calls: ["*"] }]);
     expect(go("hook")).toEqual([{ name: "c", tool_calls: ["*"] }]);
+    const file = (body: string) => analyse({ ...cleanFiles(), "checks/c.go": `package checks\nimport "claudinite.com/checksdk"\n${body}\n` }).extraction.preinstall.guards;
+    const guard = [{ name: "c", tool_calls: ["*"] }];
+    expect(file('func init() { c := checksdk.Check{ID: "g", Run: run}\n c.Tags = []string{strings.Title("preToolUse")}\n checksdk.Register(c) }')).toEqual(guard);
+    expect(file('var c = checksdk.Check{ID: "g", Tags: tags()}\nfunc init() { checksdk.Register(c) }')).toEqual(guard);
+    expect(file('func init() { c.Tags = append(c.Tags, strings.Title("preToolUse")) }')).toEqual(guard);
+    expect(file('func mk() checksdk.Check { return checksdk.Check{ID: "g", Tags: []string{strings.Title("preToolUse")}} }\nfunc init() { checksdk.Register(mk()) }')).toEqual(guard);
+    expect(file('func init() { checksdk.Register(checksdk.Check{ID: "g", Tags: tags()}) }')).toEqual([{ name: "g", tool_calls: ["*"] }]);
+    expect(file('func init() { checksdk.Register(checksdk.Check{ID: "g", Tags: []string{"world"}, Run: run}) }')).toEqual([]);
     expect(go('"world", "work"')).toEqual([]);
   });
 });
@@ -249,7 +257,8 @@ describe("further evasions and their contrasts", () => {
 describe("scans grow linearly (ratio of a large input to a small one)", () => {
   const repeatTo = (unit: string, size: number) => unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
   const cases: Record<string, (size: number) => Files> = {
-    'JS "/[" repeated': (n) => ({ "tasks/t/w.mjs": repeatTo('"/[', n) }),
+    "JS /[ repeated": (n) => ({ "tasks/t/w.mjs": repeatTo("/[", n) }),
+    'JS "/[ repeated': (n) => ({ "tasks/t/w.mjs": repeatTo('"/[', n) }),
     "JS brackets": (n) => ({ "tasks/t/w.mjs": repeatTo("[", n) }),
     "JS folded names": (n) => ({ "tasks/t/w.mjs": repeatTo("globalThis['a'+'b'+`c`]; ", n) }),
     "JS constructor probes": (n) => ({ "tasks/t/w.mjs": repeatTo("x[a+", n) }),
