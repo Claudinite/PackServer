@@ -83,7 +83,7 @@ export async function mintToken(ports: TokenPorts, input: MintInput): Promise<Mi
     blocks.push(block);
   }
   if ((input.cidr?.length ?? 0) > MAX_CIDRS) return { ok: false, reason: "cidr" };
-  if (input.label !== undefined && (input.label.length > MAX_LABEL || [...input.label].some((ch) => ch.charCodeAt(0) < 32))) return { ok: false, reason: "label" };
+  if (input.label !== undefined && (input.label.length > MAX_LABEL || /[\p{Cc}]/u.test(input.label))) return { ok: false, reason: "label" };
 
   const roles = MINTING_ROLES.map(() => "?").join(", ");
   const target = await ports.d1.query(
@@ -137,20 +137,23 @@ export interface TokenGrant {
 
 /**
  * The grant a presented value stands for, or null. Unknown, malformed, revoked, expired and
- * out-of-range tokens are all null, so a caller cannot tell them apart. A successful use moves the
+ * out-of-range tokens, and tokens whose minter no longer manages the scope, are all null, so a caller cannot tell them apart. A successful use moves the
  * last-used time when the stored one is an hour old or more.
  */
 export async function authenticateToken(ports: Pick<TokenPorts, "d1" | "clock">, presented: string, ip: string): Promise<TokenGrant | null> {
   if (!looksLikeToken(presented)) return null;
+  const roles = MINTING_ROLES.map(() => "?").join(", ");
   const { rows } = await ports.d1.query(
-    `select t.id, t.user_id, t.cidr, t.expires_at, t.revoked_at, s.name as scope, p.name as pack
+    `select t.id, t.user_id, t.cidr, t.expires_at, t.revoked_at, t.pack_id, s.name as scope, p.name as pack
        from read_tokens t join scopes s on s.id = t.scope_id left join packs p on p.id = t.pack_id
-      where t.token_hash = ?`,
-    [await hashToken(presented)],
+      where t.token_hash = ?
+        and exists (select 1 from scope_members m where m.scope_id = t.scope_id and m.user_id = t.user_id and m.role in (${roles}))`,
+    [await hashToken(presented), ...MINTING_ROLES],
   );
   const row = rows[0];
   const now = ports.clock.now();
   if (!row || row.revoked_at !== null || Date.parse(row.expires_at as string) <= now) return null;
+  if (row.pack_id !== null && row.pack === null) return null;
   if (row.cidr !== null) {
     const blocks = (JSON.parse(row.cidr as string) as string[]).flatMap((c) => parseCidr(c) ?? []);
     if (!inAnyCidr(ip, blocks)) return null;

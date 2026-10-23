@@ -1,5 +1,5 @@
-import { grantCovers, listTokens, mintToken, revokeToken, type MintInput, type MintRefusal } from "@packserver/core/tokens";
-import { authenticateToken, refusal, requireAssertion, requireSession, sessionCsrf } from "@packserver/http";
+import { listTokens, mintToken, revokeToken, type MintInput, type MintRefusal } from "@packserver/core/tokens";
+import { refusal, requireAssertion, requireSession, sessionCsrf } from "@packserver/http";
 import { PackName } from "@packserver/schema";
 import { Hono } from "hono";
 import { runtimeOf, sessionPorts, siteOriginOf, type WebEnv } from "../../context";
@@ -78,20 +78,3 @@ routes.delete("/tokens/:id", requireSession(), sessionCsrf<WebEnv>(siteOriginOf)
   const revoked = await revokeToken(tokenPorts(c), c.get("session")!.record.user_id, c.req.param("id"));
   return revoked ? c.json({ revoked: true }, 200, NO_STORE) : notFound();
 });
-
-/**
- * Lets CI ask whether its token reads a pack before relying on it. A pack outside the token's
- * restriction answers exactly as a pack that does not exist.
- */
-routes.get(
-  "/tokens/check/:scope/:name",
-  authenticateToken<WebEnv>((c) => tokenPorts(c)),
-  (c) => {
-    const grant = c.get("token");
-    if (!grant) return refusal("signed-out");
-    const scope = c.req.param("scope") ?? "";
-    const pack = c.req.param("name") ?? "";
-    if (!scope.startsWith("@") || !grantCovers(grant, { scope: scope.slice(1), pack })) return notFound();
-    return c.json({ readable: true }, 200, NO_STORE);
-  },
-);

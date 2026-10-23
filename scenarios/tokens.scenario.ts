@@ -159,6 +159,6 @@ scenario("JT-008 A psr_ read token serves CI outside Actions, is leaked, and die
   await expect(prefix).toLookTheSameAs(full);
 
   await expect(world.tokens.canRead(token, secret)).toBeRefused("signed-out");
-  await expect(world.tokens.observeRead(token, secret)).toLookTheSameAs(world.tokens.observeRead(token, nowhere));
+  expect(await world.tokens.canRead(token, nowhere)).toEqual(await world.tokens.canRead(token, secret));
   expect((await owner.tokens.list())[0]).toMatchObject({ status: "revoked", revokedReason: "leak-reported" });
 }, storage);

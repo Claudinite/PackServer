@@ -1,9 +1,12 @@
+import { authenticateToken, grantCovers } from "@packserver/core/tokens";
+import { d1Port } from "@packserver/ports/cloudflare";
 import type { ApiResponse, Driver } from "../drivers/driver";
 import type { Aliases } from "./alias";
 import { InfrastructureError } from "./errors";
 import { NotFound, Refusal, type Observation, type RefusalReason } from "./outcomes";
 import type { Assertion, Pack, Session, Sensitive, User } from "./types";
 
+const DEFAULT_ADDRESS = "203.0.113.1";
 const MINT_ACTION = "token.mint";
 
 export interface MintOpts extends Sensitive {
@@ -59,8 +62,6 @@ export interface WorldTokens {
   leakReport(tokenOrPrefix: string, o?: { from?: string }): Promise<Observation | Refusal>;
   /** Whether the token reads a pack: the token's own gate, which CI asks before it relies on one. */
   canRead(token: MintedToken | string, pack: Pack, o?: UseOpts): Promise<"readable" | NotFound | Refusal>;
-  /** The same question, as the response looks. */
-  observeRead(token: MintedToken | string, pack: Pack, o?: UseOpts): Promise<Observation>;
   /** What happens when the token, as the only credential, tries an action it must never have. */
   attempt(token: MintedToken | string, action: TokenAttempt, pack: Pack): Promise<"refused" | "allowed">;
   /** Makes the person an owner of the pack's scope, standing in for the scope verbs that arrive with the scopes area. */
@@ -161,8 +162,6 @@ export function createWorldTokens(driver: Driver, getAccountId: (user: User) => 
     });
   const from = (ip: string | undefined): Record<string, string> => (ip ? { "cf-connecting-ip": ip } : {});
   const bearer = (token: MintedToken | string): Record<string, string> => ({ authorization: `Bearer ${valueOf(token)}` });
-  const read = (token: MintedToken | string, pack: Pack, o: UseOpts) =>
-    send("GET", `/api/tokens/check/${pack.systemName}`, { ...bearer(token), ...from(o.from) });
   const refusal = (res: ApiResponse, what: string): Refusal => {
     const body = res.json() as { reason?: RefusalReason; message?: string; retry_after_s?: number };
     if (!body.reason) throw new InfrastructureError(`${what}: ${res.status} without a reason: ${res.text.slice(0, 120)}`);
@@ -177,13 +176,14 @@ export function createWorldTokens(driver: Driver, getAccountId: (user: User) => 
       return observe(res);
     },
     async canRead(token, pack, o = {}) {
-      const res = await read(token, pack, o);
-      if (res.status === 200) return "readable";
-      if (res.status === 404) return new NotFound();
-      return refusal(res, "tokens.canRead");
-    },
-    async observeRead(token, pack, o = {}) {
-      return observe(await read(token, pack, o));
+      if (!driver.storage || !driver.fakes) throw new InfrastructureError(`the ${driver.kind} driver cannot ask the token gate: it has no storage seam`);
+      const now = await driver.fakes.clock.call<number>("now");
+      const { db } = await driver.storage();
+      const ports = { d1: d1Port(db as unknown as D1Database), clock: { now: () => now } };
+      const grant = await authenticateToken(ports, valueOf(token), o.from ?? DEFAULT_ADDRESS);
+      if (!grant) return new Refusal("signed-out");
+      const [scope, name] = pack.systemName.slice(1).split("/") as [string, string];
+      return grantCovers(grant, { scope, pack: name }) ? "readable" : new NotFound();
     },
     async attempt(token, action, pack) {
       const [method, path] = ATTEMPTS[action](pack.systemName);

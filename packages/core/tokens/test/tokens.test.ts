@@ -18,7 +18,7 @@ function setup() {
   db.exec(`insert into scope_members (scope_id, user_id, role, created_at) values ('s1', 'ann', 'owner', '${at}')`);
   db.exec(`insert into packs (id, scope_id, name, visibility, created_at) values ('p1', 's1', 'secret', 'private', '${at}'), ('p2', 's1', 'other-secret', 'private', '${at}'), ('p3', 's2', 'x', 'private', '${at}')`);
   const ports: TokenPorts = { d1, clock: fakes.clock, rng: fakes.rng };
-  return { fakes, ports };
+  return { fakes, ports, db };
 }
 
 async function mint(ports: TokenPorts, extra: Partial<Parameters<typeof mintToken>[1]> = {}) {
@@ -81,6 +81,34 @@ describe("IT-PUB-013 authentication", () => {
     const grant = (await authenticateToken(ports, token, FROM))!;
     expect(grantCovers(grant, { scope: "acme", pack: "other-secret" })).toBe(true);
     expect(grantCovers(grant, { scope: "other", pack: "x" })).toBe(false);
+  });
+
+  it("refuses once the minter no longer manages the scope", async () => {
+    const { ports, db } = setup();
+    const { token } = await mint(ports);
+    expect(await authenticateToken(ports, token, FROM)).not.toBeNull();
+    db.exec("update scope_members set role = 'member' where user_id = 'ann'");
+    expect(await authenticateToken(ports, token, FROM)).toBeNull();
+    db.exec("update scope_members set role = 'maintainer' where user_id = 'ann'");
+    expect(await authenticateToken(ports, token, FROM)).not.toBeNull();
+    db.exec("delete from scope_members where user_id = 'ann'");
+    expect(await authenticateToken(ports, token, FROM)).toBeNull();
+  });
+
+  it("refuses a pack-restricted token whose pack row is gone", async () => {
+    const { ports, db } = setup();
+    const { token } = await mint(ports);
+    db.exec("pragma foreign_keys = off");
+    db.exec("delete from packs where id = 'p1'");
+    expect(await authenticateToken(ports, token, FROM)).toBeNull();
+  });
+
+  it("refuses a label with any C0 or C1 control or DEL", async () => {
+    const { ports } = setup();
+    for (const label of ["a\u0000b", "a\u001fb", "a\u007fb", "a\u0085b", "a\u009fb"]) {
+      expect(await mintToken(ports, { userId: "ann", scope: "acme", pack: "secret", label })).toEqual({ ok: false, reason: "label" });
+    }
+    expect((await mintToken(ports, { userId: "ann", scope: "acme", pack: "secret", label: "ci runner" })).ok).toBe(true);
   });
 
   it("refuses a revoked token and a value that is not a token", async () => {

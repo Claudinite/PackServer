@@ -1,5 +1,5 @@
 import { reportLeak } from "@packserver/core/tokens";
-import { formFields, rateLimit, rateLimitClient } from "@packserver/http";
+import { formFields, isFormRequest, rateLimit, rateLimitClient, readBoundedBody } from "@packserver/http";
 import { Hono, type MiddlewareHandler } from "hono";
 import { runtimeOf, type WebEnv } from "../context";
 
@@ -13,9 +13,10 @@ async function presentedToken(c: Parameters<MiddlewareHandler>[0]): Promise<unkn
   try {
     const fields = await formFields(c);
     if (typeof fields.token === "string") return fields.token;
-    return ((await c.req.json()) as { token?: unknown } | null)?.token;
+    if (isFormRequest(c)) return undefined;
+    return (JSON.parse(new TextDecoder().decode(await readBoundedBody(c))) as { token?: unknown } | null)?.token;
   } catch {
-    // An unreadable body is answered like any other report.
+    // An oversized or unreadable body is answered like any other report.
     return undefined;
   }
 }
