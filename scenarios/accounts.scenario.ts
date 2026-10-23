@@ -245,9 +245,16 @@ scenario("IT-ACC-005 A first passkey enrols freely; every further factor is a se
   await world.clock.advance("1h");
   await expect(p.assertionFor({ action: "publish.approve", target: "v1" }, { passkey: k2 })).toBeRefused("step-up");
   await expect(p.assertionFor({ action: "publish.approve", target: "v1" })).resolves.toMatchObject({ method: "passkey" });
+  const notices = () => world.mail.inbox(p).all().filter((m) => /factor/i.test(m.subject)).length;
+  const before = notices();
+  const underHeld = await p.assertionFor({ action: "recovery.regenerate", target: id }, { passkey: k2 });
+  const laundered = await p.mfa.regenerateCodes({ assertion: underHeld });
+  expect(notices()).toBe(before + 1);
+  await expect(p.assertionFor({ action: "publish.approve", target: "v1" }, { recoveryCode: laundered[0]! })).toBeRefused("step-up");
   await world.clock.advance("23h1m");
   await p.signIn();
   await expect(p.assertionFor({ action: "publish.approve", target: "v2" }, { passkey: k2 })).resolves.toMatchObject({ method: "passkey" });
+  await expect(p.assertionFor({ action: "publish.approve", target: "v2" }, { recoveryCode: laundered[1]! })).resolves.toMatchObject({ method: "recovery" });
 
   const k3 = await p.mfa.enrol();
   expect((await p.mfa.passkeys()).find((k) => k.id === k3.id)!.heldUntil).toBeNull();

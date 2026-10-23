@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createFakePorts } from "@packserver/ports/fakes";
 import {
   ASSERTION_TTL_MS, beginAssertion, beginAuthentication, beginRegistration, consumeGrant, credentialsOf, FAILURE_LIMIT, finishAuthentication, finishRegistration,
-  HOLD_MS, holdUntilFor, issueGrant, LOCK_MS, lockedUntil, recoveryStatus, redeemRecoveryCode, relyingPartyFor, replaceRecoveryCodes,
-  saveCredential, verifyAssertion, confirmCodesSaved, type AssertionContext, type MfaPorts,
+  HOLD_MS, holdUntilFor, FACTOR_ACTIONS, issueGrant, LOCK_MS, lockedUntil, recoveryStatus, redeemRecoveryCode, relyingPartyFor, replaceRecoveryCodes,
+  saveCredential, verifyAssertion, confirmCodesSaved, recoveryHoldFor, HELD_ACTION_NAMES, type AssertionContext, type MfaPorts,
 } from "../index.ts";
 import { migratedD1, VirtualAuthenticator } from "../testing.ts";
 
@@ -228,6 +228,52 @@ describe("IT-ACC-005 a new factor on a publishing account is on hold unless a pa
 
     fakes.clock.advance(HOLD_MS + MINUTE);
     expect((await passkeyAssertion(ports, device, approve)).ok).toBe(true);
+  });
+});
+
+describe("IT-ACC-005 a held factor cannot launder its hold through recovery codes", () => {
+  const setupHeld = async () => {
+    const world = setup();
+    const { ports, device, db } = world;
+    const k1 = await enrol(ports, device, "u1");
+    db.exec("insert into scopes (id, name, kind, created_at) values ('s1', 'acme', 'org', '2026-10-22T00:00:00.000Z')");
+    db.exec("insert into scope_members (scope_id, user_id, role, created_at) values ('s1', 'u1', 'owner', '2026-10-22T00:00:00.000Z')");
+    const held = await holdUntilFor(ports, "u1", { user_id: "u1", method: "recovery", credential_id: null });
+    const k2 = await enrol(ports, new VirtualAuthenticator(), "u1", held);
+    return { ...world, k1, k2, held };
+  };
+  const approve = ctx({ action: HELD_ACTION_NAMES.publishApprove, target: "v1" });
+  const byCode = (ports: MfaPorts, code: string, c = approve) => verifyAssertion(ports, rp, c, { kind: "recovery", code });
+
+  it("gives a code set regenerated under a held passkey that passkey's hold", async () => {
+    const { ports, fakes, k2, held } = await setupHeld();
+    const hold = await recoveryHoldFor(ports, "u1", { user_id: "u1", method: "passkey", credential_id: k2.id });
+    expect(hold).toBe(held);
+    const codes = await replaceRecoveryCodes(ports, "u1", hold);
+
+    expect((await byCode(ports, codes[0]!)).ok).toBe(false);
+    expect((await byCode(ports, codes[0]!, ctx({ action: "token.mint" }))).ok).toBe(true);
+    fakes.clock.advance(HOLD_MS + MINUTE);
+    expect((await byCode(ports, codes[1]!)).ok).toBe(true);
+  });
+
+  it("carries the hold through a regeneration confirmed by a held code, and none through an unheld one", async () => {
+    const { ports, k1, k2 } = await setupHeld();
+    const heldCodes = await replaceRecoveryCodes(ports, "u1", await recoveryHoldFor(ports, "u1", { user_id: "u1", method: "passkey", credential_id: k2.id }));
+    expect(await byCode(ports, heldCodes[0]!, ctx({ action: FACTOR_ACTIONS.regenerateCodes }))).toMatchObject({ ok: true });
+    const again = await recoveryHoldFor(ports, "u1", { user_id: "u1", method: "recovery", credential_id: null });
+    expect(again).not.toBeNull();
+
+    const clean = await replaceRecoveryCodes(ports, "u1", await recoveryHoldFor(ports, "u1", { user_id: "u1", method: "passkey", credential_id: k1.id }));
+    expect((await byCode(ports, clean[0]!)).ok).toBe(true);
+    expect(await recoveryHoldFor(ports, "u1", { user_id: "u1", method: "recovery", credential_id: null })).toBeNull();
+  });
+
+  it("does not spend a code the hold refused", async () => {
+    const { ports, k2 } = await setupHeld();
+    const codes = await replaceRecoveryCodes(ports, "u1", await recoveryHoldFor(ports, "u1", { user_id: "u1", method: "passkey", credential_id: k2.id }));
+    expect((await byCode(ports, codes[0]!)).ok).toBe(false);
+    expect((await byCode(ports, codes[0]!, ctx({ action: "token.mint" }))).ok).toBe(true);
   });
 });
 

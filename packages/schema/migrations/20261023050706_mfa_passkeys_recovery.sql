@@ -37,6 +37,7 @@ CREATE TABLE `recovery_sets` (
 	`user_id` text PRIMARY KEY NOT NULL,
 	`generated_at` text NOT NULL,
 	`saved_at` text,
+	`hold_until` text,
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "4b17a699-750e-4d98-a822-f55252d43633",
+  "id": "4a804012-726e-46c5-ae77-b7bc67e1c8a5",
   "prevId": "dfb9ec22-371e-4d05-a3c3-596d1170c19b",
   "tables": {
     "credentials": {
@@ -1560,6 +1560,13 @@
         },
         "saved_at": {
           "name": "saved_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "hold_until": {
+          "name": "hold_until",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

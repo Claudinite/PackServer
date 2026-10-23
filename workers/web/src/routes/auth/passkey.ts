@@ -36,8 +36,9 @@ routes.post("/auth/passkey/signup/verify", authRateLimit("auth-ip"), async (c) =
   const registration = await finishRegistration(ports, relyingPartyOf(c), "signup", body.response as RegistrationResponseJSON);
   if (!registration) return badCeremony();
   const at = new Date(runtime.ports.clock.now()).toISOString();
-  await runtime.ports.d1.query("insert into users (id, handle, display_name, created_at) values (?, null, null, ?)", [registration.user_id, at]);
-  const credential = await saveCredential(ports, registration, { label: asText(body.label, MAX_LABEL) ?? null, hold_until: null });
+  const credential = await saveCredential(ports, registration, { label: asText(body.label, MAX_LABEL) ?? null, hold_until: null }, [
+    { sql: "insert into users (id, handle, display_name, created_at) values (?, null, null, ?)", params: [registration.user_id, at] },
+  ]);
   const codes = await replaceRecoveryCodes(ports, registration.user_id);
   await recordAudit(c, registration.user_id, "factor.added", credential.id, { kind: "passkey" });
   const { cookie } = await startSession(c, registration.user_id);

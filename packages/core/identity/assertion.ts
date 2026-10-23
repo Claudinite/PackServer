@@ -27,7 +27,13 @@ export const FACTOR_ACTIONS = {
  * The actions a factor on hold cannot authorise (REQ-ACC-005): approving a publish, changing an
  * owner, a trusted publisher or an allowlist. Areas that own such a verb pass its name here.
  */
-export const HELD_ACTIONS: readonly string[] = ["publish.approve", "owner.change", "trusted-publisher.change", "allowlist.change"];
+export const HELD_ACTION_NAMES = {
+  publishApprove: "publish.approve",
+  ownerChange: "owner.change",
+  trustedPublisherChange: "trusted-publisher.change",
+  allowlistChange: "allowlist.change",
+} as const;
+export const HELD_ACTIONS: readonly string[] = Object.values(HELD_ACTION_NAMES);
 
 export interface AssertionContext {
   user_id: string;
@@ -111,7 +117,8 @@ export async function verifyAssertion(ports: MfaPorts, rp: RelyingParty, ctx: As
 
   let outcome: { method: AssertionMethod; credential_id: string | null } | null = null;
   if (input.kind === "recovery") {
-    if (await redeemRecoveryCode(ports, ctx.user_id, input.code)) outcome = { method: "recovery", credential_id: null };
+    const refusedByHold = HELD_ACTIONS.includes(ctx.action) && (await recoveryOnHold(ports, ctx.user_id));
+    if (!refusedByHold && (await redeemRecoveryCode(ports, ctx.user_id, input.code))) outcome = { method: "recovery", credential_id: null };
   } else {
     const verified = await finishAuthentication(ports, rp, "assert", input.response, ctx.sid_hash);
     const { credential, challenge } = verified ?? {};
@@ -135,6 +142,13 @@ export async function verifyAssertion(ports: MfaPorts, rp: RelyingParty, ctx: As
     locked_now: failure.locked_now,
     ...(failure.locked_until === null ? {} : { retry_after_s: seconds(failure.locked_until - ports.clock.now()) }),
   };
+}
+
+/** Whether the account's current code set is still under a hold it inherited from a held factor. */
+async function recoveryOnHold(ports: Pick<MfaPorts, "d1" | "clock">, userId: string): Promise<boolean> {
+  const { rows } = await ports.d1.query("select hold_until from recovery_sets where user_id = ?", [userId]);
+  const hold = rows[0]?.hold_until;
+  return typeof hold === "string" && Date.parse(hold) > ports.clock.now();
 }
 
 export interface Grant {
@@ -181,4 +195,19 @@ export async function holdUntilFor(ports: MfaPorts, userId: string, confirmedBy:
     if (rows.length === 1 && (typeof hold !== "string" || Date.parse(hold) <= ports.clock.now())) return null;
   }
   return (await isPublishingCapable(ports.d1, userId)) ? isoAt(ports.clock, HOLD_MS) : null;
+}
+
+/**
+ * The hold a regenerated code set inherits from the factor that confirmed the regeneration, so a
+ * held factor cannot hand its hold to codes that then authorise held actions at once. A confirming
+ * factor that is not on hold passes none on.
+ */
+export async function recoveryHoldFor(ports: MfaPorts, userId: string, confirmedBy: Grant): Promise<string | null> {
+  const now = ports.clock.now();
+  const { rows } =
+    confirmedBy.method === "passkey" && confirmedBy.credential_id
+      ? await ports.d1.query("select f.hold_until from credentials c left join credential_flags f on f.credential_id = c.id where c.id = ?", [confirmedBy.credential_id])
+      : await ports.d1.query("select hold_until from recovery_sets where user_id = ?", [userId]);
+  const hold = rows[0]?.hold_until;
+  return typeof hold === "string" && Date.parse(hold) > now ? hold : null;
 }

@@ -11,6 +11,8 @@ export const recovery_sets = sqliteTable("recovery_sets", {
     .references(() => users.id),
   generated_at: text("generated_at").notNull(),
   saved_at: text("saved_at"),
+  /** A set made under a held factor carries that hold: until then its codes cannot authorise a held action (REQ-ACC-005). */
+  hold_until: text("hold_until"),
 });
 
 /** Only a hash of each code is kept; regenerating the set deletes the old rows. */
@@ -74,7 +76,7 @@ export const assertion_failures = sqliteTable("assertion_failures", {
   locked_until: text("locked_until"),
 });
 
-/** What the accounts area records about a passkey beyond the foundation's columns. */
+/** What the accounts area records about a passkey beyond the foundation's columns; no foreign key, since area tables may reference only users, scopes, packs and pack_versions, so removing a credential deletes its row here too. */
 export const credential_flags = sqliteTable("credential_flags", {
   credential_id: text("credential_id").primaryKey(),
   /** Until this instant the credential cannot authorise a held action (REQ-ACC-005); null when no hold applies. */

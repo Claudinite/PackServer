@@ -1,7 +1,9 @@
-import { confirmCodesSaved, FACTOR_ACTIONS, hasPasskey, recoveryStatus, replaceRecoveryCodes, rotateSession } from "@packserver/core/identity";
+import {
+  confirmCodesSaved, FACTOR_ACTIONS, hasPasskey, isPublishingCapable, recoveryHoldFor, recoveryStatus, replaceRecoveryCodes, rotateSession,
+} from "@packserver/core/identity";
 import { csrfTokenFor, refusal, requireAssertion, requireSession, sessionCookie, sessionCsrf } from "@packserver/http";
 import { Hono } from "hono";
-import { mfaPorts, recordAudit, sessionPorts, siteOriginOf, type WebEnv } from "../../context";
+import { mfaPorts, notifyUser, recordAudit, securityUrlOf, sessionPorts, siteOriginOf, type WebEnv } from "../../context";
 import { NO_STORE } from "./ceremony";
 
 export const routes = new Hono<WebEnv>();
@@ -31,7 +33,11 @@ routes.post(
     const userId = live.record.user_id;
     if (!(await hasPasskey(runtime.ports.d1, userId))) return refusal("mfa-required", { message: "Recovery codes belong to an account with a passkey." });
     await recordAudit(c, userId, "factor.added", undefined, { kind: "recovery" });
-    const codes = await replaceRecoveryCodes(mfaPorts(runtime), userId);
+    const hold = await recoveryHoldFor(mfaPorts(runtime), userId, c.get("assertion")!);
+    const codes = await replaceRecoveryCodes(mfaPorts(runtime), userId, hold);
+    if (await isPublishingCapable(runtime.ports.d1, userId)) {
+      await notifyUser(c, userId, "factor-added", { factor: "recovery codes", securityUrl: securityUrlOf(c), lockApplies: hold !== null });
+    }
     const rotated = await rotateSession(sessionPorts(runtime), live);
     return c.json({ recovery_codes: codes, csrf: await csrfTokenFor(rotated) }, 200, {
       ...NO_STORE,

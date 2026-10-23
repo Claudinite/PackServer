@@ -21,7 +21,7 @@ const hashCode = (code: string): Promise<string> => sha256Hex(`recovery-code:${n
  * Makes a fresh set of ten and drops the old one in the same batch. The plain codes are returned
  * once and never stored.
  */
-export async function replaceRecoveryCodes(ports: MfaPorts, userId: string): Promise<string[]> {
+export async function replaceRecoveryCodes(ports: MfaPorts, userId: string, holdUntil: string | null = null): Promise<string[]> {
   const codes: string[] = [];
   while (codes.length < RECOVERY_CODE_COUNT) {
     const code = newCode(ports.rng);
@@ -32,7 +32,7 @@ export async function replaceRecoveryCodes(ports: MfaPorts, userId: string): Pro
   await ports.d1.batch([
     { sql: "delete from recovery_codes where user_id = ?", params: [userId] },
     { sql: "delete from recovery_sets where user_id = ?", params: [userId] },
-    { sql: "insert into recovery_sets (user_id, generated_at, saved_at) values (?, ?, null)", params: [userId, at] },
+    { sql: "insert into recovery_sets (user_id, generated_at, saved_at, hold_until) values (?, ?, null, ?)", params: [userId, at, holdUntil] },
     ...hashes.map((hash) => ({ sql: "insert into recovery_codes (user_id, code_hash, used_at) values (?, ?, null)", params: [userId, hash] })),
   ]);
   return codes;

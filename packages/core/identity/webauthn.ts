@@ -232,10 +232,13 @@ export async function finishAuthentication(
 
 export async function saveCredential(
   ports: MfaPorts, registration: VerifiedRegistration, extra: { label: string | null; hold_until: string | null },
+  /** Statements that must land with the credential or not at all, such as the account row of a sign-up. */
+  alongside: Array<{ sql: string; params: unknown[] }> = [],
 ): Promise<CredentialRow> {
   const id = ports.rng.uuid();
   const at = isoAt(ports.clock);
   await ports.d1.batch([
+    ...alongside,
     {
       sql: `insert into credentials (id, user_id, credential_id, public_key, sign_count, label, created_at, last_used_at) values (?, ?, ?, ?, ?, ?, ?, null)`,
       params: [id, registration.user_id, registration.credential_id, registration.public_key, registration.sign_count, extra.label, at],
