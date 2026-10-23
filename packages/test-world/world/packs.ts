@@ -171,6 +171,7 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
     if (res.status === 429) return new Refusal("rate-limited");
     if (res.status === 451) return new Held((parse(res) as { reason?: string }).reason);
     if (res.status === 503) throw new InfrastructureError(`the read API was unavailable for ${system}: ${res.text}`);
+    if (res.status !== 200 && res.status !== 410) throw new InfrastructureError(`the read API answered ${res.status} for ${system}: ${res.text}`);
     return { ...(parse(res) as object), outcome: res.status === 410 ? "removed" : "found" } as Read;
   }
 
