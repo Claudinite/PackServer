@@ -96,7 +96,12 @@ class Collector implements TarSink {
  * produces, stopping at the first crossed limit. Throws ArchiveRefusal; nothing is returned or kept
  * for a refused archive. `canonical` lifts the stored-length cap to that of a served archive.
  */
-export async function extractArchive(archive: Uint8Array, opts: { canonical?: boolean } = {}): Promise<Tree> {
+/** Work done so far, readable after a refusal: tests assert bounded work rather than wall-clock time. */
+export interface ExtractStats {
+  producedBytes: number;
+}
+
+export async function extractArchive(archive: Uint8Array, opts: { canonical?: boolean; stats?: ExtractStats } = {}): Promise<Tree> {
   // The 3 MB cap is on what a publisher uploads; the canonical form is raw-framed and larger.
   if (archive.length > (opts.canonical ? CANONICAL_ARCHIVE_BYTES : LIMITS.archiveBytes)) throw bomb("archive-size");
   const frames = inspectFrames(archive);

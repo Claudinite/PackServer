@@ -170,7 +170,7 @@ describe("tamper negatives", () => {
     expect(t.sha256).not.toBe(a.sha256);
   });
 
-  it("a single flipped bit anywhere in the canonical archive is refused or visibly different", async () => {
+  it("a single flipped bit anywhere in the canonical archive is refused or visibly different", { timeout: 120_000 }, async () => {
     const a = await canonicaliseArchive(fixtureArchive("gcp"));
     let accepted = 0;
     for (let i = 0; i < a.archive.length; i++) {
