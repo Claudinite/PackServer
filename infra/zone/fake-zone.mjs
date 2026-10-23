@@ -3,7 +3,18 @@
 import { fakeCloudflare } from "../fake-cloudflare.mjs";
 import { evaluateNetwork, parseNetworkCase } from "./lib/transformer.mjs";
 
-export function fakeZone({ seed = {}, failGet = [], failWrite = [], failSecretNumber, idps, base, transformersForbidden = false, previewLeaksIp = false } = {}) {
+// What Logpush would have delivered for the transformer jobs, dated far enough ahead to count as fresh.
+export function deliveredObjects(overrides = {}) {
+  const record = (extra = {}) => JSON.stringify({ CacheCacheStatus: "hit", ClientRequestPath: "/x", EdgeStartTimestamp: "2026-10-23T00:00:00Z", ClientNetwork: "198.51.100.0/24", ...extra });
+  const out = [];
+  for (const bucket of ["ops", "ops-staging"]) {
+    out.push({ bucket, key: "logs/http-requests/hits/20261023/a.log", last_modified: "2999-01-01T00:00:00Z", body: `${record()}\n${record()}\n`, ...overrides.hits });
+    out.push({ bucket, key: "logs/http-requests/misses/20261023/a.log", last_modified: "2999-01-01T00:00:00Z", body: `${record({ CacheCacheStatus: "miss" })}\n`, ...overrides.misses });
+  }
+  return out;
+}
+
+export function fakeZone({ seed = {}, failGet = [], failWrite = [], failSecretNumber, idps, base, transformersForbidden = false, previewLeaksIp = false, delivered = true } = {}) {
   const inner = base ?? fakeCloudflare({ seed: { stores: [{ id: "store1", name: "packserver" }], ...(seed.base ?? {}) } });
   const state = {
     rulesets: structuredClone(seed.rulesets ?? {}),
@@ -14,6 +25,7 @@ export function fakeZone({ seed = {}, failGet = [], failWrite = [], failSecretNu
     idps: idps ?? [{ id: "idp-hw", name: "Hardware key", type: "saml" }],
     jobs: structuredClone(seed.jobs ?? []),
     transformers: structuredClone(seed.transformers ?? []),
+    objects: structuredClone(seed.objects ?? (delivered ? deliveredObjects() : [])),
     lifecycle: structuredClone(seed.lifecycle ?? {}),
     inner: inner.state,
   };
@@ -51,7 +63,7 @@ export function fakeZone({ seed = {}, failGet = [], failWrite = [], failSecretNu
         return ok({ id: sm[1] });
       }
     }
-    const mine = /^\/(zones\/zone1\/(rulesets|cache|logpush)|accounts\/acct\/(access|logpush|r2\/buckets\/[^/]+\/lifecycle))/.test(path);
+    const mine = /^\/(zones\/zone1\/(rulesets|cache|logpush)|accounts\/acct\/(access|logpush|r2\/buckets\/[^/]+\/(lifecycle|objects)))/.test(path);
     if (!mine) return inner.fetch(rawUrl, init);
     calls.push({ method, path, body });
     if (method === "GET" && failGet.some((f) => path.includes(f))) return fail(500, 1, "boom");
@@ -93,6 +105,16 @@ export function fakeZone({ seed = {}, failGet = [], failWrite = [], failSecretNu
       if (method === "PUT") state[key][i] = { id: r[2], ...body };
       if (method === "DELETE") state[key].splice(i, 1);
       return ok({ id: r[2] });
+    }
+    if ((r = path.match(/^\/accounts\/acct\/r2\/buckets\/([^/]+)\/objects(?:\/(.+))?$/))) {
+      const mine = state.objects.filter((o) => o.bucket === r[1]);
+      if (!r[2]) {
+        const prefix = url.searchParams.get("prefix") ?? "";
+        return ok(mine.filter((o) => o.key.startsWith(prefix)).map(({ key, last_modified }) => ({ key, last_modified, size: 1 })), { is_truncated: false });
+      }
+      const obj = mine.find((o) => o.key === decodeURIComponent(r[2]));
+      if (!obj) return fail(404, 10007, "no such object");
+      return { ok: true, status: 200, arrayBuffer: async () => Buffer.from(obj.body) };
     }
     if (path.startsWith("/accounts/acct/logpush/transformers")) {
       if (transformersForbidden) return fail(403, 1000, "transformer feature is not available for this account");

@@ -3,7 +3,7 @@ import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { main } from "./apply.mjs";
-import { fakeZone } from "./fake-zone.mjs";
+import { deliveredObjects, fakeZone } from "./fake-zone.mjs";
 import { loadSpec, validateSpec } from "./lib/spec.mjs";
 import { tokenSecretNames } from "./lib/access.mjs";
 
@@ -20,6 +20,7 @@ const BASE_ENV = {
 async function run(argv, zone, { env = BASE_ENV, ...deps } = {}) {
   const out = [];
   const err = [];
+  if (argv.includes("--apply") && !argv.includes("--verify-wait")) argv = [...argv, "--verify-wait", "0"];
   const backupDir = mkdtempSync(join(tmpdir(), "zone-"));
   const code = await main(argv, env, { fetch: zone?.fetch, out: (s) => out.push(s), err: (s) => err.push(s), backupDir, now: () => "2026-10-23T01:02:03.000Z", ...deps });
   return { code, out: out.join("\n"), err: err.join("\n"), backupDir };
@@ -453,6 +454,61 @@ describe("the command", () => {
     expect(r.code).toBe(1);
     expect(r.out).toContain("over the Free-plan limit of 10");
     expect(zone.state.rulesets.http_request_late_transform).toBeUndefined();
+  });
+
+  it("--verify-delivery reports verified when the delivered objects have the expected shape", async () => {
+    const zone = fakeZone();
+    const r = await run(["--env", "staging", "--verify-delivery", "--verify-wait", "0"], zone, { env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" } });
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("verified delivery packserver-staging-http-cache-hits");
+    expect(r.out).toContain("verified delivery packserver-staging-http-cache-misses");
+    expect(zone.writes()).toEqual([]);
+  });
+
+  it("--verify-delivery never reads 'no object yet' as a pass", async () => {
+    const zone = fakeZone({ delivered: false });
+    const r = await run(["--env", "staging", "--verify-delivery", "--verify-wait", "0"], zone, { env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" } });
+    expect(r.code).toBe(3);
+    expect(r.out).toContain("not yet delivered");
+    expect(r.out).not.toContain("verified delivery");
+  });
+
+  it("polls within a bounded wait and then gives up as pending", async () => {
+    const zone = fakeZone({ delivered: false });
+    let now = 0;
+    const sleeps = [];
+    const r = await run(["--env", "staging", "--verify-delivery", "--verify-wait", "60"], zone, {
+      env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" },
+      nowMs: () => now,
+      sleep: async (ms) => { sleeps.push(ms); now += ms; },
+      verifyIntervalMs: 20000,
+    });
+    expect(r.code).toBe(3);
+    expect(sleeps).toEqual([20000, 20000, 20000]);
+  });
+
+  it.each([
+    ["ClientIP still present", { body: JSON.stringify({ CacheCacheStatus: "hit", ClientRequestPath: "/x", EdgeStartTimestamp: "t", ClientNetwork: "198.51.100.0/24", ClientIP: "198.51.100.7" }) }, "ClientIP present"],
+    ["ClientNetwork missing", { body: JSON.stringify({ CacheCacheStatus: "hit", ClientRequestPath: "/x", EdgeStartTimestamp: "t" }) }, "ClientNetwork missing"],
+    ["a raw address as the network", { body: JSON.stringify({ CacheCacheStatus: "hit", ClientRequestPath: "/x", EdgeStartTimestamp: "t", ClientNetwork: "198.51.100.7" }) }, "not network-shaped"],
+    ["a null rollup field", { body: JSON.stringify({ CacheCacheStatus: "hit", ClientRequestPath: null, EdgeStartTimestamp: "t", ClientNetwork: "198.51.100.0/24" }) }, "ClientRequestPath null"],
+    ["misses delivered by the hits job", { body: JSON.stringify({ CacheCacheStatus: "miss", ClientRequestPath: "/x", EdgeStartTimestamp: "t", ClientNetwork: "198.51.100.0/24" }) }, "other than hit"],
+  ])("--verify-delivery fails on %s", async (_name, hits, message) => {
+    const zone = fakeZone({ seed: { objects: deliveredObjects({ hits }) } });
+    const r = await run(["--env", "staging", "--verify-delivery", "--verify-wait", "0"], zone, { env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" } });
+    expect(r.code).toBe(1);
+    expect(r.out).toContain(message);
+  });
+
+  it("--apply checks delivery since the apply, so an older object does not count", async () => {
+    const stale = fakeZone({ seed: { objects: deliveredObjects({ hits: { last_modified: "2020-01-01T00:00:00Z" }, misses: { last_modified: "2020-01-01T00:00:00Z" } }) } });
+    const r = await run(["--env", "staging", "--apply", "--only", "logpush"], stale);
+    expect(r.code).toBe(3);
+    expect(r.out).toContain("since the change");
+    const fresh = fakeZone();
+    const ok = await run(["--env", "staging", "--apply", "--only", "logpush"], fresh);
+    expect(ok.code).toBe(0);
+    expect(ok.out).toContain("verified delivery packserver-staging-http-cache-hits");
   });
 
   it("needs a token and an explicit mode", async () => {

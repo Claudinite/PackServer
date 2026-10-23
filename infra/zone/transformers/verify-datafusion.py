@@ -24,3 +24,29 @@ for v in spec['vectors']:
     print('ok ' if ok else 'BAD',repr(v['ip']),got, 'ClientIP' in (out[0] if out else {}))
     ctx.deregister_table('http_requests')
 print('bad',bad)
+
+# Optional corpus comparison: node infra/zone/transformers/fuzz-corpus.mjs > corpus.json
+# The whole corpus goes through one query; each row carries its input index in ClientRequestPath so
+# the answers can be matched whatever order DataFusion returns them in.
+if len(sys.argv) > 1:
+    import re
+    corpus = json.load(open(sys.argv[1]))
+    shape = re.compile(r'^([0-9]+\.[0-9]+\.[0-9]+\.0/24|[0-9a-f:]+::/48)$')
+    rows = []
+    for idx, c in enumerate(corpus):
+        r = dict(rec); r['ClientIP'] = c['ip']; r['ClientRequestPath'] = str(idx)
+        rows.append(r)
+    ctx.register_record_batches('http_requests', [pa.Table.from_pylist(rows).to_batches()])
+    answers = {row['ClientRequestPath']: row['ClientNetwork'] for row in ctx.sql(sql).to_pylist()}
+    diffs = nonnet = 0
+    for idx, c in enumerate(corpus):
+        got = answers.get(str(idx), 'DROPPED')
+        if got != c['js']:
+            diffs += 1
+            if diffs <= 5: print('DIFF', repr(c['ip']), 'datafusion', repr(got), 'js', repr(c['js']))
+        if got is not None and not shape.match(got):
+            nonnet += 1
+            if nonnet <= 5: print('NON-NETWORK', repr(c['ip']), repr(got))
+    print('corpus', len(corpus), 'diffs', diffs, 'non-network', nonnet)
+    bad += diffs + nonnet
+sys.exit(1 if bad else 0)

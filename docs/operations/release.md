@@ -277,4 +277,4 @@ opens the canary and self-test applications and is refused by the admin applicat
 `HIT` on `packs.claudinite.com/index/v1/root.json` and on one archive; verify that neither serving
 bucket is listable or reachable except through the custom domain or a Worker; Ariel chooses the
 production D1 location hint at creation in the manual setup step (default `enam`); publish the
-`@packserver-canary` fixtures; confirm the `main` ruleset matches REQ-OPS-013.
+`@packserver-canary` fixtures; confirm the `main` ruleset matches REQ-OPS-013; run `node infra/zone/apply.mjs --env <env> --verify-delivery` once the `http_requests` Logpush jobs have delivered, which reads back the latest object of each and asserts `ClientNetwork` is present, `ClientIP` absent and the rollup's fields non-null (a job with no object yet is reported pending, never as a pass).

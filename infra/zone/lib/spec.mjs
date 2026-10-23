@@ -101,7 +101,7 @@ export function validateSpec(spec, { root } = {}) {
       if (!j.where || !["hit", "miss"].includes(j.previewCacheStatus)) problems.push(`${j.key}: a transformer job needs a SQL where and a previewCacheStatus`);
       else {
         const sql = renderTransformer(readTemplate(spec, j), j, envHosts("staging", root));
-        if (sql.length > 32768) problems.push(`${j.key}: the transformer SQL is over the 32 KB API limit`);
+        if (sql.length > 32768) problems.push(`${j.key}: the transformer SQL is over the 32768-character maxLength of the transformer API schema (the docs say 250 KB; the schema is the stricter, so it is the one checked)`);
         problems.push(...checkTransformer(sql, logpush.vectors, logpush.forbiddenFields).map((p) => `${j.key}: ${p}`));
       }
     }

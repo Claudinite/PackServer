@@ -26,6 +26,10 @@ export function renderTransformer(template, job, hosts) {
 // SQL replacement text uses \1; JS uses $1.
 const jsReplacement = (r) => r.replace(/\\(\d)/g, "$$$1");
 
+// A bare `.` means different things to Rust (no \n) and JS (no \r, U+2028, U+2029), and a pattern
+// that skips a character leaves regexp_replace returning the raw input unchanged.
+const hasBareDot = (pattern) => /\./.test(pattern.replace(/\\./g, "").replace(/\[(?:\\.|[^\]\\])*\]/g, ""));
+
 export function parseNetworkCase(sql) {
   const norm = sql.match(/regexp_replace\(ip, '([^']*)', '([^']*)', 'g'\) AS n/);
   if (!norm) throw new Error("no leading-zero normalisation of ip into n");
@@ -38,6 +42,7 @@ export function parseNetworkCase(sql) {
   for (const m of caseBody.matchAll(re)) {
     consumed += m[0];
     if (m[1]) {
+      if (hasBareDot(m[2]) || hasBareDot(m[3])) throw new Error(`pattern ${m[3]} uses a bare "."; write [\\s\\S] so every character is consumed`);
       if (!m[2].startsWith("^")) throw new Error(`guard ${m[2]} is not anchored`);
       if (!m[3].startsWith("^") || !m[3].endsWith("$")) throw new Error(`pattern ${m[3]} must match the whole value, or regexp_replace would return a raw IP unchanged`);
       branches.push({ on: m[1], guard: new RegExp(m[2]), pattern: new RegExp(m[3]), replacement: jsReplacement(m[4]) });
@@ -87,4 +92,24 @@ export function checkTransformer(sql, vectors, forbiddenFields) {
   }
   if (/\bSELECT\s+\*/i.test(finalSelect) || /,\s*(ip|n)\s*,/.test(finalSelect)) problems.push("transformer: the output must not select the intermediate ip or n");
   return problems;
+}
+
+// A deterministic corpus for the cross-engine check: the same strings go through the JS evaluator
+// (unit tests) and DataFusion (transformers/verify-datafusion.py).
+export function fuzzCorpus(n = 20000, seed = 12345) {
+  const alphabet = Array.from("0123456789abcdefABCDEF:.::-/ gx\n\r\u2028\u2029\u0130");
+  let state = seed;
+  const next = () => (state = (state * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const len = Math.floor(next() * 40);
+    let s = "";
+    for (let k = 0; k < len; k++) s += alphabet[Math.floor(next() * alphabet.length)];
+    out.push(s);
+  }
+  // Valid prefixes followed by each awkward character, the case a prefix-only guard gets wrong.
+  for (const tail of ["\n", "\r", "\u2028", "\u2029", "\u0130", "x"]) {
+    for (const head of ["2001:db8:1:", "2001:db8::", "2001::", "::", "198.51.100.7"]) out.push(`${head}${tail}`, `${head}${tail}foo`);
+  }
+  return out;
 }

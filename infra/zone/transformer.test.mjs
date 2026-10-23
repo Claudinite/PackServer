@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateNetwork, parseNetworkCase, readTemplate, renderTransformer } from "./lib/transformer.mjs";
+import { evaluateNetwork, fuzzCorpus, parseNetworkCase, readTemplate, renderTransformer } from "./lib/transformer.mjs";
 import { envHosts, loadSpec, validateSpec } from "./lib/spec.mjs";
 
 // These tests run the ClientNetwork CASE through a JS evaluator that reads its patterns out of the
@@ -28,19 +28,17 @@ describe("the ClientNetwork expression", () => {
     expect(net("198.51.100.7")).toBe(net("198.51.100.9"));
   });
 
-  it("fails closed: nothing but a network or null comes out, whatever goes in", () => {
-    let seed = 12345;
-    const next = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
-    const alphabet = "0123456789abcdefABCDEF:.::-/ gx";
-    for (let i = 0; i < 20000; i++) {
-      const len = Math.floor(next() * 40);
-      let s = "";
-      for (let k = 0; k < len; k++) s += alphabet[Math.floor(next() * alphabet.length)];
+  it("fails closed: nothing but a network or null comes out, whatever goes in, newlines and U+2028 included", () => {
+    const corpus = fuzzCorpus();
+    expect(corpus.some((s) => s.includes("\n")) && corpus.some((s) => s.includes("\u2028")) && corpus.some((s) => s.includes("\u0130"))).toBe(true);
+    for (const s of corpus) {
       const out = evaluateNetwork(parsed, s);
       if (out === null) continue;
       expect(out).toMatch(/^([0-9]+\.[0-9]+\.[0-9]+\.0\/24|[0-9a-f]{1,4}(:[0-9a-f]{1,4}){0,2}::\/48|[0-9a-f]{1,4}:[0-9a-f]{1,4}:[0-9a-f]{1,4}::\/48)$/);
       expect(out).not.toBe(s);
     }
+    expect(evaluateNetwork(parsed, "2001:db8:1:\r")).toBe("2001:db8:1::/48");
+    expect(evaluateNetwork(parsed, "2001:db8:1:x\nfoo")).toBe("2001:db8:1::/48");
     expect(evaluateNetwork(parsed, null)).toBeNull();
   });
 
@@ -48,6 +46,7 @@ describe("the ClientNetwork expression", () => {
     expect(() => parseNetworkCase(sql.replace(/\n\s*ELSE NULL/, ""))).toThrow(/ELSE NULL/);
     const unanchored = sql.replace("'^([0-9]+)\\.([0-9]+)\\.([0-9]+)\\.[0-9]+$'", "'([0-9]+)\\.([0-9]+)\\.([0-9]+)\\.[0-9]+'");
     expect(() => parseNetworkCase(unanchored)).toThrow(/whole value/);
+    expect(() => parseNetworkCase(sql.replace("[\\s\\S]*$", ".*$"))).toThrow(/bare "\."/);
     const unguarded = sql.replace("WHEN starts_with(n, '::') THEN '0:0:0::/48'", "WHEN true THEN n");
     expect(() => parseNetworkCase(unguarded)).toThrow(/branch/);
   });
