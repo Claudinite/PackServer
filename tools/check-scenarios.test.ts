@@ -1,8 +1,10 @@
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ESLint } from "eslint";
 import { describe, expect, it } from "vitest";
-import { checkGate, checkTree, fsSource, scanScenarios } from "./check-scenarios.mjs";
+import { checkGate, checkTree, fsSource, gitSource, scanScenarios } from "./check-scenarios.mjs";
 import { checkSignals, signalsInCode, signalsInDoc } from "./check-signals.mjs";
 import { exemptIds, judge, newScenarioIds } from "./see-it-fail.mjs";
 
@@ -160,11 +162,119 @@ describe("checkGate", () => {
     expect(checkGate(base, head, "Scenario-Refactor: rename\nrename: toBeSignedIn -> toBeAuthenticated").problems).toEqual([]);
   });
 
+  it("refuses a rename that is not one identifier to another", () => {
+    const head = world({ "scenarios/a.scenario.ts": good.replace("toBeSignedIn()", "toBeAnything(1)") });
+    for (const line of ["rename: expect(await visitor.signUp()).toBeSignedIn() -> expect(1).toEqual(1)", 'rename: "ada" -> expect.any(String)', "rename: expect -> expect(1)"]) {
+      const r = checkGate(base, head, `Scenario-Refactor: x\n${line}`);
+      expect(r.problems.some((p) => p.includes("is refused"))).toBe(true);
+    }
+  });
+
+  it("applies a rename on whole identifiers only", () => {
+    const head = world({ "scenarios/a.scenario.ts": good.replaceAll("visitor", "person").replace("signUp", "signUpNow") });
+    expect(checkGate(base, head, "Scenario-Refactor: x\nrename: sign -> hacked").problems).not.toEqual([]);
+    expect(checkGate(base, head, "Scenario-Refactor: x\nrename: visitor -> person\nrename: signUp -> signUpNow").problems).toEqual([]);
+  });
+
+  it("gates code outside the scenario calls", () => {
+    const withConst = (v: string) => `const WANT = "${v}";\n${good.replace("toBeSignedIn()", "toBeSignedInAs(WANT)")}`;
+    const b = world({ "scenarios/a.scenario.ts": withConst("member") });
+    const h = world({ "scenarios/a.scenario.ts": withConst("visitor") });
+    expect(checkGate(b, h, "").problems).toHaveLength(1);
+    expect(checkGate(b, h, "Scenario-Refactor: tidy").problems[0]).toContain("code around it");
+    expect(checkGate(b, h, "Requirement-Change: REQ-ACC-001 new rule").problems).toEqual([]);
+  });
+
+  it("lets a name be added to the World import without touching the scenarios", () => {
+    const head = world({ "scenarios/a.scenario.ts": good.replace("{ scenario, expect }", "{ scenario, expect, extra }") });
+    expect(checkGate(base, head, "").problems).toEqual([]);
+  });
+
+  it("prints each scenario let through by a trailer", () => {
+    const head = world({ "scenarios/a.scenario.ts": edited });
+    expect(checkGate(base, head, "Requirement-Change: REQ-ACC-001 x").notes[0]).toContain("IT-ACC-001 admitted by the Requirement-Change");
+    expect(checkGate(base, head, "Scenario-Refactor: x").notes).toEqual([]);
+  });
+
+  it("judges a changed scenario against the base's Covers", () => {
+    const head = memory({
+      "docs/requirements/accounts.md": requirements(),
+      "docs/testing/accounts.md": spec.replace("Covers:** REQ-ACC-001", "Covers:** REQ-ACC-002"),
+      "scenarios/a.scenario.ts": edited,
+    });
+    const changed = memory({ ...Object.fromEntries(["docs/testing/accounts.md", "scenarios/a.scenario.ts"].map((k) => [k, head.read(k)!])), "docs/requirements/accounts.md": requirements().replace("A handle.", "A handle, changed.") });
+    expect(checkGate(base, changed, "").problems).toHaveLength(1);
+  });
+
   it("refuses removing a scenario, lets a new one in", () => {
     expect(checkGate(base, world({}), "").problems).toHaveLength(1);
     const added = checkGate(world({}), base, "");
     expect(added.problems).toEqual([]);
     expect(added.notes).toEqual(["new scenario IT-ACC-001"]);
+  });
+});
+
+describe("harness files", () => {
+  it("are exempt only at the top of scenarios/, as the lint is", () => {
+    const loud = `// POST /api/auth\n${good}`;
+    expect(checkTree(world({ "scenarios/_a.scenario.ts": loud })).problems).toEqual([]);
+    expect(checkTree(world({ "scenarios/sub/_a.scenario.ts": loud })).problems).toHaveLength(1);
+  });
+});
+
+describe("linear time", () => {
+  const within = (ms: number, f: () => void) => {
+    const t = Date.now();
+    f();
+    expect(Date.now() - t).toBeLessThan(ms);
+  };
+
+  it("scans 40k comment lines", () => {
+    within(2000, () => scanScenarios("x", "// a\n".repeat(40_000) + good));
+  });
+
+  it("scans 20k unclosed scenario( calls", () => {
+    within(2000, () => scanScenarios("x", 'scenario("IT-ACC-001 x", ('.repeat(20_000)));
+  });
+
+  it("reads a pull request body of 65k blank lines", () => {
+    const body = "\n".repeat(65_000);
+    within(2000, () => checkGate(memory({}), memory({}), `${body}Requirement-Change: REQ-ACC-001\n${body}rename: a -> b`));
+  });
+
+  it("numbers lines correctly", () => {
+    expect(scanScenarios("x", `\n\n${good}`).scenarios[0]!.line).toBe(4);
+  });
+});
+
+describe("gitSource", () => {
+  const dirs: string[] = [];
+  const repo = () => {
+    const dir = mkdtempSync(join(tmpdir(), "gitsrc-"));
+    dirs.push(dir);
+    const git = (...a: string[]) => execFileSync("git", ["-C", dir, "-c", "user.name=t", "-c", "user.email=t@t", ...a], { stdio: "pipe" });
+    git("init", "-q");
+    mkdirSync(join(dir, "scenarios"));
+    writeFileSync(join(dir, "scenarios/é.scenario.ts"), good);
+    git("add", "-A");
+    git("commit", "-qm", "x");
+    return dir;
+  };
+
+  it("lists non-ASCII paths unquoted", () => {
+    const dir = repo();
+    expect(gitSource(dir, "HEAD").list("scenarios")).toEqual(["scenarios/é.scenario.ts"]);
+    expect(gitSource(dir, "HEAD").read("scenarios/é.scenario.ts")).toBe(good);
+    expect(gitSource(dir, "HEAD").read("scenarios/none.ts")).toBeNull();
+    expect(gitSource(dir, "HEAD").list("nowhere")).toEqual([]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("throws on a ref or repository git cannot read", () => {
+    const dir = repo();
+    expect(() => gitSource(dir, "no-such-ref")).toThrow();
+    expect(() => gitSource(join(dir, "missing"), "HEAD")).toThrow();
+    rmSync(dir, { recursive: true, force: true });
   });
 });
 
@@ -243,6 +353,14 @@ describe("the gate workflow", () => {
   it("executes nothing from the head and keeps event data out of run: lines", () => {
     expect(yml).not.toMatch(/pnpm|npm |npx|setup-node/);
     for (const line of yml.split("\n").filter((l) => /^\s+run:/.test(l))) expect(line).not.toContain("${{");
-    expect(yml).toContain('git fetch --no-tags origin "+refs/pull/${PR}/head:refs/pr/head"');
+  });
+
+  it("fetches the head with the read-only token handed through env, for that command only", () => {
+    const step = yml.split("- name: fetch the head as data")[1]!.split("- name:")[0]!;
+    expect(step).toContain("TOKEN: ${{ github.token }}");
+    expect(step).toContain("::add-mask::$auth");
+    expect(step).toMatch(/git -c "http\.https:\/\/github\.com\/\.extraheader=AUTHORIZATION: basic \$auth" fetch --no-tags origin "\+refs\/pull\/\$\{PR\}\/head:refs\/pr\/head"/);
+    expect(yml.match(/github\.token/g)).toHaveLength(1);
+    expect(yml).toMatch(/^permissions:\n {2}contents: read\n/m);
   });
 });

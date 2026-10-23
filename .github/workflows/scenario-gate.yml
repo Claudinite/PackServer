@@ -19,10 +19,16 @@ jobs:
           ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
           persist-credentials: false
+      # The repository is private and checkout keeps no credentials, so this one step is handed the
+      # read-only token, as a header for this single command.
       - name: fetch the head as data
         env:
           PR: ${{ github.event.pull_request.number }}
-        run: git fetch --no-tags origin "+refs/pull/${PR}/head:refs/pr/head"
+          TOKEN: ${{ github.token }}
+        run: |
+          auth=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" fetch --no-tags origin "+refs/pull/${PR}/head:refs/pr/head"
       - name: check the scenarios and the requirement trail
         env:
           BASE: ${{ github.event.pull_request.base.sha }}

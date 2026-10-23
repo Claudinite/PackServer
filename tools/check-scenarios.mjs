@@ -18,9 +18,13 @@ import { PROBE_UNSAFE, VOCABULARY } from "../eslint/scenarios.js";
 
 const REQ = /REQ-[A-Z]+-\d{3}/g;
 const TEST_ID = /^((?:IT-[A-Z]+|JT)-\d{3})\b/;
+// Mirrors the lint's ignore: only top-level scenarios/_*.scenario.ts files prove the harness itself.
+const HARNESS_FILE = /^scenarios\/_[^/]*\.scenario\.ts$/;
 const SCENARIO_FILE = /^scenarios\/(?:.*\/)?[^/]+\.scenario\.ts$/;
 
 // --- where files come from -------------------------------------------------------------------
+const missing = (error) => error?.code === "ENOENT" || error?.code === "ENOTDIR";
+
 export function fsSource(root) {
   const walk = (dir) =>
     readdirSync(join(root, dir), { withFileTypes: true }).flatMap((e) =>
@@ -30,37 +34,29 @@ export function fsSource(root) {
     list: (dir) => {
       try {
         return walk(dir);
-      } catch {
-        return [];
+      } catch (error) {
+        if (missing(error)) return [];
+        throw error;
       }
     },
     read: (path) => {
       try {
         return readFileSync(join(root, path), "utf8");
-      } catch {
-        return null;
+      } catch (error) {
+        if (missing(error)) return null;
+        throw error;
       }
     },
   };
 }
 
+/** A git failure throws: only a successful answer of "nothing there" means absent. */
 export function gitSource(root, ref) {
-  const git = (...args) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8", maxBuffer: 64 << 20, stdio: ["ignore", "pipe", "ignore"] });
+  const git = (...args) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8", maxBuffer: 64 << 20, stdio: ["ignore", "pipe", "pipe"] });
+  git("rev-parse", "--verify", "--quiet", `${ref}^{commit}`);
   return {
-    list: (dir) => {
-      try {
-        return git("ls-tree", "-r", "--name-only", ref, `${dir}/`).split("\n").filter(Boolean);
-      } catch {
-        return [];
-      }
-    },
-    read: (path) => {
-      try {
-        return git("show", `${ref}:${path}`);
-      } catch {
-        return null;
-      }
-    },
+    list: (dir) => git("ls-tree", "-r", "-z", "--name-only", ref, "--", `${dir}/`).split("\0").filter(Boolean),
+    read: (path) => (git("ls-tree", "-z", "--name-only", ref, "--", path) ? git("show", `${ref}:${path}`) : null),
   };
 }
 
@@ -145,14 +141,14 @@ export function mask(source) {
       const stop = end === -1 ? source.length : end;
       comments.push({ text: source.slice(i + 2, stop), at: i });
       code += blank(source.slice(i, stop));
-      stripped += " ";
+      stripped += blank(source.slice(i, stop));
       i = stop;
     } else if (c === "/" && next === "*") {
       const end = source.indexOf("*/", i + 2);
       const stop = end === -1 ? source.length : end + 2;
       comments.push({ text: source.slice(i + 2, stop - 2), at: i });
       code += blank(source.slice(i, stop));
-      stripped += " ";
+      stripped += blank(source.slice(i, stop));
       i = stop;
     } else if (c === '"' || c === "'" || c === "`") {
       let j = i + 1;
@@ -169,7 +165,21 @@ export function mask(source) {
   return { code, stripped, comments };
 }
 
-const lineOf = (source, at) => source.slice(0, at).split("\n").length;
+/** Offsets of each line start, built once so a line number is a binary search. */
+function lineTable(source) {
+  const starts = [0];
+  for (let i = source.indexOf("\n"); i !== -1; i = source.indexOf("\n", i + 1)) starts.push(i + 1);
+  return (at) => {
+    let lo = 0;
+    let hi = starts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (starts[mid] <= at) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo + 1;
+  };
+}
 
 function matching(code, open) {
   let depth = 0;
@@ -215,20 +225,29 @@ function expectStatements(maskedBody, body) {
   return out;
 }
 
-/** Comments and whitespace removed: what a scenario says, whatever its layout. */
+/** Layout gone: a space survives only between two identifier characters, so word boundaries stay. */
+function compact(text) {
+  return text.replace(/\s+/g, " ").replace(/(?<![\w$]) | (?![\w$])/g, "");
+}
+
+/** Comments and layout removed: what a scenario says, however it is formatted. */
 function squash(text) {
-  return mask(text).stripped.replace(/\s+/g, "");
+  return compact(mask(text).stripped);
 }
 
 export function scanScenarios(path, source) {
-  const { code, comments } = mask(source);
+  const { code, stripped, comments } = mask(source);
+  const lineOf = lineTable(source);
   const found = [];
+  const ranges = [];
   const re = /\bscenario(\.smoke)?\s*\(/g;
   let m;
   while ((m = re.exec(code))) {
     const open = m.index + m[0].length - 1;
     const close = matching(code, open);
-    if (close === -1) continue;
+    if (close === -1) break;
+    re.lastIndex = close + 1;
+    ranges.push([m.index, close + 1]);
     const args = splitArgs(code, open, close);
     const first = args[0] ? source.slice(args[0][0], args[0][1]).trim() : "";
     const quote = first[0];
@@ -239,7 +258,7 @@ export function scanScenarios(path, source) {
     const opts = args[2] ? source.slice(args[2][0], args[2][1]) : "";
     found.push({
       path,
-      line: lineOf(source, m.index),
+      line: lineOf(m.index),
       smoke: Boolean(m[1]),
       title,
       id: title ? TEST_ID.exec(title)?.[1] ?? null : null,
@@ -247,15 +266,32 @@ export function scanScenarios(path, source) {
       maskedBody,
       body,
       expects: expectStatements(maskedBody, body),
-      normalised: squash(source.slice(open, close + 1)),
+      call: squash(source.slice(open, close + 1)),
     });
   }
-  return { scenarios: found, comments: comments.map((c) => ({ ...c, line: lineOf(source, c.at) })), code, source };
+  // Whatever sits outside the scenario calls (constants, helpers, setup) is part of every
+  // scenario's fingerprint. Imports from the World's own package are left out so that adding a
+  // name to one does not disturb the scenarios already in the file.
+  const outside = stripped.split("");
+  const blankOut = (from, to) => {
+    for (let i = from; i < to; i++) if (outside[i] !== "\n") outside[i] = " ";
+  };
+  for (const [from, to] of ranges) blankOut(from, to);
+  const importRe = /\bimport\b/g;
+  while ((m = importRe.exec(code))) {
+    const end = code.indexOf(";", m.index);
+    if (end === -1) break;
+    if (/["']@packserver\/test-world["']/.test(source.slice(m.index, end))) blankOut(m.index, end + 1);
+    importRe.lastIndex = end + 1;
+  }
+  const context = compact(outside.join(""));
+  for (const f of found) Object.assign(f, { context, normalised: `${context}\u0000${f.call}` });
+  return { scenarios: found, comments: comments.map((c) => ({ ...c, line: lineOf(c.at) })), code, source };
 }
 
 export function loadScenarios(src) {
   const files = src.list("scenarios").filter((p) => SCENARIO_FILE.test(p));
-  return files.map((path) => ({ path, harness: posix.basename(path).startsWith("_"), ...scanScenarios(path, src.read(path)) }));
+  return files.map((path) => ({ path, harness: HARNESS_FILE.test(path), ...scanScenarios(path, src.read(path)) }));
 }
 
 // --- the checks --------------------------------------------------------------------------------
@@ -329,11 +365,30 @@ export function checkTree(src, { baseSrc = null, complete = false } = {}) {
 
 // --- the gate ----------------------------------------------------------------------------------
 function declared(body, name) {
-  return [...(body ?? "").matchAll(new RegExp(`^\\s*${name}:[ \\t]*(.*)$`, "gim"))].map((m) => m[1].trim());
+  const re = new RegExp(`^[ \\t]*${name}:[ \\t]*(.*)$`, "i");
+  return (body ?? "").split(/\r?\n/).flatMap((line) => {
+    const m = re.exec(line);
+    return m ? [m[1].trim()] : [];
+  });
 }
 
+const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
+
+/** `rename: old -> new` lines; only a whole identifier may be renamed to another. */
 function renamesIn(body) {
-  return [...(body ?? "").matchAll(/^\s*rename:[ \t]*(\S+)[ \t]*->[ \t]*(\S+)/gim)].map((m) => [m[1], m[2]]);
+  const renames = [];
+  const refused = [];
+  for (const text of declared(body, "rename")) {
+    const [from, to, ...rest] = text.split("->").map((x) => x.trim());
+    if (rest.length === 0 && from && to && IDENTIFIER.test(from) && IDENTIFIER.test(to) && from !== "expect" && to !== "expect") renames.push([from, to]);
+    else refused.push(text);
+  }
+  return { renames, refused };
+}
+
+const escape = (text) => text.replace(/[$]/g, "\\$&");
+function applyRenames(text, renames) {
+  return renames.reduce((t, [from, to]) => t.replace(new RegExp(`(?<![\\w$])${escape(from)}(?![\\w$])`, "g"), () => to), text);
 }
 
 export function checkGate(baseSrc, headSrc, prBody) {
@@ -342,35 +397,46 @@ export function checkGate(baseSrc, headSrc, prBody) {
   const baseReg = loadRegister(baseSrc);
   const headReg = loadRegister(headSrc);
   const baseSpecs = loadSpecs(baseSrc);
-  const headSpecs = loadSpecs(headSrc);
   const byId = (files) => new Map(files.filter((f) => !f.harness).flatMap((f) => f.scenarios.filter((s) => s.id).map((s) => [s.id, s])));
   const before = byId(loadScenarios(baseSrc));
   const after = byId(loadScenarios(headSrc));
 
   const trailerReqs = new Set(declared(prBody, "Requirement-Change").flatMap((l) => l.match(REQ) ?? []));
   const refactor = declared(prBody, "Scenario-Refactor").some(Boolean);
-  const renames = renamesIn(prBody);
+  const { renames, refused } = renamesIn(prBody);
+  for (const r of refused) problems.push(`rename: ${r} is refused; a rename is one identifier to another (old -> new), never an expression`);
   const changedBlocks = new Set(
     [...new Set([...baseReg.blocks.keys(), ...headReg.blocks.keys()])].filter((id) => baseReg.blocks.get(id) !== headReg.blocks.get(id)),
   );
-  const evidenceFor = (reqs) => reqs.find((r) => changedBlocks.has(r) || trailerReqs.has(r));
 
   for (const [id, old] of before) {
     const now = after.get(id);
-    const covers = (headSpecs.tests.get(id) ?? baseSpecs.tests.get(id))?.covers ?? [];
+    const covers = baseSpecs.tests.get(id)?.covers ?? [];
     if (now && now.normalised === old.normalised) continue;
     const label = `${old.path}:${old.line} ${id}`;
-    if (evidenceFor(covers)) continue;
+    const byRegister = covers.find((r) => changedBlocks.has(r));
+    if (byRegister) {
+      notes.push(`${id} admitted by a change to ${byRegister} in docs/requirements`);
+      continue;
+    }
+    const byTrailer = covers.find((r) => trailerReqs.has(r));
+    if (byTrailer) {
+      notes.push(`${id} admitted by the Requirement-Change line naming ${byTrailer}; review the trail`);
+      continue;
+    }
     if (!now) {
       problems.push(`${label} was removed, and none of ${covers.join(", ") || "its requirements"} changed in docs/requirements or in a Requirement-Change line of the pull request body`);
       continue;
     }
     if (refactor && changedBlocks.size === 0) {
       const sameAssertions = (a, b) => a.size === b.size && [...a].every((x) => b.has(x));
-      const renamed = new Set([...old.expects].map((e) => renames.reduce((t, [from, to]) => t.split(from).join(to), e)));
-      if (sameAssertions(renamed, new Set(now.expects))) continue;
+      const renamed = new Set([...old.expects].map((e) => applyRenames(e, renames)));
+      if (sameAssertions(renamed, now.expects) && applyRenames(old.context, renames) === now.context) {
+        notes.push(`${id} admitted by Scenario-Refactor: assertions unchanged${renames.length ? ` (renames: ${renames.map(([a, b]) => `${a} -> ${b}`).join(", ")})` : ""}`);
+        continue;
+      }
       problems.push(
-        `${label} changed its assertions under Scenario-Refactor\n    before: ${[...old.expects].join(" | ")}\n    after:  ${[...now.expects].join(" | ")}`,
+        `${label} changed its assertions or the code around it under Scenario-Refactor\n    before: ${[...old.expects].join(" | ")}\n    after:  ${[...now.expects].join(" | ")}`,
       );
       continue;
     }
