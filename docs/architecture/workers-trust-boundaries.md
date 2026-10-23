@@ -38,7 +38,9 @@ application is the admin internal API, limited to the methods REQ-ADMIN-010 name
 runs probe-safe scenarios as `@probe`). Analytics Engine datasets are bound along these boundaries:
 `request_outcomes` and `domain_events` everywhere; `synthetic_probes` only to the prober;
 `gate_results` and `budget` only to the judge; `validation_events` only to the validator. A
-compromised public Worker therefore cannot forge a passing probe.
+compromised public Worker therefore cannot forge a passing probe. Every Worker writes the wide event, so
+every Worker also holds the two hash keys (`IP_HASH_MASTER_KEY`, `PRINCIPAL_HASH_KEY`) and binds the
+`telemetry` KV that carries `telemetry_mode`.
 
 ## The test environment
 

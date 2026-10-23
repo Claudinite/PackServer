@@ -14,8 +14,16 @@
       "vars": {
         "WORKER": "prober",
         "ENVIRONMENT": "test",
-        "SELFTEST_HMAC_KEY": "test-selftest-hmac-key"
+        "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
+        "IP_HASH_MASTER_KEY": "test-ip-hash-master-key",
+        "PRINCIPAL_HASH_KEY": "test-principal-hash-key"
       },
+      "kv_namespaces": [
+        {
+          "binding": "TELEMETRY_KV",
+          "id": "00000000000000000000020000000007"
+        }
+      ],
       "analytics_engine_datasets": [
         {
           "binding": "REQUEST_OUTCOMES",
@@ -52,6 +60,12 @@
         "WORKER": "prober",
         "ENVIRONMENT": "staging"
       },
+      "kv_namespaces": [
+        {
+          "binding": "TELEMETRY_KV",
+          "id": "00000000000000000000120000000007"
+        }
+      ],
       "analytics_engine_datasets": [
         {
           "binding": "REQUEST_OUTCOMES",
@@ -71,6 +85,16 @@
           "binding": "SELFTEST_HMAC_KEY",
           "store_id": "00000000000000000000190000000004",
           "secret_name": "selftest-hmac-key-staging"
+        },
+        {
+          "binding": "IP_HASH_MASTER_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "ip-hash-master-key-staging"
+        },
+        {
+          "binding": "PRINCIPAL_HASH_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "principal-hash-key-staging"
         }
       ],
       "version_metadata": {
@@ -95,6 +119,12 @@
         "WORKER": "prober",
         "ENVIRONMENT": "production"
       },
+      "kv_namespaces": [
+        {
+          "binding": "TELEMETRY_KV",
+          "id": "00000000000000000000220000000007"
+        }
+      ],
       "analytics_engine_datasets": [
         {
           "binding": "REQUEST_OUTCOMES",
@@ -114,6 +144,16 @@
           "binding": "SELFTEST_HMAC_KEY",
           "store_id": "00000000000000000000290000000004",
           "secret_name": "selftest-hmac-key"
+        },
+        {
+          "binding": "IP_HASH_MASTER_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "ip-hash-master-key"
+        },
+        {
+          "binding": "PRINCIPAL_HASH_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "principal-hash-key"
         }
       ],
       "version_metadata": {

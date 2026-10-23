@@ -3,7 +3,7 @@ import { Aliases } from "./alias";
 import { createAccess } from "./areas/access";
 import { createAdmin } from "./areas/admin";
 import { createAgents } from "./areas/agents";
-import { createAudit } from "./areas/audit";
+import { createAuditModule } from "./areas/audit";
 import { createCommunity } from "./areas/community";
 import { createGitHub } from "./areas/github";
 import { createMember } from "./areas/member";
@@ -43,7 +43,7 @@ export function createWorld(driver: Driver, title: string) {
     ...createMember(),
     ...createAgents(),
     ...createGitHub(driver),
-    ...createAudit(),
+    ...createAuditModule(driver),
     ...createTelemetry(),
     ...createCi(driver, (name) => aliases.alias(name)),
     operator: createOperator(driver),

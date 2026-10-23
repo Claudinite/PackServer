@@ -1,5 +1,6 @@
 import { expectedBindings, TRUST_TABLE, type WorkerName } from "@packserver/ports";
 import { expect, it, describe } from "vitest";
+import { baseSecurityHeaders, NON_HTML_CSP } from "@packserver/ui/headers";
 import { VERSION_HEADER } from "./version";
 
 type Fetchable = { fetch(request: Request): Response | Promise<Response> };
@@ -30,6 +31,12 @@ export function describeWorkerShell({ worker, build }: WorkerShellContract): voi
       const res = await build({ allowSelfTest: false }).fetch(new Request("https://registry.test/no/such/path"));
       expect(res.status).toBe(404);
       expect(res.headers.get(VERSION_HEADER)).toBe(RELEASE);
+    });
+
+    it("carries the security headers on an unknown path", async () => {
+      const res = await build({ allowSelfTest: false }).fetch(new Request("https://registry.test/no/such/path"));
+      for (const [name, value] of Object.entries(baseSecurityHeaders)) expect(res.headers.get(name), name).toBe(value);
+      expect(res.headers.get("content-security-policy")).toBe(NON_HTML_CSP);
     });
 
     it.each(SELFTEST_PATHS(worker))("IT-OPS-004 answers an anonymous %s exactly as an unknown path", async (path) => {
@@ -97,4 +104,24 @@ export function expectPortsMatchTrustTable(
     expect(typeof port.put === "function", `${name} write methods`).toBe(writable);
     expect(typeof port.delete === "function", `${name} delete method`).toBe(writable);
   }
+}
+
+/** Every Worker reads the hash keys and `telemetry_mode` through its own bindings, and nothing else. */
+type TelemetryRuntime = { ports: { telemetry: { keys(): Promise<unknown>; mode(): Promise<unknown> } } };
+
+export async function expectTelemetryWired(
+  worker: WorkerName,
+  createRuntime: (env: never) => TelemetryRuntime | Promise<TelemetryRuntime>,
+): Promise<void> {
+  const asked: string[] = [];
+  const env = {
+    ...dummyEnv(worker),
+    IP_HASH_MASTER_KEY: "ip-key",
+    PRINCIPAL_HASH_KEY: { get: async () => "principal-key" },
+    TELEMETRY_KV: { get: async (key: string) => (asked.push(key), "economy") },
+  };
+  const { telemetry } = (await createRuntime(env as never)).ports;
+  expect(await telemetry.keys()).toEqual({ ipMaster: "ip-key", principalKey: "principal-key" });
+  expect(await telemetry.mode()).toBe("economy");
+  expect(asked).toEqual(["telemetry_mode"]);
 }

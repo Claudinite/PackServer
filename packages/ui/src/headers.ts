@@ -52,11 +52,20 @@ export function securityHeaders(): MiddlewareHandler {
     const nonce = makeNonce();
     c.set("cspNonce", nonce);
     await next();
-    for (const [name, value] of Object.entries(baseSecurityHeaders)) c.res.headers.set(name, value);
     const html = (c.res.headers.get("content-type") ?? "").toLowerCase().startsWith("text/html");
-    c.res.headers.set("content-security-policy", html ? contentSecurityPolicy(nonce) : NON_HTML_CSP);
-    c.res.headers.delete("access-control-allow-credentials");
-    const origin = c.res.headers.get("access-control-allow-origin");
-    if (origin !== null && origin !== "*") c.res.headers.delete("access-control-allow-origin");
+    const apply = (headers: Headers): void => {
+      for (const [name, value] of Object.entries(baseSecurityHeaders)) headers.set(name, value);
+      headers.set("content-security-policy", html ? contentSecurityPolicy(nonce) : NON_HTML_CSP);
+      headers.delete("access-control-allow-credentials");
+      const origin = headers.get("access-control-allow-origin");
+      if (origin !== null && origin !== "*") headers.delete("access-control-allow-origin");
+    };
+    try {
+      apply(c.res.headers);
+    } catch {
+      const headers = new Headers(c.res.headers);
+      apply(headers);
+      c.res = new Response(c.res.body, { status: c.res.status, statusText: c.res.statusText, headers });
+    }
   };
 }

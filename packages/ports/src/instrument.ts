@@ -230,6 +230,14 @@ export const PORT_SPECS: { [K in Exclude<keyof SinglePorts, "durableObjects">]: 
     target: "stats",
     methods: { write: { effect: "write", args: [{ name: op, blobs: content, doubles: { "*": op }, index: op }] } },
   },
+  telemetry: {
+    kind: "kv",
+    target: "telemetry",
+    methods: {
+      keys: { effect: "read", args: [], result: { ipMaster: "secret", principalKey: "secret" } },
+      mode: { effect: "read", args: [], result: op },
+    },
+  },
   cache: {
     kind: "http",
     target: "cache",

@@ -9,6 +9,7 @@ import { injectionFindings, sinkFindings } from "./injection.ts";
 import { mixedScripts } from "./mixed-script.ts";
 import { scanSecrets } from "./secrets.ts";
 import { markdownStyle } from "./style.ts";
+import { uploadFindings } from "./upload.ts";
 import { scanUrls, type UrlEntry } from "./urls.ts";
 
 export { type UrlClass, type UrlEntry } from "./urls.ts";
@@ -59,6 +60,7 @@ export function checkText(tree: Tree, make: MakeFinding): TextHygiene {
     ...commandFindings(content, make),
     ...dependencyFindings(files, raw, make),
     ...sinkFindings(content, make),
+    ...uploadFindings(content, make),
     ...injectionFindings(content, make),
     ...markdownStyle(files, make),
   ]);

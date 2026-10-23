@@ -19,7 +19,9 @@
         "STAGING_S3_SECRET_ACCESS_KEY": "test-staging-secret-key",
         "STAGING_S3_ENDPOINT": "https://test-account.r2.cloudflarestorage.com/packs-staging-test",
         "OIDC_ISSUER": "https://oidc.test",
-        "OIDC_JWKS_URL": "https://oidc.test/.well-known/jwks"
+        "OIDC_JWKS_URL": "https://oidc.test/.well-known/jwks",
+        "IP_HASH_MASTER_KEY": "test-ip-hash-master-key",
+        "PRINCIPAL_HASH_KEY": "test-principal-hash-key"
       },
       "d1_databases": [
         {
@@ -33,6 +35,10 @@
         {
           "binding": "CACHE_KV",
           "id": "00000000000000000000020000000003"
+        },
+        {
+          "binding": "TELEMETRY_KV",
+          "id": "00000000000000000000020000000007"
         }
       ],
       "r2_buckets": [
@@ -142,6 +148,10 @@
         {
           "binding": "CACHE_KV",
           "id": "00000000000000000000120000000003"
+        },
+        {
+          "binding": "TELEMETRY_KV",
+          "id": "00000000000000000000120000000007"
         }
       ],
       "r2_buckets": [
@@ -224,6 +234,16 @@
           "binding": "SELFTEST_HMAC_KEY",
           "store_id": "00000000000000000000190000000004",
           "secret_name": "selftest-hmac-key-staging"
+        },
+        {
+          "binding": "IP_HASH_MASTER_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "ip-hash-master-key-staging"
+        },
+        {
+          "binding": "PRINCIPAL_HASH_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "principal-hash-key-staging"
         }
       ],
       "ratelimits": [
@@ -285,6 +305,10 @@
         {
           "binding": "CACHE_KV",
           "id": "00000000000000000000220000000003"
+        },
+        {
+          "binding": "TELEMETRY_KV",
+          "id": "00000000000000000000220000000007"
         }
       ],
       "r2_buckets": [
@@ -367,6 +391,16 @@
           "binding": "SELFTEST_HMAC_KEY",
           "store_id": "00000000000000000000290000000004",
           "secret_name": "selftest-hmac-key"
+        },
+        {
+          "binding": "IP_HASH_MASTER_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "ip-hash-master-key"
+        },
+        {
+          "binding": "PRINCIPAL_HASH_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "principal-hash-key"
         }
       ],
       "ratelimits": [

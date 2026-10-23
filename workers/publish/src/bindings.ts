@@ -1,4 +1,4 @@
-import { analyticsStats } from "@packserver/http";
+import { analyticsStats, createIsolateTelemetry } from "@packserver/http";
 import {
   cryptoRng, d1Port, durableObjectsPort, kvPort, queuePort, r2Port, rateLimitPort, readSecret, systemClock, workerRuntime,
   type WorkerRuntime,
@@ -27,6 +27,9 @@ export interface Env {
   STAGING_S3_ENDPOINT: Secret;
   STAGING_S3_ACCESS_KEY_ID: Secret;
   STAGING_S3_SECRET_ACCESS_KEY: Secret;
+  IP_HASH_MASTER_KEY: Secret;
+  PRINCIPAL_HASH_KEY: Secret;
+  TELEMETRY_KV: KVNamespace;
   CF_VERSION_METADATA: WorkerVersionMetadata;
   /** Read only under `env.test`, where the issuer is the test world's. */
   OIDC_ISSUER?: string;
@@ -35,7 +38,7 @@ export interface Env {
   CLOCK?: Fetcher & { now(): Promise<number> };
 }
 
-export type PublishPorts = Pick<Ports, "clock" | "rng" | "d1" | "stats" | "kv" | "r2" | "queues" | "durableObjects" | "rateLimits">;
+export type PublishPorts = Pick<Ports, "clock" | "rng" | "d1" | "stats" | "kv" | "r2" | "queues" | "durableObjects" | "rateLimits" | "telemetry">;
 export interface PublishServices {
   validator: Fetcher;
 }
@@ -77,8 +80,11 @@ async function requestClock(env: Pick<Env, "ENVIRONMENT" | "CLOCK">): Promise<Cl
   return { now: () => now };
 }
 
+const isolateTelemetry = createIsolateTelemetry();
+
 export async function createRuntime(env: Env): Promise<PublishRuntime> {
   const clock = await requestClock(env);
+  const telemetryKv = kvPort(env.TELEMETRY_KV);
   const runtime = workerRuntime(
     "publish",
     env,
@@ -87,7 +93,11 @@ export async function createRuntime(env: Env): Promise<PublishRuntime> {
       rng: cryptoRng,
       d1: d1Port(env.DB),
       stats: analyticsStats({ request_outcomes: env.REQUEST_OUTCOMES, domain_events: env.DOMAIN_EVENTS }),
-      kv: { CACHE_KV: kvPort(env.CACHE_KV) },
+      telemetry: isolateTelemetry.config(
+        { ipMaster: () => readSecret(env.IP_HASH_MASTER_KEY), principalKey: () => readSecret(env.PRINCIPAL_HASH_KEY), kv: telemetryKv },
+        systemClock,
+      ),
+      kv: { CACHE_KV: kvPort(env.CACHE_KV), TELEMETRY_KV: telemetryKv },
       rateLimits: { RATE_LIMIT: rateLimitPort(env.RATE_LIMIT) },
       r2: { PACKS_STAGING: r2Port(env.PACKS_STAGING) },
       queues: { NOTIFY_QUEUE: queuePort(env.NOTIFY_QUEUE) },

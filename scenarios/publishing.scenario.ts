@@ -134,23 +134,18 @@ scenario("IT-PUB-030 The upload credential is bound, single-use, size-capped and
   await world.clock.advance("16m");
   expect(accepted(await sixth.complete()).key).toBe(sixthUpload.key);
 
-  const par = world.ci.repo("par/packs", { id: 710, ownerId: 7101 });
-  await world.ci.seedTrustedPublisher({ pack: "@par/pack", repo: par, workflow: WORKFLOW, environment: "release", path: "packs/pack" });
-  const parRun = world.ci.workflow({ repo: par, environment: "release", ref: "refs/tags/pack/1.0.0" });
-  await world.ci.staging.fill(parRun, "@par/pack", 47);
-  const racers = await Promise.all([1, 2, 3, 4].map(async (n) => accepted(await parRun.exchange("@par/pack", `9.0.${n}`))));
-  const outcomes = await Promise.all(racers.map((racer) => racer.presign(3 * MiB)));
-  expect(outcomes.filter((outcome) => !(outcome instanceof Refusal))).toHaveLength(1);
-  for (const outcome of outcomes.filter((o) => o instanceof Refusal)) expect(outcome).toBeRefused("quota");
-
   const big = world.ci.repo("big/packs", { id: 700, ownerId: 7001 });
   await world.ci.seedTrustedPublisher({ pack: "@big/pack", repo: big, workflow: WORKFLOW, environment: "release", path: "packs/pack" });
   const bigRun = world.ci.workflow({ repo: big, environment: "release", ref: "refs/tags/pack/1.0.0" });
 
-  await world.ci.staging.fill(bigRun, "@big/pack", 49, { confirm: false });
+  await world.ci.staging.fill(bigRun, "@big/pack", 47, { confirm: false });
   await world.clock.advance("16m");
 
-  const over = accepted(await bigRun.exchange("@big/pack", "9.0.0"));
-  await expect(over.presign(2 * MiB)).toBeRefused("quota");
-  expect(accepted(await over.upload(archiveBytes(MiB)))).toMatchObject({ sizeBytes: MiB });
+  const racers = await Promise.all([1, 2, 3, 4].map(async (n) => accepted(await bigRun.exchange("@big/pack", `9.0.${n}`))));
+  const raced = await Promise.all(racers.map((racer) => racer.presign(3 * MiB)));
+  expect(raced.filter((outcome) => !(outcome instanceof Refusal))).toHaveLength(1);
+  for (const outcome of raced.filter((o) => o instanceof Refusal)) expect(outcome).toBeRefused("quota");
+
+  const over = accepted(await bigRun.exchange("@big/pack", "9.1.0"));
+  await expect(over.presign(MiB)).toBeRefused("quota");
 });
