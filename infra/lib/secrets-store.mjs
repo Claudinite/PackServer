@@ -19,7 +19,7 @@ export class ConfigError extends Error {}
 // Errors worth retrying: the request never got an answer, or the server failed.
 export const isRetryable = (e) => e?.retryable === true;
 
-async function call(fetchImpl, token, method, path, body) {
+export async function call(fetchImpl, token, method, path, body) {
   let res;
   try {
     res = await fetchImpl(`${API}${path}`, {
