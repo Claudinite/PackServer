@@ -1,3 +1,4 @@
+import { SqliteD1 } from "@packserver/core/audit/testing";
 import { describeWorkerShell, dummyEnv, expectTelemetryWired, expectPortsMatchTrustTable, SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
 import { createFakePorts } from "@packserver/ports/fakes";
 import { describe, expect, it } from "vitest";
@@ -45,4 +46,20 @@ describe("web bindings seam", () => {
 
 describe("web telemetry wiring", () => {
   it("reads the hash keys and telemetry_mode through its bindings", () => expectTelemetryWired("web", create));
+});
+
+describe("audit heads", () => {
+  it("serves the published heads, newest first, as cacheable JSON", async () => {
+    const d1 = new SqliteD1();
+    const rows: Array<[string, number]> = [["2026-10-21", 4], ["2026-10-22", 5]];
+    for (const [day, seq] of rows) {
+      await d1.query("insert into audit_heads values (?, ?, ?, ?, ?, ?, ?)", [day, seq, "ab".repeat(32), `audit/k${seq}`, seq + 100, "ab".repeat(32), `${day}T03:00:00.000Z`]);
+    }
+    const app = createApp({ ...runtime(), ports: { ...runtime().ports, d1 } });
+    const res = await app.request("/.well-known/audit-heads");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("public, max-age=300");
+    const body = (await res.json()) as { heads: Array<{ day: string; log_index: number }> };
+    expect(body.heads.map((h) => [h.day, h.log_index])).toEqual([["2026-10-22", 105], ["2026-10-21", 104]]);
+  });
 });
