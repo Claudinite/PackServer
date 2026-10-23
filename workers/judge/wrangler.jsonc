@@ -1,0 +1,199 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "judge",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "env": {
+    "test": {
+      "name": "judge",
+      "vars": {
+        "WORKER": "judge",
+        "ENVIRONMENT": "test"
+      },
+      "kv_namespaces": [
+        {
+          "binding": "GATES_KV",
+          "id": "00000000000000000000020000000006"
+        }
+      ],
+      "services": [
+        {
+          "binding": "ADMIN",
+          "service": "admin"
+        },
+        {
+          "binding": "ACCESS",
+          "service": "fake-access"
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events"
+        },
+        {
+          "binding": "GATE_RESULTS",
+          "dataset": "gate_results"
+        },
+        {
+          "binding": "BUDGET",
+          "dataset": "budget"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    },
+    "staging": {
+      "name": "judge-staging",
+      "workers_dev": false,
+      "routes": [
+        {
+          "pattern": "registry-staging.claudinite.com/hooks/monitors",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry-staging.claudinite.com/hooks/issues",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry-staging.claudinite.com/hooks/witness",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry-staging.claudinite.com/gates/*",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry-staging.claudinite.com/probe-results",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry-staging.claudinite.com/judge/__selftest",
+          "zone_name": "claudinite.com"
+        }
+      ],
+      "triggers": {
+        "crons": [
+          "*/5 * * * *"
+        ]
+      },
+      "vars": {
+        "WORKER": "judge",
+        "ENVIRONMENT": "staging"
+      },
+      "kv_namespaces": [
+        {
+          "binding": "GATES_KV",
+          "id": "00000000000000000000120000000006"
+        }
+      ],
+      "services": [
+        {
+          "binding": "ADMIN",
+          "service": "admin-staging"
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes_staging"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events_staging"
+        },
+        {
+          "binding": "GATE_RESULTS",
+          "dataset": "gate_results_staging"
+        },
+        {
+          "binding": "BUDGET",
+          "dataset": "budget_staging"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    },
+    "production": {
+      "name": "judge",
+      "workers_dev": false,
+      "routes": [
+        {
+          "pattern": "registry.claudinite.com/hooks/monitors",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry.claudinite.com/hooks/issues",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry.claudinite.com/hooks/witness",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry-canary.claudinite.com/gates/*",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry-canary.claudinite.com/probe-results",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry-canary.claudinite.com/judge/__selftest",
+          "zone_name": "claudinite.com"
+        }
+      ],
+      "triggers": {
+        "crons": [
+          "*/5 * * * *"
+        ]
+      },
+      "vars": {
+        "WORKER": "judge",
+        "ENVIRONMENT": "production"
+      },
+      "kv_namespaces": [
+        {
+          "binding": "GATES_KV",
+          "id": "00000000000000000000220000000006"
+        }
+      ],
+      "services": [
+        {
+          "binding": "ADMIN",
+          "service": "admin"
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events"
+        },
+        {
+          "binding": "GATE_RESULTS",
+          "dataset": "gate_results"
+        },
+        {
+          "binding": "BUDGET",
+          "dataset": "budget"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    }
+  }
+}

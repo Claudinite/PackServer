@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./fakes": "./fakes/index.ts"
+    "./fakes": "./fakes/index.ts",
+    "./cloudflare": "./cloudflare/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
@@ -13,5 +14,8 @@
   },
   "dependencies": {
     "@packserver/schema": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "catalog:"
   }
 }

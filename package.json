@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "typecheck": "turbo run typecheck",
     "docs:check": "node docs/testing/coverage.mjs --check",
-    "check": "pnpm lint && pnpm typecheck && node tools/check-rules.mjs && pnpm db:check",
+    "check": "pnpm lint && pnpm typecheck && node tools/check-rules.mjs && node tools/check-bindings.mjs && pnpm db:check",
     "test": "turbo run test && pnpm test:infra && pnpm test:scenarios",
     "test:infra": "vitest run --project infra",
     "test:scenarios": "vitest run --project scenarios --passWithNoTests",
@@ -25,6 +25,7 @@
     "turbo": "2.11.10",
     "typescript": "5.9.3",
     "typescript-eslint": "8.72.0",
-    "vitest": "5.0.5"
+    "vitest": "5.0.5",
+    "wrangler": "catalog:"
   }
 }

@@ -1,0 +1,271 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "web",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "env": {
+    "test": {
+      "name": "web",
+      "vars": {
+        "WORKER": "web",
+        "ENVIRONMENT": "test",
+        "TURNSTILE_SECRET": "1x0000000000000000000000000000000AA",
+        "SELFTEST_HMAC_KEY": "test-selftest-hmac-key"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "registry",
+          "database_id": "00000000-0000-0000-0000-010000000001",
+          "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "SESSIONS_KV",
+          "id": "00000000000000000000020000000002"
+        },
+        {
+          "binding": "CACHE_KV",
+          "id": "00000000000000000000020000000003"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "PACKS_PUBLIC",
+          "bucket_name": "packs-public"
+        },
+        {
+          "binding": "PACKS_PRIVATE",
+          "bucket_name": "packs-private"
+        }
+      ],
+      "services": [
+        {
+          "binding": "MCP",
+          "service": "mcp"
+        },
+        {
+          "binding": "PUBLISH",
+          "service": "publish"
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events"
+        },
+        {
+          "binding": "DOWNLOADS",
+          "dataset": "downloads"
+        }
+      ],
+      "ratelimits": [
+        {
+          "name": "RATE_LIMIT",
+          "namespace_id": "1001",
+          "simple": {
+            "limit": 60,
+            "period": 60
+          }
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    },
+    "staging": {
+      "name": "web-staging",
+      "workers_dev": false,
+      "routes": [
+        {
+          "pattern": "registry-staging.claudinite.com/*",
+          "zone_name": "claudinite.com"
+        }
+      ],
+      "vars": {
+        "WORKER": "web",
+        "ENVIRONMENT": "staging"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "registry-staging",
+          "database_id": "00000000-0000-0000-0000-110000000001",
+          "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "SESSIONS_KV",
+          "id": "00000000000000000000120000000002"
+        },
+        {
+          "binding": "CACHE_KV",
+          "id": "00000000000000000000120000000003"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "PACKS_PUBLIC",
+          "bucket_name": "packs-public-staging"
+        },
+        {
+          "binding": "PACKS_PRIVATE",
+          "bucket_name": "packs-private-staging"
+        }
+      ],
+      "services": [
+        {
+          "binding": "MCP",
+          "service": "mcp-staging"
+        },
+        {
+          "binding": "PUBLISH",
+          "service": "publish-staging"
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes_staging"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events_staging"
+        },
+        {
+          "binding": "DOWNLOADS",
+          "dataset": "downloads_staging"
+        }
+      ],
+      "ratelimits": [
+        {
+          "name": "RATE_LIMIT",
+          "namespace_id": "2001",
+          "simple": {
+            "limit": 60,
+            "period": 60
+          }
+        }
+      ],
+      "secrets_store_secrets": [
+        {
+          "binding": "TURNSTILE_SECRET",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "turnstile-secret-staging"
+        },
+        {
+          "binding": "SELFTEST_HMAC_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "selftest-hmac-key-staging"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    },
+    "production": {
+      "name": "web",
+      "workers_dev": false,
+      "routes": [
+        {
+          "pattern": "registry.claudinite.com/*",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry-canary.claudinite.com/*",
+          "zone_name": "claudinite.com"
+        }
+      ],
+      "vars": {
+        "WORKER": "web",
+        "ENVIRONMENT": "production"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "registry",
+          "database_id": "00000000-0000-0000-0000-210000000001",
+          "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "SESSIONS_KV",
+          "id": "00000000000000000000220000000002"
+        },
+        {
+          "binding": "CACHE_KV",
+          "id": "00000000000000000000220000000003"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "PACKS_PUBLIC",
+          "bucket_name": "packs-public"
+        },
+        {
+          "binding": "PACKS_PRIVATE",
+          "bucket_name": "packs-private"
+        }
+      ],
+      "services": [
+        {
+          "binding": "MCP",
+          "service": "mcp"
+        },
+        {
+          "binding": "PUBLISH",
+          "service": "publish"
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events"
+        },
+        {
+          "binding": "DOWNLOADS",
+          "dataset": "downloads"
+        }
+      ],
+      "ratelimits": [
+        {
+          "name": "RATE_LIMIT",
+          "namespace_id": "1001",
+          "simple": {
+            "limit": 60,
+            "period": 60
+          }
+        }
+      ],
+      "secrets_store_secrets": [
+        {
+          "binding": "TURNSTILE_SECRET",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "turnstile-secret"
+        },
+        {
+          "binding": "SELFTEST_HMAC_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "selftest-hmac-key"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    }
+  }
+}

@@ -1,5 +1,5 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "types": ["node"] },
-  "include": ["src/**/*.ts", "fakes/**/*.ts"]
+  "compilerOptions": { "types": ["node", "@cloudflare/workers-types"], "resolveJsonModule": true },
+  "include": ["src/**/*.ts", "fakes/**/*.ts", "cloudflare/**/*.ts"]
 }

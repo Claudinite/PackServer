@@ -1,0 +1,259 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "admin",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "env": {
+    "test": {
+      "name": "admin",
+      "vars": {
+        "WORKER": "admin",
+        "ENVIRONMENT": "test",
+        "SELFTEST_HMAC_KEY": "test-selftest-hmac-key"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "registry",
+          "database_id": "00000000-0000-0000-0000-010000000001",
+          "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "PACKS_STAGING",
+          "bucket_name": "packs-staging"
+        },
+        {
+          "binding": "VALIDATION_REPORTS",
+          "bucket_name": "validation-reports"
+        },
+        {
+          "binding": "OPS_BUCKET",
+          "bucket_name": "ops"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "AUDIT_QUEUE",
+            "queue": "audit"
+          }
+        ],
+        "consumers": [
+          {
+            "queue": "audit",
+            "max_batch_size": 100,
+            "max_batch_timeout": 30,
+            "max_retries": 5,
+            "dead_letter_queue": "audit-dlq"
+          }
+        ]
+      },
+      "workflows": [
+        {
+          "binding": "VALIDATE_PACK",
+          "name": "validate-pack",
+          "class_name": "ValidatePackWorkflow",
+          "script_name": "validator"
+        }
+      ],
+      "services": [
+        {
+          "binding": "ACCESS",
+          "service": "fake-access"
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    },
+    "staging": {
+      "name": "admin-staging",
+      "workers_dev": false,
+      "routes": [
+        {
+          "pattern": "registry-admin-staging.claudinite.com/*",
+          "zone_name": "claudinite.com"
+        }
+      ],
+      "triggers": {
+        "crons": [
+          "0 * * * *",
+          "0 3 * * *"
+        ]
+      },
+      "vars": {
+        "WORKER": "admin",
+        "ENVIRONMENT": "staging"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "registry-staging",
+          "database_id": "00000000-0000-0000-0000-110000000001",
+          "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "PACKS_STAGING",
+          "bucket_name": "packs-staging-staging"
+        },
+        {
+          "binding": "VALIDATION_REPORTS",
+          "bucket_name": "validation-reports-staging"
+        },
+        {
+          "binding": "OPS_BUCKET",
+          "bucket_name": "ops-staging"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "AUDIT_QUEUE",
+            "queue": "audit-staging"
+          }
+        ],
+        "consumers": [
+          {
+            "queue": "audit-staging",
+            "max_batch_size": 100,
+            "max_batch_timeout": 30,
+            "max_retries": 5,
+            "dead_letter_queue": "audit-dlq-staging"
+          }
+        ]
+      },
+      "workflows": [
+        {
+          "binding": "VALIDATE_PACK",
+          "name": "validate-pack-staging",
+          "class_name": "ValidatePackWorkflow",
+          "script_name": "validator-staging"
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes_staging"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events_staging"
+        }
+      ],
+      "secrets_store_secrets": [
+        {
+          "binding": "SELFTEST_HMAC_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "selftest-hmac-key-staging"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    },
+    "production": {
+      "name": "admin",
+      "workers_dev": false,
+      "routes": [
+        {
+          "pattern": "registry-admin.claudinite.com/*",
+          "zone_name": "claudinite.com"
+        }
+      ],
+      "triggers": {
+        "crons": [
+          "0 * * * *",
+          "0 3 * * *"
+        ]
+      },
+      "vars": {
+        "WORKER": "admin",
+        "ENVIRONMENT": "production"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "registry",
+          "database_id": "00000000-0000-0000-0000-210000000001",
+          "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "PACKS_STAGING",
+          "bucket_name": "packs-staging"
+        },
+        {
+          "binding": "VALIDATION_REPORTS",
+          "bucket_name": "validation-reports"
+        },
+        {
+          "binding": "OPS_BUCKET",
+          "bucket_name": "ops"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "AUDIT_QUEUE",
+            "queue": "audit"
+          }
+        ],
+        "consumers": [
+          {
+            "queue": "audit",
+            "max_batch_size": 100,
+            "max_batch_timeout": 30,
+            "max_retries": 5,
+            "dead_letter_queue": "audit-dlq"
+          }
+        ]
+      },
+      "workflows": [
+        {
+          "binding": "VALIDATE_PACK",
+          "name": "validate-pack",
+          "class_name": "ValidatePackWorkflow",
+          "script_name": "validator"
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events"
+        }
+      ],
+      "secrets_store_secrets": [
+        {
+          "binding": "SELFTEST_HMAC_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "selftest-hmac-key"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    }
+  }
+}

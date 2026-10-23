@@ -6,3 +6,5 @@ export * from "./ratelimit";
 export * from "./turnstile";
 export * from "./selftest-runner";
 export * from "./body";
+export * from "./worker-shell";
+export * from "./selftest-local";

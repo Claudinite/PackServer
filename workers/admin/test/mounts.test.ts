@@ -1,0 +1,70 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { Hono } from "hono";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createFakePorts } from "@packserver/ports/fakes";
+import { SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
+import { consumeAudit } from "../src/consumers/audit";
+import { CRON_DAILY, CRON_HOURLY, CRON_JOBS, runCron } from "../src/crons";
+import type { AdminRuntime } from "../src/bindings";
+
+const fakes = createFakePorts({ worker: "admin" });
+const runtime = {
+  worker: "admin",
+  environment: "test",
+  version: { versionId: SHELL_VERSION, releaseId: SHELL_RELEASE },
+  missingBindings: [],
+  missingSecrets: [],
+  ports: { ...fakes, r2: { PACKS_STAGING: fakes.r2["PACKS_STAGING"]!, VALIDATION_REPORTS: fakes.r2["VALIDATION_REPORTS"]!, OPS_BUCKET: fakes.r2["OPS_BUCKET"]! } },
+  services: {},
+} satisfies AdminRuntime;
+
+afterEach(() => vi.restoreAllMocks());
+
+describe("admin mounts", () => {
+  it.each(["access", "queue", "applications", "reports", "moderation", "internal"])("%s exports a router", async (m) => {
+    const mod = (await import(/* @vite-ignore */ `../src/${m}/index.ts`)) as { routes?: unknown };
+    expect(mod.routes).toBeInstanceOf(Hono);
+  });
+});
+
+describe("admin crons", () => {
+  const wrangler = JSON.parse(readFileSync(join(import.meta.dirname, "../wrangler.jsonc"), "utf8")) as {
+    env: Record<string, { triggers?: { crons: string[] } }>;
+  };
+
+  it.each(["staging", "production"])("env.%s fires exactly the triggers that have jobs", (env) => {
+    expect(wrangler.env[env]?.triggers?.crons.sort()).toEqual([CRON_HOURLY, CRON_DAILY].sort());
+    expect(Object.keys(CRON_JOBS).sort()).toEqual([CRON_HOURLY, CRON_DAILY].sort());
+  });
+
+  it("runs every job of a trigger and says each one is a stub", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await runCron(CRON_DAILY, runtime);
+    expect(log.mock.calls.map(([line]) => JSON.parse(String(line)).entry).sort()).toEqual(
+      ["cron.audit-head", "cron.audit-verify", "cron.domain-recheck", "cron.prune", "cron.trending"],
+    );
+  });
+
+  it("refuses a trigger it has no jobs for", async () => {
+    await expect(runCron("* * * * *", runtime)).rejects.toThrow("no jobs");
+  });
+
+  it("lets one failing job fail the run without skipping the others", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    log.mockImplementationOnce(() => {
+      throw new Error("boom");
+    });
+    await expect(runCron(CRON_HOURLY, runtime)).rejects.toThrow("1 of 2 jobs");
+    expect(log).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("admin audit consumer", () => {
+  it("returns the batch to the queue rather than dropping it", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const retryAll = vi.fn();
+    await consumeAudit({ retryAll } as unknown as MessageBatch<unknown>);
+    expect(retryAll).toHaveBeenCalledOnce();
+  });
+});

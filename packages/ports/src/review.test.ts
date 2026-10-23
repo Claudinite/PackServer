@@ -89,7 +89,7 @@ describe("byte bodies and the invocation cap", () => {
   const put = async (body: Uint8Array) => {
     const ports = createFakePorts();
     const rec = wet(ports.clock);
-    await instrumentAll(ports, rec).r2["public"]!.put("k", body);
+    await instrumentAll(ports, rec).r2["PACKS_PUBLIC"]!.put("k", body);
     return { e: (await rec.finish(fin()))!, rec };
   };
 
@@ -117,7 +117,7 @@ describe("byte bodies and the invocation cap", () => {
     const ports = createFakePorts();
     const rec = wet(ports.clock);
     const wide = Object.fromEntries(Array.from({ length: 300 }, (_, i) => [`field${i}`, "v"]));
-    await instrumentAll(ports, rec).queues["notify"]!.send(wide);
+    await instrumentAll(ports, rec).queues["NOTIFY_QUEUE"]!.send(wide);
     const e = (await rec.finish(fin()))!;
     const inv = e.invocations[0]!;
     expect(inv.request).toBeNull();
@@ -156,35 +156,35 @@ describe("stack_hash", () => {
 
 describe("one port per binding", () => {
   it("names the binding as the target", async () => {
-    const ports = createFakePorts({ r2: ["public", "staging"], kv: ["sessions", "cache"] });
+    const ports = createFakePorts({ r2: ["PACKS_PUBLIC", "PACKS_STAGING"], kv: ["SESSIONS_KV", "CACHE_KV"] });
     const rec = wet(ports.clock);
     const p = instrumentAll(ports, rec);
-    await p.r2["public"]!.put("a", new Uint8Array([1]));
-    await p.r2["staging"]!.get("a");
-    await p.kv["cache"]!.get("k");
+    await p.r2["PACKS_PUBLIC"]!.put("a", new Uint8Array([1]));
+    await p.r2["PACKS_STAGING"]!.get("a");
+    await p.kv["CACHE_KV"]!.get("k");
     const e = (await rec.finish(fin()))!;
     expect(e.invocations.map((i) => [i.kind, i.target, i.op])).toEqual([
-      ["r2", "public", "put"],
-      ["r2", "staging", "get"],
-      ["kv", "cache", "get"],
+      ["r2", "PACKS_PUBLIC", "put"],
+      ["r2", "PACKS_STAGING", "get"],
+      ["kv", "CACHE_KV", "get"],
     ]);
-    expect(ports.r2["public"]!.objects.has("a")).toBe(true);
-    expect(ports.r2["staging"]!.objects.has("a")).toBe(false);
+    expect(ports.r2["PACKS_PUBLIC"]!.objects.has("a")).toBe(true);
+    expect(ports.r2["PACKS_STAGING"]!.objects.has("a")).toBe(false);
   });
 });
 
 describe("workflows, rate limits and Durable Objects", () => {
   it("records a workflow start and a rate-limit check with the key as a personal value", async () => {
-    const ports = createFakePorts({ rateLimits: { api: { limit: 1, periodMs: 1000 } } });
+    const ports = createFakePorts({ rateLimits: { RATE_LIMIT: { limit: 1, periodMs: 1000 } } });
     const rec = wet(ports.clock);
     const p = instrumentAll(ports, rec);
-    await p.workflows["validate-pack"]!.create({ id: "run-1", params: { text: "MARKER" } });
-    expect((await p.rateLimits["api"]!.limit({ key: "198.51.100.7" })).success).toBe(true);
-    expect((await p.rateLimits["api"]!.limit({ key: "198.51.100.7" })).success).toBe(false);
+    await p.workflows["VALIDATE_PACK"]!.create({ id: "run-1", params: { text: "MARKER" } });
+    expect((await p.rateLimits["RATE_LIMIT"]!.limit({ key: "198.51.100.7" })).success).toBe(true);
+    expect((await p.rateLimits["RATE_LIMIT"]!.limit({ key: "198.51.100.7" })).success).toBe(false);
     ports.clock.advance("2s");
-    expect((await p.rateLimits["api"]!.limit({ key: "198.51.100.7" })).success).toBe(true);
+    expect((await p.rateLimits["RATE_LIMIT"]!.limit({ key: "198.51.100.7" })).success).toBe(true);
     const e = (await rec.finish(fin()))!;
-    expect(e.invocations.map((i) => [i.kind, i.target])).toEqual([["workflow", "validate-pack"], ["ratelimit", "api"], ["ratelimit", "api"], ["ratelimit", "api"]]);
+    expect(e.invocations.map((i) => [i.kind, i.target])).toEqual([["workflow", "VALIDATE_PACK"], ["ratelimit", "RATE_LIMIT"], ["ratelimit", "RATE_LIMIT"], ["ratelimit", "RATE_LIMIT"]]);
     expect(JSON.stringify(e)).not.toMatch(/MARKER|198\.51\.100\.7/);
   });
 
@@ -296,7 +296,7 @@ describe("ordering", () => {
     const rec = wet(ports.clock);
     const p = instrumentAll(ports, rec);
     const ids = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"];
-    await Promise.all(ids.map((id) => p.kv["sessions"]!.get(id)));
+    await Promise.all(ids.map((id) => p.kv["SESSIONS_KV"]!.get(id)));
     const e = (await rec.finish(fin()))!;
     expect(e.invocations.map((i) => (i.request as { args: string[] }).args[0])).toEqual(["<uuid:1>", "<uuid:2>"]);
   });

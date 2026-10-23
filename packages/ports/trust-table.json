@@ -1,0 +1,186 @@
+{
+  "workers": {
+    "web": {
+      "d1": { "DB": "registry" },
+      "kv": { "SESSIONS_KV": "sessions", "CACHE_KV": "cache" },
+      "r2": {
+        "PACKS_PUBLIC": { "bucket": "packs-public", "access": "read" },
+        "PACKS_PRIVATE": { "bucket": "packs-private", "access": "read" }
+      },
+      "queues": {},
+      "queue_consumers": [],
+      "workflows": {},
+      "durable_objects": {},
+      "containers": {},
+      "services": { "MCP": "mcp", "PUBLISH": "publish" },
+      "vectorize": {},
+      "ai": [],
+      "analytics": {
+        "REQUEST_OUTCOMES": "request_outcomes",
+        "DOMAIN_EVENTS": "domain_events",
+        "DOWNLOADS": "downloads"
+      },
+      "ratelimits": ["RATE_LIMIT"],
+      "secrets": ["TURNSTILE_SECRET", "SELFTEST_HMAC_KEY"],
+      "fakes": {}
+    },
+    "mcp": {
+      "d1": { "DB": "registry" },
+      "kv": { "OAUTH_KV": "oauth" },
+      "r2": { "PACKS_PRIVATE": { "bucket": "packs-private", "access": "read" } },
+      "queues": {},
+      "queue_consumers": [],
+      "workflows": {},
+      "durable_objects": {},
+      "containers": {},
+      "services": {},
+      "vectorize": { "VECTORIZE": "packs" },
+      "ai": ["AI"],
+      "analytics": {
+        "REQUEST_OUTCOMES": "request_outcomes",
+        "DOMAIN_EVENTS": "domain_events",
+        "DOWNLOADS": "downloads"
+      },
+      "ratelimits": ["RATE_LIMIT"],
+      "secrets": ["SELFTEST_HMAC_KEY"],
+      "fakes": { "AI": "fake-ai", "VECTORIZE": "fake-vectorize" }
+    },
+    "publish": {
+      "d1": { "DB": "registry" },
+      "kv": { "CACHE_KV": "cache" },
+      "r2": { "PACKS_STAGING": { "bucket": "packs-staging", "access": "read-write" } },
+      "queues": { "NOTIFY_QUEUE": "notify" },
+      "queue_consumers": [],
+      "workflows": { "VALIDATE_PACK": "validate-pack" },
+      "durable_objects": {
+        "SCOPE_COORDINATOR": { "class": "ScopeCoordinator", "host": "publish" },
+        "QUOTA": { "class": "Quota", "host": "publish" },
+        "ROOT_COORDINATOR": { "class": "RootCoordinator", "host": "publish" }
+      },
+      "containers": {},
+      "services": { "VALIDATOR": "validator" },
+      "vectorize": {},
+      "ai": [],
+      "analytics": { "REQUEST_OUTCOMES": "request_outcomes", "DOMAIN_EVENTS": "domain_events" },
+      "ratelimits": [],
+      "secrets": ["SELFTEST_HMAC_KEY"],
+      "fakes": {}
+    },
+    "github": {
+      "d1": { "DB": "registry" },
+      "kv": {},
+      "r2": {},
+      "queues": {},
+      "queue_consumers": [],
+      "workflows": {},
+      "durable_objects": {},
+      "containers": {},
+      "services": {},
+      "vectorize": {},
+      "ai": [],
+      "analytics": { "REQUEST_OUTCOMES": "request_outcomes", "DOMAIN_EVENTS": "domain_events" },
+      "ratelimits": [],
+      "secrets": ["GITHUB_APP_PRIVATE_KEY", "GITHUB_WEBHOOK_SECRET", "GITHUB_CODE_SEARCH_TOKEN", "SELFTEST_HMAC_KEY"],
+      "fakes": {}
+    },
+    "validator": {
+      "d1": { "DB": "registry" },
+      "kv": {},
+      "r2": {
+        "PACKS_STAGING": { "bucket": "packs-staging", "access": "read" },
+        "PACKS_PUBLIC": { "bucket": "packs-public", "access": "read-write" },
+        "PACKS_PRIVATE": { "bucket": "packs-private", "access": "read-write" },
+        "VALIDATION_REPORTS": { "bucket": "validation-reports", "access": "read-write" },
+        "OPS_BUCKET": { "bucket": "ops", "access": "read" }
+      },
+      "queues": { "NOTIFY_QUEUE": "notify" },
+      "queue_consumers": [],
+      "workflows": { "VALIDATE_PACK": "validate-pack" },
+      "durable_objects": {
+        "SCOPE_COORDINATOR": { "class": "ScopeCoordinator", "host": "publish" },
+        "ROOT_COORDINATOR": { "class": "RootCoordinator", "host": "publish" }
+      },
+      "containers": { "SANDBOX_A": "SandboxA", "SANDBOX_B": "SandboxB" },
+      "services": { "GITHUB": "github" },
+      "vectorize": { "VECTORIZE": "packs" },
+      "ai": ["AI"],
+      "analytics": {
+        "REQUEST_OUTCOMES": "request_outcomes",
+        "DOMAIN_EVENTS": "domain_events",
+        "VALIDATION_EVENTS": "validation_events"
+      },
+      "ratelimits": [],
+      "secrets": ["SIGNING_KEY_ACTIVE", "SELFTEST_HMAC_KEY"],
+      "fakes": {
+        "AI": "fake-ai",
+        "VECTORIZE": "fake-vectorize",
+        "SANDBOX_A": "fake-sandbox-a",
+        "SANDBOX_B": "fake-sandbox-b"
+      }
+    },
+    "admin": {
+      "d1": { "DB": "registry" },
+      "kv": {},
+      "r2": {
+        "PACKS_STAGING": { "bucket": "packs-staging", "access": "read-write" },
+        "VALIDATION_REPORTS": { "bucket": "validation-reports", "access": "read" },
+        "OPS_BUCKET": { "bucket": "ops", "access": "read" }
+      },
+      "queues": { "AUDIT_QUEUE": "audit" },
+      "queue_consumers": ["audit"],
+      "workflows": { "VALIDATE_PACK": "validate-pack" },
+      "durable_objects": {},
+      "containers": {},
+      "services": {},
+      "vectorize": {},
+      "ai": [],
+      "analytics": { "REQUEST_OUTCOMES": "request_outcomes", "DOMAIN_EVENTS": "domain_events" },
+      "ratelimits": [],
+      "secrets": ["SELFTEST_HMAC_KEY"],
+      "fakes": { "ACCESS": "fake-access" }
+    },
+    "judge": {
+      "d1": {},
+      "kv": { "GATES_KV": "gates" },
+      "r2": {},
+      "queues": {},
+      "queue_consumers": [],
+      "workflows": {},
+      "durable_objects": {},
+      "containers": {},
+      "services": { "ADMIN": "admin" },
+      "vectorize": {},
+      "ai": [],
+      "analytics": {
+        "REQUEST_OUTCOMES": "request_outcomes",
+        "DOMAIN_EVENTS": "domain_events",
+        "GATE_RESULTS": "gate_results",
+        "BUDGET": "budget"
+      },
+      "ratelimits": [],
+      "secrets": [],
+      "fakes": { "ACCESS": "fake-access" }
+    },
+    "prober": {
+      "d1": {},
+      "kv": {},
+      "r2": {},
+      "queues": {},
+      "queue_consumers": [],
+      "workflows": {},
+      "durable_objects": {},
+      "containers": {},
+      "services": {},
+      "vectorize": {},
+      "ai": [],
+      "analytics": {
+        "REQUEST_OUTCOMES": "request_outcomes",
+        "DOMAIN_EVENTS": "domain_events",
+        "SYNTHETIC_PROBES": "synthetic_probes"
+      },
+      "ratelimits": [],
+      "secrets": ["SELFTEST_HMAC_KEY"],
+      "fakes": {}
+    }
+  }
+}
