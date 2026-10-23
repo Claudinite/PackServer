@@ -21,7 +21,9 @@
         "TURNSTILE_SECRET": "1x0000000000000000000000000000000AA",
         "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
         "GITHUB_APP_CLIENT_ID": "fake-github-client-id",
-        "GITHUB_APP_CLIENT_SECRET": "fake-github-client-secret"
+        "GITHUB_APP_CLIENT_SECRET": "fake-github-client-secret",
+        "IP_HASH_MASTER_KEY": "test-ip-hash-master-key",
+        "PRINCIPAL_HASH_KEY": "test-principal-hash-key"
       },
       "d1_databases": [
         {
@@ -39,6 +41,10 @@
         {
           "binding": "CACHE_KV",
           "id": "00000000000000000000020000000003"
+        },
+        {
+          "binding": "TELEMETRY_KV",
+          "id": "00000000000000000000020000000007"
         }
       ],
       "r2_buckets": [
@@ -121,6 +127,10 @@
         {
           "binding": "CACHE_KV",
           "id": "00000000000000000000120000000003"
+        },
+        {
+          "binding": "TELEMETRY_KV",
+          "id": "00000000000000000000120000000007"
         }
       ],
       "r2_buckets": [
@@ -187,6 +197,16 @@
           "binding": "GITHUB_APP_CLIENT_SECRET",
           "store_id": "00000000000000000000190000000004",
           "secret_name": "github-app-client-secret-staging"
+        },
+        {
+          "binding": "IP_HASH_MASTER_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "ip-hash-master-key-staging"
+        },
+        {
+          "binding": "PRINCIPAL_HASH_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "principal-hash-key-staging"
         }
       ],
       "version_metadata": {
@@ -229,6 +249,10 @@
         {
           "binding": "CACHE_KV",
           "id": "00000000000000000000220000000003"
+        },
+        {
+          "binding": "TELEMETRY_KV",
+          "id": "00000000000000000000220000000007"
         }
       ],
       "r2_buckets": [
@@ -295,6 +319,16 @@
           "binding": "GITHUB_APP_CLIENT_SECRET",
           "store_id": "00000000000000000000290000000004",
           "secret_name": "github-app-client-secret"
+        },
+        {
+          "binding": "IP_HASH_MASTER_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "ip-hash-master-key"
+        },
+        {
+          "binding": "PRINCIPAL_HASH_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "principal-hash-key"
         }
       ],
       "version_metadata": {
