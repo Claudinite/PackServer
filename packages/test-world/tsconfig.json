@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["es2022"],
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "paths": { "@packserver/test-world": ["./index.ts"] }
+  },
+  "include": ["**/*.ts", "../../scenarios/**/*.ts"],
+  "exclude": ["fake-workers/**", "node_modules"]
+}

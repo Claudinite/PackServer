@@ -44,7 +44,7 @@ real Vectorize and `bge-m3` weekly against staging.
 - **Runs:** push
 - **Setup:** fake Logpush records for a public pack: 10 downloads yesterday from 3 networks, 5 downloads 31 days ago; private downloads of another pack recorded by the Worker.
 - **Action:** run the hourly rollup; read the pack page, a browse row and an MCP card.
-- **Faked:** stats sink, Logpush archive, clock.
+- **Faked:** stats sink, Logpush archive (post-Transformer records), clock.
 - **Assert:** the public pack shows "about 10 fetches in 30 days" (order of magnitude; the archive is sampled and rescaled) and not 15; the private pack's count comes from the Worker's records; every surface shows the aggregate only.
 
 ## Not covered by an integration test

@@ -80,7 +80,7 @@ the test is not about the gate.
 ### 4.2 `http`
 
 The same World with `fetch` against a URL and no fakes, clock, reset or recorder: only `probe-safe`
-and `weekly` entries run under it. Environment: `PACKSERVER_BASE_URL`, `PACKSERVER_VERSION_OVERRIDE`,
+and `weekly` entries run under it. Environment: `PACKSERVER_BASE_URL`, `PACKSERVER_VERSION_OVERRIDE` (with `PACKSERVER_EXPECTED_RELEASE`, the comma-separated release id(s) the candidate reports in `X-PackServer-Version`: the override names version ids, so the driver cannot derive it, and refuses to start with an override and no expected release),
 `CF_ACCESS_CLIENT_ID`/`CF_ACCESS_CLIENT_SECRET` (attached only to the host named in
 `PACKSERVER_ACCESS_HOST`, the canary or admin host), `PACKSERVER_PROBE_TENANT` (default `@probe`).
 The release and monitoring plans invoke it as `npm run scenarios -- --driver=http --tag=probe-safe`
@@ -187,7 +187,13 @@ value read from configuration.
 Ariel's budgets, kept from PR #9: every push under 2 minutes wall-clock (lint, typecheck, unit,
 sharded in-process tests, the coverage check); nightly and weekly jobs each under 15–20 minutes with
 a hard `timeout-minutes`; everything inside the free Actions minutes of a private repository, about
-1,850 minutes a month with ~150 push runs, ~20 changed nights and 4 weekly runs. Docs-only changes
+1,850 minutes a month with ~150 push runs, ~20 changed nights and 4 weekly runs. Each job is billed
+rounded up to a whole minute, so legs cost billed minutes: a push run is 12 jobs (`check`, `changes`,
+`coverage`, `checks`, two `typecheck`, two `unit`, `infra`, two `scenarios`, `summary`) at about 12
+billed minutes and 68 s wall-clock, measured on the PR that introduced them. ~150 push runs are then
+about 1,800 minutes, nearly all of the 1,850 before any nightly or weekly job, so the estimate is
+**over the free budget** once those run; the shard counts are the lever (each `typecheck` or `unit`
+leg removed saves about 150 minutes a month and adds wall-clock). Docs-only changes
 skip CI; a newer push cancels the older run; nothing nightly or weekly runs on forks. Shards grow by
 one when the scenario job's p90 passes 90 s for a week; shards cost billed minutes, not wall-clock.
 A monthly job opens an issue at 80 % of the included minutes. The heavy suites (sandbox corpus, real
