@@ -36,7 +36,8 @@ const USAGE = `Usage: node infra/zone/apply.mjs [--env <staging|production>] [--
                 delivered since that apply. A job with no object yet is reported "not yet delivered",
                 never as a pass, and the exit code is 3.
   --since       with --verify-delivery alone: ignore objects delivered before this time (default: the
-                newest update time the env's transformers report; none reported means no cut-off)
+                newest update time the env's transformers report; with neither, the run ends
+                as pending, exit 3, never verified)
   --verify-wait seconds to keep polling for a first object (default 180; 0 checks once)
   --backup-dir  where the previous rule set of each changed phase is saved (default infra/zone/previous)
 
@@ -165,14 +166,19 @@ export async function main(argv, envVars, deps = {}) {
     if (since === undefined) {
       try {
         since = await newestTransformerUpdate(api, cfg.accountId, env, spec);
-        out(since === undefined ? "no update time reported for the transformers; any delivered object counts" : `counting objects delivered since the transformers' newest update, ${new Date(since).toISOString()}`);
+        out(since === undefined ? "no update time reported for the transformers; any delivered object would count, so this ends as not verified" : `counting objects delivered since the transformers' newest update, ${new Date(since).toISOString()}`);
       } catch (e) {
-        out(`transformers not readable (${e.message}); any delivered object counts`);
+        out(`transformers not readable (${e.message}); this ends as not verified unless --since is given`);
       }
     }
     const results = await verify(since);
     if (results.some((r) => r.state === FAILED)) return 1;
-    return results.some((r) => r.state === PENDING) ? 3 : 0;
+    if (results.some((r) => r.state === PENDING)) return 3;
+    if (since === undefined) {
+      out("not verified: no cut-off time (the transformers report no update time and no --since was given), so a delivered object may predate the current SQL; re-run with --since <iso-time> set to the last change");
+      return 3;
+    }
+    return 0;
   }
   const failures = [];
   const attempt = async (label, fn) => {
