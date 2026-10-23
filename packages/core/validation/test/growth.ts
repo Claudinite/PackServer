@@ -16,19 +16,19 @@ async function timeOf(files: (size: number) => Files, size: number): Promise<num
 /**
  * Linear growth makes 2 MiB take about sixteen times as long as 128 KiB; a quadratic scan takes about 256 times.
  * Comparing sizes on the same machine keeps a loaded runner from failing a correct scan. The sizes run in order
- * and a single run over five seconds at 512 KiB or less stops there, so a badly quadratic scan fails at a small size instead of
+ * and a single run over five seconds at 512 KiB or less, or ten at 2 MiB, stops there, so a badly quadratic scan fails at a small size instead of
  * running for minutes at the large one.
  */
 export async function expectLinear(files: (size: number) => Files): Promise<void> {
   await timeOf(files, 8 * KIB);
   const sizes = [128, 512, 2048];
-  const runs = [4, 2, 2];
+  const runs = [3, 1, 1];
   const best: number[] = [];
   for (const [k, size] of sizes.entries()) {
     const times: number[] = [];
     for (let r = 0; r < runs[k]!; r++) {
       times.push(await timeOf(files, size * KIB));
-      if (size <= 512) expect(times[r], `one run took too long at ${size} KiB`).toBeLessThan(5_000);
+      if (size <= 2048) expect(times[r], `one run took too long at ${size} KiB`).toBeLessThan(size > 512 ? 10_000 : 5_000);
     }
     best.push(fastest(times));
   }

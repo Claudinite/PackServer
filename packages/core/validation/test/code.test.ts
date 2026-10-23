@@ -315,7 +315,7 @@ describe("code.base64 and code.time-conditional hold", () => {
     expect(rulesOf(worker(`const s = "${"word ".repeat(80)}";`))).toEqual([]);
   });
   it("holds a clock compared with a date constant or read as a calendar field", () => {
-    for (const body of ['if (Date.now() > 1893456000000) { go(); }', "const d = new Date(); if (d.getFullYear() > 2026) go();", "const late = Date.now() / 1000 > 1893456000;", "if (new Date().getMonth() === 11) go();", 'if (Date.now() > Date.parse("2027-01-01")) go();', "x = Date.now() > 1893456000000 ? 1 : 2;", "const now = new Date();\nswitch (now.getDay()) {}", 'if (new Date() > new Date("2027-01-01")) go();']) {
+    for (const body of ['if (Date.now() > 1893456000000) { go(); }', "const d = new Date(); if (d.getFullYear() > 2026) go();", "const late = Date.now() / 1000 > 1893456000;", "const d = new Date(); const h = d.getHours() < 9 ? 'early' : 'late';", "if (new Date().getMonth() === 11) go();", 'if (Date.now() > Date.parse("2027-01-01")) go();', "x = Date.now() > 1893456000000 ? 1 : 2;", "const now = new Date();\nswitch (now.getDay()) {}", 'if (new Date() > new Date("2027-01-01")) go();']) {
       const f = findings(worker(body)).find((x) => x.rule === "code.time-conditional");
       expect(f, body).toMatchObject({ class: "hold" });
     }
@@ -337,8 +337,10 @@ describe("code.base64 and code.time-conditional hold", () => {
       "const y = new Date().getFullYear();",
       "if (Date.now() - started > 2592000000) go();",
       "const t = Date.now(); if (t > 1798761600) go();",
+      "const d = new Date(); const h = d.getHours() < 10 ? '0' + d.getHours() : d.getHours();",
+      "const m = new Date().getMonth() + 1 < 10 ? '0' + m : m;",
     ]) expect(rulesOf(worker(body)), body).toEqual([]);
-    for (const body of ["func f() bool { return time.Now().After(t) }", "func f() bool { return time.Since(t) > time.Hour }", "func f() bool { return time.Since(start) > 5000000000 }", 'func f() string { return fmt.Sprintf("%d", time.Now().Year()) }', 'func f() string { return time.Now().Format("2006") }']) {
+    for (const body of ["func f() bool { return time.Now().After(t) }", "func f() bool { return time.Since(t) > time.Hour }", "func f() bool { return time.Since(start) > 5000000000 }", "func f() bool { return time.Now().Sub(start) > 5000000000 }", 'func f() string { return fmt.Sprintf("%d", time.Now().Year()) }', 'func f() string { return time.Now().Format("2006") }']) {
       expect(rulesOf(go(body, '"time"\n\t"claudinite.com/checksdk"')), body).toEqual([]);
     }
   });

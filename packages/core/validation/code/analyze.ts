@@ -79,9 +79,6 @@ export function goChecks(toks: readonly Tok[]): GoChecks {
       }
     } else if (t.k === "p" && t.v === ")") {
       if (parens.pop()) open.pop();
-    } else if (t.k === "id" && t.v === "Tags" && !(toks[n + 1]?.v === ":" && open.length)) {
-      // `c.Tags = ...`, `append(c.Tags, ...)` or a `Tags:` field outside a Register call: the tags are set where they cannot be read.
-      strayHook = true;
     } else if (t.k === "id" && toks[n + 1]?.v === ":" && open.length) {
       const check = open[open.length - 1]!;
       if (t.v === "ID" && toks[n + 2]?.k === "str") check.id = toks[n + 2]!.v;

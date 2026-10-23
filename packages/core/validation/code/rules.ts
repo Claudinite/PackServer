@@ -233,6 +233,14 @@ function isLocalImport(from: string, spec: string, present: ReadonlySet<string>)
 
 const TIME_HINT = "Behaviour that depends on the date can pass review today and change later. Remove the clock from the decision.";
 
+/** `getHours() < 10 ? '0' + h : h`: the comparison only decides whether to pad a digit. `at` is the token after the getter's opening parenthesis. */
+function padsZero(toks: readonly Tok[], at: number): boolean {
+  if (!isP(toks[at], ")")) return false;
+  let k = at + 1;
+  if (isP(toks[k], "+") && toks[k + 1]?.v === "1") k += 2;
+  return isP(toks[k], "<") && toks[k + 1]?.v === "10" && isP(toks[k + 2], "?");
+}
+
 /**
  * A clock read matters when the date itself decides something: its line compares against a date constant or reads a calendar
  * field (weekday, month, year, hour). Age arithmetic, formatting and storing a timestamp steer nothing.
@@ -240,13 +248,18 @@ const TIME_HINT = "Behaviour that depends on the date can pass review today and 
 function timeRules(toks: readonly Tok[], clocks: readonly number[], src: Source, emit: Emit): void {
   if (clocks.length === 0) return;
   const calendar = new Set<number>();
+  const padded = new Set<number>();
+  const getters: number[] = [];
   const compares = new Set<number>();
   const switches = new Set<number>();
   const dates = new Set<number>();
   const seconds = new Set<number>();
   const scaled = new Set<number>();
   toks.forEach((t, n) => {
-    if (t.k === "id" && CALENDAR_GETTERS.has(t.v) && isP(toks[n + 1], "(")) calendar.add(t.line);
+    if (t.k === "id" && CALENDAR_GETTERS.has(t.v) && isP(toks[n + 1], "(")) {
+      if (padsZero(toks, n + 2)) padded.add(t.line);
+      else getters.push(n);
+    }
     if (t.k === "id" && (t.v === "switch" || t.v === "case")) switches.add(t.line);
     if (t.k === "p" && COMPARATORS.has(t.v)) compares.add(t.line);
     if (t.k === "str" && DATE_STRING.test(t.v)) dates.add(t.line);
@@ -257,7 +270,15 @@ function timeRules(toks: readonly Tok[], clocks: readonly number[], src: Source,
     if (value === 1000 && isP(toks[n - 1], "/")) scaled.add(t.line);
     if (t.k === "id" && t.v === "Unix" && isP(toks[n + 1], "(")) scaled.add(t.line);
   });
-  const isDuration = (at: number) => toks[at]?.v === "time" && (toks[at + 2]?.v === "Since" || toks[at + 2]?.v === "Until");
+  // The value a padding ternary prints is the same getter again; only a getter that is compared itself still decides.
+  for (const n of getters) {
+    const line = toks[n]!.line;
+    const next = toks[n + 3];
+    if (!padded.has(line) || (next?.k === "p" && COMPARATORS.has(next.v) && next.v !== "?")) calendar.add(line);
+  }
+  const isDuration = (at: number) =>
+    toks[at]?.v === "time" &&
+    (toks[at + 2]?.v === "Since" || toks[at + 2]?.v === "Until" || (toks[at + 2]?.v === "Now" && isP(toks[at + 5], ".") && toks[at + 6]?.v === "Sub"));
   const decides = (line: number, duration: boolean) =>
     (calendar.has(line) && (compares.has(line) || switches.has(line))) ||
     (!duration && compares.has(line) && (dates.has(line) || (seconds.has(line) && scaled.has(line))));
