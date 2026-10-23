@@ -195,3 +195,25 @@ describe("version and bindings", () => {
     expect(missingBindings("judge", env)).toEqual(["ADMIN"]);
   });
 });
+
+describe("clockFrom", () => {
+  it("is the system clock outside the test environment and without a fake", async () => {
+    const { clockFrom, systemClock } = await import("./index");
+    expect(clockFrom("production", undefined)).toBe(systemClock);
+    expect(clockFrom("test", undefined)).toBe(systemClock);
+  });
+
+  it("holds the fake clock's instant as of the last sync", async () => {
+    const { clockFrom } = await import("./index");
+    const { isSyncedClock, syncClock } = await import("../src/clock");
+    let instant = 1_000;
+    const clock = clockFrom("test", { now: async () => instant, fetch: () => {} } as unknown as Fetcher);
+    expect(isSyncedClock(clock)).toBe(true);
+    await syncClock(clock);
+    expect(clock.now()).toBe(1_000);
+    instant = 5_000;
+    expect(clock.now()).toBe(1_000);
+    await syncClock(clock);
+    expect(clock.now()).toBe(5_000);
+  });
+});

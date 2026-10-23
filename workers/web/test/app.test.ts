@@ -11,7 +11,7 @@ const runtime = (missingBindings: string[] = []): WebRuntime => ({
   version: { versionId: SHELL_VERSION, releaseId: SHELL_RELEASE },
   missingBindings,
   missingSecrets: [],
-  ports: fakes,
+  ports: { ...fakes, githubLogin: { authorizeUrl: async () => "", profile: async () => { throw new Error("not used"); } } },
   services: { mcp: {} as Fetcher, publish: {} as Fetcher },
 });
 

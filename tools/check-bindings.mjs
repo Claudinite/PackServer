@@ -25,6 +25,9 @@ const ADAPTER_DIR = join("packages", "ports", "cloudflare");
 const TEST_WORLD_DIR = join("packages", "test-world");
 const ENV_IMPORT = /import\s*\{[^}]*\benv\b[^}]*\}\s*from\s*["']cloudflare:workers["']/;
 
+// The GitHub App's OAuth client id and secret: web finishes GitHub sign-in with them. The App's private key and webhook secret stay with the github Worker.
+const WEB_SIGN_IN_SECRETS = ["GITHUB_APP_CLIENT_ID", "GITHUB_APP_CLIENT_SECRET"];
+
 const suffix = (env, name, sep = "-") => (env === "production" ? name : `${name}${sep}${env}`);
 const workerName = suffix;
 const kebab = (s) => s.toLowerCase().replaceAll("_", "-");
@@ -149,7 +152,8 @@ function checkInvariants(worker, t, env, block) {
   const secrets = block.secrets_store_secrets?.map((s) => s.binding) ?? Object.keys(block.vars ?? {});
   if (secrets.includes("SIGNING_KEY_ACTIVE") && worker !== "validator") problem(where, "only the validator holds the signing key");
   if (secrets.some((s) => s.startsWith("SIGNING_KEY_") && s !== "SIGNING_KEY_ACTIVE")) problem(where, "the standby signing key is bound to nothing");
-  if (secrets.some((s) => s.startsWith("GITHUB_")) && worker !== "github") problem(where, "GitHub App secrets belong to the github Worker alone");
+  const foreign = secrets.filter((s) => s.startsWith("GITHUB_") && !(worker === "web" && WEB_SIGN_IN_SECRETS.includes(s)));
+  if (foreign.length && worker !== "github") problem(where, `GitHub App secrets belong to the github Worker alone, except the sign-in client credentials web exchanges codes with (${foreign.join(", ")})`);
   if (secrets.includes("TURNSTILE_SECRET") && worker !== "web") problem(where, "only web holds the Turnstile secret");
   if ((block.workflows ?? []).length && !["validator", "admin"].includes(worker)) problem(where, "this Worker must never hold Workflows");
   if (env !== "test") {

@@ -92,6 +92,9 @@ importers:
 
   packages/http:
     dependencies:
+      '@packserver/core':
+        specifier: workspace:*
+        version: link:../core
       '@packserver/ports':
         specifier: workspace:*
         version: link:../ports
@@ -310,6 +313,9 @@ importers:
 
   workers/web:
     dependencies:
+      '@packserver/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@packserver/http':
         specifier: workspace:*
         version: link:../../packages/http

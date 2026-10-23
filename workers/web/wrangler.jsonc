@@ -15,7 +15,9 @@
         "WORKER": "web",
         "ENVIRONMENT": "test",
         "TURNSTILE_SECRET": "1x0000000000000000000000000000000AA",
-        "SELFTEST_HMAC_KEY": "test-selftest-hmac-key"
+        "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
+        "GITHUB_APP_CLIENT_ID": "fake-github-client-id",
+        "GITHUB_APP_CLIENT_SECRET": "fake-github-client-secret"
       },
       "d1_databases": [
         {
@@ -168,6 +170,16 @@
           "binding": "SELFTEST_HMAC_KEY",
           "store_id": "00000000000000000000190000000004",
           "secret_name": "selftest-hmac-key-staging"
+        },
+        {
+          "binding": "GITHUB_APP_CLIENT_ID",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "github-app-client-id-staging"
+        },
+        {
+          "binding": "GITHUB_APP_CLIENT_SECRET",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "github-app-client-secret-staging"
         }
       ],
       "version_metadata": {
@@ -263,6 +275,16 @@
           "binding": "SELFTEST_HMAC_KEY",
           "store_id": "00000000000000000000290000000004",
           "secret_name": "selftest-hmac-key"
+        },
+        {
+          "binding": "GITHUB_APP_CLIENT_ID",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "github-app-client-id"
+        },
+        {
+          "binding": "GITHUB_APP_CLIENT_SECRET",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "github-app-client-secret"
         }
       ],
       "version_metadata": {

@@ -136,6 +136,19 @@ describe("check-bindings", () => {
     expect(run(dir).out).toContain("secret TURNSTILE_SECRET must not be a plain var outside env.test");
   });
 
+  it.each([
+    ["web", "GITHUB_APP_PRIVATE_KEY"],
+    ["mcp", "GITHUB_APP_CLIENT_SECRET"],
+  ])("fails when %s holds the GitHub secret %s", (worker, binding) => {
+    const dir = copyRepo();
+    edit(dir, worker, (c) => c.env.production.secrets_store_secrets.push({ binding, store_id: "x", secret_name: "x" }));
+    expect(run(dir).out).toContain(`workers/${worker} env.production: GitHub App secrets belong to the github Worker alone`);
+  });
+
+  it("lets web hold the GitHub App's sign-in client credentials", () => {
+    expect(run(copyRepo()).out).not.toContain("GitHub App secrets belong to the github Worker alone");
+  });
+
   it("fails on a binding read outside bindings.ts", () => {
     const dir = copyRepo();
     writeFileSync(join(dir, "workers/web/src/app.ts"), 'export const x = (env: unknown) => (env as any).SESSIONS_KV;\n');

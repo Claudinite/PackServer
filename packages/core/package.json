@@ -6,6 +6,8 @@
   "exports": {
     "./canonical": "./canonical/index.ts",
     "./canonical/fixtures": "./canonical/fixtures.ts",
+    "./identity": "./identity/index.ts",
+    "./identity/testing": "./identity/testing.ts",
     "./index": "./index/index.ts",
     "./mail": "./mail/index.ts",
     "./mail/testing": "./mail/testing.ts",
