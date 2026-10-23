@@ -1,10 +1,11 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
-import { contentSecurityPolicy, HSTS, makeNonce, securityHeaders } from "../src/headers";
+import { baseSecurityHeaders, contentSecurityPolicy, HSTS, makeNonce, securityHeaders } from "../src/headers";
 
 const app = new Hono();
 app.use(securityHeaders());
 app.get("/page", (c) => c.html(`<p>${c.get("cspNonce")}</p>`));
+app.get("/redirect", () => Response.redirect("https://example.test/next", 302));
 app.get("/api/x", (c) => {
   c.header("access-control-allow-origin", "https://evil.example");
   c.header("access-control-allow-credentials", "true");
@@ -61,3 +62,13 @@ describe("security headers (IT-ABUSE-008, IT-ABUSE-009)", () => {
 async function nonceOf(res: Response): Promise<string> {
   return /<p>(.*)<\/p>/.exec(await res.clone().text())?.[1] ?? "";
 }
+
+describe("securityHeaders on an immutable response", () => {
+  it("rebuilds a redirect rather than failing, keeping status and location", async () => {
+    const res = await app.request("/redirect");
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("https://example.test/next");
+    for (const [name, value] of Object.entries(baseSecurityHeaders)) expect(res.headers.get(name), name).toBe(value);
+    expect(res.headers.get("content-security-policy")).toContain("default-src 'none'");
+  });
+});

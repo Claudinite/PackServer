@@ -45,11 +45,15 @@ export class MemoryAuditBucket implements AuditBucket {
   batchKeys(): string[] {
     return [...this.objects.keys()].filter((k) => k.endsWith(".ndjson")).sort();
   }
-  /** Flips one byte of a stored object, the edit the verifier must catch. */
-  tamper(key: string, offset = 0): void {
+  /** The edit the verifier must catch: `alter` flips one byte of a stored object (at `offset`), `drop` removes it. */
+  tamper(key: string, how: { drop: true } | { alter: true; offset?: number }): void {
     const body = this.objects.get(key);
     if (body === undefined) throw new Error(`no such object: ${key}`);
-    const at = Math.min(offset, body.length - 1);
+    if ("drop" in how) {
+      this.objects.delete(key);
+      return;
+    }
+    const at = Math.min(how.offset ?? 0, body.length - 1);
     this.objects.set(key, body.slice(0, at) + String.fromCharCode(body.charCodeAt(at) ^ 1) + body.slice(at + 1));
   }
   /** Every stored byte as one string, for the no-raw-secrets scans. */
