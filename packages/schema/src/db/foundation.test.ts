@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import { migratedDb } from "../../test/migrated-db";
 import { VERSION_STATES } from "../shapes/domain";
 import * as db from "./index";
+import * as packsTables from "./packs";
+import * as scopesTables from "./scopes";
+import * as usersTables from "./users";
 
 const NOW = "2026-10-22T00:00:00.000Z";
 
@@ -19,11 +22,13 @@ const version = (id: string, v: string, state = "active") =>
    values ('${id}', 'p1', '${v}', '${state}', '${"a".repeat(64)}', 10, 0, 0)`;
 
 describe("foundation tables", () => {
-  const tables = (Object.values(db) as unknown[]).filter((x): x is Table => is(x, Table));
+  const tablesOf = (mod: object) => (Object.values(mod) as unknown[]).filter((x): x is Table => is(x, Table));
+  const tables = tablesOf(db);
+  const foundation = [usersTables, scopesTables, packsTables].flatMap(tablesOf);
 
-  it("declares exactly the foundation tables and each later area's", () => {
-    expect(tables.map(getTableName).sort()).toEqual(
-      ["credentials", "feature_flags", "github_deliveries", "github_installations", "github_issue_states", "identities", "pack_versions", "packs", "recent_activity", "retired_names", "scope_members", "scopes", "session_revocations", "users"],
+  it("declares exactly the foundation tables", () => {
+    expect(foundation.map(getTableName).sort()).toEqual(
+      ["credentials", "feature_flags", "identities", "pack_versions", "packs", "retired_names", "scope_members", "scopes", "session_revocations", "users"],
     );
   });
 

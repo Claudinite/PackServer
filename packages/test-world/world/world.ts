@@ -31,7 +31,7 @@ export function createWorld(driver: Driver, title: string) {
   };
   return {
     driver,
-    ...createUsers(),
+    ...createUsers(driver, aliases),
     ...createScopes(driver, aliases),
     ...createPublishing(),
     ...createValidation(),

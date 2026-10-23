@@ -32,6 +32,12 @@ expect.extend({
   async toBeRefused(received: unknown, reason?: RefusalReason): Promise<Pass> {
     return refusedWith(await settle(received), reason);
   },
+  async toBeRefusedSaying(received: unknown, text: string): Promise<Pass> {
+    const value = await settle(received);
+    const message = value instanceof Refusal ? (value.detail.message ?? "") : "";
+    const pass = value instanceof Refusal && message.toLowerCase().includes(text.toLowerCase());
+    return { pass, message: () => `expected a refusal saying "${text}", got ${show(value)}` };
+  },
   async toBeRefusedWithClaimDiff(received: unknown, claims: Record<string, unknown>): Promise<Pass> {
     const value = await settle(received);
     const diff = value instanceof Refusal ? value.detail.claimDiff : undefined;
@@ -138,6 +144,7 @@ Object.assign(expect, { redacted });
 type Matchers<R> = {
   toBeNotFound(): R;
   toBeRefused(reason?: RefusalReason): R;
+  toBeRefusedSaying(text: string): R;
   toBeRefusedWithClaimDiff(claims: Record<string, unknown>): R;
   toBeIgnored(): R;
   toBeHeld(reason?: string): R;
