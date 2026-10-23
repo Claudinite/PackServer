@@ -118,6 +118,8 @@ try {
     if (problems.length) failed++;
   }
 } finally {
+  // The output directories stay root-owned, so a host user removes them through the image.
+  spawnSync("docker", ["run", "--rm", "--entrypoint", "sh", "-v", `${root}:/w`, image, "-c", "rm -rf /w/*"], { stdio: "ignore" });
   await rm(root, { recursive: true, force: true });
 }
 process.exitCode = failed ? 1 : 0;
