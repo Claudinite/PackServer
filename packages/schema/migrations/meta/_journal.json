@@ -8,6 +8,13 @@
       "when": 1792709988611,
       "tag": "20261022225948_foundation_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1792714778837,
+      "tag": "20261023001938_audit_recent_activity",
+      "breakpoints": true
     }
   ]
 }

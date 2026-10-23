@@ -1,7 +1,37 @@
-import { logStubRun } from "@packserver/http";
+import { acceptAuditEvent, appendBatch, copyToActivity, type ConsumedMessage } from "@packserver/core/audit";
+import type { AdminRuntime } from "../bindings";
 
-/** Until the audit writer lands, the batch goes back to the queue so no event is lost to a consumer that does nothing. */
-export async function consumeAudit(batch: MessageBatch<unknown>): Promise<void> {
-  logStubRun("admin", "consumer.audit");
-  batch.retryAll();
+/**
+ * Appends the batch's events to the hash chain in the audit bucket, then acks. A message that cannot be read is
+ * retried so it reaches the dead-letter queue instead of vanishing; a failed write returns the whole batch.
+ */
+export async function consumeAudit(batch: MessageBatch<unknown>, runtime: AdminRuntime): Promise<void> {
+  const { auditBucket, d1, stats } = runtime.ports;
+  const accepted: Array<ConsumedMessage & { message: Message<unknown> }> = [];
+  for (const message of batch.messages) {
+    const parsed = acceptAuditEvent(message.body);
+    if (parsed.ok) accepted.push({ messageId: message.id, event: parsed.message, message });
+    else {
+      console.error(JSON.stringify({ at: "consumer.audit", refused: parsed.reason, schema: parsed.schema ?? null, message: message.id }));
+      message.retry();
+    }
+  }
+  if (accepted.length === 0) return;
+
+  let result;
+  try {
+    result = await appendBatch(auditBucket, accepted);
+  } catch (error) {
+    console.error(JSON.stringify({ at: "consumer.audit", failed: "append", error: String(error) }));
+    for (const m of accepted) m.message.retry();
+    return;
+  }
+
+  // The copy is disposable: a D1 outage must not hold back the record.
+  const copy = await copyToActivity(d1, result?.written ?? []);
+  for (const e of result?.written ?? []) stats.write({ name: "audit.appended", blobs: [e.action, e.actor.kind], doubles: [1] });
+  if (result && result.written.length > 0) {
+    stats.write({ name: "audit.batch_written", blobs: [result.key, result.object, copy], doubles: [result.head.seq, result.written.length] });
+  }
+  for (const m of accepted) m.message.ack();
 }

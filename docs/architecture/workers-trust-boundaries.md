@@ -12,7 +12,7 @@ are the only seam where Cloudflare products are touched (`src/bindings.ts` in ea
 | `publish` | `/api/publish/*`, `/api/oidc/*`, `/api/dry-run/*` | D1, R2 staging (presign and write), Workflows (start), Durable Objects `ScopeCoordinator` and `Quota`, KV cache (JWKS), Queue notify (producer) | Signing key; public bucket write |
 | `github` | `/hooks/github`, weekly public-repository scan | GitHub App private key (Secrets Store), read-only public code-search token, D1 | Workflows; any bucket |
 | `validator` | Internal: `ValidatePackWorkflow`, two Containers, rescans, index and fragment signing | R2 staging (read), R2 public and private (write), `validation-reports`, R2 ops (read: `cn-releases`), D1, Vectorize, Workers AI (model screen, when one ships), Containers, Durable Objects `ScopeCoordinator` and `RootCoordinator` (`script_name: publish`), Queue notify (producer), the active Ed25519 signing key (Secrets Store) | A public route; the standby key |
-| `admin` | `registry-admin.claudinite.com`, internal API over service bindings (REQ-ADMIN-010), crons ([overview.md](overview.md) §Scheduled work) | D1, R2, Workflows, Queue audit (producer), Access certificate check | A `workers.dev` route |
+| `admin` | `registry-admin.claudinite.com`, internal API over service bindings (REQ-ADMIN-010), crons ([overview.md](overview.md) §Scheduled work) | D1, R2, Workflows, Queue audit (producer and sole consumer), the audit bucket's object-only S3 token (Secrets Store; no R2 binding), Access certificate check | A `workers.dev` route |
 
 Two cross-cutting rules:
 

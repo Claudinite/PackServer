@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./audit": "./audit/index.ts",
+    "./audit/testing": "./audit/testing.ts",
     "./canonical": "./canonical/index.ts",
     "./canonical/fixtures": "./canonical/fixtures.ts",
     "./index": "./index/index.ts",
@@ -18,6 +20,7 @@
     "@noble/ed25519": "catalog:",
     "@packserver/ports": "workspace:*",
     "@packserver/schema": "workspace:*",
+    "aws4fetch": "catalog:",
     "zod": "catalog:"
   }
 }
