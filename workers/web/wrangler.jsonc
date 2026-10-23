@@ -14,6 +14,7 @@
       "vars": {
         "WORKER": "web",
         "ENVIRONMENT": "test",
+        "CDN_ORIGIN": "https://packs.test.invalid",
         "TURNSTILE_SECRET": "1x0000000000000000000000000000000AA",
         "SELFTEST_HMAC_KEY": "test-selftest-hmac-key"
       },
@@ -94,7 +95,8 @@
       ],
       "vars": {
         "WORKER": "web",
-        "ENVIRONMENT": "staging"
+        "ENVIRONMENT": "staging",
+        "CDN_ORIGIN": "https://packs-staging.claudinite.com"
       },
       "d1_databases": [
         {
@@ -189,7 +191,8 @@
       ],
       "vars": {
         "WORKER": "web",
-        "ENVIRONMENT": "production"
+        "ENVIRONMENT": "production",
+        "CDN_ORIGIN": "https://packs.claudinite.com"
       },
       "d1_databases": [
         {

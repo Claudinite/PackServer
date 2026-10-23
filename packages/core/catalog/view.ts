@@ -29,7 +29,7 @@ export function objectKey(pack: string, kind: ObjectKind, version?: string): str
 export const CACHE_IMMUTABLE = "public, max-age=31536000, immutable";
 export const CACHE_PRIVATE = "private, no-store";
 /** Anonymous reads of a view that a status change can alter: short, and never `immutable`. */
-export const CACHE_PUBLIC_VIEW = "public, max-age=60, stale-while-revalidate=300";
+export const CACHE_PUBLIC_VIEW = "public, max-age=60, stale-while-revalidate=60, stale-if-error=86400";
 
 interface ObjectHeaders {
   contentType: string;
@@ -49,15 +49,16 @@ const CONTENT_TYPES: Record<ObjectKind, string> = {
  * What a write of a public object must carry as R2 `httpMetadata`: an attachment of a
  * non-HTML type. The versioned objects are written once, so they are `immutable`; the history
  * file is rewritten on every status change, so it is not. `X-Content-Type-Options: nosniff`
- * cannot ride on object metadata: the custom domain's response transform adds it (see
- * `NOSNIFF_HEADER`), and a Worker streaming an object sets it itself with `objectResponseHeaders`.
+ * cannot ride on object metadata. On the custom domain it needs a response-header Transform
+ * Rule that is not provisioned yet (Claudinite/PackServer#142); a Worker streaming an object
+ * sets it itself with `objectResponseHeaders`.
  */
 export function publicObjectHttpMetadata(kind: ObjectKind): ObjectHeaders {
   const file = kind === "versions" ? "versions.json" : OBJECT_FILES[kind];
   return {
     contentType: CONTENT_TYPES[kind],
     contentDisposition: `attachment; filename="${file}"`,
-    cacheControl: kind === "versions" ? "public, max-age=60, stale-while-revalidate=300" : CACHE_IMMUTABLE,
+    cacheControl: kind === "versions" ? CACHE_PUBLIC_VIEW : CACHE_IMMUTABLE,
   };
 }
 
@@ -72,13 +73,6 @@ export function objectResponseHeaders(kind: ObjectKind, options: { private: bool
     "cache-control": options.private ? CACHE_PRIVATE : meta.cacheControl,
     [NOSNIFF_HEADER.name]: NOSNIFF_HEADER.value,
   };
-}
-
-/** Where the custom domain for `packs-public` answers, by environment. */
-export function cdnOrigin(environment: string): string {
-  if (environment === "production") return "https://packs.claudinite.com";
-  if (environment === "staging") return "https://packs-staging.claudinite.com";
-  return "https://packs-test.claudinite.com";
 }
 
 /** A request that carries a session or a token never gets a shareable response. */
@@ -148,7 +142,7 @@ export const isPublishedState = (state: string): state is VersionStatus => PUBLI
 /** Statuses whose bytes a resolver may hand out: the archive URL is withheld from the rest. */
 const SERVES_BYTES: readonly VersionStatus[] = ["active", "deprecated", "yanked"];
 /** Statuses that need a reason from the signed history to be shown honestly. */
-export const needsNote = (status: VersionStatus): boolean => status !== "active" && status !== "removed";
+export const needsNote = (state: string): boolean => isPublishedState(state) && state !== "active" && state !== "removed";
 
 export interface VersionSummary {
   version: string;
@@ -311,5 +305,8 @@ export function answerHash(
   if (!hit) return { result: "unknown" };
   return { result: canonical ? "canonical" : "upload", pack: hit.pack, version: hit.version, status: hit.state as VersionStatus };
 }
+
+/** The states a hash lookup may answer for: published and not removed. */
+export const HASH_VISIBLE_STATES: readonly VersionStatus[] = VERSION_STATUSES.filter((s) => s !== "removed");
 
 export const SHA256_HEX = /^[0-9a-f]{64}$/;

@@ -4,7 +4,6 @@ import {
   CACHE_PRIVATE,
   buildListing,
   buildVersionView,
-  cdnOrigin,
   isPublishedState,
   lookupVersion,
   needsNote,
@@ -15,7 +14,7 @@ import {
   type StatusNote,
   type VersionRow,
 } from "@packserver/core/catalog";
-import { runtimeOf, type WebEnv } from "../../context";
+import { cdnOriginOf, runtimeOf, type WebEnv } from "../../context";
 
 export const routes = new Hono<WebEnv>();
 
@@ -52,7 +51,7 @@ async function readDetail(c: Context<WebEnv>, pack: string, row: VersionRow, not
     ...(note ? { note } : {}),
     meta: meta.data,
     attestation: attestation.data,
-    origin: cdnOrigin(runtimeOf(c).environment),
+    origin: cdnOriginOf(c),
   });
 }
 
@@ -80,8 +79,11 @@ async function handle(c: Context<WebEnv>, next: () => Promise<void>): Promise<Re
   const rows = result.rows.map(parseVersionRow).filter((r) => isPublishedState(r.state));
   if (rows.length === 0) return notFound();
 
+  const missing = requested !== undefined ? lookupVersion(rows, requested) : undefined;
+  if (missing?.kind === "missing") return notFound();
+
   let notes = new Map<string, StatusNote>();
-  if (rows.some((r) => needsNote(r.state as never))) {
+  if (rows.some((r) => needsNote(r.state))) {
     const read = await readNotes(c, name);
     if (!read) return unavailable();
     notes = read;
@@ -92,7 +94,6 @@ async function handle(c: Context<WebEnv>, next: () => Promise<void>): Promise<Re
   const target = requested ?? listing.latest_eligible;
   if (requested !== undefined) {
     const found = lookupVersion(rows, requested);
-    if (found.kind === "missing") return notFound();
     if (found.kind === "removed") {
       const gone = rows.find((r) => r.version === requested);
       return Response.json({ ...listing, version: gone ? summarise(gone) : null }, { status: 410, headers: NO_STORE });

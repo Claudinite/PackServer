@@ -39,7 +39,7 @@ export interface AppOptions {
 }
 
 /** API routers declare their paths relative to /api; page routers and well-known declare absolute paths. */
-export function createApp(runtime: WebRuntime, options: AppOptions = {}): Hono {
+export function createApp(runtime: WebRuntime, options: AppOptions = {}): Hono<WebEnv> {
   const app = createShell<WebEnv>({
     worker: "web",
     releaseId: runtime.version.releaseId,
@@ -60,5 +60,5 @@ export function createApp(runtime: WebRuntime, options: AppOptions = {}): Hono {
     app.route("/", page);
   }
   app.route("/", wellKnown);
-  return app as unknown as Hono;
+  return app;
 }

@@ -98,6 +98,9 @@ scenario("IT-DELIV-013 Private responses are never cached; immutable only on con
   expect((await secret.observe({ session: true })).headers["cache-control"]).toBe("private, no-store");
 }, storage);
 
+// Not covered here: the edge half of IT-DELIV-014 (nosniff on the custom domain, Claudinite/PackServer#142).
+// The metadata read back below is what the World wrote with publicObjectHttpMetadata, so it proves the
+// constants and the read path, not T-047's writes.
 scenario("IT-DELIV-014 Archive contents are never rendered on a registry origin", async (world) => {
   const pack = await world.packs.public("@acme/gcp");
   const { objects } = await pack.stored("1.0.0");

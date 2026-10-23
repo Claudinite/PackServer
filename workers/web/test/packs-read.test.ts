@@ -49,6 +49,7 @@ function app(world: World) {
   const runtime: WebRuntime = {
     worker: "web", environment: "test", version: { versionId: SHELL_VERSION, releaseId: SHELL_RELEASE }, missingBindings: [], missingSecrets: [],
     ports: fakes, services: { mcp: {} as Fetcher, publish: {} as Fetcher },
+    config: { cdnOrigin: "https://packs.test.invalid" },
   };
   return { app: createApp(runtime), fakes };
 }
@@ -102,6 +103,11 @@ describe("GET /api/packs", () => {
   it("fails the load rather than show a yanked version without its reason", async () => {
     const { app: a } = app({ pack: { id: "p", visibility: "public" }, rows: [versionRow("1.0.0", "yanked")], objects: { "@acme/gcp/1.0.0/meta.json": meta } });
     expect((await a.request("/api/packs/@acme/gcp/1.0.0")).status).toBe(503);
+  });
+
+  it("answers a missing version 404 before it reads the history", async () => {
+    const { app: a } = app({ pack: { id: "p", visibility: "public" }, rows: [versionRow("1.0.0", "yanked")] });
+    expect((await a.request("/api/packs/@acme/gcp/9.9.9")).status).toBe(404);
   });
 
   it("leaves a sub-path that is not a version to the routers mounted after it", async () => {

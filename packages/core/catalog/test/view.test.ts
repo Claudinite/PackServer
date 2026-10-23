@@ -5,7 +5,6 @@ import {
   CACHE_PUBLIC_VIEW,
   answerHash,
   buildListing,
-  cdnOrigin,
   lookupVersion,
   objectKey,
   objectResponseHeaders,
@@ -69,10 +68,6 @@ describe("object keys and headers", () => {
     expect(CACHE_PUBLIC_VIEW).not.toMatch(/immutable/);
   });
 
-  it("picks the custom domain by environment", () => {
-    expect(cdnOrigin("production")).toBe("https://packs.claudinite.com");
-    expect(cdnOrigin("staging")).toBe("https://packs-staging.claudinite.com");
-  });
 });
 
 describe("listing and lookup", () => {

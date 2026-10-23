@@ -123,7 +123,7 @@ async function probeWebCrypto(subtle: Subtle): Promise<string | null> {
 export function selectEd25519(subtle?: Subtle): Promise<Ed25519> {
   if (subtle) return selectFor(subtle);
   // The runtime's own backend is probed once per isolate; the recorded selection travels with it.
-  defaultSelection ??= selectFor(crypto?.subtle);
+  defaultSelection ??= selectFor(crypto.subtle);
   return defaultSelection;
 }
 
