@@ -1,7 +1,10 @@
 import type { TestHarness } from "wrangler";
 import { createFakePorts, type FakePorts } from "@packserver/ports/fakes";
 import type { SandboxAReport, SandboxBReport } from "@packserver/ports";
+import { FakeGithubOidc } from "./github-oidc";
 import { Net } from "./net";
+import { publishTestConfig } from "./publish-config";
+import { FakeStagingS3, type StagingBucket } from "./staging-s3";
 import { turnstileHandler } from "./turnstile";
 
 export { EPOCH } from "../fake-workers/epoch";
@@ -51,6 +54,9 @@ export class WorldFakes {
   readonly net = new Net();
   ports: FakePorts = createFakePorts();
   readonly workers: Partial<FakeWorkers> = {};
+  /** GitHub's token issuer and the staging bucket's S3 endpoint; present when the publish Worker is configured. */
+  readonly oidc: FakeGithubOidc | undefined;
+  readonly stagingS3: FakeStagingS3 | undefined;
 
   constructor(
     private readonly server: TestHarness,
@@ -60,6 +66,17 @@ export class WorldFakes {
       if (booted.includes(name)) this.workers[key as keyof FakeWorkers] = new FakeWorkerClient(server, name);
     }
     this.net.use((request) => turnstileHandler(this.ports.turnstile)(request));
+    const publish = publishTestConfig();
+    if (publish) {
+      const now = () => (this.workers.clock ? this.workers.clock.call<number>("now") : Promise.resolve(Date.now()));
+      this.oidc = new FakeGithubOidc(publish.oidc, now);
+      this.stagingS3 = new FakeStagingS3(publish.s3, now, async () => {
+        const env = await server.getWorker<{ PACKS_STAGING: StagingBucket }>("publish-test").getEnv();
+        return env.PACKS_STAGING;
+      });
+      this.net.use(this.oidc.handler);
+      this.net.use(this.stagingS3.handler);
+    }
     this.net.freeze();
   }
 
@@ -80,6 +97,8 @@ export class WorldFakes {
 
   async reset(): Promise<void> {
     this.net.reset();
+    this.stagingS3?.reset();
+    await this.oidc?.reset();
     this.ports = createFakePorts();
     await Promise.all(Object.values(this.workers).map((w) => w.call("reset")));
   }

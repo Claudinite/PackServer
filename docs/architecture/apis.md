@@ -27,8 +27,9 @@ Notable endpoints:
 
 | Path | Purpose |
 |---|---|
-| `POST /api/oidc/exchange` | GitHub OIDC token in, 15-minute pack-scoped upload credential out |
+| `POST /api/oidc/exchange` | GitHub OIDC token in (body `{token, pack, version, job}`, the job being `$GITHUB_JOB` because the token carries none), 15-minute single-use pack-scoped upload credential out |
 | `POST /api/publish/@scope/name/<version>/upload-url` | One presigned single-object PUT into `packs-staging` at `staging/<scope>/<name>/<version>/<credential_id>.tar.zst` |
+| `POST /api/publish/@scope/name/<version>/uploaded` | The upload-complete callback: the Worker checks the staged object's size and deletes it if over the cap |
 | `POST /api/publish/@scope/name/<version>` | Start validation with the declared SHA-256 |
 | `GET /api/publish/runs/<run_id>` | Live progress and the report |
 | `POST /api/dry-run` | Dry-run validation (REQ-VAL-043) |
