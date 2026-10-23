@@ -1,5 +1,5 @@
 import { SqliteD1 } from "@packserver/core/audit/testing";
-import { describeWorkerShell, dummyEnv, expectPortsMatchTrustTable, SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
+import { describeWorkerShell, dummyEnv, expectTelemetryWired, expectPortsMatchTrustTable, SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
 import { createFakePorts } from "@packserver/ports/fakes";
 import { describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
@@ -40,6 +40,10 @@ describe("web bindings seam", () => {
     expect(built.missingBindings).toContain("CF_VERSION_METADATA");
     expect(built.version.releaseId).toBe("unreleased");
   });
+});
+
+describe("web telemetry wiring", () => {
+  it("reads the hash keys and telemetry_mode through its bindings", () => expectTelemetryWired("web", createRuntime));
 });
 
 describe("audit heads", () => {
