@@ -13,6 +13,8 @@ import { liveRecord, readManifest, update, withState, writeLive } from "./manife
  * retry finishes the job; once rolled back, a repeat does nothing.
  */
 export function rollbackRelease({ run, store, id, reason, only, root, now = new Date().toISOString(), log = console.log }) {
+  const live = liveRecord(store);
+  if (live.rolled_back_from && live.release_id === id) throw new Error(deepRollbackMessage(live));
   const manifest = readManifest(store, id);
   const before = manifest.rollback;
   only ??= manifest.failure?.moved;
@@ -32,16 +34,19 @@ export function rollbackRelease({ run, store, id, reason, only, root, now = new 
     if (failed.length) return { ...m, rollback: record };
     return { ...(m.state === "rolled_back" ? m : withState(m, "rolled_back", now)), rollback: record };
   });
-  if (failed.length === 0) writeLive(store, manifest.incumbent_release, id);
+  // A repeat of a finished rollback must not repoint live at a release that has since been superseded.
+  if (failed.length === 0 && (manifest.state !== "rolled_back" || live.release_id === id)) writeLive(store, manifest.incumbent_release, id);
   return record;
+}
+
+function deepRollbackMessage(live) {
+  return `live is ${live.release_id}, reached by rolling back ${live.rolled_back_from}; rolling it back too would go two releases back. Going further back is a rollback-deep release (docs/operations/release.md §Rollback), not an ordinary rollback.`;
 }
 
 /** With no release id the target is the live one, unless live is itself the product of a rollback. */
 export function defaultTarget(store) {
   const live = liveRecord(store);
-  if (live.rolled_back_from) {
-    throw new Error(`live is ${live.release_id}, reached by rolling back ${live.rolled_back_from}; a default rollback would go two releases back. Pass --release explicitly to go further.`);
-  }
+  if (live.rolled_back_from) throw new Error(deepRollbackMessage(live));
   return live.release_id ?? null;
 }
 

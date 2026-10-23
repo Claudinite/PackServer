@@ -343,6 +343,29 @@ describe("rollback", () => {
     expect(defaultTarget(store)).toBe("3.0.0+ddddddd");
   });
 
+  it("refuses an explicit-id rollback of a live release that is itself the product of a rollback", () => {
+    const store = verifyingRelease(["web"]);
+    update(store, id, (m) => withState(withState(m, "rolling", "t"), "live", "t"));
+    writeLive(store, id);
+    rollbackRelease({ run: fakeWrangler().run, store, id, reason: "bad", now: "t", log: quiet });
+    const deep = fakeWrangler();
+    expect(() => rollbackRelease({ run: deep.run, store, id: "1.0.0+aaaaaaa", reason: "again", log: quiet })).toThrow(/rollback-deep/);
+    expect(deep.calls).toEqual([]);
+    expect(liveRecord(store)).toEqual({ release_id: "1.0.0+aaaaaaa", rolled_back_from: id });
+  });
+
+  it("leaves live alone when a finished rollback is re-run after a newer release went live", () => {
+    const store = verifyingRelease(["web"]);
+    update(store, id, (m) => withState(withState(m, "rolling", "t"), "live", "t"));
+    writeLive(store, id);
+    rollbackRelease({ run: fakeWrangler().run, store, id, reason: "bad", now: "t", log: quiet });
+    writeLive(store, "3.0.0+ddddddd");
+    const again = fakeWrangler();
+    rollbackRelease({ run: again.run, store, id, reason: "bad", now: "u", log: quiet });
+    expect(again.calls).toEqual([]);
+    expect(liveRecord(store)).toEqual({ release_id: "3.0.0+ddddddd" });
+  });
+
   it("is idempotent once rolled back", () => {
     const store = verifyingRelease(["web"]);
     update(store, id, (m) => withState(withState(m, "rolling", "t"), "live", "t"));
