@@ -1,7 +1,8 @@
 import type { Finding } from "@packserver/schema";
 import type { MakeFinding } from "../engine/rules.ts";
 import { excerpt } from "../engine/rules.ts";
-import { type Doc } from "./doc.ts";
+import { isProse, type Doc } from "./doc.ts";
+import { CURL_LONG, WGET_LONG } from "./upload-options.ts";
 
 interface Word {
   text: string;
@@ -24,6 +25,8 @@ interface Cmd {
 interface Frame {
   kind: 0 | 1 | 2;
   parens: number;
+  groups: number;
+  closed: boolean;
   quote: 0 | 1 | 2;
   cur: Word | null;
   redir: Redir | null;
@@ -42,7 +45,23 @@ const MAX_FRAMES = 8;
 const MAX_NESTED_SCRIPTS = 2;
 const MAX_HITS = 100;
 
-const WRAPPERS = new Set(["sudo", "doas", "time", "nohup", "command", "exec", "nice", "env"]);
+const NONE: ReadonlySet<string> = new Set();
+const WRAPPERS = new Map<string, ReadonlySet<string>>([
+  ["sudo", new Set(["-u", "-g", "-h", "-p", "-C", "-D", "-R", "-T", "-U"])],
+  ["doas", new Set(["-u", "-C"])],
+  ["nice", new Set(["-n"])],
+  ["ionice", new Set(["-c", "-n", "-p"])],
+  ["env", new Set(["-u", "-C", "-S"])],
+  ["timeout", new Set(["-s", "-k"])],
+  ["stdbuf", new Set(["-i", "-o", "-e"])],
+  ["xargs", new Set(["-n", "-I", "-L", "-P", "-s", "-d", "-E", "-a", "-l"])],
+  ["time", NONE],
+  ["nohup", NONE],
+  ["command", NONE],
+  ["exec", NONE],
+  ["setsid", NONE],
+]);
+const KEYWORDS = new Set(["{", "if", "then", "else", "elif", "do", "while", "until", "!", "coproc"]);
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh", "eval"]);
 const HTTP = new Set(["curl", "wget"]);
 const STREAM = new Set(["nc", "ncat", "netcat", "socat", "telnet", "ssh"]);
@@ -50,11 +69,13 @@ const COPY = new Set(["scp", "rsync", "sftp"]);
 const POWERSHELL = new Set(["invoke-webrequest", "invoke-restmethod", "iwr", "irm"]);
 const READERS = new Set(["cat", "tac", "head", "tail", "less", "more", "strings", "base64", "xxd", "od", "hexdump", "gzip", "zcat", "bzip2", "xz", "tar", "zip", "openssl", "dd", "get-content", "gc", "type"]);
 
-const CURL_VALUE_LETTERS = "HouAeXxwbcDKmEyYzCrtPQ";
-const CURL_PAYLOAD_LETTERS = "dFT";
-const CURL_PAYLOAD_LONG = new Set(["data", "data-ascii", "data-binary", "data-raw", "data-urlencode", "form", "form-string", "upload-file", "json", "post-file", "post-data", "body-file", "body-data"]);
-const SCP_VALUE_FLAGS = new Set(["-c", "-D", "-F", "-i", "-J", "-l", "-o", "-P", "-S", "-X", "-R", "-b", "-s"]);
-const RSYNC_VALUE_FLAGS = new Set(["-e", "-f", "-B", "-T", "--rsh", "--exclude", "--include", "--filter", "--exclude-from", "--include-from", "--files-from", "--rsync-path", "--log-file", "--password-file", "--temp-dir", "--partial-dir"]);
+const CURL_VALUE_LETTERS = "HouAeXxwbcDmEyYzCrtPQ";
+const CURL_PAYLOAD_LETTERS = "dFTK";
+const CURL_PAYLOAD_LONG = new Set(["data", "data-ascii", "data-binary", "data-raw", "data-urlencode", "form", "form-string", "upload-file", "json", "config", "url-query", "variable"]);
+const WGET_PAYLOAD_LONG = new Set(["post-file", "post-data", "body-file", "body-data"]);
+const SCP_VALUE_LETTERS = "cDFiJloPSXRbs";
+const RSYNC_VALUE_LETTERS = "efBT";
+const RSYNC_VALUE_LONG = new Set(["--rsh", "--exclude", "--include", "--filter", "--exclude-from", "--include-from", "--files-from", "--rsync-path", "--log-file", "--password-file", "--temp-dir", "--partial-dir"]);
 
 const CRED_HINT = /\.(?:ssh|aws|npmrc|netrc|gnupg|env)|id_(?:rsa|ed25519|ecdsa|dsa)/i;
 const PATH_SPLIT = /[^\w.~$%-]+/;
@@ -90,7 +111,35 @@ function credPath(text: string): boolean {
   return false;
 }
 
-const credWord = (w: Word): boolean => w.sub || credFile(w.text);
+/** The option a long name stands for: an exact name, else the only option it prefixes. */
+function resolveLong(name: string, table: readonly string[]): string | null {
+  let lo = 0;
+  let hi = table.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (table[mid]! < name) lo = mid + 1;
+    else hi = mid;
+  }
+  const first = table[lo];
+  if (first === undefined || !first.startsWith(name)) return null;
+  if (first === name) return first;
+  const second = table[lo + 1];
+  return second !== undefined && second.startsWith(name) ? null : first;
+}
+
+// Variables that hold credential content, from a loop over credential files or an assignment of one.
+let credVars = new Set<string>();
+function refsVar(text: string): boolean {
+  if (credVars.size === 0 || text.indexOf("$") < 0) return false;
+  for (const v of credVars) {
+    for (let at = text.indexOf("$" + v); at >= 0; at = text.indexOf("$" + v, at + 1)) {
+      if (!/\w/.test(text[at + 1 + v.length] ?? "")) return true;
+    }
+    if (text.includes("${" + v + "}")) return true;
+  }
+  return false;
+}
+const credWord = (w: Word): boolean => w.sub || credFile(w.text) || refsVar(w.text);
 const isFlag = (w: Word): boolean => w.text.length > 1 && w.text.charCodeAt(0) === 45;
 const baseName = (t: string): string => {
   let b = t.slice(Math.max(t.lastIndexOf("/"), t.lastIndexOf("\\")) + 1).toLowerCase();
@@ -113,15 +162,15 @@ interface Verdict {
 }
 
 function httpVerdict(args: readonly Word[], stdinTainted: boolean, wget: boolean): boolean {
-  if (args.some((a) => a.sub)) return true;
+  if (args.some((a) => a.sub || refsVar(a.text))) return true;
   let stdinFlag = false;
   for (let k = 0; k < args.length; k++) {
     const a = args[k]!;
     const t = a.text;
     if (t.startsWith("--")) {
       const eq = t.indexOf("=");
-      const name = eq < 0 ? t.slice(2) : t.slice(2, eq);
-      if (!CURL_PAYLOAD_LONG.has(name)) continue;
+      const name = resolveLong(eq < 0 ? t.slice(2) : t.slice(2, eq), wget ? WGET_LONG : CURL_LONG);
+      if (name === null || !(wget ? WGET_PAYLOAD_LONG : CURL_PAYLOAD_LONG).has(name)) continue;
       const v = eq < 0 ? args[k + 1] : { text: t.slice(eq + 1), sub: a.sub, start: a.start };
       if (eq < 0) k++;
       if (!v) continue;
@@ -147,15 +196,24 @@ function httpVerdict(args: readonly Word[], stdinTainted: boolean, wget: boolean
 }
 
 function copyVerdict(name: string, args: readonly Word[]): boolean {
-  const valueFlags = name === "rsync" ? RSYNC_VALUE_FLAGS : SCP_VALUE_FLAGS;
+  const letters = name === "rsync" ? RSYNC_VALUE_LETTERS : SCP_VALUE_LETTERS;
   const ops: Word[] = [];
   for (let k = 0; k < args.length; k++) {
     const a = args[k]!;
-    if (isFlag(a)) {
-      if (valueFlags.has(a.text)) k++;
+    if (!isFlag(a)) {
+      ops.push(a);
       continue;
     }
-    ops.push(a);
+    const t = a.text;
+    if (t.charCodeAt(1) === 45) {
+      if (name === "rsync" && !t.includes("=") && RSYNC_VALUE_LONG.has(t)) k++;
+      continue;
+    }
+    for (let j = 1; j < t.length; j++) {
+      if (!letters.includes(t[j]!)) continue;
+      if (j === t.length - 1) k++;
+      break;
+    }
   }
   if (ops.length < 2 || !isRemote(ops[ops.length - 1]!.text)) return false;
   for (let k = 0; k < ops.length - 1; k++) if (credWord(ops[k]!)) return true;
@@ -185,14 +243,27 @@ function analyze(cmd: Cmd, depth: number): Verdict {
   let envOnly = false;
   while (k < w.length) {
     const t = w[k]!.text;
-    if (/^[A-Za-z_]\w*=/.test(t)) {
+    const assign = /^([A-Za-z_]\w*)=/.exec(t);
+    if (assign) {
+      const value = t.slice(assign[0].length);
+      if (credVars.size < 16 && (w[k]!.sub || credFile(value) || refsVar(value))) credVars.add(assign[1]!);
       k++;
       continue;
     }
-    if (WRAPPERS.has(baseName(t))) {
-      envOnly = baseName(t) === "env";
+    if (KEYWORDS.has(t)) {
       k++;
-      while (k < w.length && isFlag(w[k]!)) k++;
+      continue;
+    }
+    const b = baseName(t);
+    const valueFlags = WRAPPERS.get(b);
+    if (valueFlags) {
+      envOnly = b === "env";
+      k++;
+      while (k < w.length && isFlag(w[k]!)) {
+        const flag = w[k++]!.text;
+        if (valueFlags.has(flag) && k < w.length) k++;
+      }
+      if (b === "timeout" && k < w.length && /^\d/.test(w[k]!.text)) k++;
       continue;
     }
     envOnly = false;
@@ -201,13 +272,14 @@ function analyze(cmd: Cmd, depth: number): Verdict {
   const dump = k >= w.length && envOnly;
   const name = k < w.length ? baseName(w[k]!.text) : dump ? "env" : "";
   const args = k < w.length ? w.slice(k + 1) : [];
+  if (name === "for" && args.length > 2 && args[1]!.text === "in" && credVars.size < 16 && args.slice(2).some(credWord)) credVars.add(args[0]!.text);
   const redirected = cmd.redirs.some((r) => r.op.charCodeAt(0) === 60 && r.target !== null && credWord(r.target));
   const stdinTainted = cmd.carry || redirected;
   const stream = HTTP.has(name) || STREAM.has(name) || POWERSHELL.has(name) || COPY.has(name);
 
   let hit = false;
   if (HTTP.has(name)) hit = httpVerdict(args, stdinTainted, name === "wget");
-  else if (STREAM.has(name)) hit = stdinTainted || args.some((a) => a.sub) || (name === "socat" && args.some((a) => !isFlag(a) && credFile(a.text)));
+  else if (STREAM.has(name)) hit = stdinTainted || args.some((a) => a.sub || refsVar(a.text)) || (name === "socat" && args.some((a) => !isFlag(a) && credFile(a.text)));
   else if (COPY.has(name)) hit = copyVerdict(name, args);
   else if (POWERSHELL.has(name)) hit = powershellVerdict(args, cmd.carry);
   else if (SHELLS.has(name) && depth < MAX_NESTED_SCRIPTS) {
@@ -221,15 +293,25 @@ function analyze(cmd: Cmd, depth: number): Verdict {
       redirected ||
       dump ||
       (name === "printenv" && args.every(isFlag)) ||
-      w.some((x) => x.sub) ||
+      w.some((x) => x.sub || refsVar(x.text)) ||
       (READERS.has(name) && args.some((a) => !isFlag(a) && credFile(a.text))));
   return { tainted, hit };
 }
 
 function scanText(text: string, depth: number): Hit[] {
+  const outer = credVars;
+  credVars = new Set();
+  try {
+    return scanWords(text, depth);
+  } finally {
+    credVars = outer;
+  }
+}
+
+function scanWords(text: string, depth: number): Hit[] {
   const hits: Hit[] = [];
   const n = text.length;
-  const newFrame = (kind: 0 | 1 | 2): Frame => ({ kind, parens: 0, quote: 0, cur: null, redir: null, cmd: null, inPipe: false, carry: false, pipeStart: 0, last: false });
+  const newFrame = (kind: 0 | 1 | 2): Frame => ({ kind, parens: 0, groups: 0, closed: false, quote: 0, cur: null, redir: null, cmd: null, inPipe: false, carry: false, pipeStart: 0, last: false });
   const stack: Frame[] = [newFrame(0)];
   let i = 0;
 
@@ -254,25 +336,43 @@ function scanText(text: string, depth: number): Hit[] {
     endWord(f);
     f.redir = null;
     if (f.cmd) {
-      const v = analyze(f.cmd, depth);
-      if (v.hit && hits.length < MAX_HITS) hits.push({ start: f.cmd.pipeStart, end });
-      f.last = v.tainted;
-      f.carry = v.tainted;
+      const lone = f.cmd.words.length === 1 && f.cmd.words[0]!.text === "}" && f.cmd.redirs.length === 0;
+      if (!lone) {
+        const v = analyze(f.cmd, depth);
+        if (v.hit && hits.length < MAX_HITS) hits.push({ start: f.cmd.pipeStart, end });
+        f.last = v.tainted;
+        f.carry = v.tainted;
+      }
       f.inPipe = kind === "|";
+      f.closed = lone && kind !== "|";
+      if (lone) f.carry = f.last;
       f.cmd = null;
+    } else if (kind === "|" && f.closed) {
+      f.inPipe = true;
+      f.carry = f.last;
+      f.closed = false;
     } else if (kind !== "\n") {
       f.inPipe = false;
       f.carry = false;
+      f.closed = kind === ")";
     }
+    if (kind === ")" && f.cmd === null) f.closed = true;
   };
   const close = (): void => {
     const f = stack.pop()!;
     separate(f, "end", i);
     word(stack[stack.length - 1]!, i).sub ||= f.last;
   };
-  const open = (kind: 1 | 2): void => {
-    word(stack[stack.length - 1]!, i);
-    stack.push(newFrame(kind));
+  const open = (kind: 1 | 2, feed = false): void => {
+    const parent = stack[stack.length - 1]!;
+    word(parent, i);
+    const inner = newFrame(kind);
+    if (feed && parent.cmd?.carry) {
+      inner.inPipe = true;
+      inner.carry = true;
+      inner.pipeStart = parent.cmd.pipeStart;
+    }
+    stack.push(inner);
   };
 
   while (i < n && hits.length < MAX_HITS) {
@@ -377,12 +477,20 @@ function scanText(text: string, depth: number): Hit[] {
         i++;
         break;
       case 40:
-        if (f.kind === 1) f.parens++;
-        word(f, i).text += "(";
+        if (f.cmd === null && f.cur === null && f.redir === null) {
+          f.groups++;
+          f.closed = false;
+        } else {
+          if (f.kind === 1) f.parens++;
+          word(f, i).text += "(";
+        }
         i++;
         break;
       case 41:
-        if (f.kind === 1 && f.parens === 0) close();
+        if (f.groups > 0) {
+          f.groups--;
+          separate(f, ")", i);
+        } else if (f.kind === 1 && f.parens === 0) close();
         else {
           if (f.kind === 1) f.parens--;
           word(f, i).text += ")";
@@ -405,6 +513,11 @@ function scanText(text: string, depth: number): Hit[] {
       }
       case 60:
       case 62: {
+        if (text.charCodeAt(i + 1) === 40 && stack.length < MAX_FRAMES) {
+          open(1, c === 62);
+          i += 2;
+          break;
+        }
         endWord(f);
         let j = i + 1;
         while (j < n && j < i + 3 && text.charCodeAt(j) === c) j++;
@@ -436,6 +549,55 @@ function scanText(text: string, depth: number): Hit[] {
 const PLAIN_STOP = new Uint8Array(128);
 for (const ch of " \t\r\n\f\v\\'\"$`();&|<>") PLAIN_STOP[ch.charCodeAt(0)] = 1;
 
+/**
+ * Prose is not a command: outside fences, each inline code span becomes a line of its own and the
+ * sentence around it a different one, so a span is never read as a substitution inside its sentence.
+ * The result has the same length as the text.
+ */
+function splitInlineCode(text: string): string {
+  const parts: string[] = [];
+  let fenced = false;
+  for (let from = 0; from <= text.length; ) {
+    let to = text.indexOf("\n", from);
+    if (to < 0) to = text.length;
+    const line = text.slice(from, to);
+    const trimmed = line.trimStart();
+    if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
+      fenced = !fenced;
+      parts.push(line);
+    } else parts.push(fenced || line.indexOf("`") < 0 ? line : spans(line));
+    from = to + 1;
+  }
+  return parts.join("\n");
+}
+
+function spans(line: string): string {
+  const runs: { at: number; len: number; next: number }[] = [];
+  for (let i = 0; i < line.length; ) {
+    if (line.charCodeAt(i) !== 96) {
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < line.length && line.charCodeAt(j) === 96) j++;
+    runs.push({ at: i, len: j - i, next: -1 });
+    i = j;
+  }
+  const last = new Map<number, number>();
+  for (let r = runs.length - 1; r >= 0; r--) {
+    runs[r]!.next = last.get(runs[r]!.len) ?? -1;
+    last.set(runs[r]!.len, r);
+  }
+  const chars = line.split("");
+  for (let r = 0; r < runs.length; r++) {
+    const close = runs[r]!.next;
+    if (close < 0) continue;
+    for (const k of [r, close]) for (let c = 0; c < runs[k]!.len; c++) chars[runs[k]!.at + c] = "\n";
+    r = close;
+  }
+  return chars.join("");
+}
+
 // A document with none of these cannot hold a hit, so the scanner never runs on it.
 const ANCHOR = /\.(?:ssh|aws|npmrc|netrc|gnupg|env)(?![\w-])|\bid_(?:rsa|ed25519|ecdsa|dsa)|\b(?:env|printenv)\b/i;
 
@@ -448,7 +610,7 @@ export function uploadFindings(docs: readonly Doc[], make: MakeFinding): Finding
   const out: Finding[] = [];
   for (const d of docs) {
     if (!ANCHOR.test(d.safe)) continue;
-    for (const h of scanText(d.safe, 0)) {
+    for (const h of scanText(isProse(d.file) ? splitInlineCode(d.safe) : d.safe, 0)) {
       out.push(make("text.credential-upload", { file: d.file, line: d.lineAt(h.start), quote: excerpt(d.safe, h.start, Math.min(h.end - h.start, 300)), hint: "This command sends a credential file or the whole environment to a network destination. Remove it." }));
     }
   }
