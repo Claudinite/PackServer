@@ -279,10 +279,17 @@ export function scanScenarios(path, source) {
   for (const [from, to] of ranges) blankOut(from, to);
   const importRe = /\bimport\b/g;
   while ((m = importRe.exec(code))) {
-    const end = code.indexOf(";", m.index);
-    if (end === -1) break;
-    if (/["']@packserver\/test-world["']/.test(source.slice(m.index, end))) blankOut(m.index, end + 1);
-    importRe.lastIndex = end + 1;
+    const rest = /["']/.exec(code.slice(m.index, m.index + 400));
+    if (!rest) continue;
+    const q1 = m.index + rest.index;
+    const q2 = code.indexOf(code[q1], q1 + 1);
+    if (q2 === -1) break;
+    if (source.slice(q1 + 1, q2) === "@packserver/test-world") {
+      let end = q2 + 1;
+      while (code[end] === " " || code[end] === "\t") end++;
+      blankOut(m.index, code[end] === ";" ? end + 1 : q2 + 1);
+    }
+    importRe.lastIndex = q2 + 1;
   }
   const context = compact(outside.join(""));
   for (const f of found) Object.assign(f, { context, normalised: `${context}\u0000${f.call}` });
@@ -386,6 +393,14 @@ function renamesIn(body) {
   return { renames, refused };
 }
 
+/** Every identifier-shaped word in the World's own code and the scenarios of one tree. */
+function wordsOf(src) {
+  const words = new Set();
+  const paths = [...src.list("packages/test-world"), ...src.list("scenarios")].filter((p) => /\.(?:[cm]?[jt]s)$/.test(p) && !p.includes("/node_modules/"));
+  for (const path of paths) for (const w of src.read(path)?.match(/[A-Za-z_$][\w$]*/g) ?? []) words.add(w);
+  return words;
+}
+
 const escape = (text) => text.replace(/[$]/g, "\\$&");
 function applyRenames(text, renames) {
   return renames.reduce((t, [from, to]) => t.replace(new RegExp(`(?<![\\w$])${escape(from)}(?![\\w$])`, "g"), () => to), text);
@@ -404,7 +419,16 @@ export function checkGate(baseSrc, headSrc, prBody) {
   const trailerReqs = new Set(declared(prBody, "Requirement-Change").flatMap((l) => l.match(REQ) ?? []));
   const refactor = declared(prBody, "Scenario-Refactor").some(Boolean);
   const { renames, refused } = renamesIn(prBody);
-  for (const r of refused) problems.push(`rename: ${r} is refused; a rename is one identifier to another (old -> new), never an expression`);
+  if (renames.length) {
+    const headWords = wordsOf(headSrc);
+    const baseWords = wordsOf(baseSrc);
+    for (const [from, to] of renames.splice(0)) {
+      if (headWords.has(from)) refused.push(`${from} -> ${to}: ${from} still exists in the head, so this swaps one existing name for another`);
+      else if (baseWords.has(to)) refused.push(`${from} -> ${to}: ${to} already existed on the base, so this swaps one existing name for another`);
+      else renames.push([from, to]);
+    }
+  }
+  for (const r of refused) problems.push(`rename: ${r} is refused; a rename follows a rename in the World: an identifier that is gone from the head to one the base never had`);
   const changedBlocks = new Set(
     [...new Set([...baseReg.blocks.keys(), ...headReg.blocks.keys()])].filter((id) => baseReg.blocks.get(id) !== headReg.blocks.get(id)),
   );

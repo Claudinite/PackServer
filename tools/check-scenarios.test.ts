@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ESLint } from "eslint";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { checkGate, checkTree, fsSource, gitSource, scanScenarios } from "./check-scenarios.mjs";
 import { checkSignals, signalsInCode, signalsInDoc } from "./check-signals.mjs";
 import { exemptIds, judge, newScenarioIds } from "./see-it-fail.mjs";
@@ -12,6 +12,7 @@ const REPO = join(import.meta.dirname, "..");
 
 function memory(files: Record<string, string>) {
   return {
+    files,
     list: (dir: string) => Object.keys(files).filter((p) => p.startsWith(`${dir}/`)),
     read: (path: string) => files[path] ?? null,
   };
@@ -170,6 +171,29 @@ describe("checkGate", () => {
     }
   });
 
+  it("refuses a rename between two names that both exist", () => {
+    const matchers = { "packages/test-world/world/matchers.ts": "not resolves toEqual toContain toBeSignedInAs toBeSignedOutAs" };
+    const pair = (from: string, to: string, swap: (t: string) => string) => {
+      const text = `import { scenario, expect } from "@packserver/test-world";\nscenario("IT-ACC-001 Sign up", async (world) => {\n  expect(await world.visitor()).${from};\n});\n`;
+      const b = memory({ ...world({ "scenarios/a.scenario.ts": text }).files, ...matchers });
+      const h = memory({ ...world({ "scenarios/a.scenario.ts": swap(text) }).files, ...matchers });
+      return checkGate(b, h, `Scenario-Refactor: x\nrename: ${from.split(".").at(-1)!.replace(/\(.*/, "")} -> ${to}`);
+    };
+    const r1 = pair("not.toEqual('bob')", "resolves", (t) => t.replace("not.", "resolves."));
+    expect(r1.problems.some((p) => p.includes("still exists in the head"))).toBe(true);
+    const r2 = pair("toEqual('bob')", "toContain", (t) => t.replace("toEqual", "toContain"));
+    expect(r2.problems.some((p) => p.includes("still exists in the head") || p.includes("already existed"))).toBe(true);
+    const r3 = pair("toBeSignedInAs('a')", "toBeSignedOutAs", (t) => t.replace("toBeSignedInAs", "toBeSignedOutAs"));
+    expect(r3.problems.some((p) => p.includes("is refused"))).toBe(true);
+    expect(r3.notes).toEqual([]);
+  });
+
+  it("accepts a rename to a name the base never had, from one the head has dropped", () => {
+    const b = memory({ ...world({ "scenarios/a.scenario.ts": good }).files, "packages/test-world/world/matchers.ts": "toBeSignedIn" });
+    const h = memory({ ...world({ "scenarios/a.scenario.ts": good.replace("toBeSignedIn", "toBeAuthenticated") }).files, "packages/test-world/world/matchers.ts": "toBeAuthenticated" });
+    expect(checkGate(b, h, "Scenario-Refactor: x\nrename: toBeSignedIn -> toBeAuthenticated").problems).toEqual([]);
+  });
+
   it("applies a rename on whole identifiers only", () => {
     const head = world({ "scenarios/a.scenario.ts": good.replaceAll("visitor", "person").replace("signUp", "signUpNow") });
     expect(checkGate(base, head, "Scenario-Refactor: x\nrename: sign -> hacked").problems).not.toEqual([]);
@@ -183,6 +207,13 @@ describe("checkGate", () => {
     expect(checkGate(b, h, "").problems).toHaveLength(1);
     expect(checkGate(b, h, "Scenario-Refactor: tidy").problems[0]).toContain("code around it");
     expect(checkGate(b, h, "Requirement-Change: REQ-ACC-001 new rule").problems).toEqual([]);
+  });
+
+  it("gates the code after a semicolon-free World import", () => {
+    const text = (v: string) => `import { scenario, expect } from "@packserver/test-world"\nconst WANT = "${v}";\n${good.split("\n").slice(1).join("\n").replace("toBeSignedIn()", "toBeSignedInAs(WANT)")}`;
+    const b = world({ "scenarios/a.scenario.ts": text("member") });
+    const h = world({ "scenarios/a.scenario.ts": text("visitor") });
+    expect(checkGate(b, h, "").problems).toHaveLength(1);
   });
 
   it("lets a name be added to the World import without touching the scenarios", () => {
@@ -240,6 +271,10 @@ describe("linear time", () => {
   it("reads a pull request body of 65k blank lines", () => {
     const body = "\n".repeat(65_000);
     within(2000, () => checkGate(memory({}), memory({}), `${body}Requirement-Change: REQ-ACC-001\n${body}rename: a -> b`));
+  });
+
+  it("reads 80k repeats of SELECT in one comment", () => {
+    within(2000, () => checkTree(world({ "scenarios/a.scenario.ts": `// ${"SELECT ".repeat(80_000)}\n${good}` })));
   });
 
   it("numbers lines correctly", () => {
@@ -310,6 +345,9 @@ describe("see-it-fail", () => {
 
 describe("the scenario lint", () => {
   const eslint = new ESLint({ cwd: REPO });
+  beforeAll(async () => {
+    await eslint.lintText("export {};", { filePath: join(REPO, "scenarios/warm.scenario.ts") });
+  }, 60_000);
   const lint = async (code: string, file = "scenarios/x.scenario.ts") => {
     const [r] = await eslint.lintText(code, { filePath: join(REPO, file) });
     return r!.messages.map((m) => m.message);

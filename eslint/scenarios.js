@@ -7,7 +7,7 @@ export const VOCABULARY = [
   { name: "an endpoint path", pattern: /(?:^|[\s"'`(])\/(?:api|mcp|hooks|oauth|\.well-known|admin)\b/ },
   { name: "an HTTP verb", pattern: /^(?:GET|POST|PUT|PATCH|DELETE)$|\b(?:GET|POST|PUT|PATCH|DELETE)\s+\// },
   { name: "a status code", pattern: /\b(?:status(?:\s+code)?|HTTP|code)\s*:?\s*[1-5]\d\d\b|\b(?:200|201|204|301|302|400|401|403|404|409|410|413|429|451|500|502|503)\b/ },
-  { name: "SQL", pattern: /\bSELECT\s[^;]*\sFROM\b|\bINSERT\s+INTO\b|\bUPDATE\s+\w+\s+SET\b|\bDELETE\s+FROM\b/ },
+  { name: "SQL", pattern: /\bSELECT\s[^;\n]{0,200}?\sFROM\b|\bINSERT\s+INTO\b|\bUPDATE\s+\w+\s+SET\b|\bDELETE\s+FROM\b/ },
   { name: "a binding name", pattern: /\b(?:D1Database|R2Bucket|KVNamespace|DurableObject|env\.[A-Z]\w+)\b/ },
   { name: "a header name", pattern: /\b(?:X-[A-Z][\w-]*|Cf-[\w-]+|Set-Cookie|Authorization:|Bearer\s)|__Host-/ },
   { name: "a driver primitive", pattern: /\b(?:fetch|callTool|getBy[A-Z]\w*|locator)\s*\(|\bpage\.(?:goto|click|fill|locator)\b/ },
