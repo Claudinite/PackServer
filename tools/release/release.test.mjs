@@ -357,6 +357,17 @@ describe("rollback", () => {
     expect(liveRecord(store)).toEqual({ release_id: "1.0.0+aaaaaaa", rolled_back_from: id });
   });
 
+  it("refuses to roll back a finalised release once a newer one is live", () => {
+    const store = verifyingRelease(["web"]);
+    update(store, id, (m) => withState(withState(withState(m, "rolling", "t"), "live", "t"), "finalised", "t"));
+    writeLive(store, "3.0.0+ddddddd");
+    const run = fakeWrangler();
+    expect(() => rollbackRelease({ run: run.run, store, id, reason: "bad", log: quiet })).toThrow(/rollback-deep/);
+    expect(run.calls).toEqual([]);
+    expect(liveRecord(store)).toEqual({ release_id: "3.0.0+ddddddd" });
+    expect(readManifest(store, id).state).toBe("finalised");
+  });
+
   it("refuses to roll back a superseded release, before any wrangler call", () => {
     const store = verifyingRelease(["web"]);
     update(store, id, (m) => withState(withState(m, "rolling", "t"), "live", "t"));
