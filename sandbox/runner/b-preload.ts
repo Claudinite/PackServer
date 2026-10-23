@@ -6,12 +6,12 @@ import dgram from "node:dgram";
 import fs from "node:fs";
 import net from "node:net";
 
-const file = process.env.B_EGRESS_FILE;
+const fd = Number(process.env.B_EGRESS_FD);
 
 function record(kind: "connect" | "dns" | "udp" | "fetch", target: unknown) {
-  if (!file) return;
+  if (!Number.isInteger(fd)) return;
   try {
-    fs.appendFileSync(file, JSON.stringify({ kind, target: String(target).slice(0, 200) }) + "\n");
+    fs.writeSync(fd, JSON.stringify({ kind, target: String(target).slice(0, 200) }) + "\n");
   } catch {
     // Nothing to do: the attempt is refused below whether or not it could be written down.
   }

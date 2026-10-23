@@ -28,7 +28,7 @@ export interface MirrorReader {
 }
 
 export class MirrorError extends Error {
-  readonly code: "missing" | "digest_mismatch" | "manifest_invalid" | "version_unknown";
+  readonly code: "missing" | "digest_mismatch" | "digest_unpinned" | "manifest_invalid" | "version_unknown";
 
   constructor(code: MirrorError["code"], detail: string) {
     super(`${code}: ${detail}`);

@@ -1,18 +1,19 @@
 import { parentPort, workerData } from "node:worker_threads";
+import type { Runtime } from "./b-exec.ts";
 import { runB, type BRunInput } from "./b-run.ts";
 
 interface WorkerInput {
   input: BRunInput;
   imageDigest: string | null;
   stepMs?: number;
-  preloadUrl?: string;
+  runtime?: Runtime;
 }
 
 const w = workerData as WorkerInput;
 const report = await runB(w.input, {
   imageDigest: w.imageDigest,
   stepMs: w.stepMs,
-  preloadUrl: w.preloadUrl,
+  runtime: w.runtime,
   onExtracting: () => parentPort?.postMessage({ type: "extracting" }),
   onExtracted: () => parentPort?.postMessage({ type: "extracted" }),
   onSpawn: (pgid) => parentPort?.postMessage({ type: "child", pgid }),

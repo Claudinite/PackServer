@@ -2,7 +2,8 @@ import { mkdir, stat, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Tree } from "@packserver/core/canonical";
 import { B_LIMITS } from "./b-limits.ts";
-import { exec, scrubbedEnv } from "./b-exec.ts";
+import { exec, packEnv, scrubbedEnv, type Runtime } from "./b-exec.ts";
+import { giveTo } from "./b-isolation.ts";
 import { clean } from "./b-report.ts";
 
 /**
@@ -49,6 +50,9 @@ export async function unpackRelease(tgz: string, dir: string, home: string): Pro
   if (listing.output.split("\n").some((line) => line.startsWith("/") || line.split("/").includes(".."))) return null;
   const unpacked = await exec({ cmd: "tar", args: ["-xzf", tgz, "-C", dir, "--no-same-owner"], cwd: dir, env, timeoutMs: B_LIMITS.stepMs });
   if (unpacked.exitCode !== 0) return null;
+  // Readable and traversable by the pack identity, writable by nobody: pack content cannot alter the engine it is loaded by.
+  const opened = await exec({ cmd: "chmod", args: ["-R", "a+rX,go-w", dir], cwd: dir, env, timeoutMs: B_LIMITS.stepMs });
+  if (opened.exitCode !== 0) return null;
   let cn: string | null = null;
   for (const candidate of ENGINE_CONTRACT.binary) if (!cn && (await isFile(join(dir, candidate)))) cn = join(dir, candidate);
   if (!cn) return null;
@@ -69,14 +73,14 @@ async function writeTree(root: string, tree: Tree) {
 }
 
 /** An empty repository that declares the pack as locally sourced and holds its files where cn vendors them. */
-export async function makeFixtureRepo(root: string, pack: string, tree: Tree, home: string, release: Release): Promise<void> {
+export async function makeFixtureRepo(root: string, pack: string, tree: Tree, release: Release, runtime: Runtime): Promise<void> {
   await mkdir(join(root, ENGINE_CONTRACT.stateDir), { recursive: true });
   await writeFile(join(root, ENGINE_CONTRACT.stateDir, "settings.yaml"), `packs:\n  declared:\n    - id: ${JSON.stringify(pack)}\n      source: "local"\n`);
   await writeTree(join(root, vendorDir(pack)), tree);
   if (release.nodeModules) {
     await symlink(release.nodeModules, join(root, ENGINE_CONTRACT.nodeModulesDir));
   }
-  await exec({ cmd: "git", args: ["init", "-q"], cwd: root, env: scrubbedEnv(home), timeoutMs: B_LIMITS.stepMs });
+  await giveTo(root, runtime.user);
 }
 
 export interface LoadOutcome {
@@ -84,6 +88,7 @@ export interface LoadOutcome {
   exitCode: number | null;
   file: string | null;
   message: string | null;
+  egressLines: string[];
 }
 
 const LOCATED = /^([A-Za-z0-9._@/-]{1,200}?):(?:\d+:)?(?:\d+:)?\s*(.+)$/;
@@ -99,9 +104,10 @@ export function locate(output: string, pack: string): { file: string | null; mes
   return { file, message: clean(m[2]!) };
 }
 
-export async function loadPack(repo: string, release: Release, pack: string, home: string, onSpawn: (pgid: number) => void): Promise<LoadOutcome> {
-  const result = await exec({ cmd: release.cn, args: [...ENGINE_CONTRACT.loadArgs], cwd: repo, env: scrubbedEnv(home), timeoutMs: B_LIMITS.stepMs, onSpawn });
-  if (result.timedOut) return { status: "timeout", exitCode: null, file: null, message: null };
-  if (result.exitCode === 0) return { status: "loaded", exitCode: 0, file: null, message: null };
-  return { status: "failed", exitCode: result.exitCode, ...locate(result.output, pack) };
+export async function loadPack(repo: string, release: Release, pack: string, home: string, runtime: Runtime, onSpawn: (pgid: number) => void): Promise<LoadOutcome> {
+  const result = await exec({ cmd: release.cn, args: [...ENGINE_CONTRACT.loadArgs], cwd: repo, env: packEnv(home, runtime), timeoutMs: B_LIMITS.stepMs, user: runtime.user, recordEgress: true, onSpawn });
+  const egressLines = result.egressLines;
+  if (result.timedOut) return { status: "timeout", exitCode: null, file: null, message: null, egressLines };
+  if (result.exitCode === 0) return { status: "loaded", exitCode: 0, file: null, message: null, egressLines };
+  return { status: "failed", exitCode: result.exitCode, ...locate(result.output, pack), egressLines };
 }

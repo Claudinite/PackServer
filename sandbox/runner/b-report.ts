@@ -6,11 +6,11 @@ import { B_LIMITS } from "./b-limits.ts";
 export const B_ERRORS = [
   "input_invalid",
   "extract_failed",
-  "extract_timeout",
   "tree_hash_mismatch",
   "engine_digest_mismatch",
   "engine_unpack_failed",
   "sdk_missing",
+  "isolation_unavailable",
   "worker_start_timeout",
   "crashed",
   "out_of_memory",
@@ -38,8 +38,13 @@ const Load = z.strictObject({
  */
 export const SandboxBReport = z.strictObject({
   schema: z.literal(1),
-  /** `ok`: every step ran to its end; `timeout`: the 5 minute run overran; `error`: infrastructure. */
-  outcome: z.enum(["ok", "timeout", "error"]),
+  /**
+   * `ok`: every step ran to its end; `refused`: the decoder timed out, crashed or ran out of memory
+   * on the archive (REQ-VAL-045, final, as in sandbox A); `timeout`: the 5 minute run overran;
+   * `error`: infrastructure.
+   */
+  outcome: z.enum(["ok", "refused", "timeout", "error"]),
+  refusal: z.strictObject({ reason: z.enum(["archive.bomb", "archive.unsafe"]), code: z.string().max(40) }).nullable(),
   error: z.enum(B_ERRORS).nullable(),
   image_digest: z.string().nullable(),
   /** True once any pack content was compiled, loaded or run. REQ-VAL-051: false whenever the tree hash differed. */
@@ -92,6 +97,7 @@ export function emptyBReport(base: BReportBase): SandboxBReport {
   return {
     schema: 1,
     outcome: "error",
+    refusal: null,
     error: null,
     image_digest: base.imageDigest,
     pack_code_executed: false,
@@ -116,10 +122,14 @@ export function bErrorReport(base: BReportBase, error: (typeof B_ERRORS)[number]
   return { ...emptyBReport(base), outcome, error, timings_ms: timings };
 }
 
-/** Free text of tool output: no control characters, bounded. */
+export function bRefusedReport(base: BReportBase, reason: "archive.bomb" | "archive.unsafe", code: string, timings: SandboxBReport["timings_ms"]): SandboxBReport {
+  return { ...emptyBReport(base), outcome: "refused", refusal: { reason, code }, timings_ms: timings };
+}
+
+/** Free text of tool output: no control or invisible format characters, bounded. */
 export function clean(text: string): string {
-  // eslint-disable-next-line no-control-regex -- stripping control characters is the point
-  return text.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "").trim().slice(0, B_LIMITS.messageChars);
+  // Control characters (C0, DEL, C1), format characters (bidi marks and overrides, zero-width, BOM) and line and paragraph separators go; newline and tab stay.
+  return text.replace(/(?![\n\t])[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, "").trim().slice(0, B_LIMITS.messageChars);
 }
 
 /** Trims a report to the cap by shedding the lists that grow; null when it still does not fit. */

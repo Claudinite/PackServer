@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { canonicalOf, LOAD_RUN_CASES, PACK, PINNED, writeMirror, type LoadRunCase } from "../fixtures/load-run/index.ts";
@@ -16,6 +16,9 @@ const image: string = process.argv[2] ?? "";
 const digest = process.argv[3] ?? null;
 if (!image) throw new Error("usage: b-corpus.ts <image-ref> [image-digest]");
 
+// The runner starts as root to give pack content another identity and to keep it out of the output directory; it needs nothing else.
+const RUNNER_CAPS = ["SETUID", "SETGID", "KILL", "CHOWN", "FOWNER"];
+
 const root = await mkdtemp(join(tmpdir(), "b-corpus-"));
 const mirror = join(root, "mirror");
 const { sha256 } = writeMirror(mirror, undefined, process.argv[4] ?? "sandbox/fixtures/load-run/fake-cn.mjs");
@@ -26,29 +29,36 @@ interface Prepared {
   minEngineVersion: string;
   expectedTreeHash?: string;
   hostEnv?: Record<string, string>;
+  /** Leaves a file in the output directory before the run, which the runner must refuse. */
+  plant?: true;
   problems: LoadRunCase["problems"];
 }
 
 async function runInContainer(c: Prepared): Promise<{ problems: string[]; report?: SandboxBReport; out?: string }> {
   const dir = await mkdtemp(join(root, `${c.name}-`));
   const { archive, treeHash } = canonicalOf(c.files);
-  await prepareInput({ dir, mirror: dirMirror(mirror), pack: PACK, canonical: archive, expectedTreeHash: c.expectedTreeHash ?? treeHash, minEngineVersion: c.minEngineVersion, pinned: { version: PINNED, sha256: sha256[PINNED]! } });
+  await prepareInput({ dir, mirror: dirMirror(mirror), pack: PACK, canonical: archive, expectedTreeHash: c.expectedTreeHash ?? treeHash, minEngineVersion: c.minEngineVersion, newest: PINNED, digests: sha256 });
   // The container is unprivileged, so the mounted input must be readable and the output writable by it.
   await chmod(dir, 0o777);
   const out = join(dir, "out");
   await mkdir(out, { mode: 0o777 });
   await chmod(out, 0o777);
+  if (c.plant) await writeFile(join(out, "report.json"), "planted");
   const env = Object.entries({ CORPUS_SECRET: "leak", CF_API_TOKEN: "leak", ...c.hostEnv }).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
   const started = Date.now();
   const run = spawnSync(
     "docker",
     [
       "run", "--rm", "--network", "none", "--read-only", "--tmpfs", "/tmp:rw,exec,size=256m", "--memory", "1g", "--memory-swap", "1g",
-      "--cpus", "1", "--pids-limit", "256", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+      "--cpus", "1", "--pids-limit", "256", "--cap-drop", "ALL", ...RUNNER_CAPS.flatMap((c) => ["--cap-add", c]), "--security-opt", "no-new-privileges",
       "-v", `${dir}:/in:ro`, "-v", `${out}:/out`, ...env, ...(digest ? ["-e", `SANDBOX_IMAGE_DIGEST=${digest}`] : []), image,
     ],
     { timeout: B_LIMITS.runMs + 30_000, encoding: "utf8" },
   );
+  if (c.plant) {
+    const left = await readFile(join(out, "report.json"), "utf8").catch(() => null);
+    return { problems: [...(run.status === 2 ? [] : [`exit ${run.status}, expected the refusal 2`]), ...(left === "planted" ? [] : ["the planted file was touched"])] };
+  }
   if (run.status !== 0) return { problems: [`container exited ${run.status}: ${run.stderr.slice(0, 300)}`] };
   const wall = Date.now() - started;
   const problems: string[] = [];
@@ -79,9 +89,15 @@ for (const name of ["marker-first", "marker-second"]) {
 const daemon = { ...gcp.files, "tasks/nightly/worker.mjs": "import { spawn } from 'node:child_process';\nspawn('setsid', ['sh', '-c', 'while true; do echo forged > /out/report.json; sleep 0.02; done'], { detached: true, stdio: 'ignore' }).unref();\n" };
 cases.push({ name: "daemon-forges-report", files: daemon, minEngineVersion: gcp.minEngineVersion, problems: (r) => (r.outcome === "ok" && r.runs.some((x) => x.kind === "task_worker" && x.exit_status === 0) ? [] : ["the report is not the runner's"]) });
 
+cases.push({ name: "out-dir-not-empty", plant: true, files: gcp.files, minEngineVersion: gcp.minEngineVersion, problems: () => [] });
+
 let failed = 0;
+// The image holds none of the tools that would make an unrecorded attempt easy.
+const tools = spawnSync("docker", ["run", "--rm", "--entrypoint", "sh", image, "-c", "for t in curl wget git gcc cc apt apt-get dpkg npm npx; do command -v $t && exit 1; done; exit 0"], { encoding: "utf8" });
+console.log(`${tools.status === 0 ? "ok  " : "FAIL"} image-holds-no-network-tools${tools.status === 0 ? "" : `: ${tools.stdout.trim()}`}`);
+if (tools.status !== 0) failed++;
 try {
-  for (const c of cases) {
+  for (const c of cases.filter((x) => !process.env.CORPUS_ONLY || x.name === process.env.CORPUS_ONLY)) {
     const result = await runInContainer(c).catch((e: unknown) => ({ problems: [`harness error: ${String(e).slice(0, 200)}`] }) as { problems: string[]; report?: SandboxBReport });
     const problems = [...result.problems, ...(result.report ? c.problems(result.report) : [])];
     console.log(`${problems.length ? "FAIL" : "ok  "} ${c.name}${problems.length ? `: ${problems.join("; ")}` : ""}`);

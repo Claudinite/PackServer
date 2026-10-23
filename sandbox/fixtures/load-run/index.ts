@@ -101,6 +101,8 @@ export interface LoadRunCase {
   minEngineVersion: string;
   /** Environment the container is given and must not pass on. */
   hostEnv?: Record<string, string>;
+  /** Needs the pack identity to be a different user from the runner, which only the container provides. */
+  container?: true;
   /** Problems found in the report; empty when it is what the case should produce. */
   problems: (report: SandboxBReport) => string[];
 }
@@ -180,6 +182,21 @@ export const LOAD_RUN_CASES: LoadRunCase[] = [
     problems: (r) => [...fail(r.runs.find((x) => x.kind === "task_worker")?.exit_status === 0, "the worker saw a host variable")],
   },
   {
+    name: "env-setup-dev-tcp",
+    files: { ...BASE, "pack.json": manifest({ env: { setup: { forEach: "dirs", whenUnset: ["."], template: "echo > /dev/tcp/1.1.1.1/80; true" } } }) },
+    minEngineVersion: "1.61001.1",
+    problems: (r) => [
+      ...fail(r.egress.some((e) => e.run === "pack.json" && e.target.includes("1.1.1.1")), `egress ${JSON.stringify(r.egress)}`),
+      ...fail(r.runs.find((x) => x.kind === "env_setup")?.egress_count !== 0, "the env setup has no egress count"),
+    ],
+  },
+  {
+    name: "env-setup-name-lookup",
+    files: { ...BASE, "pack.json": manifest({ env: { setup: { forEach: "dirs", whenUnset: ["."], template: "getent hosts example.invalid; true" } } }) },
+    minEngineVersion: "1.61001.1",
+    problems: (r) => [...fail(r.egress.some((e) => e.run === "pack.json" && e.kind === "dns" && e.target === "example.invalid"), `egress ${JSON.stringify(r.egress)}`)],
+  },
+  {
     name: "fails-to-load",
     files: { ...BASE, "pack.json": "{" },
     minEngineVersion: "1.61001.1",
@@ -222,6 +239,57 @@ export const LOAD_RUN_CASES: LoadRunCase[] = [
     problems: (r) => [...fail(r.runs.find((x) => x.kind === "task_worker")?.timed_out === true, "the worker was not stopped at its step cap"), ...fail(r.outcome === "ok", "outcome")],
   },
 ];
+
+const worker = (source: string): LoadRunCase["files"] => ({ ...BASE, "tasks/nightly/worker.mjs": source });
+
+// Cases that need the pack identity to be another user than the runner.
+LOAD_RUN_CASES.push(
+  {
+    name: "forges-the-report",
+    container: true,
+    files: worker(
+      [
+        "import fs from 'node:fs';",
+        "let wrote = 0;",
+        "for (const f of ['/out/report.json', '/out/evil']) {",
+        "  try { fs.writeFileSync(f, '{\"forged\":true}'); wrote++; try { fs.chmodSync(f, 0o444); } catch {} } catch {}",
+        "}",
+        "try { fs.symlinkSync('/etc/passwd', '/out/link'); wrote++; } catch {}",
+        "try { fs.mkdirSync('/out/dir'); wrote++; } catch {}",
+        "process.exit(wrote ? 8 : 0);",
+      ].join("\n"),
+    ),
+    minEngineVersion: "1.61001.1",
+    problems: (r) => [...fail(r.runs.find((x) => x.kind === "task_worker")?.exit_status === 0, "the worker could write into the output directory"), ...fail(r.outcome === "ok", "outcome")],
+  },
+  {
+    name: "reads-the-runner-environment",
+    container: true,
+    files: worker("import fs from 'node:fs';\nlet leaked = 0;\nfor (const p of [process.ppid, 1]) { try { if (fs.readFileSync(`/proc/${p}/environ`, 'utf8').includes('CORPUS_SECRET')) leaked++; } catch {} }\nprocess.exit(leaked ? 7 : 0);\n"),
+    minEngineVersion: "1.61001.1",
+    hostEnv: { CORPUS_SECRET: "leak" },
+    problems: (r) => [...fail(r.runs.find((x) => x.kind === "task_worker")?.exit_status === 0, "the worker read the runner's environment")],
+  },
+  {
+    name: "runs-unprivileged-and-cannot-touch-the-engine",
+    container: true,
+    files: worker(
+      [
+        "import fs from 'node:fs';",
+        "let bad = process.getuid() === 0 || process.getgid() === 0 || process.getgroups().includes(0) ? 1 : 0;",
+        "for (const w of fs.readdirSync('/tmp').filter((n) => n.startsWith('b-run-'))) {",
+        "  for (const e of ['engine-0', 'engine-1']) {",
+        "    try { fs.appendFileSync(`/tmp/${w}/${e}/cn`, '#'); bad += 10; } catch {}",
+        "  }",
+        "  try { fs.writeFileSync(`/tmp/${w}/go.work`, 'x'); bad += 100; } catch {}",
+        "}",
+        "process.exit(bad);",
+      ].join("\n"),
+    ),
+    minEngineVersion: "1.61001.1",
+    problems: (r) => [...fail(r.runs.find((x) => x.kind === "task_worker")?.exit_status === 0, `the worker ran as root or altered the runner's files ${JSON.stringify(r.runs)}`)],
+  },
+);
 
 export function treeOf(files: Record<string, string>) {
   return buildTree(Object.entries(files).map(([path, c]) => ({ path, executable: false, content: new TextEncoder().encode(c) })));

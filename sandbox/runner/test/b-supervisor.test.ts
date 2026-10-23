@@ -7,10 +7,15 @@ const input: BRunInput = { pack: "@acme/gcp", canonical: new Uint8Array(), expec
 const opts = { imageDigest: null, extractMs: 300, runMs: 2_500, heapMb: 64 };
 
 describe("deadlines (IT-VAL-045)", () => {
-  it("an extraction overrun is an infrastructure error, not a verdict on the archive", async () => {
+  it("an extraction overrun is a final archive.unsafe refusal, as in sandbox A", async () => {
     const report = await superviseB(input, { ...opts, workerUrl: stub("hang-before-extract.mjs") });
-    expect([report.outcome, report.error]).toEqual(["error", "extract_timeout"]);
+    expect([report.outcome, report.error, report.refusal]).toEqual(["refused", null, { reason: "archive.unsafe", code: "extract-timeout" }]);
     expect(report.pack_code_executed).toBe(false);
+  });
+
+  it("a crash while the decoder holds the archive is a refusal too, a crash before it is an error", async () => {
+    expect((await superviseB(input, { ...opts, workerUrl: stub("crash-during-extract.mjs") })).refusal).toEqual({ reason: "archive.unsafe", code: "extract-crash" });
+    expect((await superviseB(input, { ...opts, workerUrl: stub("crash.mjs") })).outcome).toBe("error");
   });
 
   it("a worker that never starts is an infrastructure error", async () => {
@@ -35,8 +40,8 @@ describe("deadlines (IT-VAL-045)", () => {
     expect((await superviseB(input, { ...opts, workerUrl: stub("off-schema.mjs") })).error).toBe("report_invalid");
   });
 
-  it("memory exhaustion is its own error", async () => {
+  it("memory exhaustion while the decoder holds the archive is archive.bomb", async () => {
     const report = await superviseB(input, { ...opts, extractMs: 20_000, runMs: 20_000, workerUrl: stub("oom-before-extract.mjs") });
-    expect(report.error).toBe("out_of_memory");
+    expect(report.refusal).toEqual({ reason: "archive.bomb", code: "memory" });
   });
 });

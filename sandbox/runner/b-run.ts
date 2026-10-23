@@ -1,11 +1,12 @@
-import { mkdir, mkdtemp, readFile as readDisk, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { canonicalise, extractArchive, readFile, sha256Hex, type Tree } from "@packserver/core/canonical";
 import { compareThreePart, isThreePart } from "@packserver/core/validation";
 import { compileChecks, parseDeclared } from "./b-checks.ts";
 import { loadPack, makeFixtureRepo, unpackRelease, vendorDir, type Release } from "./b-engine.ts";
-import { exec, scrubbedEnv } from "./b-exec.ts";
+import { exec, packEnv, type Runtime } from "./b-exec.ts";
+import { makeDir, openForTraversal } from "./b-isolation.ts";
 import { inventoryOf } from "./b-inventory.ts";
 import { B_LIMITS } from "./b-limits.ts";
 import { bErrorReport, clean, emptyBReport, fitToBCap, SandboxBReport, type BReportBase } from "./b-report.ts";
@@ -36,8 +37,8 @@ export interface BHooks {
   onSpawn?: (pgid: number) => void;
   /** Overrides the 30 s step cap in tests. */
   stepMs?: number;
-  /** The egress recorder every Node process of pack content loads; it sits beside the bundled runner. */
-  preloadUrl?: string;
+  /** The egress recorders and the identity pack content runs as. */
+  runtime?: Runtime;
 }
 
 const ENV_SETUP_DIR = /^[A-Za-z0-9._/-]{1,100}$/;
@@ -80,15 +81,19 @@ export async function runB(input: BRunInput, hooks: BHooks): Promise<SandboxBRep
   }
   for (const e of input.engines) if (sha256Hex(e.tgz) !== e.sha256) return { ...report, outcome: "error", error: "engine_digest_mismatch" };
 
+  const runtime: Runtime = hooks.runtime ?? { preloadUrl: new URL("./b-preload.mjs", import.meta.url).href };
   const work = await mkdtemp(join(tmpdir(), "b-run-"));
   const home = join(work, "home");
-  await mkdir(home, { recursive: true });
+  await openForTraversal(work);
+  await makeDir(home, runtime.user);
+  const egressSeen: SandboxBReport["egress"] = [];
+  const note = (run: string, lines: string[]) => egressSeen.push(...parseEgress(lines, run));
   try {
     const releases: { engine: EngineInput; release: Release; repo: string }[] = [];
     for (const [i, engine] of [...input.engines].sort((a, b) => (a.role === "newest" ? -1 : 1) - (b.role === "newest" ? -1 : 1)).entries()) {
       const tgz = join(work, `engine-${i}.tgz`);
       await writeFile(tgz, engine.tgz);
-      const release = await unpackRelease(tgz, join(work, `engine-${i}`), home);
+      const release = await unpackRelease(tgz, join(work, `engine-${i}`), work);
       if (!release) return { ...report, outcome: "error", error: "engine_unpack_failed" };
       releases.push({ engine, release, repo: join(work, `repo-${i}`) });
     }
@@ -97,8 +102,9 @@ export async function runB(input: BRunInput, hooks: BHooks): Promise<SandboxBRep
     report = { ...report, pack_code_executed: true };
     publish();
     for (const { engine, release, repo } of releases) {
-      await makeFixtureRepo(repo, input.pack, tree, home, release);
-      const load = await loadPack(repo, release, input.pack, home, onSpawn);
+      await makeFixtureRepo(repo, input.pack, tree, release, runtime);
+      const load = await loadPack(repo, release, input.pack, home, runtime, onSpawn);
+      note(`load-${engine.role}`, load.egressLines);
       report = {
         ...report,
         engines: [...report.engines, { role: engine.role, version: engine.version, digest_verified: true, load: { status: load.status, exit_code: load.exitCode, file: load.file, message: load.message } }],
@@ -107,19 +113,21 @@ export async function runB(input: BRunInput, hooks: BHooks): Promise<SandboxBRep
     }
 
     const primary = releases[0]!;
-    const compile = await compileChecks(tree, primary.release, work, home, onSpawn);
-    if (!compile) return { ...report, outcome: "error", error: "sdk_missing", timings_ms: { extract: extractMs, total: elapsed() } };
-    report = { ...report, compile, declared: [...parseDeclared(tree), ...parseTasks(tree)] };
+    const compiled = await compileChecks(tree, primary.release, work, home, runtime, onSpawn);
+    if (!compiled) return { ...report, outcome: "error", error: "sdk_missing", timings_ms: { extract: extractMs, total: elapsed() } };
+    note("compile", compiled.egressLines);
+    report = { ...report, compile: compiled.results, declared: [...parseDeclared(tree), ...parseTasks(tree)] };
     publish();
 
     const loaded = report.engines[0]?.load.status === "loaded";
-    const runs = await runContent(tree, input.pack, primary.repo, home, loaded, stepMs, onSpawn, work, hooks.preloadUrl ?? new URL("./b-preload.mjs", import.meta.url).href);
-    report = { ...report, runs: runs.runs, egress: runs.egress.slice(0, B_LIMITS.egress), egress_total: runs.egress.length, egress_truncated: runs.egress.length > B_LIMITS.egress };
+    const runs = await runContent(tree, input.pack, primary.repo, home, loaded, stepMs, onSpawn, runtime, note);
+    report = { ...report, runs, egress: egressSeen.slice(0, B_LIMITS.egress), egress_total: egressSeen.length, egress_truncated: egressSeen.length > B_LIMITS.egress };
     report = { ...report, outcome: "ok", timings_ms: { extract: extractMs, total: elapsed() } };
     const fitted = fitToBCap(report);
     return SandboxBReport.parse(fitted ?? bErrorReport(base, "report_over_cap", { extract: extractMs, total: elapsed() }));
   } finally {
-    await rm(work, { recursive: true, force: true });
+    // Best effort: the runner may not be allowed into directories the pack identity owns, and the container is destroyed after the run.
+    await rm(work, { recursive: true, force: true }).catch(() => {});
   }
 }
 
@@ -140,7 +148,7 @@ function parseTasks(tree: Tree): SandboxBReport["declared"] {
 
 type Run = SandboxBReport["runs"][number];
 
-async function runContent(tree: Tree, pack: string, repo: string, home: string, allowed: boolean, stepMs: number, onSpawn: (pgid: number) => void, work: string, preload: string) {
+async function runContent(tree: Tree, pack: string, repo: string, home: string, allowed: boolean, stepMs: number, onSpawn: (pgid: number) => void, runtime: Runtime, note: (run: string, lines: string[]) => void): Promise<Run[]> {
   const packRoot = vendorDir(pack);
   const planned: { kind: Run["kind"]; name: string; cmd: string; args: string[] }[] = [];
   for (const f of tree.files.filter((x) => /^tasks\/[A-Za-z0-9._-]+\/worker\.mjs$/.test(x.path))) {
@@ -163,31 +171,28 @@ async function runContent(tree: Tree, pack: string, repo: string, home: string, 
   if (template !== null) planned.push({ kind: "env_setup", name: "pack.json", cmd: "bash", args: ["-c", template.replaceAll("{}", dir)] });
 
   const runs: Run[] = [];
-  const egress: SandboxBReport["egress"] = [];
-  for (const [i, p] of planned.entries()) {
+  for (const p of planned) {
     if (!allowed) {
       runs.push({ kind: p.kind, name: p.name, status: "skipped", run_count: 0, exit_status: null, signal: null, timed_out: false, egress_count: 0 });
       continue;
     }
-    const egressFile = join(work, `egress-${i}.jsonl`);
-    const env = scrubbedEnv(home, { NODE_OPTIONS: `--import=${preload}`, B_EGRESS_FILE: egressFile });
-    const result = await exec({ cmd: p.cmd, args: p.args, cwd: repo, env, timeoutMs: stepMs, onSpawn });
-    const seen = await readEgress(egressFile, p.name);
-    egress.push(...seen);
+    const result = await exec({ cmd: p.cmd, args: p.args, cwd: repo, env: packEnv(home, runtime), timeoutMs: stepMs, user: runtime.user, recordEgress: true, onSpawn });
+    const seen = parseEgress(result.egressLines, p.name);
+    note(p.name, result.egressLines);
     runs.push({ kind: p.kind, name: p.name, status: "ran", run_count: 1, exit_status: result.exitCode, signal: result.signal, timed_out: result.timedOut, egress_count: seen.length });
   }
-  return { runs, egress };
+  return runs;
 }
 
-async function readEgress(file: string, run: string): Promise<SandboxBReport["egress"]> {
-  const text = await readDisk(file, "utf8").then((t) => t.slice(0, 64 * 1024), () => "");
+/** Egress lines are pack-reachable text: only well-formed records of a known kind survive, cleaned and bounded. */
+export function parseEgress(lines: string[], run: string): SandboxBReport["egress"] {
   const out: SandboxBReport["egress"] = [];
-  for (const line of text.split("\n")) {
+  for (const line of lines) {
     try {
       const e = JSON.parse(line) as { kind?: unknown; target?: unknown };
       if ((e.kind === "connect" || e.kind === "dns" || e.kind === "udp" || e.kind === "fetch") && typeof e.target === "string") out.push({ run, kind: e.kind, target: clean(e.target).slice(0, 200) });
     } catch {
-      // A line the preload did not write is not an egress record.
+      // A line the recorders did not write is not an egress record.
     }
   }
   return out;

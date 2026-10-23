@@ -5,7 +5,7 @@ parentPort.postMessage({ type: "extracted" });
 parentPort.postMessage({
   type: "progress",
   report: {
-    schema: 1, outcome: "error", error: null, image_digest: null, pack_code_executed: true,
+    schema: 1, outcome: "error", refusal: null, error: null, image_digest: null, pack_code_executed: true,
     tree: { expected: input.expectedTreeHash, found: input.expectedTreeHash, matches: true },
     min_engine: { declared: input.minEngineVersion, oldest_in_mirror: input.oldestInMirror, supported: true },
     engines: [{ role: "newest", version: "1.61004.1", digest_verified: true, load: { status: "loaded", exit_code: 0, file: null, message: null } }],
