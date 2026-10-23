@@ -132,7 +132,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
-      - run: node tools/check-rules.mjs && node tools/check-bindings.mjs && node infra/apply-ids.mjs --check && pnpm db:check
+      - run: node tools/check-rules.mjs && node tools/check-scenarios.mjs && node tools/check-signals.mjs && node tools/check-bindings.mjs && node infra/apply-ids.mjs --check && pnpm db:check
 
   # The workspace packages, listed from the workspace itself, are dealt round-robin across the
   # matrix, whose size is the only place the shard count is written.
