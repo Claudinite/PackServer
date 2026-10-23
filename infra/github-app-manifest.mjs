@@ -53,7 +53,7 @@ export function buildManifest(env, port) {
     url: origin,
     hook_attributes: { url: `${origin}/hooks/github`, active: true },
     redirect_url: `http://127.0.0.1:${port}/callback`,
-    callback_urls: [`${origin}/api/auth/github/callback`],
+    callback_urls: [origin, ...(staging ? [] : ["https://registry-canary.claudinite.com"])].map((o) => `${o}/api/auth/github/callback`),
     setup_url: `${origin}/github/installed`,
     public: true,
     request_oauth_on_install: true,

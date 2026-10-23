@@ -16,7 +16,7 @@ const BINDING_KEYS = [
   "d1_databases", "kv_namespaces", "r2_buckets", "queues", "workflows", "durable_objects", "containers", "services",
   "vectorize", "ai", "analytics_engine_datasets", "ratelimits", "secrets_store_secrets", "version_metadata",
 ];
-const OTHER_KEYS = ["name", "workers_dev", "routes", "triggers", "vars", "exports"];
+const OTHER_KEYS = ["name", "workers_dev", "preview_urls", "routes", "triggers", "vars", "exports"];
 const ALLOWED_KEYS = new Set([...BINDING_KEYS, ...OTHER_KEYS]);
 const PRODUCT_TYPES = /\b(D1Database|KVNamespace|R2Bucket|VectorizeIndex|AnalyticsEngineDataset|DurableObjectNamespace|SecretsStoreSecret|Fetcher|Ai)\b/;
 // The one folder allowed to speak a binding's own API, besides each Worker's bindings.ts.
@@ -25,6 +25,9 @@ const ADAPTER_DIR = join("packages", "ports", "cloudflare");
 // getEnv() and addresses fake Workers by name, which is the test seam itself and ships in no bundle.
 const TEST_WORLD_DIR = join("packages", "test-world");
 const ENV_IMPORT = /import\s*\{[^}]*\benv\b[^}]*\}\s*from\s*["']cloudflare:workers["']/;
+
+// The GitHub App's OAuth client id and secret: web finishes GitHub sign-in with them. The App's private key and webhook secret stay with the github Worker.
+const WEB_SIGN_IN_SECRETS = ["GITHUB_APP_CLIENT_ID", "GITHUB_APP_CLIENT_SECRET"];
 
 const suffix = (env, name, sep = "-") => (env === "production" ? name : `${name}${sep}${env}`);
 const workerName = suffix;
@@ -75,6 +78,7 @@ function checkEnv(worker, t, env, block) {
   const pairs = (list) => list.map(([a, b]) => `${a}=${b}`);
 
   if (block.workers_dev !== false) problem(where, "workers_dev must be false");
+  if (block.preview_urls !== false) problem(where, "preview_urls must be false");
   if (block.name !== workerName(env, worker)) problem(where, `name is "${block.name}", expected "${workerName(env, worker)}"`);
   if (block.vars?.WORKER !== worker) problem(where, `vars.WORKER must be "${worker}"`);
   if (block.vars?.ENVIRONMENT !== env) problem(where, `vars.ENVIRONMENT must be "${env}"`);
@@ -150,7 +154,8 @@ function checkInvariants(worker, t, env, block) {
   const secrets = block.secrets_store_secrets?.map((s) => s.binding) ?? Object.keys(block.vars ?? {});
   if (secrets.includes("SIGNING_KEY_ACTIVE") && worker !== "validator") problem(where, "only the validator holds the signing key");
   if (secrets.some((s) => s.startsWith("SIGNING_KEY_") && s !== "SIGNING_KEY_ACTIVE")) problem(where, "the standby signing key is bound to nothing");
-  if (secrets.some((s) => s.startsWith("GITHUB_")) && worker !== "github") problem(where, "GitHub App secrets belong to the github Worker alone");
+  const foreign = secrets.filter((s) => s.startsWith("GITHUB_") && !(worker === "web" && WEB_SIGN_IN_SECRETS.includes(s)));
+  if (foreign.length && worker !== "github") problem(where, `GitHub App secrets belong to the github Worker alone, except the sign-in client credentials web exchanges codes with (${foreign.join(", ")})`);
   if (secrets.includes("TURNSTILE_SECRET") && worker !== "web") problem(where, "only web holds the Turnstile secret");
   if ((block.workflows ?? []).length && !["validator", "admin"].includes(worker)) problem(where, "this Worker must never hold Workflows");
   if (env !== "test") {
@@ -400,6 +405,7 @@ export function checkBindings(rootDir) {
     // A bare `wrangler deploy` reads the top level, so it must name a Worker that exists nowhere and bind and route nothing.
     if (config.name !== `${worker}-local`) problem(`workers/${worker}`, `top-level name is "${config.name}", expected "${worker}-local"`);
     if (config.workers_dev !== false) problem(`workers/${worker}`, "the top level needs workers_dev: false");
+    if (config.preview_urls !== false) problem(`workers/${worker}`, "the top level needs preview_urls: false");
     if (config.routes?.length || config.route) problem(`workers/${worker}`, "the top level must not declare routes");
     for (const key of [...BINDING_KEYS, "triggers"]) if (config[key] !== undefined) problem(`workers/${worker}`, `the top level must not declare ${key}`);
     if (!config.name || !config.main || !config.compatibility_date) problem(`workers/${worker}`, "needs name, main and compatibility_date at the top level");

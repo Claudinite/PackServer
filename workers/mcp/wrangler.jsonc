@@ -12,6 +12,7 @@
     "test": {
       "name": "mcp-test",
       "workers_dev": false,
+      "preview_urls": false,
       "vars": {
         "WORKER": "mcp",
         "ENVIRONMENT": "test",
@@ -86,6 +87,7 @@
     "staging": {
       "name": "mcp-staging",
       "workers_dev": false,
+      "preview_urls": false,
       "routes": [
         {
           "pattern": "registry-staging.claudinite.com/mcp*",
@@ -187,6 +189,7 @@
     "production": {
       "name": "mcp",
       "workers_dev": false,
+      "preview_urls": false,
       "routes": [
         {
           "pattern": "registry.claudinite.com/mcp*",

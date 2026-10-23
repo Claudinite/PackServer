@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "256168e3-8988-4025-8686-f5f60cf7858f",
+  "id": "232c3989-6cdc-4633-9d8e-6916c47f6c45",
   "prevId": "1b944c05-5721-4bff-b635-0fbe3d91b1c9",
   "tables": {
     "credentials": {
@@ -791,88 +791,32 @@
         }
       }
     },
-    "pack_search": {
-      "name": "pack_search",
+    "github_org_admins": {
+      "name": "github_org_admins",
       "columns": {
-        "seq": {
-          "name": "seq",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "pack_id": {
-          "name": "pack_id",
+        "user_id": {
+          "name": "user_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "name": {
-          "name": "name",
+        "github_org_id": {
+          "name": "github_org_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "pitch": {
-          "name": "pitch",
+        "github_org_login": {
+          "name": "github_org_login",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "category": {
-          "name": "category",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "tags": {
-          "name": "tags",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "skills": {
-          "name": "skills",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "parts": {
-          "name": "parts",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "has_repository": {
-          "name": "has_repository",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "card": {
-          "name": "card",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "demotion": {
-          "name": "demotion",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
+        "observed_at": {
+          "name": "observed_at",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -880,28 +824,21 @@
         }
       },
       "indexes": {
-        "pack_search_pack_unique": {
-          "name": "pack_search_pack_unique",
+        "github_org_admins_org_idx": {
+          "name": "github_org_admins_org_idx",
           "columns": [
-            "pack_id"
-          ],
-          "isUnique": true
-        },
-        "pack_search_category_idx": {
-          "name": "pack_search_category_idx",
-          "columns": [
-            "category"
+            "github_org_id"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "pack_search_pack_id_packs_id_fk": {
-          "name": "pack_search_pack_id_packs_id_fk",
-          "tableFrom": "pack_search",
-          "tableTo": "packs",
+        "github_org_admins_user_id_users_id_fk": {
+          "name": "github_org_admins_user_id_users_id_fk",
+          "tableFrom": "github_org_admins",
+          "tableTo": "users",
           "columnsFrom": [
-            "pack_id"
+            "user_id"
           ],
           "columnsTo": [
             "id"
@@ -910,120 +847,44 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "pack_search_demotion_check": {
-          "name": "pack_search_demotion_check",
-          "value": "\"pack_search\".\"demotion\" is null or \"pack_search\".\"demotion\" in ('advisory', 'failed_validation', 'abuse_hold')"
-        }
-      }
-    },
-    "pack_stats": {
-      "name": "pack_stats",
-      "columns": {
-        "pack_id": {
-          "name": "pack_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "fetches_30d": {
-          "name": "fetches_30d",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "fetches_7d": {
-          "name": "fetches_7d",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "fetches_prev_28d": {
-          "name": "fetches_prev_28d",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "stars": {
-          "name": "stars",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "stars_7d": {
-          "name": "stars_7d",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "stars_prev_28d": {
-          "name": "stars_prev_28d",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "rating": {
-          "name": "rating",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "computed_at": {
-          "name": "computed_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+      "compositePrimaryKeys": {
+        "github_org_admins_user_id_github_org_id_pk": {
+          "columns": [
+            "user_id",
+            "github_org_id"
+          ],
+          "name": "github_org_admins_user_id_github_org_id_pk"
         }
       },
-      "indexes": {},
-      "foreignKeys": {
-        "pack_stats_pack_id_packs_id_fk": {
-          "name": "pack_stats_pack_id_packs_id_fk",
-          "tableFrom": "pack_stats",
-          "tableTo": "packs",
-          "columnsFrom": [
-            "pack_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "recent": {
-      "name": "recent",
+    "user_emails": {
+      "name": "user_emails",
       "columns": {
-        "pack_id": {
-          "name": "pack_id",
+        "user_id": {
+          "name": "user_id",
           "type": "text",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "promoted_at": {
-          "name": "promoted_at",
+        "address": {
+          "name": "address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -1031,21 +892,21 @@
         }
       },
       "indexes": {
-        "recent_promoted_at_idx": {
-          "name": "recent_promoted_at_idx",
+        "user_emails_address_unique": {
+          "name": "user_emails_address_unique",
           "columns": [
-            "promoted_at"
+            "address"
           ],
-          "isUnique": false
+          "isUnique": true
         }
       },
       "foreignKeys": {
-        "recent_pack_id_packs_id_fk": {
-          "name": "recent_pack_id_packs_id_fk",
-          "tableFrom": "recent",
-          "tableTo": "packs",
+        "user_emails_user_id_users_id_fk": {
+          "name": "user_emails_user_id_users_id_fk",
+          "tableFrom": "user_emails",
+          "tableTo": "users",
           "columnsFrom": [
-            "pack_id"
+            "user_id"
           ],
           "columnsTo": [
             "id"
@@ -1054,7 +915,15 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "user_emails_user_id_address_pk": {
+          "columns": [
+            "user_id",
+            "address"
+          ],
+          "name": "user_emails_user_id_address_pk"
+        }
+      },
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
