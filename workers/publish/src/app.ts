@@ -13,6 +13,7 @@ export function createApp(runtime: PublishRuntime, options: AppOptions = {}): Ho
     releaseId: runtime.version.releaseId,
     versionId: runtime.version.versionId,
     clock: runtime.ports.clock,
+    stats: runtime.ports.stats,
     checks: () => selfTestChecks(runtime),
     selfTestAllowed: options.selfTestAllowed,
   });
