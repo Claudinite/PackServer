@@ -18,7 +18,9 @@
         "GITHUB_APP_PRIVATE_KEY": "MIIEugIBADANBgkqhkiG9w0BAQEFAASCBKQwggSgAgEAAoIBAQCayKJP7YBFPbyceJktAuXrlLVF3jJ3GfkftK+rbriDweBVOBIG1kTBvbhGO7pZX7Xdn4IDySIr1N1VBH+j4n3gNmVWf6VSZS/gpS0bvIXwo8hVgOVqjUzCPktf8zv72YJscqQY05P6lSdi1sg8PvZUgvApYdfOSJphKjF2R8bxI0l+WFw1gvIFwKq0I7unF/SB7QHrJxlrY+llR/fLiAZZ+cTZlg7CSN4c/WOytyTLpoAgWjSMnyDZLSxyo5kMgRNoGIv6TXgdn1aSLhbw7z6QW1nszrpmAcF7MzBhU60CVDwv+daXVqn8Xzss6CbRO79J3tXjzTiWLdEiN56GBwHpAgMBAAECggEAEohpXtaaIDBHMBkEhi4tp2pz1fzH4BjdCl3RFt63+xawrKN9DRKEwwnbUZV/N4pNNU8O+zMPA16GbdKPEelhlwIMWjIIcngpJmXAo+yLwQdrSkmXro1innNlBQUTrpEZm7CSU2Kp+jv3rk73RLdpOS9AYEQV2d45ld6+c2IewOqAAzGjZaNBJiC5t6pw+RoSg6VfxnCXx+Q+c9hYV53aPPNiqKXdka86VtOvnPG5+8KJKMNiMDxAIdSY4hN+lsJxc16T+m+2uCNzzn2bQ9cII8u/7LdxxrAm9Qs9BRzTmE9JFOobNzatQDzZdMLyYsCMyaA74Eu+bX7hwpQ9yrsrXQKBgQDOwZBwsUBENILkJ4QT6oSY2hUcAauE23tYyV5QWSiWYyUsHMkI8AxVBTJJxAMf861A72MvhkUhJ5BixRH0qL8c7MSRg9MYqfIlJJYRzKN4474cVNL5b5VfNUDXNGm7bAf+/4RsEXtI2CWqfZ93RqWdg/VzrXSB4LF/yacYOPAdowKBgQC/pi8XF9zNKA7FANMuISdaS2xjdHs22bP2wGztOwlIRGwlxQmhhG9c4r77xHGyYxkGctCfckHYWMDxyJG34/f7L4qtZ5Q0uCYIrsNR7IgxPbJKyonY+C/51m6DUGnngHnusIi5qHl1uuEATcpcbOaY+acK9WeZZ6KDFRkkPAdDAwKBgFg26iPK3Lq9FOO3oHjG5NA6rCsI41+KLbSSJjVt9Q1FPAT4OyYfFYPo9a3XfeXSGCfOe6k5RqGAufAKWUDkBraWpr/XWOf7Cp+iXo01nMHlmaWI44MdgsPees3XRQ18aGT6LEvXoZxQ7LEzbCh98gek18MFTOJlNhZpuWtyT7C1AoGALPs+Vjc9ldFvFgIJjuwtJl5JhFZUjR0vxhyH9G5E0XdtwreqeQRyduSpWsJSxUHJH+BW4vWYSsUaFCW1Pen9zDDuZaDIAk+ubZ9HLLVNifEnJbLAA/LMn+Eacyuuj61x8PnyPVEzoNRJ9x5K/sJ4pTMDZ+kNdc4DMK0FB6InOi0Cf0ORyhyDdrVUX0dDvQoFFz1g8EHLeResWDfXk9csWnGBrJkHz7k/7wKvYxl/EavxAtusdHlOQCD8QSugO3hmoyqBRMnTMsf83YOUtRa4Rt2ZOPuzmx5/AjgXda1XL7jZKa70qe71gDIlZ1S3i+1QRO9+W6D0aZ6lQkkkA1r3kyc=",
         "GITHUB_WEBHOOK_SECRET": "whsec_test_00000000000000000000000000000000",
         "GITHUB_CODE_SEARCH_TOKEN": "test-github-code-search-token",
-        "SELFTEST_HMAC_KEY": "test-selftest-hmac-key"
+        "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
+        "IP_HASH_MASTER_KEY": "test-ip-hash-master-key",
+        "PRINCIPAL_HASH_KEY": "test-principal-hash-key"
       },
       "d1_databases": [
         {
@@ -26,6 +28,12 @@
           "database_name": "registry-test",
           "database_id": "00000000-0000-0000-0000-010000000001",
           "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "TELEMETRY_KV",
+          "id": "00000000000000000000020000000007"
         }
       ],
       "analytics_engine_datasets": [
@@ -72,6 +80,12 @@
           "migrations_dir": "../../packages/schema/migrations"
         }
       ],
+      "kv_namespaces": [
+        {
+          "binding": "TELEMETRY_KV",
+          "id": "00000000000000000000120000000007"
+        }
+      ],
       "analytics_engine_datasets": [
         {
           "binding": "REQUEST_OUTCOMES",
@@ -107,6 +121,16 @@
           "binding": "SELFTEST_HMAC_KEY",
           "store_id": "00000000000000000000190000000004",
           "secret_name": "selftest-hmac-key-staging"
+        },
+        {
+          "binding": "IP_HASH_MASTER_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "ip-hash-master-key-staging"
+        },
+        {
+          "binding": "PRINCIPAL_HASH_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "principal-hash-key-staging"
         }
       ],
       "version_metadata": {
@@ -141,6 +165,12 @@
           "database_name": "registry",
           "database_id": "00000000-0000-0000-0000-210000000001",
           "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "TELEMETRY_KV",
+          "id": "00000000000000000000220000000007"
         }
       ],
       "analytics_engine_datasets": [
@@ -178,6 +208,16 @@
           "binding": "SELFTEST_HMAC_KEY",
           "store_id": "00000000000000000000290000000004",
           "secret_name": "selftest-hmac-key"
+        },
+        {
+          "binding": "IP_HASH_MASTER_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "ip-hash-master-key"
+        },
+        {
+          "binding": "PRINCIPAL_HASH_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "principal-hash-key"
         }
       ],
       "version_metadata": {

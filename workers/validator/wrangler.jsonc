@@ -15,7 +15,9 @@
         "WORKER": "validator",
         "ENVIRONMENT": "test",
         "SIGNING_KEY_ACTIVE": "test-signing-key-active",
-        "SELFTEST_HMAC_KEY": "test-selftest-hmac-key"
+        "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
+        "IP_HASH_MASTER_KEY": "test-ip-hash-master-key",
+        "PRINCIPAL_HASH_KEY": "test-principal-hash-key"
       },
       "d1_databases": [
         {
@@ -23,6 +25,12 @@
           "database_name": "registry-test",
           "database_id": "00000000-0000-0000-0000-010000000001",
           "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "TELEMETRY_KV",
+          "id": "00000000000000000000020000000007"
         }
       ],
       "r2_buckets": [
@@ -157,6 +165,12 @@
           "migrations_dir": "../../packages/schema/migrations"
         }
       ],
+      "kv_namespaces": [
+        {
+          "binding": "TELEMETRY_KV",
+          "id": "00000000000000000000120000000007"
+        }
+      ],
       "r2_buckets": [
         {
           "binding": "PACKS_STAGING",
@@ -283,6 +297,16 @@
           "binding": "SELFTEST_HMAC_KEY",
           "store_id": "00000000000000000000190000000004",
           "secret_name": "selftest-hmac-key-staging"
+        },
+        {
+          "binding": "IP_HASH_MASTER_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "ip-hash-master-key-staging"
+        },
+        {
+          "binding": "PRINCIPAL_HASH_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "principal-hash-key-staging"
         }
       ],
       "version_metadata": {
@@ -314,6 +338,12 @@
           "database_name": "registry",
           "database_id": "00000000-0000-0000-0000-210000000001",
           "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "TELEMETRY_KV",
+          "id": "00000000000000000000220000000007"
         }
       ],
       "r2_buckets": [
@@ -442,6 +472,16 @@
           "binding": "SELFTEST_HMAC_KEY",
           "store_id": "00000000000000000000290000000004",
           "secret_name": "selftest-hmac-key"
+        },
+        {
+          "binding": "IP_HASH_MASTER_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "ip-hash-master-key"
+        },
+        {
+          "binding": "PRINCIPAL_HASH_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "principal-hash-key"
         }
       ],
       "version_metadata": {

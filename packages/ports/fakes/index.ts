@@ -2,7 +2,7 @@ import type { Ports } from "../src/ports";
 import { bindingNames, rateLimitNames, type WorkerName } from "../src/trust-table";
 import {
   FakeAuditSink, FakeCache, FakeClock, FakeD1, FakeDurableObjects, FakeKV, FakeQueue, FakeR2, FakeRateLimit, FakeRng, FakeStats,
-  FakeTransparency, FakeUploads, FakeWorkflow,
+  FakeTelemetryConfig, FakeTransparency, FakeUploads, FakeWorkflow,
 } from "./core";
 import {
   FakeAccessIdentity, FakeDns, FakeEmbedder, FakeGitHub, FakeMail, FakeOidcVerifier, FakeProseScreen, FakeSandbox,
@@ -15,7 +15,7 @@ export * from "./external";
 type Fakes = {
   clock: FakeClock; rng: FakeRng; github: FakeGitHub; oidc: FakeOidcVerifier; vectors: FakeVectorIndex;
   embedder: FakeEmbedder; sandbox: FakeSandbox; proseScreen: FakeProseScreen; mail: FakeMail; dns: FakeDns;
-  turnstile: FakeTurnstile; access: FakeAccessIdentity; stats: FakeStats; cache: FakeCache; uploads: FakeUploads;
+  turnstile: FakeTurnstile; access: FakeAccessIdentity; stats: FakeStats; telemetry: FakeTelemetryConfig; cache: FakeCache; uploads: FakeUploads;
   audit: FakeAuditSink; transparency: FakeTransparency; d1: FakeD1; durableObjects: FakeDurableObjects;
 };
 export type FakePorts = Fakes & {
@@ -59,6 +59,7 @@ export function createFakePorts(options: FakePortsOptions = {}): FakePorts {
     turnstile: new FakeTurnstile(),
     access: new FakeAccessIdentity(),
     stats: new FakeStats(),
+    telemetry: new FakeTelemetryConfig(),
     cache: new FakeCache(),
     uploads: new FakeUploads(clock),
     audit: new FakeAuditSink(),

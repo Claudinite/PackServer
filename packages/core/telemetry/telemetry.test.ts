@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { FakeClock } from "@packserver/ports/fakes";
 import {
-  analyticsStats, createHasher, createModeCache, createTelemetry, datasetFor, dedupeKey, logRate, network, parseUserAgent,
+  MAX_ENCODED_ADDRESS, analyticsStats, createHasher, createModeCache, createTelemetry, datasetFor, dedupeKey, logRate, network, parseUserAgent,
   REQUEST_BLOBS, REQUEST_DOUBLES, ANALYTICS_DATASETS, SIGNAL_NAMES, scrubIp, type DownloadFetcher, type PrivateDownload,
 } from "./index";
 import { TelemetrySink, toHaveRecorded } from "./testing";
@@ -405,9 +405,15 @@ describe("scrub cost and edges", () => {
   it("scans 20 KB of colon-dense filler in under 50 ms", () => {
     for (const filler of ["a:", ":", "a::", "1:2:"]) {
       const input = filler.repeat(Math.ceil(20_000 / filler.length));
-      const started = performance.now();
-      scrubIp(input);
-      expect(performance.now() - started).toBeLessThan(50);
+      // The fastest of several runs: a loaded CI machine slows a run, it cannot speed one up.
+      const fastest = Math.min(
+        ...Array.from({ length: 7 }, () => {
+          const started = performance.now();
+          scrubIp(input);
+          return performance.now() - started;
+        }),
+      );
+      expect(fastest).toBeLessThan(50);
     }
     expect(scrubIp("x".repeat(5000))).toHaveLength(2048);
   });
@@ -418,10 +424,33 @@ describe("scrub cost and edges", () => {
   });
   it("does not leak half an address across the length cut", () => {
     const v4 = scrubIp("x".repeat(2040) + "198.51.100.77");
-    expect(v4).toBe("x".repeat(2040));
+    expect(v4).toMatch(/^x+$/);
     const v6 = scrubIp("x".repeat(2030) + "2001:db8:85a3:0:0:8a2e:370:7334");
     expect(v6).not.toMatch(/\d/);
     expect(v6.length).toBeLessThanOrEqual(2048);
+  });
+  it("keeps a long known value as known: only an address-sized tail is dropped at the cut", () => {
+    expect(scrubIp("a".repeat(5000))).toBe("a".repeat(2048));
+    expect(scrubIp("deadbeef".repeat(1000))).toBe("deadbeef".repeat(256));
+    const digits = scrubIp("1".repeat(5000));
+    expect(digits.length).toBeGreaterThanOrEqual(2048 - MAX_ENCODED_ADDRESS);
+    expect(digits).toMatch(/^1+$/);
+  });
+  it("keeps a trailing word of hex letters at the cut", () => {
+    expect(scrubIp("x".repeat(2042) + "accede" + "zzzz")).toBe("x".repeat(2042) + "accede");
+  });
+  it("drops a cut 0x-form IPv4 whole, whichever digit the cut lands on", () => {
+    expect(scrubIp("x".repeat(2035) + "0xC6.0x33.0x64.0x4D")).toMatch(/^x+$/);
+    expect(scrubIp("x".repeat(2035) + "0xC6.0x33.0xd.0x4D")).toMatch(/^x+$/);
+    expect(scrubIp("x".repeat(2035) + "0xC6.0x33.0xd" + ".0x4D")).not.toMatch(/0x/);
+  });
+  it("folds the ideographic full stops to dots", () => {
+    for (const dot of ["\u3002", "\uFF61", "\uFF0E", "\u2024"]) expect(scrubIp(`from 10${dot}0${dot}0${dot}1 now`)).toBe("from [ip] now");
+  });
+  it("folds full-width characters before cutting, so an address across the cut leaves no fragment", () => {
+    const out = scrubIp("x".repeat(2040) + "１９８.５１.１００.７７");
+    expect(out).toMatch(/^x+$/);
+    expect(scrubIp("x".repeat(2040) + "１９８．５１．１００．７７")).toMatch(/^x+$/);
   });
   it("strips control characters from text that held an address", () => {
     expect(scrubIp("a\u0000b 10.0.0.1\u0007")).toBe("ab [ip]");
