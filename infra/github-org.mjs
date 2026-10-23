@@ -9,9 +9,9 @@ import { pathToFileURL } from "node:url";
 export const ORG = "Claudinite";
 export const MAIN_REPO = "PackServer";
 export const RULESET_NAME = "main-protection";
-// Contexts must be what CI reports: a matrix job reports one context per entry, so `scenarios`
-// is "scenarios (1)" and "scenarios (2)" (github-org.test.mjs checks this against ci.yml).
-export const MAIN_CHECKS = ["checks", "unit", "scenarios (1)", "scenarios (2)", "summary"];
+// The one required check: `summary` needs every product job and fails when any failed or was
+// cancelled, so a change to a job's matrix never changes what the ruleset requires.
+export const MAIN_CHECKS = ["summary"];
 export const GATE_CHECK = "scenario-gate";
 export const GATE_WORKFLOW = ".github/workflows/scenario-gate.yml";
 

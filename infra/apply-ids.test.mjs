@@ -18,6 +18,7 @@ function copyRepo() {
 
 const resources = (env, n) => ({
   secrets_store_id: "store-one",
+  account_id: "acct0",
   d1: { [env === "staging" ? "registry-staging" : "registry"]: { id: `d1-${env}` } },
   kv: Object.fromEntries(["sessions", "oauth", "cache", "gates", "telemetry"].map((k) => [env === "staging" ? `${k}-staging` : k, { id: `kv-${env}-${k}-${n}` }])),
 });

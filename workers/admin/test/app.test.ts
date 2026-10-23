@@ -1,3 +1,4 @@
+import { MemoryAuditBucket } from "@packserver/core/audit/testing";
 import { describeWorkerShell, dummyEnv, expectTelemetryWired, expectPortsMatchTrustTable, SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
 import { createFakePorts } from "@packserver/ports/fakes";
 import { describe, expect, it } from "vitest";
@@ -11,7 +12,7 @@ const runtime = (missingBindings: string[] = []): AdminRuntime => ({
   version: { versionId: SHELL_VERSION, releaseId: SHELL_RELEASE },
   missingBindings,
   missingSecrets: [],
-  ports: { ...fakes, r2: { PACKS_STAGING: fakes.r2["PACKS_STAGING"]!, VALIDATION_REPORTS: fakes.r2["VALIDATION_REPORTS"]!, OPS_BUCKET: fakes.r2["OPS_BUCKET"]! } },
+  ports: { ...fakes, auditBucket: new MemoryAuditBucket(), r2: { PACKS_STAGING: fakes.r2["PACKS_STAGING"]!, VALIDATION_REPORTS: fakes.r2["VALIDATION_REPORTS"]!, OPS_BUCKET: fakes.r2["OPS_BUCKET"]! } },
   services: {},
 });
 
