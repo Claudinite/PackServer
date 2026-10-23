@@ -59,7 +59,7 @@ no test here counts a credit.
 ### IT-VAL-022 Decompression is bounded by produced bytes and stops at the first limit
 - **Covers:** REQ-VAL-022
 - **Runs:** push, sandbox
-- **Action:** feed each limit's boundary fixture: 20 MB + 1 unpacked, a 5 MB + 1 file, 5,001 entries, ratio 101:1, depth 33, a 4,097-byte path, a 256-byte component, a 9 MB window.
+- **Action:** feed each limit's boundary fixture: 20 MB + 1 unpacked, a 5 MB + 1 file, 5,001 files, ratio 101:1, depth 33, a 4,097-byte path, a 256-byte component, a 9 MB window.
 - **Assert:** each fails with `archive.bomb` or `archive.unsafe`, exactly one limit named, within the memory and time caps; nothing past the limit was written (the fake's and the real sandbox's scratch is empty); the run is not retried.
 - **Contrast:** the same fixtures one unit inside each limit extract.
 

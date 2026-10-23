@@ -211,7 +211,7 @@ export const PORT_SPECS: { [K in Exclude<keyof SinglePorts, "durableObjects">]: 
     kind: "http",
     target: "mail",
     methods: {
-      send: { effect: "external_side_effect", args: [{ to: "personal", subject: content, text: content }], result: { id: op } },
+      send: { effect: "external_side_effect", args: [{ to: "personal", subject: content, text: content, html: content }], result: { id: op } },
     },
   },
   dns: { kind: "http", target: "dns-over-https", methods: { resolveTxt: { effect: "read", args: [op], result: { "*": op } } } },

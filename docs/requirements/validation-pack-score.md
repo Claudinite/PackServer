@@ -74,7 +74,7 @@ none is refused.
 - coverage: scenario
 
 An archive with any link entry (symbolic or hard, escaping the tree or not), path traversal entries,
-a decompression bomb or more than 5k files hard-fails; the canonical form holds regular files and
+a decompression bomb or more than 5,000 files hard-fails; the canonical form holds regular files and
 directories only.
 
 ## REQ-VAL-020 Archive safety covers links, special entries, collisions and absolute size
@@ -100,7 +100,7 @@ decompressed-size cap independent of the ratio.
 The validator never trusts sizes, counts or window parameters the archive declares about itself.
 Decompression happens only inside the sandbox as one streaming pass that counts the bytes it
 actually produces and stops at the first crossed limit: 20 MB unpacked in total, 5 MB for any one
-file, 5k entries, a compression ratio above 100:1 for the archive as a whole, path depth above 32,
+file, 5,000 files, a compression ratio above 100:1 (file content bytes over stored bytes) for the archive as a whole, path depth above 32,
 any path over 4,096 bytes or component over 255, or a compression window over 8 MB. Nothing past a
 limit is written and nothing extracted from a refused archive is kept; the decompressor runs with
 its own memory, CPU-time and wall-clock caps and no network, so one that misbehaves on a crafted
@@ -610,8 +610,8 @@ point leaves either no version or exactly one.
 - coverage: scenario+contract (the in-process scenario proves which bytes are promoted and the infrastructure-error path; the deterministic re-pack and the round-trip are proven against the real sandbox image)
 
 The archive promoted and served is a deterministic re-pack of the validated tree in PackServer's
-canonical `tar.zst` form (sorted paths, fixed metadata, plain entry names, one zstd frame, window at
-most 8 MB, pinned level), not the uploaded bytes, produced before any pack code runs
+canonical `tar.zst` form (sorted paths, fixed metadata, plain entry names, one zstd frame of raw blocks, window at
+most 8 MB, D56), not the uploaded bytes, produced before any pack code runs
 (REQ-VAL-051). The second container re-extracts it with the same bounded decoder and compares its
 tree hash with the recorded one; a mismatch is an infrastructure error and nothing is promoted. The
 uploaded bytes stay in staging for its lifetime, and `cn pack canonicalise` produces byte-identical
