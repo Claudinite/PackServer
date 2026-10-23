@@ -1,8 +1,8 @@
-import { afterAll, beforeAll, expect, test } from "vitest";
+import { afterAll, expect, test } from "vitest";
 import "./world/matchers";
 import { createDriver } from "./drivers";
 import type { Capability, Driver } from "./drivers/driver";
-import { InfrastructureError } from "./world/errors";
+import { assertNoUnfaked, unfakedCalls } from "./drivers/unfaked";
 import { createWorld, type World } from "./world/world";
 import { loadSpecs } from "./registry";
 
@@ -17,26 +17,33 @@ export interface ScenarioOpts {
 
 const TAG_NEEDS: Record<string, Capability[]> = { ui: ["ui"], agent: ["mcp"] };
 
-let driver: Driver | undefined;
+let driver: Promise<Driver> | undefined;
+let booted: Driver | undefined;
 
-/** One driver per test file: booted once, storage reset once, disposed after the last scenario. */
-function ensureDriver(): Driver {
-  if (driver) return driver;
-  const d = (driver = createDriver());
-  beforeAll(async () => {
+/**
+ * One driver per test file, started by the first scenario that runs (inside its test body, so
+ * scenarios in sibling describe blocks share it) and disposed after the file's last test.
+ */
+function acquire(): Promise<Driver> {
+  driver ??= (async () => {
+    const d = createDriver();
+    booted = d;
     await d.start();
     await d.reset();
-  });
-  afterAll(async () => {
-    driver = undefined;
-    await d.dispose();
-  });
-  return d;
+    return d;
+  })();
+  return driver;
 }
 
+afterAll(async () => {
+  const d = booted;
+  driver = booted = undefined;
+  await d?.dispose();
+});
+
 function run(title: string, tags: string[], fn: (world: World) => Promise<void>, opts: ScenarioOpts): void {
-  const d = ensureDriver();
   test(title, { tags }, async ({ annotate, skip }) => {
+    const d = await acquire();
     const needs = [...tags.flatMap((t) => TAG_NEEDS[t] ?? []), ...(opts.needs ?? [])];
     const missing = needs.filter((n) => n !== "reset" && !d.capabilities.has(n));
     if (missing.length > 0) skip(`driver ${d.kind} lacks ${missing.join(", ")}`);
@@ -48,10 +55,13 @@ function run(title: string, tags: string[], fn: (world: World) => Promise<void>,
     const world = createWorld(d, title);
     try {
       await fn(world);
-      const unfaked = d.fakes?.net.unfaked() ?? [];
-      if (unfaked.length > 0) throw new InfrastructureError(`the system called outside hosts no fake claims: ${unfaked.join(", ")}`);
+      assertNoUnfaked(d);
     } catch (error) {
-      await annotate(JSON.stringify(await d.diagnostics()), "diagnostics");
+      const unfaked = unfakedCalls(d);
+      if (unfaked.length > 0 && error instanceof Error && !error.message.includes("outside hosts")) {
+        error.message += `\n(the system also called outside hosts no fake claims: ${unfaked.join(", ")})`;
+      }
+      await annotate(JSON.stringify({ ...(await d.diagnostics()), unfaked }), "diagnostics");
       throw error;
     } finally {
       await world.dispose();
