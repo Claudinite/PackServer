@@ -1,7 +1,7 @@
 import { LIMITS } from "./limits.ts";
 import { bomb, unsafe } from "./errors.ts";
 
-const utf8 = new TextDecoder("utf-8", { fatal: true });
+const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false });
 const encoder = new TextEncoder();
 
 export const utf8Length = (s: string) => encoder.encode(s).length;

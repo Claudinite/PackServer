@@ -28,6 +28,8 @@ export const R2_CUSTOM_DOMAINS = {
 // Created only when the account has no store; the beta allows one store per account.
 export const SECRETS_STORE_NAME = "packserver";
 export const TURNSTILE_BINDING = "TURNSTILE_SECRET";
+/** The one Worker that holds the audit bucket's token. */
+export const AUDIT_WORKER = "admin";
 export const AUDIT_BINDINGS = { accessKeyId: "AUDIT_S3_ACCESS_KEY_ID", secretAccessKey: "AUDIT_S3_SECRET_ACCESS_KEY" };
 
 export const suffixed = (env, name) => (env === "staging" ? `${name}-staging` : name);
@@ -74,7 +76,7 @@ export function planResources(env, { root = REPO } = {}) {
     for (const v of block.vectorize ?? []) vectorize.add(v.index_name);
     for (const s of block.secrets_store_secrets ?? []) {
       if (s.binding === TURNSTILE_BINDING) turnstileSecretName = s.secret_name;
-      for (const [field, binding] of Object.entries(AUDIT_BINDINGS)) if (s.binding === binding) audit[field] = s.secret_name;
+      if (worker === AUDIT_WORKER) for (const [field, binding] of Object.entries(AUDIT_BINDINGS)) if (s.binding === binding) audit[field] = s.secret_name;
     }
     for (const r of block.routes ?? []) {
       const [host, ...rest] = (typeof r === "string" ? r : r.pattern).split("/");
@@ -92,7 +94,7 @@ export function planResources(env, { root = REPO } = {}) {
   }
   if (!turnstileSecretName) throw new Error(`no ${TURNSTILE_BINDING} secrets_store_secrets entry in env.${env} of any Worker`);
   for (const [field, binding] of Object.entries(AUDIT_BINDINGS)) {
-    if (!audit[field]) throw new Error(`no ${binding} secrets_store_secrets entry in env.${env} of any Worker`);
+    if (!audit[field]) throw new Error(`no ${binding} secrets_store_secrets entry in env.${env} of the ${AUDIT_WORKER} Worker`);
   }
   return {
     env,

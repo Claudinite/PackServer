@@ -25,8 +25,8 @@ scenario("IT-AUDIT-001 Every sensitive action writes an entry", async (world) =>
   const batches = await world.audit.batches();
   expect(batches.flatMap((b) => b.events)).toHaveLength(12);
   // No binding the Workers hold can edit or delete a batch; the write path itself refuses a replacement.
-  expect(await world.audit.overwriteRefused(0)).toBe(true);
-  expect(await world.audit.batches()).toEqual(batches);
+  expect(await world.audit.overwriteRefused()).toBe(true);
+  expect((await world.audit.batches()).slice(0, batches.length)).toEqual(batches);
 }, NEEDS);
 
 scenario("IT-AUDIT-003 Org audit history is viewable by owners at no charge and immutable", async (world) => {
@@ -38,7 +38,7 @@ scenario("IT-AUDIT-003 Org audit history is viewable by owners at no charge and 
   await world.clock.advance("89d");
   const history = await world.audit.for({ scope: org });
   expect(history.map((e) => e.action).sort()).toEqual(["grant.changed", "visibility.changed"]);
-  expect(await world.audit.overwriteRefused(0)).toBe(true);
+  expect(await world.audit.overwriteRefused()).toBe(true);
 }, NEEDS);
 
 scenario("IT-AUDIT-004 Audit stores hashed IPs and no secrets in plain text", async (world) => {

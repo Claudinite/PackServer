@@ -36,8 +36,11 @@ export interface AuditModule {
     verify(): Promise<"intact" | { mismatch: ChainMismatch }>;
     /** Edits a stored batch (by position or view) the way an attacker with bucket access would. */
     tamper(batch: number | AuditBatchView, how: TamperHow): void;
-    /** Tries to replace a stored batch through the consumer's own write path; true when the write was refused. */
-    overwriteRefused(batch: number | AuditBatchView): Promise<boolean>;
+    /**
+     * Has another writer take the key the consumer is about to use, then runs the shipped consumer; true when it
+     * refused to replace that object and returned the message to the queue. The attempted event is not in the chain.
+     */
+    overwriteRefused(): Promise<boolean>;
     /** Where the text appears in anything the audit pipeline holds: queue messages, batches, D1 rows, points. */
     scan(needle: string): string[];
     outage: { d1(down: boolean): void; bucket(down: boolean): void };
@@ -76,6 +79,22 @@ export function createAuditModule(driver: Driver): AuditModule {
     });
   }
 
+  /** Runs the shipped consumer over what is queued; returns the ids of messages it sent back to the queue. */
+  async function run(): Promise<string[]> {
+    const s = st();
+    const pending = (s.queue.messages as unknown[]).slice(s.consumed);
+    s.consumed = s.queue.messages.length;
+    const retried: string[] = [];
+    await consumeAuditMessages(
+      { auditBucket: s.bucket, d1: s.d1, stats: s.fakes.ports.stats },
+      pending.map((body) => {
+        const id = `msg-${s.nextMessage++}`;
+        return { id, body, ack() {}, retry() { retried.push(id); } };
+      }),
+    );
+    return retried;
+  }
+
   const keyOf = (batch: number | AuditBatchView): string => {
     if (typeof batch !== "number") return batch.key;
     const key = st().bucket.batchKeys()[batch];
@@ -89,13 +108,8 @@ export function createAuditModule(driver: Driver): AuditModule {
         return (await emitter())(actor, action, target, extra);
       },
       async flush() {
-        const s = st();
-        const pending = (s.queue.messages as unknown[]).slice(s.consumed);
-        s.consumed = s.queue.messages.length;
-        await consumeAuditMessages(
-          { auditBucket: s.bucket, d1: s.d1, stats: s.fakes.ports.stats },
-          pending.map((body) => ({ id: `msg-${s.nextMessage++}`, body, ack() {}, retry() { throw new InfrastructureError("the consumer returned a message to the queue"); } })),
-        );
+        const retried = await run();
+        if (retried.length > 0) throw new InfrastructureError(`the consumer returned ${retried.length} message(s) to the queue`);
       },
       for(subject) {
         const s = st();
@@ -119,8 +133,23 @@ export function createAuditModule(driver: Driver): AuditModule {
       tamper(batch, how) {
         st().bucket.tamper(keyOf(batch), how);
       },
-      async overwriteRefused(batch) {
-        return (await st().bucket.put(keyOf(batch), "replaced\n", { ifAbsent: true })) === "exists";
+      async overwriteRefused() {
+        const s = st();
+        const planted = "planted by another writer\n";
+        let taken: string | undefined;
+        s.bucket.onPut = (key) => {
+          if (key.endsWith(".ndjson") && taken === undefined) {
+            taken = key;
+            s.bucket.objects.set(key, planted);
+          }
+        };
+        try {
+          await (await emitter())({ kind: "system" }, "admin.action", "overwrite-attempt");
+          const retried = await run();
+          return retried.length > 0 && taken !== undefined && s.bucket.objects.get(taken) === planted;
+        } finally {
+          s.bucket.onPut = undefined;
+        }
       },
       scan(needle) {
         const s = st();

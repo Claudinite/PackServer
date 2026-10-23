@@ -52,6 +52,12 @@ describe("the plan", () => {
     const path = join(root, "workers", "admin", "wrangler.jsonc");
     writeFileSync(path, readFileSync(path, "utf8").replaceAll("AUDIT_S3_SECRET_ACCESS_KEY", "SOMETHING_ELSE"));
     expect(() => planResources("staging", { root })).toThrow(/AUDIT_S3_SECRET_ACCESS_KEY/);
+    // Another Worker declaring the binding does not stand in for the admin Worker.
+    const web = join(root, "workers", "web", "wrangler.jsonc");
+    const cfg = JSON.parse(readFileSync(web, "utf8"));
+    cfg.env.staging.secrets_store_secrets.push({ binding: "AUDIT_S3_SECRET_ACCESS_KEY", store_id: "s", secret_name: "not-admins" });
+    writeFileSync(web, JSON.stringify(cfg));
+    expect(() => planResources("staging", { root })).toThrow(/AUDIT_S3_SECRET_ACCESS_KEY/);
   });
 
   it("includes the audit dead-letter queue, the extras, and no shadow-records bucket", () => {

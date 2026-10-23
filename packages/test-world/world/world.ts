@@ -41,7 +41,7 @@ export function createWorld(driver: Driver, title: string) {
     ...createAdmin(),
     ...createMember(),
     ...createAgents(),
-    ...createGitHub(),
+    ...createGitHub(driver),
     ...createAuditModule(driver),
     ...createTelemetry(),
     operator: createOperator(driver),
