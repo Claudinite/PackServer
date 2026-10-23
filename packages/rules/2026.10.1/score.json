@@ -10,5 +10,60 @@
   "caps": {
     "published_advisory": 40,
     "no_public_repo": 70
-  }
+  },
+  "cap_reasons": {
+    "published_advisory": "published advisory",
+    "no_public_repo": "No public repo"
+  },
+  "markers": {
+    "no_public_repo": "No public repo"
+  },
+  "thresholds": {
+    "chars_per_token": 4,
+    "chars_per_token_unit": "utf16-code-units",
+    "always_loaded_tokens": { "full": 1000, "zero": 5000 },
+    "skill_body_lines": { "full": 500, "zero": 1000 },
+    "skill_body_tokens_max": 5000,
+    "duplicate_block_min_chars": 80,
+    "name_max_chars": 64,
+    "name_reserved_words": ["anthropic", "claude"],
+    "description_max_chars": 1024,
+    "description_min_words": 6,
+    "reference_toc_min_lines": 100,
+    "checks_neutral_ratio": 0.5,
+    "footprint_costs": {
+      "guard": 3,
+      "coded-check": 3,
+      "task": 1,
+      "task:opens-pr": 2,
+      "task:agentic-phase": 2,
+      "env-setup": 2,
+      "github-action": 1
+    }
+  },
+  "rules": [
+    { "id": "context-cost.always-loaded", "part": "context_cost", "max": 13, "description": "RULES.md plus every skill's name and description stay under 1,000 tokens (zero points at 5,000).", "fix": "Shorten RULES.md and the skill descriptions, or move detail into a skill body that loads on demand." },
+    { "id": "context-cost.skill-body-lines", "part": "context_cost", "max": 6, "description": "The longest skill body stays within 500 lines (zero points at 1,000).", "fix": "Split the skill, or move reference material into a linked file that loads on demand." },
+    { "id": "context-cost.skill-body-tokens", "part": "context_cost", "max": 3, "description": "No skill body exceeds 5,000 tokens.", "fix": "Move the bulk of the skill into on-demand reference files and keep SKILL.md short." },
+    { "id": "context-cost.duplicate-text", "part": "context_cost", "max": 3, "description": "No paragraph repeats across skills.", "fix": "Keep the paragraph in one skill and link to it from the others." },
+    { "id": "skill-structure.name", "part": "skill_structure", "max": 3, "description": "Each skill name is lowercase letters, digits and hyphens, at most 64 characters, with no reserved word.", "fix": "Rename the skill in its frontmatter." },
+    { "id": "skill-structure.description", "part": "skill_structure", "max": 3, "description": "Each skill has a non-empty description of at most 1,024 characters.", "fix": "Add or shorten the description in the skill's frontmatter." },
+    { "id": "skill-structure.description-voice", "part": "skill_structure", "max": 2, "description": "Each description is written in the third person.", "fix": "Rewrite the description without I, you or we." },
+    { "id": "skill-structure.description-what-when", "part": "skill_structure", "max": 3, "description": "Each description says what the skill does and when to use it.", "fix": "Say what the skill does, then when to use it (\"Use when ...\")." },
+    { "id": "skill-structure.reachable", "part": "skill_structure", "max": 3, "description": "Each skill can be reached without being named: a trigger clause, a forced load, or the pack's relevanceDetector.", "fix": "Add a \"Use when ...\" clause to the description, or force-load the skill." },
+    { "id": "skill-structure.reference-depth", "part": "skill_structure", "max": 3, "description": "Reference files linked from a skill do not link onward to more files.", "fix": "Link every reference file directly from SKILL.md instead of from another reference file." },
+    { "id": "skill-structure.reference-toc", "part": "skill_structure", "max": 2, "description": "A reference file over 100 lines opens with a table of contents.", "fix": "Add a Contents section near the top of the reference file." },
+    { "id": "skill-structure.windows-paths", "part": "skill_structure", "max": 2, "description": "Skills use forward-slash paths only.", "fix": "Replace backslash paths with forward slashes." },
+    { "id": "skill-structure.time-sensitive", "part": "skill_structure", "max": 2, "description": "Skills carry no wording that expires on a date.", "fix": "Remove the dated wording, or state the rule without a date." },
+    { "id": "skill-structure.scripts", "part": "skill_structure", "max": 2, "description": "A script a skill names is in the pack, executable where it is a shell or Python script, and reached by a relative path.", "fix": "Ship the script in the pack, mark it executable and refer to it by a relative path." },
+    { "id": "checks.declared-share", "part": "checks", "max": 20, "description": "The share of checks that are declared rather than coded; a pack with no checks scores half.", "fix": "Express the check as an entry in declared-checks.json instead of coded Go." },
+    { "id": "source.tree-matches-path", "part": "source", "max": 6, "description": "The linked public repository's tree matches the pack path, verified by the registry.", "fix": "Publish with trusted publishing from the repository that holds the pack at its declared path." },
+    { "id": "source.commit-bound", "part": "source", "max": 5, "description": "The version is bound to a commit.", "fix": "Publish from a GitHub Actions run so the version records its commit." },
+    { "id": "source.trusted-publishing", "part": "source", "max": 4, "description": "The version was published by trusted publishing.", "fix": "Use the claudinite/publish-pack action instead of a web upload." },
+    { "id": "footprint.guard", "part": "footprint", "max": 3, "description": "A guard costs 3 points.", "fix": "Drop the guard, or accept the cost." },
+    { "id": "footprint.coded-check", "part": "footprint", "max": 3, "description": "Coded checks cost 3 points.", "fix": "Declare the checks in declared-checks.json instead of coding them." },
+    { "id": "footprint.task", "part": "footprint", "max": 4, "description": "A task costs 1 point, 2 more if it opens pull requests and 2 more if it has an agentic phase.", "fix": "Drop the task, or remove its pull-request and agentic steps." },
+    { "id": "footprint.env-setup", "part": "footprint", "max": 2, "description": "Environment setup costs 2 points.", "fix": "Drop the environment setup." },
+    { "id": "footprint.github-action", "part": "footprint", "max": 3, "description": "Each declared GitHub action costs 1 point, up to 3.", "fix": "Drop the GitHub actions the pack does not need." }
+  ]
 }

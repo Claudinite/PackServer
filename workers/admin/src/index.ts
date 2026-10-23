@@ -6,5 +6,5 @@ import { runCron } from "./crons";
 export default {
   fetch: (request, env, ctx) => createApp(createRuntime(env)).fetch(request, undefined, ctx),
   scheduled: (controller, env) => runCron(controller.cron, createRuntime(env)),
-  queue: (batch) => consumeAudit(batch),
+  queue: (batch, env) => consumeAudit(batch, createRuntime(env)),
 } satisfies ExportedHandler<Env>;

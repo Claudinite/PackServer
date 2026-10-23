@@ -1,0 +1,30 @@
+{
+  "version": "1.61004.1",
+  "minEngineVersion": "1.61001.1",
+  "ruleRoutingGuidance": {
+    "belongs": "conventions for a Node/npm project — module resolution, ESM vs CJS, dependency justification, jsdom test divergences",
+    "excludes": "browser-runtime API behaviour — that is html or web-speech; Python packaging is python"
+  },
+  "pitch": "Keeps Claude Code sessions in a Node.js repo clear of the quiet failures that pass locally and break later. Several rules cover named imports from CommonJS packages that silently come back undefined, scripts that truncate their own output by calling process.exit, CI pinning an older Node than the sandbox, and jsdom behaving unlike a real browser. A few checks flag needless dependencies and text mangled by btoa, and the node-test-discovery skill plus a blocking check stop a test command that finds zero tests and still reports green.",
+  "relevanceDetector": {
+    "about": "package.json (at the repo root or one directory down)",
+    "paths": "^([^/]+/)?package\\.json$"
+  },
+  "env": {
+    "label": "Node dependencies (npm ci)",
+    "setup": {
+      "forEach": "dirs",
+      "whenUnset": [
+        "."
+      ],
+      "template": "( cd \"{}\" && npm ci ) || true"
+    },
+    "probe": {
+      "forEach": "dirs",
+      "whenUnset": [
+        "."
+      ],
+      "template": "[ -d \"{}/node_modules\" ]"
+    }
+  }
+}

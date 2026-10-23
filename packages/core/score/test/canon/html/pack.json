@@ -1,0 +1,9 @@
+{
+  "version": "1.61004.1",
+  "minEngineVersion": "1.61001.1",
+  "ruleRoutingGuidance": {
+    "belongs": "hand-authored HTML markup gotchas — element nesting, injected content placement, live browser verification of a page",
+    "excludes": "javascript runtime APIs — web-speech; map widgets — leaflet; npm and dependency policy — node"
+  },
+  "pitch": "A few hard-won HTML lessons that save Claude Code sessions real debugging time. The rules explain why block markup injected inside a paragraph silently empties it, how to resolve ambiguous slash dates once per document instead of guessing per field, and why a change that depends on how a live page behaves should be investigated with one console snippet before it ships rather than tested after release. The pack is prose only, with no checks, skills or scheduled tasks."
+}

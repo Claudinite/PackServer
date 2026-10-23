@@ -21,9 +21,9 @@ const version = (id: string, v: string, state = "active") =>
 describe("foundation tables", () => {
   const tables = (Object.values(db) as unknown[]).filter((x): x is Table => is(x, Table));
 
-  it("declares exactly the foundation tables", () => {
+  it("declares exactly the foundation tables and each later area's", () => {
     expect(tables.map(getTableName).sort()).toEqual(
-      ["credentials", "feature_flags", "identities", "pack_versions", "packs", "retired_names", "scope_members", "scopes", "session_revocations", "users"],
+      ["credentials", "feature_flags", "identities", "pack_versions", "packs", "recent_activity", "retired_names", "scope_members", "scopes", "session_revocations", "users"],
     );
   });
 
