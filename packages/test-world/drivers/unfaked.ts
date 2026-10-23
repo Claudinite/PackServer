@@ -6,7 +6,9 @@ export function unfakedCalls(driver: Driver): string[] {
   return driver.fakes?.net.unfaked() ?? [];
 }
 
+export class UnfakedCallsError extends InfrastructureError {}
+
 export function assertNoUnfaked(driver: Driver): void {
   const calls = unfakedCalls(driver);
-  if (calls.length > 0) throw new InfrastructureError(`the system called outside hosts no fake claims: ${calls.join(", ")}`);
+  if (calls.length > 0) throw new UnfakedCallsError(`the system called outside hosts no fake claims: ${calls.join(", ")}`);
 }

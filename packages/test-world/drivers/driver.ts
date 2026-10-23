@@ -36,9 +36,9 @@ export interface UiActions {
 export interface Driver {
   readonly kind: DriverKind;
   readonly capabilities: ReadonlySet<Capability>;
-  /** The Workers a request can be addressed to. */
   /** Distinguishes runs that share one deployment; absent when each run has its own world. */
   readonly aliasSalt?: string;
+  /** The Workers a request can be addressed to. */
   readonly surfaces: readonly WorkerName[];
   http: { request(req: ApiRequest): Promise<ApiResponse> };
   ui?: UiActions;
