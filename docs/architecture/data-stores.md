@@ -21,7 +21,8 @@ is charged in v1.
 | Durable Object `RootCoordinator` | The one writer of `index/v1/root.json`: current scope hashes and serials, the root serial | Per scope index change, batched on a 10-second alarm; daily re-sign | Same | Yes |
 | Workflows | Validation run state | Per step; steps return keys, never bytes | Resume, dashboard | No (D1 at each milestone) |
 | Queues | Notify, re-index, audit | Per event | Consumed once, idempotent | No |
-| KV `sessions`, `oauth`, `cache`, `gates`, `telemetry` | Sessions; OAuth clients, grants, hashed tokens; OAuth state (10 min); JWKS; gate verdicts (judge only); the `telemetry_mode` switch | Per login, at most every 15 min for last-seen | Every signed-in or token request | Sessions and grants |
+| KV `sessions`, `oauth`, `cache`, `gates` | Sessions; OAuth clients, grants, hashed tokens; OAuth state (10 min); JWKS; gate verdicts (judge only) | Per login, at most every 15 min for last-seen | Every signed-in or token request | Sessions and grants |
+| KV `telemetry` | The `telemetry_mode` switch (`normal` or `economy`) | Rarely, flipped through the admin API | Every Worker, once per isolate per minute | No (a missing key means `normal`) |
 | Analytics Engine | `request_outcomes`, `domain_events`, `validation_events`, `synthetic_probes`, `gate_results`, `budget`, `downloads` | Fire-and-forget points | Gate judge, dashboards, rollups | No (3 months) |
 | Secrets Store | GitHub App key, active signing key, standby signing key (bound to nothing), HMAC keys, hash keys, the code-search token | People, at rotation | Workers at start | Yes |
 | Outside | Email provider, GitHub (read-only), Sigstore Rekor (audit heads) | Per event | Per event | No |

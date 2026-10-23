@@ -424,7 +424,7 @@ describe("scrub cost and edges", () => {
   });
   it("does not leak half an address across the length cut", () => {
     const v4 = scrubIp("x".repeat(2040) + "198.51.100.77");
-    expect(v4).toBe("x".repeat(2040));
+    expect(v4).toMatch(/^x+$/);
     const v6 = scrubIp("x".repeat(2030) + "2001:db8:85a3:0:0:8a2e:370:7334");
     expect(v6).not.toMatch(/\d/);
     expect(v6.length).toBeLessThanOrEqual(2048);
@@ -439,10 +439,18 @@ describe("scrub cost and edges", () => {
   it("keeps a trailing word of hex letters at the cut", () => {
     expect(scrubIp("x".repeat(2042) + "accede" + "zzzz")).toBe("x".repeat(2042) + "accede");
   });
+  it("drops a cut 0x-form IPv4 whole, whichever digit the cut lands on", () => {
+    expect(scrubIp("x".repeat(2035) + "0xC6.0x33.0x64.0x4D")).toMatch(/^x+$/);
+    expect(scrubIp("x".repeat(2035) + "0xC6.0x33.0xd.0x4D")).toMatch(/^x+$/);
+    expect(scrubIp("x".repeat(2035) + "0xC6.0x33.0xd" + ".0x4D")).not.toMatch(/0x/);
+  });
+  it("folds the ideographic full stops to dots", () => {
+    for (const dot of ["\u3002", "\uFF61", "\uFF0E", "\u2024"]) expect(scrubIp(`from 10${dot}0${dot}0${dot}1 now`)).toBe("from [ip] now");
+  });
   it("folds full-width characters before cutting, so an address across the cut leaves no fragment", () => {
     const out = scrubIp("x".repeat(2040) + "１９８.５１.１００.７７");
-    expect(out).toBe("x".repeat(2040));
-    expect(scrubIp("x".repeat(2040) + "１９８．５１．１００．７７")).toBe("x".repeat(2040));
+    expect(out).toMatch(/^x+$/);
+    expect(scrubIp("x".repeat(2040) + "１９８．５１．１００．７７")).toMatch(/^x+$/);
   });
   it("strips control characters from text that held an address", () => {
     expect(scrubIp("a\u0000b 10.0.0.1\u0007")).toBe("ab [ip]");

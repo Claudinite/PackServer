@@ -189,14 +189,14 @@ export const MAX_ENCODED_ADDRESS = 45 * (2 * MAX_DECODE_LEVELS + 1);
  */
 function cut(text: string): { input: string; folded: string } {
   const long = text.length > MAX_SCRUBBED_LENGTH;
-  let folded = (long ? text.slice(0, MAX_SCRUBBED_LENGTH) : text).normalize("NFKC");
+  let folded = (long ? text.slice(0, MAX_SCRUBBED_LENGTH) : text).normalize("NFKC").replace(/\u3002/g, ".");
   let cutHere = long;
   if (folded.length > MAX_SCRUBBED_LENGTH) {
     folded = folded.slice(0, MAX_SCRUBBED_LENGTH);
     cutHere = true;
   }
   if (!cutHere) return { input: text, folded };
-  const tail = new RegExp(`[0-9a-f:.%]{1,${MAX_ENCODED_ADDRESS}}$`, "i").exec(folded)?.[0];
+  const tail = new RegExp(`[0-9a-fx:.%]{1,${MAX_ENCODED_ADDRESS}}$`, "i").exec(folded)?.[0];
   if (tail !== undefined && /[0-9:.%]/.test(tail)) folded = folded.slice(0, folded.length - tail.length);
   return { input: folded, folded };
 }

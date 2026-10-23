@@ -188,13 +188,15 @@ describe("createShell security headers", () => {
     shell.get("/boom", () => {
       throw new Error("x");
     });
-    for (const path of ["/page", "/data", "/boom", "/missing", "/__selftest"]) {
+    shell.get("/go", () => Response.redirect("https://example.test/next", 302));
+    for (const path of ["/page", "/data", "/boom", "/missing", "/__selftest", "/go"]) {
       const res = await shell.request(path);
       for (const [name, value] of Object.entries(baseSecurityHeaders)) expect(res.headers.get(name), `${path} ${name}`).toBe(value);
       const csp = res.headers.get("content-security-policy") ?? "";
       expect(csp, path).toContain("default-src 'none'");
       expect(csp.includes("nonce-"), path).toBe(path === "/page");
     }
+    expect((await shell.request("/go")).status).toBe(302);
   });
 });
 
