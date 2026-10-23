@@ -15,10 +15,16 @@ status, error code), how long (`duration_ms`, `cpu_ms`, `d1_ms`, `r2_ms`, `kv_ms
 `version_override`, `is_synthetic`). It is written as a `console.log` line (Workers Logs, 7 days)
 and as an Analytics Engine point in `request_outcomes` with `index1 = version_id`, never sampled by
 us. Domain events go to `domain_events` indexed by signal name. Workers Traces run at 5% on read
-paths, 100% on the validator. Invocation logs are off everywhere. The zone's two Logpush jobs
-(cache hits at `sample: 0.1`, misses unsampled; ARCH-REV M6) archive `http_requests` to R2 for 90
-days with IPs truncated to /24 and query strings stripped; the network-level counts REQ-TELEM-001
-and REQ-TELEM-002 promise come from them.
+paths, 100% on the validator. Invocation logs are off everywhere. The zone's three Logpush jobs
+(`http_requests` cache hits at `sample: 0.1`, `http_requests` misses unsampled, ARCH-REV M6;
+`firewall_events`) archive to R2 for 90 days (firewall events 30). A Logpush Transformer (D59)
+rewrites each `http_requests` record before Cloudflare delivers it: `ClientIP` becomes
+`ClientNetwork` (/24 for IPv4, /48 for IPv6) and only the path is selected, never the URI or query;
+the network-level counts REQ-TELEM-001 and REQ-TELEM-002 promise come from the archive. The network
+is a consistent key, not RFC 5952 canonical (`2001:db8:0::/48`), and readers only compare keys; an
+IPv4-mapped address lands in `0:0:0::/48`, harmless while Cloudflare logs IPv4 clients as dotted quads.
+
+An unknown measurement is stored as -1 in its Analytics Engine double (the dataset has no null), so a query must filter `doubleN >= 0` before it sums, averages or takes a percentile.
 
 **Sampling and denial of wallet.** Logs on the read-path Workers are head-sampled at 10x scale
 (0.15), never on write paths; synthetic traffic and anonymous 4xx are logged at low rates. A KV
@@ -58,7 +64,7 @@ Areas and their signals:
 - **github**: `webhook_received`, `webhook_rejected`, `rate_limit_remaining`, `scan_completed`.
 - **email**: `sent`, `failed`. **queue**: `message_processed`, `dlq`, `backlog`.
   **workflow**: `instance_finished`, `wait_rearmed`. **rollup**: `completed`.
-- **audit**: `appended`, `batch_written`, `chain_verified`, `chain_broken`.
+- **audit**: `appended`, `batch_written`, `chain_verified`, `chain_broken`, `head_rebuilt`.
 - **abuse**: `rate_limited`, `turnstile_failed`, `anomaly_hold`, `daily_cap_hit`.
 - **synthetic**: `probe`. **selftest**: `result`. **gate**: `evaluated`. **budget**: `usage`.
   **monitoring**: `heartbeat`, `alert_sent`, `alert_rejected`, `page_test`.

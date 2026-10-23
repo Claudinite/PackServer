@@ -99,12 +99,21 @@ jobs:
     timeout-minutes: 2
     permissions:
       contents: read
+    outputs:
+      burndown: ${{ steps.coverage.outputs.burndown }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: node docs/testing/coverage.mjs --check
+      - id: coverage
+        run: |
+          status=0
+          out=$(node docs/testing/coverage.mjs --check) || status=$?
+          echo "$out"
+          echo "burndown=$(echo "$out" | grep '^burndown:')" >> "$GITHUB_OUTPUT"
+          exit "$status"
 
+  # Each job is billed by the minute, so the legs are as few as keep the push under budget.
   checks:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -122,9 +131,84 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm check
+      - run: pnpm lint
+      - run: node tools/check-rules.mjs && node tools/check-scenarios.mjs && node tools/check-signals.mjs && node tools/check-bindings.mjs && node infra/apply-ids.mjs --check && pnpm db:check
+
+  # The workspace packages, listed from the workspace itself, are dealt round-robin across the
+  # matrix, whose size is the only place the shard count is written.
+  typecheck:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: typecheck this shard's packages
+        env:
+          SHARD: ${{ matrix.shard }}
+          TOTAL: ${{ strategy.job-total }}
+        run: |
+          filters=$(pnpm ls -r --depth -1 --json | node -e '
+            const pkgs = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            const names = pkgs.filter((p) => p.name !== "packserver").map((p) => p.name).sort();
+            const [shard, total] = process.argv.slice(1).map(Number);
+            console.log(names.filter((_, i) => i % total === shard - 1).map((n) => "--filter=" + n).join(" "));
+          ' "$SHARD" "$TOTAL")
+          echo "packages: $filters"
+          [ -n "$filters" ] || { echo "::error::shard $SHARD of $TOTAL has no packages"; exit 1; }
+          pnpm exec turbo run typecheck --only $filters
 
   unit:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: test this shard's packages
+        env:
+          SHARD: ${{ matrix.shard }}
+          TOTAL: ${{ strategy.job-total }}
+        run: |
+          filters=$(pnpm ls -r --depth -1 --json | node -e '
+            const pkgs = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            const names = pkgs.filter((p) => p.name !== "packserver").map((p) => p.name).sort();
+            const [shard, total] = process.argv.slice(1).map(Number);
+            console.log(names.filter((_, i) => i % total === shard - 1).map((n) => "--filter=" + n).join(" "));
+          ' "$SHARD" "$TOTAL")
+          echo "packages: $filters"
+          [ -n "$filters" ] || { echo "::error::shard $SHARD of $TOTAL has no packages"; exit 1; }
+          pnpm exec turbo run test --only $filters
+
+  infra:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
@@ -141,7 +225,6 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec turbo run test
       - run: pnpm test:infra
 
   scenarios:
@@ -165,7 +248,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec vitest run --project scenarios --passWithNoTests --shard=${{ matrix.shard }}/2 --reporter=default --reporter=junit --outputFile.junit=reports/scenarios-${{ matrix.shard }}.xml
+      - run: pnpm exec vitest run --project scenarios --passWithNoTests --shard=${{ matrix.shard }}/${{ strategy.job-total }} --reporter=default --reporter=junit --outputFile.junit=reports/scenarios-${{ matrix.shard }}.xml
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -175,7 +258,7 @@ jobs:
 
   # The one check to require: green when every product job passed or was skipped as docs-only.
   summary:
-    needs: [check, changes, coverage, checks, unit, scenarios]
+    needs: [check, changes, coverage, checks, typecheck, unit, infra, scenarios]
     if: always() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft))
     runs-on: ubuntu-24.04
     timeout-minutes: 2
@@ -186,13 +269,18 @@ jobs:
           RESULTS: ${{ join(needs.*.result, ' ') }}
           START: ${{ needs.changes.outputs.start }}
           ATTEMPT: ${{ github.run_attempt }}
+          BURNDOWN: ${{ needs.coverage.outputs.burndown }}
         run: |
           echo "job results: $RESULTS"
+          echo "$BURNDOWN"
           if [ -n "$START" ]; then
             elapsed=$(( $(date +%s) - START ))
+            echo "start: changes job output (set by the first attempt unless changes re-ran); this is attempt $ATTEMPT"
             echo "elapsed: ${elapsed}s (budget 120s)"
-            # A re-run's start time is stale, so only the first attempt is judged.
-            if [ "$elapsed" -gt 120 ] && [ "$ATTEMPT" = 1 ]; then
+            # Judged on every attempt: a re-run of failed jobs keeps the first attempt's start from the
+            # changes job, so a breach stays red. Only "re-run all jobs", which runs changes again,
+            # clears it, so retry a slow run with re-run all.
+            if [ "$elapsed" -gt 120 ]; then
               echo "::error::push CI took ${elapsed}s, over the 2-minute budget"
               exit 1
             fi

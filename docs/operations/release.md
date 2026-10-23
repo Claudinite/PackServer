@@ -132,11 +132,9 @@ bake, because the percentage then controls only blast radius. The full ladder re
 above 1 request a second. `publish` is all-at-once because it hosts the ScopeCoordinator
 (ARCH-REV M13); `gate.domain.publish_success` and the canary publish are its real evidence.
 
-**Affinity.** `Cloudflare-Workers-Version-Key` pins a client to one version: `publish-action` sends
-its run id, the MCP client its OAuth client id, cn its per-repository key (REQ-CN-012) on the
-`/api/private/*` and `/api/report/*` requests that reach a Worker (every other cn request is a CDN
-fetch that no version serves), and a Transform Rule sets it from the session cookie or client IP
-otherwise.
+**Affinity.** `Cloudflare-Workers-Version-Key` pins a client to one version, and clients do not
+choose it: the edge strips any value a client sends on `registry.claudinite.com` and a Transform
+Rule sets it from the client IP, so affinity is by client IP.
 
 ## The Recorder and the invocation record
 
@@ -279,4 +277,4 @@ opens the canary and self-test applications and is refused by the admin applicat
 `HIT` on `packs.claudinite.com/index/v1/root.json` and on one archive; verify that neither serving
 bucket is listable or reachable except through the custom domain or a Worker; Ariel chooses the
 production D1 location hint at creation in the manual setup step (default `enam`); publish the
-`@packserver-canary` fixtures; confirm the `main` ruleset matches REQ-OPS-013.
+`@packserver-canary` fixtures; confirm the `main` ruleset matches REQ-OPS-013; run `node infra/zone/apply.mjs --env <env> --verify-delivery` once the `http_requests` Logpush jobs have delivered, which reads back the latest object of each and asserts `ClientNetwork` is present, `ClientIP` absent and the rollup's fields non-null (a job with no object yet is reported pending, never as a pass); sanity-check the hits-to-misses record counts: hits are sampled at 1 in 10 and misses are not, so the ratio should be about the true cache hit ratio divided by 10 (a 1:10 sampling skew), and a ratio far from that means a job is mis-filtered or mis-sampled.

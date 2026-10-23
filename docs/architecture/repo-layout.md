@@ -58,7 +58,7 @@ packserver/
 ├── scenarios/                     # integration scenarios, one file per requirement area
 │   └── probe-safe/                # the subset the prober and release pipeline run (tagged)
 ├── infra/                         # everything not in wrangler: zone rules (transform, WAF, cache, rate),
-│                                  #   Access apps, Logpush jobs, R2 buckets + locks + custom domains,
+│                                  #   Access apps, Logpush jobs + transformer, R2 buckets + locks + custom domains,
 │                                  #   D1/KV/Queue/Vectorize creation, Secrets Store budget
 ├── tools/                         # check-scenarios, check-signals, check-migrations, build-n-minus-1, seed-staging
 └── .github/workflows/             # ci.yml, deploy.yml (pre-launch mode), release.yml + rollout.yml +

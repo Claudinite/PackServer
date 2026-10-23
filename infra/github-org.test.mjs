@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ENVIRONMENTS, EXTRA_REPOS, GATE_CHECK, MAIN_CHECKS, MAIN_REPO, ORG, environmentBody, main, rulesetBody } from "./github-org.mjs";
+import { ENVIRONMENTS, EXTRA_REPOS, GATE_CHECK, GATE_WORKFLOW, MAIN_CHECKS, MAIN_REPO, ORG, environmentBody, main, rulesetBody } from "./github-org.mjs";
 
 // An in-memory GitHub: just enough of repos, rulesets and environments to apply and read back.
 function fakeGitHub({ repos = [MAIN_REPO], failRulesetList = false, gate = false, hidePrivate = false, tamper } = {}) {
@@ -67,26 +67,20 @@ const run = async (argv, env, deps) => {
 };
 const ENV = { GH_ADMIN_TOKEN: "tok" };
 
-function ciContexts() {
-  const yml = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
-  const jobs = yml.split(/^jobs:\n/m)[1];
-  const contexts = [];
-  for (const block of jobs.split(/^(?= {2}[A-Za-z0-9_-]+:\n)/m)) {
-    const key = /^ {2}([A-Za-z0-9_-]+):/.exec(block)?.[1];
-    if (!key) continue;
-    const name = /^ {4}name: (.+)$/m.exec(block)?.[1] ?? key;
-    const shards = /^\s+shard: \[([^\]]+)\]/m.exec(block)?.[1];
-    if (shards) for (const v of shards.split(",")) contexts.push(`${name} (${v.trim()})`);
-    else contexts.push(name);
-  }
-  return contexts;
-}
-
 describe("intended state", () => {
-  it("requires only contexts that ci.yml reports", () => {
-    const reported = ciContexts();
-    expect(reported).toEqual(expect.arrayContaining(["scenarios (1)", "scenarios (2)"]));
-    for (const c of MAIN_CHECKS) expect(reported).toContain(c);
+  it("requires only summary, and summary needs every product job in ci.yml", () => {
+    expect(MAIN_CHECKS).toEqual(["summary"]);
+    const yml = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+    const jobs = yml.split(/^jobs:\n/m)[1];
+    const keys = [...jobs.matchAll(/^ {2}([A-Za-z0-9_-]+):\n/gm)].map((m) => m[1]);
+    const needs = /^ {4}needs: \[([^\]]+)\]/m.exec(jobs.slice(jobs.indexOf("  summary:\n")))?.[1].split(",").map((n) => n.trim());
+    expect(needs.sort()).toEqual(keys.filter((k) => k !== "summary").sort());
+  });
+
+  it("names the scenario-gate workflow's job as the context it requires", () => {
+    const yml = readFileSync(new URL("../.github/workflows/scenario-gate.yml", import.meta.url), "utf8");
+    expect(yml.split(/^jobs:\n/m)[1]).toMatch(new RegExp(`^ {2}${GATE_CHECK}:`, "m"));
+    expect(GATE_WORKFLOW).toBe(".github/workflows/scenario-gate.yml");
   });
 
   it("has no bypass actors, no force push, PR-only and no code-owner approval requirement", () => {

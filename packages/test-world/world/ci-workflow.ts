@@ -55,6 +55,8 @@ export interface CiWorkflowOpts {
 
 export interface TokenOptions extends MintOptions {
   claims?: Record<string, unknown>;
+  /** Signed by the right key but issued by someone other than GitHub. */
+  foreignIssuer?: boolean;
 }
 
 export interface Presigned {
@@ -224,7 +226,8 @@ export function createCi(driver: Driver, alias: (name: string) => string) {
               ...(opts.environment ? { environment: opts.environment } : {}),
               ...options.claims,
             };
-            return oidc().mint(claims, options);
+            const { foreignIssuer, ...mint } = options;
+            return oidc().mint(claims, foreignIssuer ? { ...mint, iss: "https://token.example" } : mint);
           },
           async exchange(pack, version, over = {}) {
             const sys = systemPack(pack);

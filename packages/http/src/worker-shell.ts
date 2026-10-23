@@ -1,5 +1,7 @@
 import { Hono, type Env } from "hono";
-import type { Clock } from "@packserver/ports";
+import { createHasher, createTelemetry, type TelemetryKeys, type TelemetryMode } from "@packserver/core/telemetry";
+import type { Clock, Stats } from "@packserver/ports";
+import { recorder } from "./recorder-middleware";
 import { runSelfTest, type SelfTestCheck } from "./selftest-runner";
 import { versionHeader } from "./version";
 
@@ -8,6 +10,12 @@ export interface WorkerShellOptions {
   releaseId: string;
   versionId: string;
   clock: Clock;
+  /** Where the wide event and domain events go; without it the Worker records nothing. */
+  stats?: Stats;
+  /** The keys identifiers are hashed under; a hash whose key is absent is left out of the event. */
+  telemetryKeys?: TelemetryKeys;
+  /** The current `telemetry_mode`, from a per-isolate cache of the KV key. */
+  telemetryMode?: () => Promise<TelemetryMode>;
   checks: () => readonly SelfTestCheck[];
   /** Whether a request may reach the self-test. Everything else answers as an unknown path. */
   selfTestAllowed?: (request: Request) => boolean | Promise<boolean>;
@@ -26,6 +34,22 @@ export function unknownPath(): Response {
 export function createShell<E extends Env = Env>(options: WorkerShellOptions): Hono<E> {
   const app = new Hono<E>();
   app.use(versionHeader(options.releaseId));
+  if (options.stats) {
+    app.use(
+      recorder({
+        clock: options.clock,
+        mode: options.telemetryMode,
+        telemetry: createTelemetry({
+          worker: options.worker,
+          releaseId: options.releaseId,
+          versionId: options.versionId,
+          stats: options.stats,
+          clock: options.clock,
+          hasher: createHasher(options.telemetryKeys ?? {}, options.clock),
+        }),
+      }),
+    );
+  }
   app.notFound(() => unknownPath());
   const selfTest = async (c: { req: { raw: Request; query(name: string): string | undefined } }) => {
     if (!(await (options.selfTestAllowed?.(c.req.raw) ?? false))) return unknownPath();

@@ -26,6 +26,7 @@ describe("aliasing", () => {
     expect(new Aliases("t").alias("acme")).toBe(a.alias("acme"));
     expect(a.alias("acme")).not.toBe(b.alias("acme"));
     expect(a.alias("acme")).toMatch(/^acme-[0-9a-f]{4}$/);
+    expect(new Aliases("t", "run-1").alias("acme")).not.toBe(new Aliases("t", "run-2").alias("acme"));
     expect(a.unalias(`error: ${a.alias("acme")} not found`)).toBe("error: acme not found");
   });
 });

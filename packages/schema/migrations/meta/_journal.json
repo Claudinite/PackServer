@@ -12,8 +12,15 @@
     {
       "idx": 1,
       "version": "6",
-      "when": 1792718658150,
-      "tag": "20261023012418_publishing_trusted_publishers_upload_credentials",
+      "when": 1792714778837,
+      "tag": "20261023001938_audit_recent_activity",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792722034915,
+      "tag": "20261023022034_publishing_trusted_publishers_upload_credentials",
       "breakpoints": true
     }
   ]

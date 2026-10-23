@@ -1,5 +1,6 @@
+import { analyticsStats } from "@packserver/http";
 import {
-  cryptoRng, d1Port, durableObjectsPort, kvPort, queuePort, r2Port, readSecret, statsPort, systemClock, workerRuntime,
+  cryptoRng, d1Port, durableObjectsPort, kvPort, queuePort, r2Port, readSecret, systemClock, workerRuntime,
   type WorkerRuntime,
 } from "@packserver/ports/cloudflare";
 import { GITHUB_OIDC_ISSUER, GITHUB_OIDC_JWKS_URL, OIDC_AUDIENCE } from "@packserver/core/publishing";
@@ -84,7 +85,7 @@ export async function createRuntime(env: Env): Promise<PublishRuntime> {
       clock,
       rng: cryptoRng,
       d1: d1Port(env.DB),
-      stats: statsPort({ request: env.REQUEST_OUTCOMES, domain: env.DOMAIN_EVENTS }),
+      stats: analyticsStats({ request_outcomes: env.REQUEST_OUTCOMES, domain_events: env.DOMAIN_EVENTS }),
       kv: { CACHE_KV: kvPort(env.CACHE_KV) },
       r2: { PACKS_STAGING: r2Port(env.PACKS_STAGING) },
       queues: { NOTIFY_QUEUE: queuePort(env.NOTIFY_QUEUE) },

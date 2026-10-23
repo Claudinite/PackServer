@@ -6,7 +6,7 @@ const MiB = 1024 * 1024;
 
 /** The registration of IT-PUB-003: `acme/packs`, environment `release`, the default ref patterns and event set. */
 async function registerGcp(world: World, pack = "@acme/gcp") {
-  const repo = world.ci.repo("acme/packs", { id: 500, ownerId: 1001 });
+  const repo = world.ci.repo("acme/packs", { id: 5150, ownerId: 1001 });
   await world.ci.seedTrustedPublisher({ pack, repo, workflow: WORKFLOW, environment: "release", path: "packs/gcp" });
   return repo;
 }
@@ -44,7 +44,7 @@ scenario("IT-PUB-004 Fork, pull_request*, workflow_run, off-pattern or mismatche
   const fork = world.ci.repo("mallory/packs", { id: 900, ownerId: 9001 });
   const run = (over: Parameters<typeof world.ci.workflow>[0]) => world.ci.workflow({ environment: "release", ref: "refs/tags/gcp/1.0.0", ...over });
 
-  await expect(run({ repo: fork, forkOf: repo }).exchange("@acme/gcp", "1.0.0")).toBeRefusedWithClaimDiff({ repository_id: "500", repository_owner_id: "1001" });
+  await expect(run({ repo: fork, forkOf: repo }).exchange("@acme/gcp", "1.0.0")).toBeRefusedWithClaimDiff({ repository_id: "5150", repository_owner_id: "1001" });
   await expect(run({ repo, event: "pull_request" }).exchange("@acme/gcp", "1.0.0")).toBeRefusedWithClaimDiff({ event_name: ["push", "release", "workflow_dispatch"] });
   await expect(run({ repo, event: "pull_request_target" }).exchange("@acme/gcp", "1.0.0")).toBeRefusedWithClaimDiff({ event_name: ["push", "release", "workflow_dispatch"] });
   await expect(run({ repo, event: "workflow_run" }).exchange("@acme/gcp", "1.0.0")).toBeRefusedWithClaimDiff({ event_name: ["push", "release", "workflow_dispatch"] });
@@ -69,7 +69,7 @@ scenario("IT-PUB-005 A trusted publisher survives a rename but not a transfer or
   await expect(exchange(repo, "1.0.1")).toBeRefusedWithClaimDiff({ repository_owner_id: "1001" });
 
   const recreated = world.ci.repo("acme/packs", { id: 501, ownerId: 1001 });
-  await expect(exchange(recreated, "1.0.2")).toBeRefusedWithClaimDiff({ repository_id: "500" });
+  await expect(exchange(recreated, "1.0.2")).toBeRefusedWithClaimDiff({ repository_id: "5150" });
 });
 
 scenario("IT-PUB-029 An invalid OIDC token is refused regardless of its claims; JWKS rotation is followed", async (world) => {
@@ -79,7 +79,7 @@ scenario("IT-PUB-029 An invalid OIDC token is refused regardless of its claims; 
   const nowS = Math.floor((await world.clock.now()).getTime() / 1000);
 
   await expect(exchangeWith(await run.oidcToken({ aud: "evil.example" }))).toBeRefused("oidc.invalid");
-  await expect(exchangeWith(await run.oidcToken({ iss: "https://token.example" }))).toBeRefused("oidc.invalid");
+  await expect(exchangeWith(await run.oidcToken({ foreignIssuer: true }))).toBeRefused("oidc.invalid");
   await expect(exchangeWith(await run.oidcToken({ iat: nowS - 900, nbf: nowS - 900, exp: nowS - 600 }))).toBeRefused("oidc.invalid");
   await expect(exchangeWith(await run.oidcToken({ nbf: nowS + 3600 }))).toBeRefused("oidc.invalid");
   await expect(exchangeWith(await run.oidcToken({ alg: "none" }))).toBeRefused("oidc.invalid");
@@ -128,16 +128,14 @@ scenario("IT-PUB-030 The upload credential is bound, single-use, size-capped and
   const fifth = accepted(await run.exchange("@acme/gcp", "1.0.3"));
   const multipart = accepted(await fifth.presign(MiB));
   await expect(world.ci.startMultipart(multipart)).toBeRefused("signature");
-});
 
-scenario("IT-PUB-030 A scope that holds 49 MiB in staging is refused a 2 MiB draft before presigning", async (world) => {
-  const repo = world.ci.repo("big/packs", { id: 700, ownerId: 7001 });
-  await world.ci.seedTrustedPublisher({ pack: "@big/pack", repo, workflow: WORKFLOW, environment: "release", path: "packs/pack" });
-  const run = world.ci.workflow({ repo, environment: "release", ref: "refs/tags/pack/1.0.0" });
+  const big = world.ci.repo("big/packs", { id: 700, ownerId: 7001 });
+  await world.ci.seedTrustedPublisher({ pack: "@big/pack", repo: big, workflow: WORKFLOW, environment: "release", path: "packs/pack" });
+  const bigRun = world.ci.workflow({ repo: big, environment: "release", ref: "refs/tags/pack/1.0.0" });
 
-  await world.ci.staging.fill(run, "@big/pack", 49);
+  await world.ci.staging.fill(bigRun, "@big/pack", 49);
 
-  const over = accepted(await run.exchange("@big/pack", "9.0.0"));
+  const over = accepted(await bigRun.exchange("@big/pack", "9.0.0"));
   await expect(over.presign(2 * MiB)).toBeRefused("quota");
   expect(accepted(await over.upload(archiveBytes(MiB)))).toMatchObject({ sizeBytes: MiB });
 });
