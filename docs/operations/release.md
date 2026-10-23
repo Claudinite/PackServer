@@ -132,11 +132,9 @@ bake, because the percentage then controls only blast radius. The full ladder re
 above 1 request a second. `publish` is all-at-once because it hosts the ScopeCoordinator
 (ARCH-REV M13); `gate.domain.publish_success` and the canary publish are its real evidence.
 
-**Affinity.** `Cloudflare-Workers-Version-Key` pins a client to one version: `publish-action` sends
-its run id, the MCP client its OAuth client id, cn its per-repository key (REQ-CN-012) on the
-`/api/private/*` and `/api/report/*` requests that reach a Worker (every other cn request is a CDN
-fetch that no version serves), and a Transform Rule sets it from the session cookie or client IP
-otherwise.
+**Affinity.** `Cloudflare-Workers-Version-Key` pins a client to one version, and clients do not
+choose it: the edge strips any value a client sends on `registry.claudinite.com` and a Transform
+Rule sets it from the client IP, so affinity is by client IP.
 
 ## The Recorder and the invocation record
 

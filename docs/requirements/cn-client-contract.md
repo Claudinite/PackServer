@@ -396,13 +396,12 @@ shared fixture corpus with expected outputs (D55).
 - source: Ariel, 2026-10-22 (A3: what cn sends with its fetches and nothing else); docs/decisions.md; REQ-TELEM-008; SEC-REV L8; ARCH-REV L6
 - coverage: scenario+contract (the Recorder proves what the engine fake sends and nothing else; the real engine's requests are proven by the Claudinite repository's contract suite)
 
-Every cn request to PackServer carries a `User-Agent` of `cn/<version>`; requests to
-`registry.claudinite.com` (private reads, mismatch reports) also carry a
-`Cloudflare-Workers-Version-Key` holding a random 128-bit value cn generates at first use and
-stores in the repository's Claudinite settings, derivable from nothing about the repository; the
-CDN host runs no Worker, so the key is pointless there. cn reports a hash or signature mismatch it
+Every cn request to PackServer carries a `User-Agent` of `cn/<version>`. cn sends no
+`Cloudflare-Workers-Version-Key`: the edge strips any client-supplied value on
+`registry.claudinite.com` and sets it from the client IP, so clients do not choose their version
+bucket. cn reports a hash or signature mismatch it
 observes to `POST /api/report/hash-mismatch` with the pack, version, expected and observed hashes.
-cn sends nothing outside its fetches, and the engine's privacy text names these three things, the
+cn sends nothing outside its fetches, and the engine's privacy text names these two things, the
 private-pack OIDC exchange, and PackServer's retention (REQ-TELEM-008).
 
 ## REQ-CN-013 Cutover from ClaudinitePacks

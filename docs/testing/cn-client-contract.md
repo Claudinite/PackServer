@@ -189,7 +189,7 @@ land. The end-to-end paths are [JT-001](journeys.md), [JT-005](journeys.md) and
 - **Covers:** REQ-CN-012
 - **Runs:** nightly
 - **Action:** a member adopts, runs the update task and starts a session; the world serves one archive with a wrong hash.
-- **Assert:** every request to the registry carries `User-Agent: cn/<version>` and, on `registry.claudinite.com`, a `Cloudflare-Workers-Version-Key` that is stable per repository, stored in the repository's Claudinite settings and not derivable to the repository name; the mismatch is posted to `/api/report/hash-mismatch` with pack, version, expected and observed hashes; no other outbound request from cn exists (recorder); the engine's privacy text names the three things, the OIDC exchange and the 90-day retention (a string assertion on the engine's docs).
+- **Assert:** every request to the registry carries `User-Agent: cn/<version>` and none carries a `Cloudflare-Workers-Version-Key` (the edge sets it from the client IP); the mismatch is posted to `/api/report/hash-mismatch` with pack, version, expected and observed hashes; no other outbound request from cn exists (recorder); the engine's privacy text names the two things, the OIDC exchange and the 90-day retention (a string assertion on the engine's docs).
 
 ### IT-CN-014 Nothing is fetched at session time
 - **Covers:** REQ-CN-014
