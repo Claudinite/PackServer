@@ -4,7 +4,7 @@ import { WorldFakes } from "../fakes/compose";
 import { createWorldHarness, testWorkerName, type HarnessOptions, type WorldHarness } from "../harness";
 import { InfrastructureError } from "../world/errors";
 import { filterInvocations, invocationsFromLogs, type InvocationFilter, type InvocationView } from "../world/recorder";
-import type { ApiRequest, ApiResponse, Capability, Driver, McpCredentials, UiActions } from "./driver";
+import type { ApiRequest, ApiResponse, Capability, Driver, McpCredentials, SeedStorage, UiActions } from "./driver";
 import { McpClient } from "./mcp";
 import { encodeBody, toApiResponse, VersionObserver } from "./observe";
 
@@ -26,7 +26,7 @@ const MIGRATION_BINDING = "DB";
  */
 export class InProcessDriver implements Driver {
   readonly kind = "inprocess" as const;
-  static readonly CAPABILITIES: readonly Capability[] = ["fakes", "clock", "reset", "recorder", "mcp", "state"];
+  static readonly CAPABILITIES: readonly Capability[] = ["fakes", "clock", "reset", "recorder", "mcp", "storage"];
   readonly capabilities: ReadonlySet<Capability> = new Set(InProcessDriver.CAPABILITIES);
   ui?: UiActions;
   /** Where the running harness listens, for a browser to reach it. */
@@ -65,15 +65,10 @@ export class InProcessDriver implements Driver {
     },
   };
 
-  /** Every Worker's `env.test` points at one registry database, so any Worker that binds it can read it. */
-  state = {
-    d1: async (sql: string, params: unknown[] = []): Promise<Array<Record<string, unknown>>> => {
-      const owner = this.harness.workers.find((w) => MIGRATION_BINDING in TRUST_TABLE[w].d1);
-      if (!owner) throw new InfrastructureError("no booted Worker binds the registry database");
-      const env = (await this.harness.server.getWorker(testWorkerName(owner)).getEnv()) as { DB: { prepare(sql: string): { bind(...values: unknown[]): { all(): Promise<{ results: unknown[] }> } } } };
-      return (await env.DB.prepare(sql).bind(...params).all()).results as Array<Record<string, unknown>>;
-    },
-  };
+  async storage(): Promise<SeedStorage> {
+    const env = (await this.harness.server.getWorker(testWorkerName("web")).getEnv()) as { DB: SeedStorage["db"]; PACKS_PUBLIC: SeedStorage["packsPublic"]; PACKS_PRIVATE: SeedStorage["packsPrivate"] };
+    return { db: env.DB, packsPublic: env.PACKS_PUBLIC, packsPrivate: env.PACKS_PRIVATE };
+  }
 
   mcp = { client: async (credentials?: McpCredentials) => new McpClient((req) => this.http.request(req), credentials) };
 

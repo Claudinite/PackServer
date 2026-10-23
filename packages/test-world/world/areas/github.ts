@@ -110,9 +110,11 @@ export function createGitHub(driver: Driver): GitHubModule {
     if (!driver.fakes) throw new InfrastructureError(`the ${driver.kind} driver has no fake GitHub`);
     return driver.fakes.githubApp;
   };
-  const state = () => {
-    if (!driver.state) throw new InfrastructureError(`the ${driver.kind} driver cannot read stored state`);
-    return driver.state;
+  type Reader = { prepare(sql: string): { bind(...values: unknown[]): { all(): Promise<{ results: unknown[] }> } } };
+  const query = async (sql: string, params: unknown[]): Promise<Array<Record<string, unknown>>> => {
+    if (!driver.storage) throw new InfrastructureError(`the ${driver.kind} driver cannot read stored state`);
+    const db = (await driver.storage()).db as unknown as Reader;
+    return (await db.prepare(sql).bind(...params).all()).results as Array<Record<string, unknown>>;
   };
   let installations = 100;
 
@@ -190,11 +192,11 @@ export function createGitHub(driver: Driver): GitHubModule {
       },
       webhook: (event, o = {}) => deliver(event, o.payload ?? defaultPayload(event, o), { ...(o.signature ? { signature: o.signature } : {}), ...(o.deliveryId ? { deliveryId: o.deliveryId } : {}) }),
       async installation(id) {
-        const rows = await state().d1("select * from github_installations where installation_id = ?", [id]);
+        const rows = await query("select * from github_installations where installation_id = ?", [id]);
         return (rows[0] as unknown as InstallationRow | undefined) ?? null;
       },
       async issue(repo, number) {
-        const rows = await state().d1("select repository, html_url, state from github_issue_states where repository = ? and issue_number = ?", [repo, number]);
+        const rows = await query("select repository, html_url, state from github_issue_states where repository = ? and issue_number = ?", [repo, number]);
         return (rows[0] as unknown as IssueRow | undefined) ?? null;
       },
       async fetchTree({ repository, commit, path }) {

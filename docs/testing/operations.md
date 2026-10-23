@@ -103,9 +103,9 @@ is the only gate before every Worker goes to 100% (Ariel B7 2026-10-22).
 ### IT-TELEM-002 A public download counts once per network, version and day; a private one once per principal
 - **Covers:** REQ-TELEM-002
 - **Runs:** push
-- **Action:** public downloads of one version from 198.51.100.7 five times and from 198.51.100.9 once today, and from 198.51.100.7 once tomorrow, recorded in the fake Logpush archive; one private principal downloads another version 5 times today; read the pack pages.
+- **Action:** public downloads of one version from 198.51.100.7 five times and from 198.51.100.9 once today, and from 198.51.100.7 once tomorrow, and from 2001:db8::1 once and from 2001:db8:0:0:5::9 once today, recorded in the fake Logpush archive; one private principal downloads another version 5 times today; read the pack pages.
 - **Faked:** clock, stats sink, Logpush archive (post-Transformer records).
-- **Assert:** after the rollup the public version shows 1 for today (one /24 network) and 1 for tomorrow; the private version shows 1 for today; the pages say "about N fetches" and show no repository count from fetches.
+- **Assert:** after the rollup the public version shows 2 for today (one /24 network and one /48 network, the two IPv6 addresses counting once) and 1 for tomorrow; the private version shows 1 for today; the pages say "about N fetches" and show no repository count from fetches.
 
 ### IT-TELEM-006 Telemetry never stores raw IPs
 - **Covers:** REQ-TELEM-006
