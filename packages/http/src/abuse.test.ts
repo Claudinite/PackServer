@@ -1,6 +1,6 @@
 import { Hono, type Context } from "hono";
 import { describe, expect, it } from "vitest";
-import { createFakePorts, FakeRateLimit, TURNSTILE_PASS_TOKEN } from "@packserver/ports/fakes";
+import { createFakePorts, FakeClock, FakeRateLimit, TURNSTILE_PASS_TOKEN } from "@packserver/ports/fakes";
 import { csrf, csrfToken, idempotency, rateLimit, turnstile, type TurnstileVariables } from "./index";
 
 const ORIGIN = "https://registry.example";
@@ -256,5 +256,16 @@ describe("IT-ABUSE-002 Turnstile middleware", () => {
     };
     const res = await submit({ "cf-turnstile-response": TURNSTILE_PASS_TOKEN });
     expect(await res.json()).toEqual({ humanCheck: "fallback" });
+  });
+});
+
+describe("consume", () => {
+  it("spends the cost against one key and refuses once the limit cannot cover it", async () => {
+    const { consume } = await import("./ratelimit");
+    const limiter = new FakeRateLimit(new FakeClock(), 12, 60_000);
+    expect(await consume(limiter, "k", 6)).toBe(true);
+    expect(await consume(limiter, "k", 6)).toBe(true);
+    expect(await consume(limiter, "k", 6)).toBe(false);
+    expect(await consume(limiter, "other", 6)).toBe(true);
   });
 });

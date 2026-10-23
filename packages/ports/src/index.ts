@@ -1,4 +1,5 @@
 export * from "./ports";
+export * from "./clock";
 export * from "./hash";
 export * from "./normalize";
 export * from "./classification";

@@ -72,7 +72,10 @@ describe("manifest", () => {
     expect(m.name).toBe("Claudinite Packs");
     expect(m.hook_attributes.url).toBe("https://registry.claudinite.com/hooks/github");
     expect(m.redirect_url).toBe("http://127.0.0.1:5555/callback");
-    expect(m.callback_urls).toEqual(["https://registry.claudinite.com/api/auth/github/callback"]);
+    expect(m.callback_urls).toEqual([
+      "https://registry.claudinite.com/api/auth/github/callback",
+      "https://registry-canary.claudinite.com/api/auth/github/callback",
+    ]);
     expect(m.public).toBe(true);
     expect(m.request_oauth_on_install).toBe(true);
     expect(m.default_events).toEqual(["installation", "installation_repositories", "issues"]);
