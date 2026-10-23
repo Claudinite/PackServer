@@ -1,6 +1,5 @@
 import type { RulesVersion } from "@packserver/rules";
-import type { Tree } from "../canonical/index.ts";
-import { lineCount, skillsOf, textAt, tokensOf } from "./measure.ts";
+import { lineCount, tokensOf, type PackIndex } from "./measure.ts";
 import type { Outcome } from "./types.ts";
 
 const ratioBetween = (value: number, full: number, zero: number): number =>
@@ -9,14 +8,14 @@ const ratioBetween = (value: number, full: number, zero: number): number =>
 const normalise = (block: string): string => block.replace(/\s+/g, " ").trim().toLowerCase();
 
 /** One point lost per repeated paragraph. */
-export function contextCost(tree: Tree, score: RulesVersion["score"]): Outcome[] {
+export function contextCost(pack: PackIndex, score: RulesVersion["score"]): Outcome[] {
   const t = score.thresholds;
   const duplicateMax = score.rules.find((r) => r.id === "context-cost.duplicate-text")!.max;
-  const skills = skillsOf(tree);
+  const skills = pack.skills;
   const cpt = t.chars_per_token;
 
   const loaded: { file: string; tokens: number }[] = [];
-  const rules = textAt(tree, "RULES.md");
+  const rules = pack.text("RULES.md");
   if (rules !== null) loaded.push({ file: "RULES.md", tokens: tokensOf(rules, cpt) });
   for (const s of skills) loaded.push({ file: s.path, tokens: tokensOf(`${s.name ?? ""} ${s.description ?? ""}`, cpt) });
   const always = loaded.reduce((n, l) => n + l.tokens, 0);

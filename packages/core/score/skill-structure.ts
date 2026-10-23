@@ -1,21 +1,56 @@
 import type { RulesVersion } from "@packserver/rules";
-import { readFile, type Tree } from "../canonical/index.ts";
 import type { SkillDoc } from "./frontmatter.ts";
-import { lineCount, manifestOf, relativeLinks, resolveRelative, skillsOf, textAt } from "./measure.ts";
+import { lineCount, proseOf, relativeLinks, resolveRelative, type PackIndex } from "./measure.ts";
 import type { Outcome } from "./types.ts";
+
+/** A detector that names no path pattern and no text pattern detects nothing. */
+function hasDetector(d: unknown): boolean {
+  if (d === null || typeof d !== "object") return false;
+  const { paths, text } = d as { paths?: unknown; text?: unknown };
+  return (typeof paths === "string" && paths !== "") || (text !== null && typeof text === "object") || (typeof text === "string" && text !== "");
+}
 
 type Bad = { file: string | null; detail?: string } | null;
 
-const TRIGGER = /\b(when|whenever|before|after|if|while|use for)\b/i;
+const TRIGGER = /\b(when|whenever|before|after|if|while|use for|loaded for|for any)\b/i;
 const PERSON = /\b(you|your|we|our|my|i|i'm|i'll|me)\b/i;
 const MONTH = "(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\.?";
 const DATED = new RegExp(`\\b(?:before|after|until|as of|since|starting)\\s+(?:${MONTH}\\s+)?(?:\\d{1,2},?\\s+)?20\\d\\d\\b`, "i");
-const WINDOWS = /[A-Za-z]:\\|[\w.-]+\\[\w.-]+\.\w{1,5}\b/;
-const SCRIPT = /(?:^|[\s`(])((?:[\w.~-]*\/)*[\w.-]+\.(?:sh|bash|py|ps1)|(?:[\w.~-]*\/)*scripts\/[\w./-]*[\w-]+\.(?:mjs|js))(?=$|[\s`),:;])/g;
+const FORCE_LOAD_KEY = /^\s*force-load-on-[a-z-]+\s*:/m;
+const DRIVE_PATH = /^[A-Za-z]:\\/;
+const BACKSLASH_FILE = /^[\w.-]+\\[\w.-]+\.\w{1,5}$/;
+const SCRIPT_NAME = /^[\w-][\w.-]*\.(?:sh|bash|py|ps1)$/;
+const JS_SCRIPT_NAME = /^[\w-][\w.-]*\.(?:mjs|js)$/;
 const EXECUTABLE_EXT = /\.(sh|bash|py)$/;
+const LEADING = "(\"'<[{";
+const TRAILING = ")\"'>]},.;:";
 
-/** Prose with fenced code removed, so commands and samples are not read as wording. */
-const prose = (text: string): string => text.replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[ \t]*$/gm, "");
+function trimEdges(t: string): string {
+  let a = 0;
+  let b = t.length;
+  while (a < b && LEADING.includes(t[a]!)) a++;
+  while (b > a && TRAILING.includes(t[b - 1]!)) b--;
+  return t.slice(a, b);
+}
+
+/** Splits on whitespace and backticks, then trims surrounding punctuation; every token costs its own length. */
+const tokensIn = (text: string): string[] => text.split(/[\s`]+/).map(trimEdges).filter(Boolean);
+
+function windowsPathIn(text: string): boolean {
+  return tokensIn(text).some((t) => DRIVE_PATH.test(t) || BACKSLASH_FILE.test(t));
+}
+
+/** Script paths a skill body names: shell and Python anywhere, JS only under a `scripts` directory. */
+function scriptRefs(body: string): string[] {
+  const out: string[] = [];
+  for (const t of new Set(tokensIn(body))) {
+    if (t.includes("://") || t.includes("\\")) continue;
+    const segments = t.split("/");
+    const last = segments[segments.length - 1]!;
+    if (SCRIPT_NAME.test(last) || (segments.includes("scripts") && JS_SCRIPT_NAME.test(last))) out.push(t);
+  }
+  return out;
+}
 
 function share(id: string, skills: SkillDoc[], bad: (s: SkillDoc) => Bad | Bad[]): Outcome {
   const violations: { file: string | null; detail?: string }[] = [];
@@ -28,14 +63,19 @@ function share(id: string, skills: SkillDoc[], bad: (s: SkillDoc) => Bad | Bad[]
   return { id, ratio: skills.length === 0 ? 1 : (skills.length - failing) / skills.length, violations };
 }
 
-export function skillStructure(tree: Tree, score: RulesVersion["score"]): Outcome[] {
+export function skillStructure(pack: PackIndex, score: RulesVersion["score"]): Outcome[] {
   const t = score.thresholds;
-  const skills = skillsOf(tree);
-  const manifest = manifestOf(tree);
-  const detector = manifest?.relevanceDetector != null && manifest.relevanceDetector !== false;
+  const skills = pack.skills;
+  const detector = hasDetector(pack.manifest?.relevanceDetector);
+  const proseCache = new Map<string, string>();
+  const proseAt = (path: string): string => {
+    let p = proseCache.get(path);
+    if (p === undefined) proseCache.set(path, (p = proseOf(pack.text(path) ?? "")));
+    return p;
+  };
   const at = (s: SkillDoc, detail: string): Bad => ({ file: s.path, detail });
 
-  const ownFiles = (s: SkillDoc) => tree.files.filter((f) => f.path.startsWith(`${s.dir}/`) && /\.(md|markdown)$/i.test(f.path));
+  const ownFiles = (s: SkillDoc) => (pack.bySkillDir.get(s.dir) ?? []).filter((f) => /\.(md|markdown)$/i.test(f.path));
 
   return [
     share("skill-structure.name", skills, (s) => {
@@ -55,7 +95,7 @@ export function skillStructure(tree: Tree, score: RulesVersion["score"]): Outcom
       return words >= t.description_min_words && TRIGGER.test(s.description!) ? null : at(s, "description does not say what the skill does and when to use it");
     }),
     share("skill-structure.reachable", skills, (s) => {
-      if (detector || /force-?load|forced/i.test(s.frontmatter) || (s.description && TRIGGER.test(s.description))) return null;
+      if (detector || FORCE_LOAD_KEY.test(s.frontmatter) || (s.description && TRIGGER.test(s.description))) return null;
       return at(s, "nothing reaches this skill unless it is named");
     }),
     share("skill-structure.reference-depth", skills, (s) => {
@@ -63,9 +103,9 @@ export function skillStructure(tree: Tree, score: RulesVersion["score"]): Outcom
       for (const target of new Set(relativeLinks(s.body))) {
         const path = resolveRelative(s.dir, target);
         if (path === null || path === s.path || !/\.(md|markdown)$/i.test(path)) continue;
-        const text = textAt(tree, path);
+        const text = pack.text(path);
         if (text === null) continue;
-        const onward = relativeLinks(text).map((l) => resolveRelative(path.slice(0, path.lastIndexOf("/")), l)).filter((p): p is string => p !== null && p !== path && p !== s.path && readFile(tree, p) !== undefined);
+        const onward = relativeLinks(text).map((l) => resolveRelative(path.slice(0, path.lastIndexOf("/")), l)).filter((p): p is string => p !== null && p !== path && p !== s.path && pack.byPath.has(p));
         if (onward.length > 0) bad.push({ file: path, detail: `links onward to ${onward[0]}` });
       }
       return bad;
@@ -75,7 +115,7 @@ export function skillStructure(tree: Tree, score: RulesVersion["score"]): Outcom
       for (const target of new Set(relativeLinks(s.body))) {
         const path = resolveRelative(s.dir, target);
         if (path === null || path === s.path || !/\.(md|markdown)$/i.test(path)) continue;
-        const text = textAt(tree, path);
+        const text = pack.text(path);
         if (text === null || lineCount(text) <= t.reference_toc_min_lines) continue;
         const head = text.split("\n").slice(0, 40).join("\n");
         if (!/^#{1,6}\s*(table of )?contents\b/im.test(head)) bad.push({ file: path, detail: `${lineCount(text)} lines with no table of contents` });
@@ -83,28 +123,24 @@ export function skillStructure(tree: Tree, score: RulesVersion["score"]): Outcom
       return bad;
     }),
     share("skill-structure.windows-paths", skills, (s) => {
-      const hit = ownFiles(s).find((f) => WINDOWS.test(prose(textAt(tree, f.path) ?? "")));
+      const hit = ownFiles(s).find((f) => windowsPathIn(proseAt(f.path)));
       return hit ? { file: hit.path, detail: "a backslash path" } : null;
     }),
     share("skill-structure.time-sensitive", skills, (s) => {
       for (const f of ownFiles(s)) {
-        const m = DATED.exec(prose(textAt(tree, f.path) ?? ""));
+        const m = DATED.exec(proseAt(f.path));
         if (m) return { file: f.path, detail: `"${m[0]}"` };
       }
       return null;
     }),
     share("skill-structure.scripts", skills, (s) => {
       const bad: Bad[] = [];
-      const seen = new Set<string>();
-      for (const m of s.body.matchAll(SCRIPT)) {
-        const ref = m[1]!;
-        if (seen.has(ref)) continue;
-        seen.add(ref);
+      for (const ref of scriptRefs(s.body)) {
         if (ref.startsWith("/") || ref.startsWith("~")) {
           bad.push(at(s, `${ref} is not a relative path`));
           continue;
         }
-        const found = [resolveRelative(s.dir, ref), resolveRelative("", ref)].map((p) => (p === null ? undefined : readFile(tree, p))).find((f) => f !== undefined);
+        const found = [resolveRelative(s.dir, ref), resolveRelative("", ref)].map((p) => (p === null ? undefined : pack.byPath.get(p))).find((f) => f !== undefined);
         if (!found) bad.push(at(s, `${ref} is not in the pack`));
         else if (EXECUTABLE_EXT.test(ref) && !found.executable) bad.push({ file: found.path, detail: "not executable" });
       }

@@ -34,6 +34,7 @@ const score = z.object({
   markers: z.object({ no_public_repo: z.string() }),
   thresholds: z.object({
     chars_per_token: z.number().positive(),
+    chars_per_token_unit: z.literal("utf16-code-units"),
     always_loaded_tokens: z.object({ full: z.number(), zero: z.number() }),
     skill_body_lines: z.object({ full: z.number(), zero: z.number() }),
     skill_body_tokens_max: z.number(),
@@ -44,7 +45,15 @@ const score = z.object({
     description_min_words: z.number(),
     reference_toc_min_lines: z.number(),
     checks_neutral_ratio: z.number().min(0).max(1),
-    footprint_costs: z.record(z.string(), z.number()),
+    footprint_costs: z.object({
+      guard: z.number().nonnegative(),
+      "coded-check": z.number().nonnegative(),
+      task: z.number().nonnegative(),
+      "task:opens-pr": z.number().nonnegative(),
+      "task:agentic-phase": z.number().nonnegative(),
+      "env-setup": z.number().nonnegative(),
+      "github-action": z.number().nonnegative(),
+    }),
   }),
   rules: z.array(
     z.object({

@@ -35,6 +35,8 @@ export function input(files: Parameters<typeof treeOf>[0], over: Partial<ScoreIn
 
 export const skill = (name: string, description: string, body = "Do the thing.\n", extra = "") => `---\nname: ${name}\ndescription: ${description}\n${extra}---\n\n${body}`;
 
+export const declared = (...ids: string[]) => JSON.stringify(ids.map((id) => ({ id, on_fail: "block", failureMessage: `${id} failed` })));
+
 export const GOOD_DESCRIPTION = "Cuts a commit with one concern. Use before any git commit.";
 
 /** A pack that earns everything but what its provenance and capabilities cost. */
@@ -42,7 +44,7 @@ export function cleanFiles(extra: Record<string, string> = {}): Record<string, s
   return {
     "pack.json": JSON.stringify({ version: "1.0.0", minEngineVersion: "1.61001.1" }),
     "RULES.md": "# Rules\n\n- Prefer small changes.\n",
-    "declared-checks.json": JSON.stringify([{ id: "a" }]),
+    "declared-checks.json": declared("a"),
     "skills/commit/SKILL.md": skill("commit", GOOD_DESCRIPTION),
     ...extra,
   };

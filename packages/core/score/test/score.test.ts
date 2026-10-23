@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadRules } from "@packserver/rules";
 import { scorePack } from "../index.ts";
-import { cleanFiles, GOOD_DESCRIPTION, input, readPackDir, RULES_VERSION, skill, TRUSTED, UPLOAD } from "./helpers.ts";
+import { cleanFiles, declared, GOOD_DESCRIPTION, input, readPackDir, RULES_VERSION, skill, TRUSTED, UPLOAD } from "./helpers.ts";
 
 const score = loadRules(RULES_VERSION).score;
 const lostOf = (r: ReturnType<typeof scorePack>, rule: string) => r.losses.filter((l) => l.rule === rule);
@@ -162,7 +162,7 @@ describe("skill structure", () => {
     expect(rulesOf(only("", bare)).sort()).toEqual(["skill-structure.description-what-when", "skill-structure.reachable"]);
     const forced = skill("commit", "Writes commit messages for the repository carefully", "Body\n", "metadata:\n  force-load-on-tool-calls:\n    - x\n");
     expect(rulesOf(only("", forced))).toEqual(["skill-structure.description-what-when"]);
-    const detector = scorePack(input(cleanFiles({ "pack.json": JSON.stringify({ version: "1.0.0", minEngineVersion: "1.61001.1", relevanceDetector: { files: ["x"] } }), "skills/commit/SKILL.md": bare })));
+    const detector = scorePack(input(cleanFiles({ "pack.json": JSON.stringify({ version: "1.0.0", minEngineVersion: "1.61001.1", relevanceDetector: { about: "x", paths: "^x$" } }), "skills/commit/SKILL.md": bare })));
     expect(rulesOf(detector.losses)).toEqual(["skill-structure.description-what-when"]);
   });
   it("reads a folded description", () => {
@@ -202,7 +202,7 @@ describe("skill structure", () => {
 
 describe("checks", () => {
   it("scores the declared share of declared plus coded", () => {
-    const r = scorePack(input(cleanFiles({ "declared-checks.json": JSON.stringify([{ id: "a" }, { id: "b" }, { id: "c" }]), "checks/one.go": "package a\n" })));
+    const r = scorePack(input(cleanFiles({ "declared-checks.json": declared("a", "b", "c"), "checks/one.go": "package a\n" })));
     expect(pointsOf(r, "checks.declared-share")).toBe(15);
     expect(lostOf(r, "checks.declared-share").map((l) => l.file)).toEqual(["checks/one.go"]);
   });
@@ -263,26 +263,97 @@ describe("copies of canon packs (IT-SCORE-008, registry half)", () => {
   const packsDir = new URL("./canon", import.meta.url).pathname;
   const names = readdirSync(packsDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort();
 
-  it("finds the canon packs", () => {
-    expect(names).toEqual(["html", "jwt", "node", "public-website"]);
+  // These are the scores of the trimmed copies in ./canon, not of the canon packs themselves: the
+  // node copy has a shortened RULES.md and lacks one check, and public-website lacks its files
+  // outside RULES.md, skills and checks. They are the expected outputs a port must reproduce.
+  const pinned: Record<string, { total: number; parts: number[]; losses: [string, string | null, number][] }> = {
+    html: { total: 90, parts: [25, 25, 10, 15, 15], losses: [["checks.declared-share", null, 10]] },
+    jwt: { total: 100, parts: [25, 25, 20, 15, 15], losses: [] },
+    node: { total: 89, parts: [24, 25, 10, 15, 15], losses: [["context-cost.always-loaded", "RULES.md", 1], ["checks.declared-share", "checks/earn_each_dependency.go", 10]] },
+    "public-website": { total: 80, parts: [25, 25, 0, 15, 15], losses: [["checks.declared-share", "checks/version_stamp_matches_package.go", 20]] },
+  };
+
+  it("finds exactly the pinned copies", () => {
+    expect(names).toEqual(Object.keys(pinned).sort());
   });
 
   for (const name of names) {
-    it(`${name} scores deterministically with whole-point losses that add up`, () => {
+    it(`${name} scores its pinned total, parts and losses, deterministically`, () => {
       const tree = readPackDir(join(packsDir, name));
       const make = () => scorePack({ tree, capabilities: [], provenance: TRUSTED, linkedPublicRepository: true, publishedAdvisory: false, rulesVersion: RULES_VERSION });
       const a = make();
       expect(make()).toEqual(a);
-      expect(Number.isInteger(a.total)).toBe(true);
-      expect(a.total).toBeGreaterThanOrEqual(0);
-      expect(a.total).toBeLessThanOrEqual(100);
+      expect(a.total).toBe(pinned[name]!.total);
+      expect(a.parts.map((p) => p.points)).toEqual(pinned[name]!.parts);
+      expect(a.losses.map((l) => [l.rule, l.file, l.points])).toEqual(pinned[name]!.losses);
       expect(a.total).toBe(100 - a.losses.reduce((n, l) => n + l.points, 0));
     });
   }
+});
 
-  it("html, a prose-only pack, loses only the neutral half of checks", () => {
-    const r = scorePack({ tree: readPackDir(join(packsDir, "html")), capabilities: [], provenance: TRUSTED, linkedPublicRepository: true, publishedAdvisory: false, rulesVersion: RULES_VERSION });
-    expect(r.losses.map((l) => l.rule)).toEqual(["checks.declared-share"]);
-    expect(r.total).toBe(90);
+describe("declared checks are counted only when well formed", () => {
+  const checksPoints = (files: Record<string, string>) => pointsOf(scorePack(input(cleanFiles({ "declared-checks.json": "[]", ...files }))), "checks.declared-share");
+  it("leaves a pack of empty entries neutral", () => {
+    expect(checksPoints({ "declared-checks.json": "[{}]" })).toBe(10);
+    expect(checksPoints({ "declared-checks.json": JSON.stringify([{ id: "a" }, { id: "", on_fail: "block", failureMessage: "x" }, null, 3]) })).toBe(10);
+  });
+  it("does not let padding offset a coded check", () => {
+    expect(checksPoints({ "declared-checks.json": JSON.stringify(Array.from({ length: 999 }, () => ({}))), "checks/one.go": "package a\n" })).toBe(0);
+  });
+  it("counts each id once", () => {
+    expect(checksPoints({ "declared-checks.json": declared("a", "a", "a"), "checks/one.go": "package a\n" })).toBe(10);
+  });
+  it("counts checks declared inside skills", () => {
+    expect(checksPoints({ "skills/commit/declared-checks.json": declared("a"), "checks/one.go": "package a\n" })).toBe(10);
+    expect(checksPoints({ "skills/commit/declared-checks.json": declared("a") })).toBe(20);
+  });
+});
+
+describe("reachability and ordering", () => {
+  const reach = (description: string, fm = "", pack: Record<string, string> = {}) =>
+    scorePack(input(cleanFiles({ "skills/commit/SKILL.md": skill("commit", description, "Body\n", fm), ...pack }))).losses.map((l) => l.rule);
+  it("is not earned by the word enforced, nor by an empty detector", () => {
+    expect(reach("Writes commit messages for the repository, strictly enforced always")).toContain("skill-structure.reachable");
+    const empty = JSON.stringify({ version: "1.0.0", minEngineVersion: "1.61001.1", relevanceDetector: {} });
+    expect(reach("Writes commit messages for the repository carefully", "", { "pack.json": empty })).toContain("skill-structure.reachable");
+  });
+  it("accepts loaded-for phrasing as a trigger", () => {
+    expect(reach("Loaded for any edit of a workflow or package.json test script.")).toEqual([]);
+  });
+  it("orders leftover losses by code unit, whatever the locale", () => {
+    const bare = (n: string) => `---\nname: ${n}\n---\n\nBody.\n`;
+    const r = scorePack(input(cleanFiles({ "skills/z/SKILL.md": bare("z"), "skills/\u00e4/SKILL.md": bare("a"), "skills/B/SKILL.md": bare("b"), "skills/a/SKILL.md": bare("a") })));
+    expect(r.losses.filter((l) => l.rule === "skill-structure.description").map((l) => l.file)).toEqual(["skills/B/SKILL.md", "skills/a/SKILL.md", "skills/z/SKILL.md", "skills/\u00e4/SKILL.md"]);
+  });
+});
+
+describe("scoring time stays linear in the input", () => {
+  const BUDGET_MS = 5000;
+  const timed = (files: Record<string, string>) => {
+    const t0 = performance.now();
+    const r = scorePack(input(cleanFiles(files)));
+    expect(Number.isInteger(r.total)).toBe(true);
+    expect(performance.now() - t0).toBeLessThan(BUDGET_MS);
+  };
+  const MB = 1_000_000;
+  it.each([
+    ["letters", "a".repeat(MB)],
+    ["open brackets", "[".repeat(MB)],
+    ["link openers", "](".repeat(MB / 2)],
+    ["punctuation run", ".".repeat(MB) + "a"],
+    ["backslash run", "a\\".repeat(MB / 2)],
+    ["unclosed fences", "```x\n".repeat(MB / 5)],
+    ["spaces", "before" + " ".repeat(MB)],
+    ["blank lines", "x\n \n".repeat(MB / 4)],
+  ])("a 1 MB skill body of %s", (_name, body) => {
+    timed({ "skills/commit/SKILL.md": skill("commit", GOOD_DESCRIPTION, body) });
+  });
+  it("a 5,000-file tree with 2,500 skills and 2,500 reference files", () => {
+    const files: Record<string, string> = {};
+    for (let i = 0; i < 2500; i++) {
+      files[`skills/s${i}/SKILL.md`] = skill(`s${i}`, GOOD_DESCRIPTION, `See [ref](ref${i}.md).\n`);
+      files[`skills/s${i}/ref${i}.md`] = "Leaf.\n";
+    }
+    timed(files);
   });
 });

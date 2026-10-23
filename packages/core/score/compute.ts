@@ -1,4 +1,5 @@
 import { loadRules } from "@packserver/rules";
+import { indexOf, compareCodeUnits } from "./measure.ts";
 import { checks } from "./checks.ts";
 import { contextCost } from "./context-cost.ts";
 import { footprint } from "./footprint.ts";
@@ -14,7 +15,7 @@ function pointsFor(max: number, o: Outcome): number {
 
 /** Spreads a rule's lost points over its violations, earlier files first; each violation is still listed. */
 function lossesOf(rule: string, fix: string, lost: number, o: Outcome): Loss[] {
-  const sorted = [...o.violations].sort((a, b) => (a.file ?? "").localeCompare(b.file ?? "") || (a.detail ?? "").localeCompare(b.detail ?? ""));
+  const sorted = [...o.violations].sort((a, b) => compareCodeUnits(a.file ?? "", b.file ?? "") || compareCodeUnits(a.detail ?? "", b.detail ?? ""));
   const each = Math.floor(lost / sorted.length);
   const extra = lost - each * sorted.length;
   return sorted.map((v, i) => ({
@@ -30,10 +31,11 @@ export function scorePack(input: ScoreInput): ScoreResult {
   const rules = loadRules(input.rulesVersion);
   const { score } = rules;
 
+  const pack = indexOf(input.tree);
   const outcomes: Outcome[] = [
-    ...contextCost(input.tree, score),
-    ...skillStructure(input.tree, score),
-    ...checks(input.tree, score),
+    ...contextCost(pack, score),
+    ...skillStructure(pack, score),
+    ...checks(pack, score),
     ...source(input.provenance),
     ...footprint(input.capabilities, score),
   ];

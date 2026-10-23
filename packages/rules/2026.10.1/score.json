@@ -20,6 +20,7 @@
   },
   "thresholds": {
     "chars_per_token": 4,
+    "chars_per_token_unit": "utf16-code-units",
     "always_loaded_tokens": { "full": 1000, "zero": 5000 },
     "skill_body_lines": { "full": 500, "zero": 1000 },
     "skill_body_tokens_max": 5000,
