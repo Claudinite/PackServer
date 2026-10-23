@@ -1,5 +1,7 @@
-import { spawn } from "node:child_process";
-import { dirname } from "node:path";
+import { execFileSync, spawn } from "node:child_process";
+import { chmodSync, closeSync, mkdtempSync, openSync, readSync, rmSync, constants } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { B_LIMITS } from "./b-limits.ts";
 import { clean } from "./b-report.ts";
 
@@ -16,6 +18,8 @@ export interface Runtime {
   shimPath?: string;
   /** The unprivileged identity pack content runs as; absent where the runner cannot change identity. */
   user?: PackUser;
+  /** Directory of stand-ins for the network tools, put first on the search path. */
+  stubDir?: string;
 }
 
 export interface ExecResult {
@@ -24,7 +28,7 @@ export interface ExecResult {
   timedOut: boolean;
   /** The head of stdout and stderr together, cleaned. */
   output: string;
-  /** Egress lines the command wrote to its record descriptor, unparsed. */
+  /** Egress lines the command and everything it started wrote to the record channel, unparsed. */
   egressLines: string[];
 }
 
@@ -35,13 +39,31 @@ export interface ExecOptions {
   env: Record<string, string>;
   timeoutMs: number;
   user?: PackUser;
-  /** Hand the command a pipe for egress records (descriptor 3). */
+  /** Give the command a record channel: a named pipe whose path is in B_EGRESS_PIPE, writable but not readable by pack content. */
   recordEgress?: boolean;
   /** Called with the process group's id so a supervisor can kill it from outside. */
   onSpawn?: (pgid: number) => void;
 }
 
 const EGRESS_BYTES = 64 * 1024;
+
+/** Reads what has been written to the channel so far; the descriptor is non-blocking. */
+function drain(fd: number, into: Buffer[], size: { n: number }): void {
+  const chunk = Buffer.alloc(8192);
+  for (;;) {
+    let n: number;
+    try {
+      n = readSync(fd, chunk, 0, chunk.length, null);
+    } catch {
+      return;
+    }
+    if (n <= 0) return;
+    if (size.n < EGRESS_BYTES) {
+      into.push(Buffer.from(chunk.subarray(0, Math.min(n, EGRESS_BYTES - size.n))));
+      size.n += n;
+    }
+  }
+}
 
 /**
  * Runs one command of pack-influenced content with exactly the given environment, in its own
@@ -52,18 +74,34 @@ const EGRESS_BYTES = 64 * 1024;
 export function exec(options: ExecOptions): Promise<ExecResult> {
   return new Promise((resolve) => {
     let kept = Buffer.alloc(0);
-    let egress = Buffer.alloc(0);
+    const egress: Buffer[] = [];
+    const egressSize = { n: 0 };
     let timedOut = false;
     let child;
+    let channelDir: string | undefined;
+    let channelFd = -1;
+    const env = { ...options.env };
     try {
+      if (options.recordEgress) {
+        // The runner owns the pipe and keeps it open for reading; the pack identity may only open it for writing.
+        channelDir = mkdtempSync(join(tmpdir(), "b-egress-"));
+        chmodSync(channelDir, 0o711);
+        const path = join(channelDir, "record");
+        execFileSync("mkfifo", [path]);
+        chmodSync(path, 0o622);
+        channelFd = openSync(path, constants.O_RDWR | constants.O_NONBLOCK);
+        env.B_EGRESS_PIPE = path;
+      }
       child = spawn(options.cmd, options.args, {
         cwd: options.cwd,
-        env: options.env,
-        stdio: ["ignore", "pipe", "pipe", ...(options.recordEgress ? (["pipe"] as const) : [])],
+        env,
+        stdio: ["ignore", "pipe", "pipe"],
         detached: true,
         ...(options.user ? { uid: options.user.uid, gid: options.user.gid } : {}),
       });
     } catch {
+      if (channelFd >= 0) closeSync(channelFd);
+      if (channelDir) rmSync(channelDir, { recursive: true, force: true });
       resolve({ exitCode: null, signal: null, timedOut: false, output: "", egressLines: [] });
       return;
     }
@@ -86,16 +124,18 @@ export function exec(options: ExecOptions): Promise<ExecResult> {
     };
     child.stdout?.on("data", take);
     child.stderr?.on("data", take);
-    const record = child.stdio[3];
-    record?.on("data", (chunk: Buffer) => {
-      if (egress.length < EGRESS_BYTES) egress = Buffer.concat([egress, chunk.subarray(0, EGRESS_BYTES - egress.length)]);
-    });
-    record?.on("error", () => {});
+    const poll = channelFd >= 0 ? setInterval(() => drain(channelFd, egress, egressSize), 25) : undefined;
     child.stdout?.on("error", () => {});
     child.stderr?.on("error", () => {});
     const finish = (exitCode: number | null, signal: NodeJS.Signals | null) => {
-      for (const s of [child.stdout, child.stderr, record]) s?.destroy();
-      resolve({ exitCode, signal, timedOut, output: clean(kept.toString("utf8")), egressLines: egress.toString("utf8").split("\n").filter(Boolean) });
+      for (const s of [child.stdout, child.stderr]) s?.destroy();
+      clearInterval(poll);
+      if (channelFd >= 0) {
+        drain(channelFd, egress, egressSize);
+        closeSync(channelFd);
+      }
+      if (channelDir) rmSync(channelDir, { recursive: true, force: true });
+      resolve({ exitCode, signal, timedOut, output: clean(kept.toString("utf8")), egressLines: Buffer.concat(egress).toString("utf8").split("\n").filter(Boolean) });
     };
     const done = (exitCode: number | null, signal: NodeJS.Signals | null) => {
       clearTimeout(timer);
@@ -119,14 +159,14 @@ export function exec(options: ExecOptions): Promise<ExecResult> {
 }
 
 /** The only environment pack content ever sees. */
-export function scrubbedEnv(home: string, extra: Record<string, string> = {}): Record<string, string> {
+export function scrubbedEnv(home: string, extra: Record<string, string> = {}, stubDir?: string): Record<string, string> {
   return {
-    PATH: [dirname(process.execPath), "/usr/local/go/bin", "/usr/local/bin", "/usr/bin", "/bin"].join(":"),
+    PATH: [...(stubDir ? [stubDir] : []), dirname(process.execPath), "/usr/local/go/bin", "/usr/local/bin", "/usr/bin", "/bin"].join(":"),
     HOME: home,
     TMPDIR: home,
     LANG: "C.UTF-8",
     GOPROXY: "off",
-    GOFLAGS: "-mod=readonly",
+    GOFLAGS: "-mod=readonly -buildvcs=false",
     GOWORK: "off",
     GOENV: "off",
     GOTOOLCHAIN: "local",
@@ -141,9 +181,12 @@ export function scrubbedEnv(home: string, extra: Record<string, string> = {}): R
 
 /** The scrubbed environment plus the egress recorders, for commands that run pack content. */
 export function packEnv(home: string, runtime: Runtime): Record<string, string> {
-  return scrubbedEnv(home, {
-    B_EGRESS_FD: "3",
-    ...(runtime.preloadUrl ? { NODE_OPTIONS: `--import=${runtime.preloadUrl}` } : {}),
-    ...(runtime.shimPath ? { LD_PRELOAD: runtime.shimPath } : {}),
-  });
+  return scrubbedEnv(
+    home,
+    {
+      ...(runtime.preloadUrl ? { NODE_OPTIONS: `--import=${runtime.preloadUrl}` } : {}),
+      ...(runtime.shimPath ? { LD_PRELOAD: runtime.shimPath } : {}),
+    },
+    runtime.stubDir,
+  );
 }

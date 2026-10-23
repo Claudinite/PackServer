@@ -2,7 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Runtime } from "./b-exec.ts";
-import { lockOut, OutDirError, reapPackProcesses } from "./b-isolation.ts";
+import { hasNoNewPrivs, lockOut, OutDirError, reapPackProcesses, validPackUser } from "./b-isolation.ts";
 import { B_LIMITS } from "./b-limits.ts";
 import { BRequest } from "./b-request.ts";
 import { bErrorReport, fitToBCap, type SandboxBReport } from "./b-report.ts";
@@ -19,6 +19,8 @@ export interface BMainOptions {
   stepMs?: number;
   /** Egress recorders and the identity pack content runs as; with a user the runner must be root. */
   runtime?: Runtime;
+  /** Refuse to run pack content unless the runner is root, without new privileges, with a valid pack identity. The entry point always sets it. */
+  requireIsolation?: boolean;
 }
 
 /**
@@ -33,7 +35,10 @@ export async function bMain(options: BMainOptions): Promise<SandboxBReport> {
   const request = BRequest.parse(JSON.parse(await readFile(join(options.inDir, "request.json"), "utf8")));
   const base = { imageDigest: options.imageDigest, expectedTreeHash: request.expected_tree_hash, minEngineVersion: request.min_engine_version, oldestInMirror: request.oldest_engine_in_mirror };
   const user = options.runtime?.user;
-  const isolated = !user || process.getuid?.() === 0;
+  const runnerUid = process.getuid?.() ?? -1;
+  const isolated = options.requireIsolation
+    ? !!user && runnerUid === 0 && user.uid >= 1000 && user.uid !== runnerUid && hasNoNewPrivs()
+    : !user || runnerUid === 0;
   const out = await lockOut(options.outDir, isolated ? user : undefined);
   const bad = () => bErrorReport(base, "input_invalid", { extract: null, total: 0 });
 
@@ -57,13 +62,13 @@ export async function bMain(options: BMainOptions): Promise<SandboxBReport> {
     report = await superviseB(input, { workerUrl: options.workerUrl, imageDigest: options.imageDigest, extractMs: options.extractMs, runMs: options.runMs, stepMs: options.stepMs, runtime: options.runtime });
   }
   const fitted = fitToBCap(report) ?? bErrorReport(base, "report_over_cap", report.timings_ms);
-  if (user && isolated) await reapPackProcesses(user);
+  if (user && isolated && !reapPackProcesses(user)) throw new OutDirError("processes of the pack identity survived the kill");
   await out.publish(JSON.stringify(fitted));
   return fitted;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const uid = process.env.SANDBOX_PACK_UID ? Number(process.env.SANDBOX_PACK_UID) : undefined;
+  const user = validPackUser(process.env.SANDBOX_PACK_UID, process.getuid?.() ?? -1);
   const here = (name: string) => new URL(name, import.meta.url);
   try {
     const report = await bMain({
@@ -74,8 +79,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       runtime: {
         preloadUrl: here("./b-preload.mjs").href,
         shimPath: process.env.SANDBOX_EGRESS_SHIM,
-        user: uid === undefined ? undefined : { uid, gid: uid },
+        stubDir: process.env.SANDBOX_STUB_DIR,
+        user,
       },
+      requireIsolation: true,
     });
     console.log(`sandbox-b outcome=${report.outcome} error=${report.error ?? "-"}`);
     process.exitCode = 0;

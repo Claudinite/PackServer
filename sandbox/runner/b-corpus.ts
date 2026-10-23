@@ -17,7 +17,7 @@ const digest = process.argv[3] ?? null;
 if (!image) throw new Error("usage: b-corpus.ts <image-ref> [image-digest]");
 
 // The runner starts as root to give pack content another identity and to keep it out of the output directory; it needs nothing else.
-const RUNNER_CAPS = ["SETUID", "SETGID", "KILL", "CHOWN", "FOWNER"];
+const RUNNER_CAPS = ["SETUID", "SETGID", "KILL", "CHOWN"];
 
 const root = await mkdtemp(join(tmpdir(), "b-corpus-"));
 const mirror = join(root, "mirror");
@@ -29,6 +29,8 @@ interface Prepared {
   minEngineVersion: string;
   expectedTreeHash?: string;
   hostEnv?: Record<string, string>;
+  /** Runs the container without no-new-privileges, or with the pack identity set to root. */
+  misconfigured?: "no-new-privileges" | "root-identity";
   /** Leaves a file in the output directory before the run, which the runner must refuse. */
   plant?: true;
   problems: LoadRunCase["problems"];
@@ -50,7 +52,8 @@ async function runInContainer(c: Prepared): Promise<{ problems: string[]; report
     "docker",
     [
       "run", "--rm", "--network", "none", "--read-only", "--tmpfs", "/tmp:rw,exec,size=256m", "--memory", "1g", "--memory-swap", "1g",
-      "--cpus", "1", "--pids-limit", "256", "--cap-drop", "ALL", ...RUNNER_CAPS.flatMap((c) => ["--cap-add", c]), "--security-opt", "no-new-privileges",
+      "--cpus", "1", "--pids-limit", "256", "--cap-drop", "ALL", ...RUNNER_CAPS.flatMap((c) => ["--cap-add", c]), ...(c.misconfigured === "no-new-privileges" ? [] : ["--security-opt", "no-new-privileges"]),
+      ...(c.misconfigured === "root-identity" ? ["-e", "SANDBOX_PACK_UID=0"] : []),
       "-v", `${dir}:/in:ro`, "-v", `${out}:/out`, ...env, ...(digest ? ["-e", `SANDBOX_IMAGE_DIGEST=${digest}`] : []), image,
     ],
     { timeout: B_LIMITS.runMs + 30_000, encoding: "utf8" },
@@ -88,6 +91,17 @@ for (const name of ["marker-first", "marker-second"]) {
 // A worker that leaves a process of its own session behind, rewriting the report file until the container ends.
 const daemon = { ...gcp.files, "tasks/nightly/worker.mjs": "import { spawn } from 'node:child_process';\nspawn('setsid', ['sh', '-c', 'while true; do echo forged > /out/report.json; sleep 0.02; done'], { detached: true, stdio: 'ignore' }).unref();\n" };
 cases.push({ name: "daemon-forges-report", files: daemon, minEngineVersion: gcp.minEngineVersion, problems: (r) => (r.outcome === "ok" && r.runs.some((x) => x.kind === "task_worker" && x.exit_status === 0) ? [] : ["the report is not the runner's"]) });
+
+// An isolation that cannot be had is reported, and no pack code runs.
+for (const misconfigured of ["no-new-privileges", "root-identity"] as const) {
+  cases.push({
+    name: `isolation-unavailable-${misconfigured}`,
+    misconfigured,
+    files: marker,
+    minEngineVersion: gcp.minEngineVersion,
+    problems: (r) => (r.error === "isolation_unavailable" && !r.pack_code_executed && r.runs.length === 0 ? [] : [`got ${r.outcome}/${r.error}, ran=${r.pack_code_executed}`]),
+  });
+}
 
 cases.push({ name: "out-dir-not-empty", plant: true, files: gcp.files, minEngineVersion: gcp.minEngineVersion, problems: () => [] });
 

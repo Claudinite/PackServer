@@ -6,12 +6,18 @@ import dgram from "node:dgram";
 import fs from "node:fs";
 import net from "node:net";
 
-const fd = Number(process.env.B_EGRESS_FD);
+const channel = process.env.B_EGRESS_PIPE;
 
 function record(kind: "connect" | "dns" | "udp" | "fetch", target: unknown) {
-  if (!Number.isInteger(fd)) return;
+  if (!channel) return;
   try {
-    fs.writeSync(fd, JSON.stringify({ kind, target: String(target).slice(0, 200) }) + "\n");
+    // Named by path rather than inherited as a descriptor, so a child process of a worker reaches it too.
+    const fd = fs.openSync(channel, fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
+    try {
+      fs.writeSync(fd, JSON.stringify({ kind, target: String(target).slice(0, 200) }) + "\n");
+    } finally {
+      fs.closeSync(fd);
+    }
   } catch {
     // Nothing to do: the attempt is refused below whether or not it could be written down.
   }

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { exec, scrubbedEnv } from "../b-exec.ts";
-import { lockOut, OutDirError } from "../b-isolation.ts";
+import { hasNoNewPrivs, lockOut, OutDirError, validPackUser } from "../b-isolation.ts";
 import { clean, emptyBReport } from "../b-report.ts";
 import { parseEgress } from "../b-run.ts";
 
@@ -66,5 +66,33 @@ describe("text that came from pack content", () => {
     expect(seen[1]!.target.startsWith("ab")).toBe(true);
     expect(seen[1]!.target.length).toBeLessThanOrEqual(200);
     expect(emptyBReport({ imageDigest: null, expectedTreeHash: "a".repeat(64), minEngineVersion: "1.0.0", oldestInMirror: "1.0.0" }).refusal).toBeNull();
+  });
+});
+
+describe("the pack identity", () => {
+  it("must be an ordinary uid other than the runner's", () => {
+    expect(validPackUser("10001", 0)).toEqual({ uid: 10001, gid: 10001 });
+    for (const bad of [undefined, "", "0", "999", "-5", "10001.5", "abc", "1e4", "10001"]) {
+      expect(validPackUser(bad, bad === "10001" ? 10001 : 0), String(bad)).toBeUndefined();
+    }
+  });
+
+  it("reads no-new-privileges from the process status", () => {
+    expect(typeof hasNoNewPrivs()).toBe("boolean");
+  });
+});
+
+describe("the egress record channel", () => {
+  it("is reached by name from a child of a child, and is not read from the pack's side", async () => {
+    const dir = await tmp();
+    const result = await exec({
+      cmd: "sh",
+      args: ["-c", `sh -c 'printf "{\\"kind\\":\\"connect\\",\\"target\\":\\"9.9.9.9:1\\"}\\n" > "$B_EGRESS_PIPE"'`],
+      cwd: dir,
+      env: scrubbedEnv(dir),
+      timeoutMs: 5000,
+      recordEgress: true,
+    });
+    expect(result.egressLines).toEqual(['{"kind":"connect","target":"9.9.9.9:1"}']);
   });
 });

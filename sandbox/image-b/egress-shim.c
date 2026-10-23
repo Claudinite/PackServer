@@ -1,11 +1,12 @@
 // LD_PRELOAD shim for sandbox B: records connect, sendto, sendmsg and name-resolution attempts of
 // any dynamically linked process that runs pack content (bash /dev/tcp, getent, ...) as JSON
-// lines on the descriptor named by B_EGRESS_FD, and refuses them. The container has no network
+// lines to the named pipe at B_EGRESS_PIPE, and refuses them. The container has no network
 // either way; the record is what turns an attempt into evidence. Statically linked programs do
 // not load it.
 #define _GNU_SOURCE
 #include <arpa/inet.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <stdio.h>
@@ -15,8 +16,8 @@
 #include <unistd.h>
 
 static void record(const char *kind, const char *target) {
-	const char *fdenv = getenv("B_EGRESS_FD");
-	int fd = fdenv ? atoi(fdenv) : 3;
+	const char *path = getenv("B_EGRESS_PIPE");
+	if (!path) return;
 	char clean[160];
 	size_t n = 0;
 	for (const char *p = target; *p && n < sizeof clean - 1; p++) {
@@ -27,8 +28,12 @@ static void record(const char *kind, const char *target) {
 	char line[256];
 	int len = snprintf(line, sizeof line, "{\"kind\":\"%s\",\"target\":\"%s\"}\n", kind, clean);
 	if (len > 0) {
-		ssize_t ignored = write(fd, line, (size_t)len);
-		(void)ignored;
+		int fd = open(path, O_WRONLY | O_NONBLOCK | O_CLOEXEC);
+		if (fd >= 0) {
+			ssize_t ignored = write(fd, line, (size_t)len);
+			(void)ignored;
+			close(fd);
+		}
 	}
 }
 
