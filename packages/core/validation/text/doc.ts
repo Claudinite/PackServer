@@ -38,11 +38,99 @@ const QUICK = /gh[pousr]_|github_pat_|AKIA|ASIA|sk-|xox|AIza|_live_|npm_|PRIVATE
 
 const stars = (m: string) => "*".repeat(m.length);
 
+// g, \u{67} and \x67 spell the character they name in most languages, so a token written that way is still a token.
+const ESCAPE = /\\u\{([0-9a-fA-F]{1,6})\}|\\u([0-9a-fA-F]{4})|\\x([0-9a-fA-F]{2})/g;
+const HAS_ESCAPE = /\\(?:u[0-9a-fA-F{]|x[0-9a-fA-F])/;
+
+interface Unescaped {
+  text: string;
+  /** For each UTF-16 unit of `text`, the span of the original it came from. */
+  from: Int32Array;
+  to: Int32Array;
+}
+
+function unescape(text: string): Unescaped {
+  const from = new Int32Array(text.length);
+  const to = new Int32Array(text.length);
+  const parts: string[] = [];
+  let out = 0;
+  let pos = 0;
+  const copy = (end: number) => {
+    for (let i = pos; i < end; i++, out++) {
+      from[out] = i;
+      to[out] = i + 1;
+    }
+    if (end > pos) parts.push(text.slice(pos, end));
+    pos = end;
+  };
+  for (const m of matchesOf(ESCAPE, text)) {
+    const code = parseInt(m[1] ?? m[2] ?? m[3]!, 16);
+    if (code > 0x10ffff) continue;
+    copy(m.index);
+    const ch = String.fromCodePoint(code);
+    for (let k = 0; k < ch.length; k++, out++) {
+      from[out] = m.index;
+      to[out] = m.index + m[0].length;
+    }
+    parts.push(ch);
+    pos = m.index + m[0].length;
+  }
+  copy(text.length);
+  return { text: parts.join(""), from, to };
+}
+
+export interface SecretHit {
+  kind: string;
+  /** Span in the original text, including any escapes. */
+  start: number;
+  end: number;
+  /** A repeated-character run that is a stand-in, not a credential. */
+  placeholder: boolean;
+}
+
+const isPlaceholder = (kind: string, match: string) => kind !== "private key" && new Set(match).size < 8;
+
+/** Every secret in the text, plain or spelled with \u, \u{} or \x escapes. */
+export function findSecrets(text: string): SecretHit[] {
+  const hits: SecretHit[] = [];
+  const seen = new Set<string>();
+  const add = (kind: string, start: number, end: number, match: string) => {
+    const key = `${start}:${end}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    hits.push({ kind, start, end, placeholder: isPlaceholder(kind, match) });
+  };
+  if (QUICK.test(text)) {
+    for (const p of SECRET_PATTERNS) for (const m of matchesOf(new RegExp(p.source, p.flags), text)) add(p.kind, m.index, m.index + m[0].length, m[0]);
+  }
+  if (HAS_ESCAPE.test(text)) {
+    const u = unescape(text);
+    for (const p of SECRET_PATTERNS) {
+      for (const m of matchesOf(new RegExp(p.source, p.flags), u.text)) add(p.kind, u.from[m.index]!, u.to[m.index + m[0].length - 1]!, m[0]);
+    }
+  }
+  return hits;
+}
+
 /** Same-length copy with secrets and secret-looking URL parameters replaced by asterisks. */
 export function maskSecrets(text: string): string {
-  if (!QUICK.test(text)) return text;
+  const hits = findSecrets(text);
   let out = text;
-  for (const p of SECRET_PATTERNS) out = out.replace(new RegExp(p.source, p.flags), stars);
+  if (hits.length > 0) {
+    hits.sort((x, y) => x.start - y.start);
+    const parts: string[] = [];
+    let at = 0;
+    for (const h of hits) {
+      if (h.end <= at) continue;
+      const start = Math.max(h.start, at);
+      parts.push(text.slice(at, start), "*".repeat(h.end - start));
+      at = h.end;
+    }
+    parts.push(text.slice(at));
+    out = parts.join("");
+  } else if (!QUICK.test(text)) {
+    return text;
+  }
   out = out.replace(SECRET_QUERY, (_m, a: string, v: string) => a + stars(v));
   out = out.replace(URL_USERINFO, (_m, a: string, v: string, c: string) => a + stars(v) + c);
   return out;
