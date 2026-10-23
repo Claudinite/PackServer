@@ -2,20 +2,21 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemoryAuditBucket } from "@packserver/core/audit/testing";
 import { createFakePorts } from "@packserver/ports/fakes";
 import { SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
-import { consumeAudit } from "../src/consumers/audit";
 import { CRON_DAILY, CRON_HOURLY, CRON_JOBS, runCron } from "../src/crons";
 import type { AdminRuntime } from "../src/bindings";
 
 const fakes = createFakePorts({ worker: "admin" });
+fakes.d1.on(/delete from recent_activity/, () => ({}));
 const runtime = {
   worker: "admin",
   environment: "test",
   version: { versionId: SHELL_VERSION, releaseId: SHELL_RELEASE },
   missingBindings: [],
   missingSecrets: [],
-  ports: { ...fakes, r2: { PACKS_STAGING: fakes.r2["PACKS_STAGING"]!, VALIDATION_REPORTS: fakes.r2["VALIDATION_REPORTS"]!, OPS_BUCKET: fakes.r2["OPS_BUCKET"]! } },
+  ports: { ...fakes, auditBucket: new MemoryAuditBucket(), r2: { PACKS_STAGING: fakes.r2["PACKS_STAGING"]!, VALIDATION_REPORTS: fakes.r2["VALIDATION_REPORTS"]!, OPS_BUCKET: fakes.r2["OPS_BUCKET"]! } },
   services: {},
 } satisfies AdminRuntime;
 
@@ -57,14 +58,5 @@ describe("admin crons", () => {
     });
     await expect(runCron(CRON_HOURLY, runtime)).rejects.toThrow("1 of 2 jobs");
     expect(log).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe("admin audit consumer", () => {
-  it("returns the batch to the queue rather than dropping it", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    const retryAll = vi.fn();
-    await consumeAudit({ retryAll } as unknown as MessageBatch<unknown>);
-    expect(retryAll).toHaveBeenCalledOnce();
   });
 });
