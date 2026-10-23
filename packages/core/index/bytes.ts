@@ -35,6 +35,6 @@ export function fromBase64Url(text: string): Uint8Array {
 }
 
 export async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", bytes as never));
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes as never));
   return Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("");
 }

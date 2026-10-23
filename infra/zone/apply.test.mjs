@@ -407,7 +407,7 @@ describe("the command", () => {
     const r = await run(["--zone", "--apply"], only, { env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" } });
     expect(r.code).toBe(0);
     expect(only.calls.filter((c) => c.path.includes("/access") || c.path.includes("/logpush"))).toEqual([]);
-    expect(Object.keys(only.state.rulesets).sort()).toEqual(["http_ratelimit", "http_request_cache_settings", "http_request_firewall_custom", "http_request_late_transform"]);
+    expect(Object.keys(only.state.rulesets).sort()).toEqual(["http_ratelimit", "http_request_cache_settings", "http_request_firewall_custom", "http_request_late_transform", "http_response_headers_transform"]);
   });
 
   it("a rules failure does not skip Access, and both are reported", async () => {
@@ -458,7 +458,7 @@ describe("the command", () => {
 
   it("--verify-delivery reports verified when the delivered objects have the expected shape", async () => {
     const zone = fakeZone();
-    const r = await run(["--env", "staging", "--verify-delivery", "--verify-wait", "0"], zone, { env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" } });
+    const r = await run(["--env", "staging", "--verify-delivery", "--verify-wait", "0", "--since", "2020-01-01T00:00:00Z"], zone, { env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" } });
     expect(r.code).toBe(0);
     expect(r.out).toContain("verified delivery packserver-staging-http-cache-hits");
     expect(r.out).toContain("verified delivery packserver-staging-http-cache-misses");
@@ -515,7 +515,7 @@ describe("the command", () => {
     const old = [];
     for (let i = 0; i < 30000; i++) old.push({ bucket: "ops-staging", key: `logs/http-requests/hits/2026010${i % 9 + 1}/${i}.log`, last_modified: "2026-01-01T00:00:00Z", body: "" });
     const zone = fakeZone({ seed: { objects: [...old, ...deliveredObjects()] } });
-    const r = await run(["--env", "staging", "--verify-delivery", "--verify-wait", "0"], zone, { env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" } });
+    const r = await run(["--env", "staging", "--verify-delivery", "--verify-wait", "0", "--since", "2020-01-01T00:00:00Z"], zone, { env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" } });
     expect(r.code).toBe(0);
     const day = (ms) => new Date(ms).toISOString().slice(0, 10).replaceAll("-", "");
     const now = Date.now();
@@ -537,6 +537,45 @@ describe("the command", () => {
     expect(r.code).toBe(3);
     const bad = await run(["--env", "staging", "--plan", "--since", "2026-10-02T00:00:00Z"], fakeZone());
     expect(bad.code).toBe(2);
+  });
+
+  it("--verify-delivery with no --since and no transformer update time ends pending, never verified", async () => {
+    const r = await run(["--env", "staging", "--verify-delivery", "--verify-wait", "0"], fakeZone(), { env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" } });
+    expect(r.code).toBe(3);
+    expect(r.out).toContain("not verified: no cut-off time");
+  });
+
+  it("--verify-delivery with unreadable transformers and no --since ends pending", async () => {
+    const r = await run(["--env", "staging", "--verify-delivery", "--verify-wait", "0"], fakeZone({ transformersForbidden: true }), { env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" } });
+    expect(r.code).toBe(3);
+    expect(r.out).toContain("transformers not readable");
+  });
+
+  it("--verify-delivery uses the transformers' update time as the cut-off when they report one", async () => {
+    const transformers = [{ id: 1, name: "packserver-staging-http-cache-hits", code: "x", updated_at: "2020-01-01T00:00:00Z" }, { id: 2, name: "packserver-staging-http-cache-misses", code: "x", updated_at: "2020-01-01T00:00:00Z" }];
+    const r = await run(["--env", "staging", "--verify-delivery", "--verify-wait", "0"], fakeZone({ seed: { transformers } }), { env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" } });
+    expect(r.code).toBe(0);
+  });
+
+  it("declares one nosniff response-header rule on the packs hosts and --plan shows it", async () => {
+    const spec = loadSpec();
+    const [rule] = spec.rules.phases.http_response_headers_transform;
+    expect(rule.expression).toBe('(http.host in {"packs.claudinite.com" "packs-staging.claudinite.com"})');
+    expect(rule.action_parameters.headers).toEqual({ "X-Content-Type-Options": { operation: "set", value: "nosniff" } });
+    const r = await run(["--zone"], fakeZone(), { env: {} });
+    expect(r.out).toContain("packserver_packs_nosniff");
+    const plan = await run(["--zone", "--plan"], fakeZone());
+    expect(plan.out).toContain("would    update Transform Rules (http_response_headers_transform): packserver_packs_nosniff");
+  });
+
+  it("refuses the response-header rule when the Transform phases together would pass 10", async () => {
+    const others = Array.from({ length: 8 }, (_, i) => ({ id: `o${i}`, ref: `site_${i}`, action: "rewrite", expression: "(true)", enabled: true }));
+    const zone = fakeZone({ seed: { rulesets: { http_response_headers_transform: { id: "rs-o", phase: "http_response_headers_transform", rules: others } } } });
+    const r = await run(["--zone", "--apply"], zone);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("http_response_headers_transform");
+    expect(r.out).toContain("over the Free-plan limit of 10");
+    expect(zone.state.rulesets.http_response_headers_transform.rules).toHaveLength(8);
   });
 
   it("needs a token and an explicit mode", async () => {

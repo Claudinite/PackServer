@@ -9,6 +9,7 @@
     "./canonical": "./canonical/index.ts",
     "./canonical/fixtures": "./canonical/fixtures.ts",
     "./capabilities": "./validation/capabilities/inspector.ts",
+    "./catalog": "./catalog/view.ts",
     "./index": "./index/index.ts",
     "./score": "./score/index.ts",
     "./mail": "./mail/index.ts",
