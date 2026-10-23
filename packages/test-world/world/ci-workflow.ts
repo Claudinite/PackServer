@@ -110,7 +110,7 @@ export function createCi(driver: Driver, alias: (name: string) => string) {
     return value;
   };
   const oidc = () => need(driver.fakes?.oidc, "fake GitHub token issuer");
-  const storage = (): StorageAccess => need(driver.storage, "storage access");
+  const storage = (): StorageAccess => need(driver.publishStorage, "storage access");
 
   const systemPack = (pack: string): { scope: string; name: string; full: string } => {
     const m = /^@([a-z0-9][a-z0-9._-]*)\/([a-z0-9][a-z0-9._-]*)$/.exec(pack);
