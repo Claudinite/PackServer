@@ -3,7 +3,7 @@ import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { main } from "./apply.mjs";
-import { fakeZone } from "./fake-zone.mjs";
+import { deliveredObjects, fakeZone } from "./fake-zone.mjs";
 import { loadSpec, validateSpec } from "./lib/spec.mjs";
 import { tokenSecretNames } from "./lib/access.mjs";
 
@@ -20,6 +20,7 @@ const BASE_ENV = {
 async function run(argv, zone, { env = BASE_ENV, ...deps } = {}) {
   const out = [];
   const err = [];
+  if (argv.includes("--apply") && !argv.includes("--verify-wait")) argv = [...argv, "--verify-wait", "0"];
   const backupDir = mkdtempSync(join(tmpdir(), "zone-"));
   const code = await main(argv, env, { fetch: zone?.fetch, out: (s) => out.push(s), err: (s) => err.push(s), backupDir, now: () => "2026-10-23T01:02:03.000Z", ...deps });
   return { code, out: out.join("\n"), err: err.join("\n"), backupDir };
@@ -294,20 +295,83 @@ describe("the command", () => {
     expect(selftest.destinations.map((d) => d.uri)).toContain("registry-admin.claudinite.com/__selftest*");
   });
 
-  it("scopes each environment's Logpush jobs to its own hosts and ops bucket, with no raw IP field", async () => {
+  it("gives each http_requests job a transformer holding its hosts and cache condition, and an empty filter", async () => {
     const zone = fakeZone();
-    await run(["--env", "production", "--apply", "--only", "logpush"], zone);
+    const r = await run(["--env", "production", "--apply", "--only", "logpush"], zone);
+    expect(r.err).toBe("");
+    const names = zone.state.transformers.map((t) => t.name).sort();
+    expect(names).toEqual(["packserver-production-http-cache-hits", "packserver-production-http-cache-misses"]);
     const hits = zone.state.jobs.find((j) => j.name === "packserver-production-http-cache-hits");
-    expect(hits.output_options.sample_rate).toBe(0.1);
-    expect(hits.destination_conf).toContain("r2://ops/logs/http-requests/hits/{DATE}");
-    const filter = JSON.parse(hits.filter).where.and;
-    expect(filter[0].value).toEqual(expect.arrayContaining(["registry.claudinite.com", "packs.claudinite.com"]));
-    expect(filter[0].value).not.toContain("registry-staging.claudinite.com");
-    expect(filter[1]).toEqual({ key: "CacheCacheStatus", operator: "eq", value: "hit" });
     const misses = zone.state.jobs.find((j) => j.name === "packserver-production-http-cache-misses");
+    expect(hits.output_options.sample_rate).toBe(0.1);
     expect(misses.output_options.sample_rate).toBe(1);
-    expect(JSON.parse(misses.filter).where.and[1].operator).toBe("!eq");
-    for (const j of zone.state.jobs) expect(j.output_options.field_names).not.toContain("ClientIP");
+    expect(hits.destination_conf).toContain("r2://ops/logs/http-requests/hits/{DATE}");
+    for (const j of [hits, misses]) {
+      expect(j.filter).toBe("");
+      expect(j.output_options.output_type).toBe("ndjson");
+      expect(j.transformer_id).toBe(zone.state.transformers.find((t) => t.name.endsWith(j.name.split("production-")[1])).id);
+    }
+    const sql = zone.state.transformers.find((t) => t.name.endsWith("cache-hits")).code;
+    expect(sql).toContain("'registry.claudinite.com'");
+    expect(sql).toContain("'packs.claudinite.com'");
+    expect(sql).not.toContain("registry-staging");
+    expect(sql).toContain("CacheCacheStatus = 'hit'");
+    expect(zone.state.transformers.find((t) => t.name.endsWith("cache-misses")).code).toContain("CacheCacheStatus <> 'hit'");
+    const fw = zone.state.jobs.find((j) => j.name === "packserver-production-firewall-events");
+    expect(fw.transformer_id).toBeUndefined();
+    expect(JSON.parse(fw.filter).where.and[0].value).not.toContain("registry-staging.claudinite.com");
+    for (const j of zone.state.jobs) expect(j.output_options.field_names ?? []).not.toContain("ClientIP");
+  });
+
+  it("--plan previews the transformer on IPv4 and IPv6 vectors and writes nothing", async () => {
+    const zone = fakeZone();
+    const r = await run(["--env", "staging", "--plan", "--only", "logpush"], zone);
+    expect(r.code).toBe(0);
+    expect(zone.writes()).toEqual([]);
+    expect(r.out).toContain("preview packserver-staging-http-cache-hits");
+    const previews = zone.calls.filter((c) => c.path.endsWith("/transformers/preview"));
+    const vectors = loadSpec().logpush.vectors;
+    expect(previews.length).toBe(2 * (vectors.length + 2));
+    const inputs = previews.map((c) => c.body.input.ClientIP);
+    for (const ip of ["2001:db8::1", "::1", "2001::", "2001:DB8:ABCD:1234::1", "2001:0db8:0001:abcd::1"]) expect(inputs).toContain(ip);
+    expect(r.out).toContain("would    create transformer packserver-staging-http-cache-hits");
+  });
+
+  it("refuses to create a job when the preview still shows ClientIP", async () => {
+    const zone = fakeZone({ previewLeaksIp: true });
+    const r = await run(["--env", "staging", "--apply", "--only", "logpush"], zone);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("still has ClientIP");
+    expect(zone.state.transformers).toEqual([]);
+    expect(zone.state.jobs.map((j) => j.name)).toEqual(["packserver-staging-firewall-events"]);
+  });
+
+  it("reports a 403 from the transformers API as its own state and creates no http_requests job", async () => {
+    const zone = fakeZone({ transformersForbidden: true });
+    const r = await run(["--env", "staging", "--apply", "--only", "logpush"], zone);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("TRANSFORMERS FORBIDDEN (403)");
+    expect(r.err).toContain("not read as");
+    expect(zone.state.jobs.map((j) => j.name)).toEqual(["packserver-staging-firewall-events"]);
+  });
+
+  it("migrates a filtered job by clearing the filter and setting the transformer in one update", async () => {
+    const old = { id: 7, name: "packserver-staging-http-cache-hits", dataset: "http_requests", enabled: true, destination_conf: "r2://ops-staging/logs/http-requests/hits/{DATE}?account-id=acct", filter: JSON.stringify({ where: { key: "CacheCacheStatus", operator: "eq", value: "hit" } }), output_options: { field_names: ["ClientIP"], sample_rate: 0.1 } };
+    const zone = fakeZone({ seed: { jobs: [old] } });
+    const r = await run(["--env", "staging", "--apply", "--only", "logpush"], zone);
+    expect(r.err).toBe("");
+    const put = zone.calls.find((c) => c.method === "PUT" && c.path.endsWith("/logpush/jobs/7"));
+    expect(put.body.filter).toBe("");
+    expect(put.body.transformer_id).toBeGreaterThan(0);
+    const again = await run(["--env", "staging", "--apply", "--only", "logpush"], zone);
+    expect(again.out).not.toMatch(/^(created|updated)/m);
+  });
+
+  it("updates a transformer whose SQL drifted", async () => {
+    const zone = fakeZone({ seed: { transformers: [{ id: 5, name: "packserver-staging-http-cache-hits", code: "SELECT ClientIP FROM http_requests" }] } });
+    const r = await run(["--env", "staging", "--apply", "--only", "logpush"], zone);
+    expect(r.out).toContain("updated  transformer packserver-staging-http-cache-hits");
+    expect(zone.state.transformers.find((t) => t.id === 5).code).not.toContain("SELECT ClientIP");
   });
 
   it("keeps other lifecycle rules on the ops bucket", async () => {
@@ -390,6 +454,89 @@ describe("the command", () => {
     expect(r.code).toBe(1);
     expect(r.out).toContain("over the Free-plan limit of 10");
     expect(zone.state.rulesets.http_request_late_transform).toBeUndefined();
+  });
+
+  it("--verify-delivery reports verified when the delivered objects have the expected shape", async () => {
+    const zone = fakeZone();
+    const r = await run(["--env", "staging", "--verify-delivery", "--verify-wait", "0"], zone, { env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" } });
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("verified delivery packserver-staging-http-cache-hits");
+    expect(r.out).toContain("verified delivery packserver-staging-http-cache-misses");
+    expect(zone.writes()).toEqual([]);
+  });
+
+  it("--verify-delivery never reads 'no object yet' as a pass", async () => {
+    const zone = fakeZone({ delivered: false });
+    const r = await run(["--env", "staging", "--verify-delivery", "--verify-wait", "0"], zone, { env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" } });
+    expect(r.code).toBe(3);
+    expect(r.out).toContain("not yet delivered");
+    expect(r.out).not.toContain("verified delivery");
+  });
+
+  it("polls within a bounded wait and then gives up as pending", async () => {
+    const zone = fakeZone({ delivered: false });
+    let now = 0;
+    const sleeps = [];
+    const r = await run(["--env", "staging", "--verify-delivery", "--verify-wait", "60"], zone, {
+      env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" },
+      nowMs: () => now,
+      sleep: async (ms) => { sleeps.push(ms); now += ms; },
+      verifyIntervalMs: 20000,
+    });
+    expect(r.code).toBe(3);
+    expect(sleeps).toEqual([20000, 20000, 20000]);
+  });
+
+  it.each([
+    ["ClientIP still present", { body: JSON.stringify({ CacheCacheStatus: "hit", ClientRequestPath: "/x", EdgeStartTimestamp: "t", ClientNetwork: "198.51.100.0/24", ClientIP: "198.51.100.7" }) }, "ClientIP present"],
+    ["ClientNetwork missing", { body: JSON.stringify({ CacheCacheStatus: "hit", ClientRequestPath: "/x", EdgeStartTimestamp: "t" }) }, "ClientNetwork missing"],
+    ["a raw address as the network", { body: JSON.stringify({ CacheCacheStatus: "hit", ClientRequestPath: "/x", EdgeStartTimestamp: "t", ClientNetwork: "198.51.100.7" }) }, "not network-shaped"],
+    ["a null rollup field", { body: JSON.stringify({ CacheCacheStatus: "hit", ClientRequestPath: null, EdgeStartTimestamp: "t", ClientNetwork: "198.51.100.0/24" }) }, "ClientRequestPath null"],
+    ["misses delivered by the hits job", { body: JSON.stringify({ CacheCacheStatus: "miss", ClientRequestPath: "/x", EdgeStartTimestamp: "t", ClientNetwork: "198.51.100.0/24" }) }, "other than hit"],
+  ])("--verify-delivery fails on %s", async (_name, hits, message) => {
+    const zone = fakeZone({ seed: { objects: deliveredObjects({ hits }) } });
+    const r = await run(["--env", "staging", "--verify-delivery", "--verify-wait", "0"], zone, { env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" } });
+    expect(r.code).toBe(1);
+    expect(r.out).toContain(message);
+  });
+
+  it("--apply checks delivery since the apply, so an older object does not count", async () => {
+    const stale = fakeZone({ seed: { objects: deliveredObjects({ hits: { last_modified: "2020-01-01T00:00:00Z" }, misses: { last_modified: "2020-01-01T00:00:00Z" } }) } });
+    const r = await run(["--env", "staging", "--apply", "--only", "logpush"], stale);
+    expect(r.code).toBe(3);
+    expect(r.out).toContain("since the change");
+    const fresh = fakeZone();
+    const ok = await run(["--env", "staging", "--apply", "--only", "logpush"], fresh);
+    expect(ok.code).toBe(0);
+    expect(ok.out).toContain("verified delivery packserver-staging-http-cache-hits");
+  });
+
+  it("lists only today's and yesterday's date folders, however many older objects exist", async () => {
+    const old = [];
+    for (let i = 0; i < 30000; i++) old.push({ bucket: "ops-staging", key: `logs/http-requests/hits/2026010${i % 9 + 1}/${i}.log`, last_modified: "2026-01-01T00:00:00Z", body: "" });
+    const zone = fakeZone({ seed: { objects: [...old, ...deliveredObjects()] } });
+    const r = await run(["--env", "staging", "--verify-delivery", "--verify-wait", "0"], zone, { env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" } });
+    expect(r.code).toBe(0);
+    const day = (ms) => new Date(ms).toISOString().slice(0, 10).replaceAll("-", "");
+    const now = Date.now();
+    const today = day(now);
+    const yesterday = day(now - 86400000);
+    if (today === day(Date.now())) expect(new Set(zone.state.listedPrefixes)).toEqual(new Set(["hits", "misses"].flatMap((k) => [today, yesterday].map((d) => `logs/http-requests/${k}/${d}`))));
+  });
+
+  it("an object without a usable last_modified fails the job instead of being skipped", async () => {
+    const zone = fakeZone({ seed: { objects: deliveredObjects({ hits: { last_modified: undefined } }) } });
+    const r = await run(["--env", "staging", "--verify-delivery", "--verify-wait", "0"], zone, { env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" } });
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("no usable last_modified");
+  });
+
+  it("--verify-delivery alone cuts off at --since, and rejects --since elsewhere", async () => {
+    const stale = fakeZone({ seed: { objects: deliveredObjects({ hits: { last_modified: "2026-10-01T00:00:00Z" }, misses: { last_modified: "2026-10-01T00:00:00Z" } }) } });
+    const r = await run(["--env", "staging", "--verify-delivery", "--verify-wait", "0", "--since", "2026-10-02T00:00:00Z"], stale, { env: { CF_BOOTSTRAP_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "acct" } });
+    expect(r.code).toBe(3);
+    const bad = await run(["--env", "staging", "--plan", "--since", "2026-10-02T00:00:00Z"], fakeZone());
+    expect(bad.code).toBe(2);
   });
 
   it("needs a token and an explicit mode", async () => {

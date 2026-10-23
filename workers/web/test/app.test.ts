@@ -13,6 +13,7 @@ const runtime = (missingBindings: string[] = []): WebRuntime => ({
   missingSecrets: [],
   ports: fakes,
   services: { mcp: {} as Fetcher, publish: {} as Fetcher },
+    config: { cdnOrigin: "https://packs.test.invalid" },
 });
 
 describeWorkerShell({

@@ -73,6 +73,17 @@ describe("check-rules", () => {
     expect(result.status).toBe(0);
   });
 
+  it("rejects score rules whose maxima do not add up to their part's weight", () => {
+    const dir = mutated(() => undefined);
+    const file = join(dir, "2026.10.1", "score.json");
+    const data = JSON.parse(readFileSync(file, "utf8"));
+    data.rules[0].max += 1;
+    writeFileSync(file, JSON.stringify(data));
+    const result = run(dir);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/context_cost sum to 26/);
+  });
+
   it("rejects a security rule classed warn", () => {
     const dir = mutated((d) => {
       const rule = d.rules.find((r) => r.category === "credentials")!;
