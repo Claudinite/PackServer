@@ -16,8 +16,6 @@ import {
   type Rng,
   type Sandbox,
   type AccessIdentity,
-  type Stats,
-  type StatsPoint,
   type Turnstile,
   type VectorIndex,
   type Workflow,
@@ -130,16 +128,6 @@ export function workflowPort(workflow: CfWorkflow): Workflow {
 
 export function rateLimitPort(binding: CfRateLimit): RateLimit {
   return { limit: (request) => binding.limit(request) };
-}
-
-/** `http.request` goes to the per-request dataset; every other point is a domain event named by its signal. */
-export function statsPort(datasets: { request: AnalyticsEngineDataset; domain: AnalyticsEngineDataset }): Stats {
-  return {
-    write(point: StatsPoint) {
-      const dataset = point.name === "http.request" ? datasets.request : datasets.domain;
-      dataset.writeDataPoint({ indexes: [point.index ?? point.name], blobs: point.blobs, doubles: point.doubles });
-    },
-  };
 }
 
 export type DurableObjectBindings = { [D in DoNamespace]?: DurableObjectNamespace };

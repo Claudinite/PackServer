@@ -80,11 +80,19 @@ export interface ParsedClient {
   client_version?: string;
 }
 
+const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+
+export const METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const;
+export const knownMethod = (method: string): string => ((METHODS as readonly string[]).includes(method) ? method : "OTHER");
+
 /** Only cn's own `cn/<version>` is kept verbatim; any other agent is a coarse class so free text is never stored. */
 export function parseUserAgent(userAgent: string | null | undefined): ParsedClient | undefined {
   if (!userAgent) return undefined;
-  const cn = /^cn\/([0-9A-Za-z.+-]{1,32})$/.exec(userAgent.trim());
-  if (cn) return { client: "cn", client_version: cn[1] as string };
+  const cn = /^cn\/(.{1,64})$/.exec(userAgent.trim());
+  if (cn) {
+    const version = cn[1] as string;
+    return SEMVER.test(version) && scrubIp(version) === version ? { client: "cn", client_version: version } : { client: "cn" };
+  }
   return { client: /^Mozilla\//.test(userAgent) ? "browser" : "other" };
 }
 

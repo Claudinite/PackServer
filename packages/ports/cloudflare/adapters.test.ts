@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { PortError } from "../src/ports";
 import { missingBindings, expectedBindings } from "../src/trust-table";
 import {
-  d1Port, durableObjectsPort, isServiceBinding, kvPort, queuePort, r2Port, r2ReadPort, rateLimitPort, readSecret, statsPort,
+  d1Port, durableObjectsPort, isServiceBinding, kvPort, queuePort, r2Port, r2ReadPort, rateLimitPort, readSecret,
   turnstilePort, unwiredPort, versionInfo, workflowPort,
 } from "./index";
 
@@ -91,16 +91,6 @@ describe("queues, workflows, rate limits, stats", () => {
 
   it("limits through the binding", async () => {
     expect(await rateLimitPort({ limit: async () => ({ success: false }) } as never).limit({ key: "k" })).toEqual({ success: false });
-  });
-
-  it("sends http.request points to the request dataset and every other point to domain events", () => {
-    const request = { writeDataPoint: vi.fn() };
-    const domain = { writeDataPoint: vi.fn() };
-    const stats = statsPort({ request, domain } as never);
-    stats.write({ name: "http.request", blobs: ["b"], doubles: [1], index: "version-1" });
-    stats.write({ name: "download.served", blobs: [], doubles: [] });
-    expect(request.writeDataPoint).toHaveBeenCalledWith({ indexes: ["version-1"], blobs: ["b"], doubles: [1] });
-    expect(domain.writeDataPoint).toHaveBeenCalledWith({ indexes: ["download.served"], blobs: [], doubles: [] });
   });
 });
 

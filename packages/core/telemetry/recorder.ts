@@ -1,5 +1,5 @@
 import type { Clock, Stats, StatsPoint } from "@packserver/ports";
-import { clean, consoleLine, outcomeFor, parseUserAgent, requestPoint, TIMINGS, type Outcome, type PrincipalKind, type Timing, type WideEvent } from "./event";
+import { clean, consoleLine, knownMethod, outcomeFor, UNKNOWN_DOUBLE, parseUserAgent, requestPoint, TIMINGS, type Outcome, type PrincipalKind, type Timing, type WideEvent } from "./event";
 import { dedupeKey, scrubIp, type Hasher } from "./hashing";
 import { logRate, type TelemetryMode } from "./sampling";
 import type { SignalName } from "./signals";
@@ -15,7 +15,7 @@ export interface RequestFacts {
   journey?: string;
   errorCode?: string;
   outcome?: Outcome;
-  /** A private request's wide event never names its scope or pack. */
+  /** Only a request that says `public` keeps its scope and pack in the wide event; a private or unset one never names its scope or pack. */
   visibility?: "public" | "private";
   timings?: Partial<Record<Timing, number>>;
   cpuMs?: number;
@@ -96,6 +96,24 @@ export interface Telemetry {
   request(observation: RequestObservation, policy: { mode: TelemetryMode; random: () => number }): Promise<RecordedRequest>;
 }
 
+/**
+ * Fixed `doubles` columns per signal; a number not listed stays in the attributes blob. Append
+ * only, so a column never changes meaning. A signal absent here has no doubles.
+ */
+export const SIGNAL_NUMBERS: Readonly<Partial<Record<SignalName, readonly string[]>>> = {
+  "publish.received": ["bytes"],
+  "search.query": ["results", "duration_ms"],
+  "validation.step": ["duration_ms"],
+  "queue.backlog": ["depth", "oldest_age_s"],
+  "github.rate_limit_remaining": ["remaining"],
+  "moderation.queue_age": ["age_s"],
+  "rollup.completed": ["rows", "duration_ms"],
+};
+
+const OWN_WRITER = new Set<string>(["download.served", "http.request"]);
+
+const nonNegative = (n: number | undefined): number | undefined => (n === undefined || !Number.isFinite(n) ? undefined : Math.max(0, n));
+
 const cleanAttrs = (attrs: SignalAttrs): Record<string, string | number | boolean> =>
   Object.fromEntries(Object.entries(attrs).map(([k, v]) => [k, typeof v === "string" ? scrubIp(v) : v]));
 
@@ -104,14 +122,10 @@ export function createTelemetry(options: TelemetryOptions): Telemetry {
   const log = options.log ?? ((line: string) => console.log(line));
   return {
     emit(signal, attrs = {}) {
+      if (OWN_WRITER.has(signal)) throw new Error(`${signal} has its own writer and cannot be emitted as a domain event`);
       const safe = cleanAttrs(attrs);
-      const numeric = Object.keys(safe).sort().flatMap((k) => (typeof safe[k] === "number" ? [safe[k] as number] : []));
-      stats.write({
-        name: signal,
-        index: signal,
-        blobs: [worker, releaseId, versionId, JSON.stringify(safe)],
-        doubles: numeric,
-      });
+      const doubles = (SIGNAL_NUMBERS[signal] ?? []).map((k) => (typeof safe[k] === "number" ? (safe[k] as number) : UNKNOWN_DOUBLE));
+      stats.write({ name: signal, index: signal, blobs: [worker, releaseId, versionId, JSON.stringify(safe)], doubles });
     },
 
     async download(fact) {
@@ -141,7 +155,7 @@ export function createTelemetry(options: TelemetryOptions): Telemetry {
         name: "download.served",
         index: fact.versionId,
         blobs: DOWNLOAD_BLOBS.map((k) => scrubIp(values[k] ?? "")),
-        doubles: [fact.bytes ?? -1, 1],
+        doubles: [nonNegative(fact.bytes) ?? UNKNOWN_DOUBLE, 1],
       };
       stats.write(point);
       return point;
@@ -150,7 +164,7 @@ export function createTelemetry(options: TelemetryOptions): Telemetry {
     async request(obs, policy) {
       const { facts } = obs;
       const principal = facts.principal ?? { kind: "anonymous" as const };
-      const priv = facts.visibility === "private";
+      const publicNames = facts.visibility === "public";
       const client = parseUserAgent(obs.userAgent);
       const principalHash = principal.id === undefined ? undefined : await hasher.principal(principal.kind, principal.id);
       const ipHash = obs.ip === undefined ? undefined : await hasher.ip(obs.ip);
@@ -158,21 +172,21 @@ export function createTelemetry(options: TelemetryOptions): Telemetry {
       const event: WideEvent = {
         worker,
         "http.route": scrubIp(obs.route),
-        method: obs.method,
+        method: knownMethod(obs.method),
         status: obs.status,
         outcome,
-        journey: facts.journey,
+        journey: clean(facts.journey),
         error_code: clean(facts.errorCode),
         principal_kind: principal.kind,
         principal_hash: principalHash,
-        scope: priv ? undefined : clean(facts.scope),
-        pack: priv ? undefined : clean(facts.pack),
+        scope: publicNames ? clean(facts.scope) : undefined,
+        pack: publicNames ? clean(facts.pack) : undefined,
         client: client?.client,
         client_version: client?.client_version,
         ip_hash: ipHash,
         country: obs.country,
         duration_ms: obs.durationMs,
-        cpu_ms: facts.cpuMs,
+        cpu_ms: nonNegative(facts.cpuMs),
         version_id: versionId,
         release_id: releaseId,
         colo: obs.colo,
@@ -180,7 +194,7 @@ export function createTelemetry(options: TelemetryOptions): Telemetry {
         version_override: obs.versionOverride,
         is_synthetic: principal.kind === "synthetic",
       };
-      for (const t of TIMINGS) if (facts.timings?.[t] !== undefined) event[t] = facts.timings[t];
+      for (const t of TIMINGS) event[t] = nonNegative(facts.timings?.[t]);
       stats.write(requestPoint(event));
       const rate = logRate({ worker, method: obs.method, status: obs.status, principalKind: principal.kind, mode: policy.mode });
       const logged = rate >= 1 || (rate > 0 && policy.random() < rate);

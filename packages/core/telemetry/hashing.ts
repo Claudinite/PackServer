@@ -68,7 +68,43 @@ export function dedupeKey(
     : `public:${who.network}:${versionId}:${day}`;
 }
 
-const IPV4 = /\b\d{1,3}(?:\.\d{1,3}){3}\b/g;
-const IPV6 = /\b(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}\b|(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4})*)?::(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4})*)?/gi;
-/** A value that looks like an address is replaced before it reaches a log line or a point. */
-export const scrubIp = (text: string): string => text.replace(IPV4, "[ip]").replace(IPV6, "[ip]");
+const V4 = /(?<!\d)\d{1,3}(?:\.\d{1,3}){3}(?!\d)/g;
+const V6_RUN = /(?<![0-9a-f:])[0-9a-f:]{2,}(?![0-9a-f:])/gi;
+const HEX_GROUP = /^[0-9a-f]{1,4}$/i;
+
+const isIpv6 = (text: string): boolean => {
+  if ((text.match(/:/g) ?? []).length < 2) return false;
+  const halves = text.split("::");
+  if (halves.length > 2) return false;
+  const groups = halves.flatMap((h) => (h === "" ? [] : h.split(":")));
+  if (!groups.every((g) => HEX_GROUP.test(g))) return false;
+  return halves.length === 2 ? groups.length < 8 : groups.length === 8;
+};
+
+const decodePercent = (text: string): string => {
+  let out = text;
+  for (let i = 0; i < 2; i++) {
+    try {
+      const next = decodeURIComponent(out);
+      if (next === out) break;
+      out = next;
+    } catch {
+      break;
+    }
+  }
+  return out;
+};
+
+/**
+ * Replaces anything that parses as an IPv4 or IPv6 address, wherever it sits in the text and
+ * however it is glued to other characters, after percent-decoding. `std::vector` is left alone.
+ */
+export function scrubIp(text: string): string {
+  return decodePercent(text)
+    .replace(V4, (m) => (m.split(".").every((o) => Number(o) <= 255) ? "[ip]" : m))
+    .replace(V6_RUN, (m, offset: number, whole: string) => {
+      if (!isIpv6(m)) return m;
+      if (m.endsWith("::") && /[A-Za-z_]/.test(whole[offset + m.length] ?? "")) return m;
+      return "[ip]";
+    });
+}

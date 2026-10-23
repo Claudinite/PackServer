@@ -114,7 +114,7 @@ describe("the wide event", () => {
       obs({
         ip: "198.51.100.7", country: "NO", colo: "OSL", userAgent: "cn/1.4.2", cacheStatus: "HIT",
         facts: {
-          principal: { kind: "token", id: "tok-1" }, scope: "@acme", pack: "@acme/gcp", journey: "adopt", errorCode: "none",
+          visibility: "public", principal: { kind: "token", id: "tok-1" }, scope: "@acme", pack: "@acme/gcp", journey: "adopt", errorCode: "none",
           cpuMs: 3, timings: { d1_ms: 4, r2_ms: 5, kv_ms: 1, do_ms: 2, vectorize_ms: 6, upstream_ms: 7 },
         },
       }),
@@ -241,11 +241,13 @@ describe("domain events", () => {
   it("are indexed by signal name, with attributes and numeric values kept apart", () => {
     const { sink, telemetry } = setup("publish");
     telemetry.emit("publish.received", { pack: "@acme/x", bytes: 10, quota: 3, dry_run: false });
+    telemetry.emit("publish.received", { pack: "@acme/y" });
     const [row] = sink.recorded("publish.received");
     expect(row!.index).toBe("publish.received");
     expect(row!.dataset).toBe("domain_events");
     expect(row!.point.blobs.slice(0, 3)).toEqual(["publish", "1.0.0+abc1234", "ver-1"]);
-    expect(row!.point.doubles).toEqual([10, 3]);
+    expect(row!.point.doubles).toEqual([10]);
+    expect(sink.recorded("publish.received")[1]!.point.doubles).toEqual([-1]);
     expect(sink).toHaveRecorded("publish.received", { pack: "@acme/x", dry_run: false });
     expect(sink).not.toHaveRecorded("publish.failed");
   });
@@ -354,3 +356,46 @@ function download(over: Partial<PrivateDownload> = {}): PrivateDownload {
     principal: { kind: "oidc", id: "4242" }, ip: "198.51.100.7", country: "NO", userAgent: "cn/1.4.2", bytes: 2048, ...over,
   };
 }
+
+describe("review fixes", () => {
+  it("fails closed: a request that never said public keeps no scope or pack", async () => {
+    const { sink, telemetry } = setup();
+    await telemetry.request(obs({ facts: { scope: "@secret", pack: "@secret/pack" } }), always);
+    expect(sink.everything()).not.toContain("@secret");
+    await telemetry.request(obs({ facts: { visibility: "public", pack: "@open/pack" } }), always);
+    expect(sink).toHaveRecorded("http.request", { pack: "@open/pack" });
+  });
+
+  it("refuses to emit the two signals that have their own writers", () => {
+    const { sink, telemetry } = setup();
+    expect(() => telemetry.emit("download.served", { pack: "x" })).toThrow();
+    expect(() => telemetry.emit("http.request" as never, {})).toThrow();
+    expect(sink.points).toEqual([]);
+  });
+
+  const hidden = ["upstream_10.0.0.1", "a1.2.3.4", "v1.2.3.4", "10.0.0.1x", "x2001:db8::1", "2001%3Adb8%3A%3A1", "%31%30.0.0.1", "2001:db8::1x", "::1"];
+  it.each(hidden)("scrubs %s", (text) => {
+    const out = scrubIp(text);
+    expect(out).toContain("[ip]");
+    expect(out).not.toMatch(/10\.0\.0\.1|1\.2\.3\.4|db8/);
+  });
+  it.each(["std::vector", "1.2.3", "10:20:30", "1.2.3.256", "v1.2.3-beta", "12:00", "ns::Type<int>", "2026-10-22T10:20:30Z"])("leaves %s alone", (text) => {
+    expect(scrubIp(text)).toBe(text);
+  });
+
+  it("keeps only a strict semver as the client version, and scrubs it", () => {
+    expect(parseUserAgent("cn/203.0.113.7")).toEqual({ client: "cn" });
+    expect(parseUserAgent("cn/1.4.2-rc.1+build5")).toEqual({ client: "cn", client_version: "1.4.2-rc.1+build5" });
+    expect(parseUserAgent("cn/1.2.3-10.0.0.1")).toEqual({ client: "cn" });
+    expect(parseUserAgent("cn/1.2")).toEqual({ client: "cn" });
+  });
+
+  it("clamps handler timings to zero and normalises the method and journey", async () => {
+    const { sink, telemetry } = setup();
+    const { event } = await telemetry.request(obs({ method: "BREW", facts: { journey: "adopt 10.0.0.1", timings: { d1_ms: -1, r2_ms: Number.NaN, kv_ms: 3 }, cpuMs: -5 } }), always);
+    expect(event.method).toBe("OTHER");
+    expect(event.journey).toBe("adopt [ip]");
+    expect([event.d1_ms, event.r2_ms, event.kv_ms, event.cpu_ms]).toEqual([0, undefined, 3, 0]);
+    expect(sink.everything()).not.toContain("10.0.0.1");
+  });
+});

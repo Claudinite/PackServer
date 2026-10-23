@@ -1,7 +1,7 @@
 import type { Context, MiddlewareHandler } from "hono";
 import { routePath } from "hono/route";
 import type { Clock } from "@packserver/ports";
-import type { PrivateDownload, RequestFacts, SignalAttrs, SignalName, Telemetry, TelemetryMode } from "@packserver/core/telemetry";
+import { scrubIp, type PrivateDownload, type RequestFacts, type SignalAttrs, type SignalName, type Telemetry, type TelemetryMode } from "@packserver/core/telemetry";
 
 export const VERSION_OVERRIDE_HEADER = "Cloudflare-Workers-Version-Overrides";
 /** cn's opaque per-repository key; it is read only by the private-download path. */
@@ -45,7 +45,7 @@ const MOUNT_ALL = new Set(["*", "/*"]);
  */
 export function recorder(options: RecorderOptions): MiddlewareHandler {
   const random = options.random ?? Math.random;
-  const onError = options.onError ?? ((error: unknown) => console.error(JSON.stringify({ event: "telemetry.error", message: error instanceof Error ? error.message : "unknown" })));
+  const onError = options.onError ?? ((error: unknown) => console.error(JSON.stringify({ event: "telemetry.error", message: error instanceof Error ? scrubIp(error.message) : "unknown" })));
   return async (c, next) => {
     const started = options.clock.now();
     let facts: RequestFacts = {};
@@ -59,32 +59,46 @@ export function recorder(options: RecorderOptions): MiddlewareHandler {
     });
     await next();
 
-    const raw = c.req.raw as Request & { cf?: { colo?: string; country?: string } };
-    const route = routePath(c, -1);
-    const observation = {
-      method: c.req.method,
-      route: MOUNT_ALL.has(route) ? "unmatched" : route,
-      status: c.res.status,
-      durationMs: Math.max(0, options.clock.now() - started),
-      ip: c.req.header("cf-connecting-ip"),
-      country: raw.cf?.country ?? c.req.header("cf-ipcountry"),
-      colo: raw.cf?.colo,
-      userAgent: c.req.header("user-agent"),
-      cacheStatus: c.res.headers.get("cf-cache-status") ?? undefined,
-      versionOverride: c.req.header(VERSION_OVERRIDE_HEADER) !== undefined,
-      exception: c.error !== undefined,
-      canceled: raw.signal.aborted,
-      facts,
-    };
-    const work = (async () => {
-      const mode = await (options.mode?.() ?? Promise.resolve("normal" as const)).catch(() => "normal" as const);
-      await options.telemetry.request(observation, { mode, random });
-      for (const job of queued) await Promise.resolve(job()).catch(onError);
-    })().catch(onError);
     try {
-      c.executionCtx.waitUntil(work);
-    } catch {
-      // No execution context (a unit test, a direct call): the work still runs, un-awaited.
+      const raw = c.req.raw as Request & { cf?: { colo?: string; country?: string } };
+      const route = routePath(c, -1);
+      const observation = {
+        method: c.req.method,
+        route: MOUNT_ALL.has(route) ? "unmatched" : route,
+        status: c.res.status,
+        durationMs: Math.max(0, options.clock.now() - started),
+        ip: c.req.header("cf-connecting-ip"),
+        country: raw.cf?.country ?? c.req.header("cf-ipcountry"),
+        colo: raw.cf?.colo,
+        userAgent: c.req.header("user-agent"),
+        cacheStatus: c.res.headers.get("cf-cache-status") ?? undefined,
+        versionOverride: c.req.header(VERSION_OVERRIDE_HEADER) !== undefined,
+        exception: c.error !== undefined,
+        canceled: raw.signal.aborted,
+        facts,
+      };
+      const work = (async () => {
+        try {
+          const mode = await (options.mode?.() ?? Promise.resolve("normal" as const)).catch(() => "normal" as const);
+          await options.telemetry.request(observation, { mode, random });
+        } catch (error) {
+          onError(error);
+        }
+        for (const job of queued) {
+          try {
+            await job();
+          } catch (error) {
+            onError(error);
+          }
+        }
+      })().catch(onError);
+      try {
+        c.executionCtx.waitUntil(work);
+      } catch {
+        // No execution context (a unit test, a direct call): the work still runs, un-awaited.
+      }
+    } catch (error) {
+      onError(error);
     }
   };
 }
