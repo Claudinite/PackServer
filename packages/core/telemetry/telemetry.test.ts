@@ -405,9 +405,15 @@ describe("scrub cost and edges", () => {
   it("scans 20 KB of colon-dense filler in under 50 ms", () => {
     for (const filler of ["a:", ":", "a::", "1:2:"]) {
       const input = filler.repeat(Math.ceil(20_000 / filler.length));
-      const started = performance.now();
-      scrubIp(input);
-      expect(performance.now() - started).toBeLessThan(50);
+      // The fastest of several runs: a loaded CI machine slows a run, it cannot speed one up.
+      const fastest = Math.min(
+        ...Array.from({ length: 7 }, () => {
+          const started = performance.now();
+          scrubIp(input);
+          return performance.now() - started;
+        }),
+      );
+      expect(fastest).toBeLessThan(50);
     }
     expect(scrubIp("x".repeat(5000))).toHaveLength(2048);
   });

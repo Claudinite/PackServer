@@ -1,6 +1,6 @@
 import { Hono, type Env } from "hono";
-import { createHasher, createTelemetry, type TelemetryKeys, type TelemetryMode } from "@packserver/core/telemetry";
-import type { Clock, Stats } from "@packserver/ports";
+import { createHasher, createTelemetry, scrubIp } from "@packserver/core/telemetry";
+import type { Clock, Stats, TelemetryConfig } from "@packserver/ports";
 import { securityHeaders } from "@packserver/ui/headers";
 import { recorder } from "./recorder-middleware";
 import { runSelfTest, type SelfTestCheck } from "./selftest-runner";
@@ -13,10 +13,8 @@ export interface WorkerShellOptions {
   clock: Clock;
   /** Where the wide event and domain events go; without it the Worker records nothing. */
   stats?: Stats;
-  /** The keys identifiers are hashed under; a hash whose key is absent is left out of the event. */
-  telemetryKeys?: TelemetryKeys;
-  /** The current `telemetry_mode`, from a per-isolate cache of the KV key. */
-  telemetryMode?: () => Promise<TelemetryMode>;
+  /** The hash keys and `telemetry_mode`; without it a hash is left out and the mode is `normal`. */
+  telemetry?: TelemetryConfig;
   checks: () => readonly SelfTestCheck[];
   /** Whether a request may reach the self-test. Everything else answers as an unknown path. */
   selfTestAllowed?: (request: Request) => boolean | Promise<boolean>;
@@ -36,18 +34,21 @@ export function createShell<E extends Env = Env>(options: WorkerShellOptions): H
   const app = new Hono<E>();
   app.use(versionHeader(options.releaseId));
   app.use(securityHeaders());
+  const config = options.telemetry;
   if (options.stats) {
     app.use(
       recorder({
         clock: options.clock,
-        mode: options.telemetryMode,
+        mode: config ? () => config.mode() : undefined,
         telemetry: createTelemetry({
           worker: options.worker,
           releaseId: options.releaseId,
           versionId: options.versionId,
           stats: options.stats,
           clock: options.clock,
-          hasher: createHasher(options.telemetryKeys ?? {}, options.clock),
+          hasher: createHasher(config ? () => config.keys() : {}, options.clock, (error) =>
+            console.error(JSON.stringify({ event: "telemetry.keys_unavailable", message: error instanceof Error ? scrubIp(error.message) : "unknown" })),
+          ),
         }),
       }),
     );

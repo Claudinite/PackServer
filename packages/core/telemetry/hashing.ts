@@ -23,8 +23,18 @@ export interface Hasher {
 
 export const utcDate = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 
-export function createHasher(keys: TelemetryKeys, clock: Clock): Hasher {
+export function createHasher(keys: TelemetryKeys | (() => Promise<TelemetryKeys>), clock: Clock, onUnavailable?: (error: unknown) => void): Hasher {
   let cached: { date: string; key: string } | undefined;
+  /** Keys that cannot be read leave the hashes out; the reason goes to `onUnavailable`, never into the event. */
+  const resolve = async (): Promise<TelemetryKeys> => {
+    if (typeof keys !== "function") return keys;
+    try {
+      return await keys();
+    } catch (error) {
+      onUnavailable?.(error);
+      return {};
+    }
+  };
   const dayKey = async (master: HashKey): Promise<string> => {
     const date = utcDate(clock.now());
     if (cached?.date !== date) cached = { date, key: await deriveDayKey(master, date) };
@@ -33,13 +43,16 @@ export function createHasher(keys: TelemetryKeys, clock: Clock): Hasher {
   return {
     day: () => utcDate(clock.now()),
     async ip(ip) {
-      return keys.ipMaster === undefined ? undefined : ipHash(await dayKey(keys.ipMaster), ip);
+      const { ipMaster } = await resolve();
+      return ipMaster === undefined ? undefined : ipHash(await dayKey(ipMaster), ip);
     },
     async principal(kind, id) {
-      return keys.principalKey === undefined ? undefined : principalHash(keys.principalKey, kind, id);
+      const { principalKey } = await resolve();
+      return principalKey === undefined ? undefined : principalHash(principalKey, kind, id);
     },
     async affinity(key) {
-      return keys.principalKey === undefined ? undefined : hmacHex(keys.principalKey, `affinity:${key}`);
+      const { principalKey } = await resolve();
+      return principalKey === undefined ? undefined : hmacHex(principalKey, `affinity:${key}`);
     },
   };
 }

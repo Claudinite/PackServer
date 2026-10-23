@@ -2,7 +2,7 @@
   "workers": {
     "web": {
       "d1": { "DB": "registry" },
-      "kv": { "SESSIONS_KV": "sessions", "CACHE_KV": "cache" },
+      "kv": { "SESSIONS_KV": "sessions", "CACHE_KV": "cache", "TELEMETRY_KV": "telemetry" },
       "r2": {
         "PACKS_PUBLIC": { "bucket": "packs-public", "access": "read" },
         "PACKS_PRIVATE": { "bucket": "packs-private", "access": "read" }
@@ -21,12 +21,12 @@
         "DOWNLOADS": "downloads"
       },
       "ratelimits": ["RATE_LIMIT"],
-      "secrets": ["TURNSTILE_SECRET", "SELFTEST_HMAC_KEY"],
+      "secrets": ["TURNSTILE_SECRET", "SELFTEST_HMAC_KEY", "IP_HASH_MASTER_KEY", "PRINCIPAL_HASH_KEY"],
       "fakes": {}
     },
     "mcp": {
       "d1": { "DB": "registry" },
-      "kv": { "OAUTH_KV": "oauth" },
+      "kv": { "OAUTH_KV": "oauth", "TELEMETRY_KV": "telemetry" },
       "r2": { "PACKS_PRIVATE": { "bucket": "packs-private", "access": "read" } },
       "queues": {},
       "queue_consumers": [],
@@ -42,12 +42,12 @@
         "DOWNLOADS": "downloads"
       },
       "ratelimits": ["RATE_LIMIT"],
-      "secrets": ["SELFTEST_HMAC_KEY"],
+      "secrets": ["SELFTEST_HMAC_KEY", "IP_HASH_MASTER_KEY", "PRINCIPAL_HASH_KEY"],
       "fakes": { "AI": "fake-ai", "VECTORIZE": "fake-vectorize" }
     },
     "publish": {
       "d1": { "DB": "registry" },
-      "kv": { "CACHE_KV": "cache" },
+      "kv": { "CACHE_KV": "cache", "TELEMETRY_KV": "telemetry" },
       "r2": { "PACKS_STAGING": { "bucket": "packs-staging", "access": "read-write" } },
       "queues": { "NOTIFY_QUEUE": "notify" },
       "queue_consumers": [],
@@ -63,12 +63,12 @@
       "ai": [],
       "analytics": { "REQUEST_OUTCOMES": "request_outcomes", "DOMAIN_EVENTS": "domain_events" },
       "ratelimits": [],
-      "secrets": ["SELFTEST_HMAC_KEY"],
+      "secrets": ["SELFTEST_HMAC_KEY", "IP_HASH_MASTER_KEY", "PRINCIPAL_HASH_KEY"],
       "fakes": {}
     },
     "github": {
       "d1": { "DB": "registry" },
-      "kv": {},
+      "kv": { "TELEMETRY_KV": "telemetry" },
       "r2": {},
       "queues": {},
       "queue_consumers": [],
@@ -80,12 +80,12 @@
       "ai": [],
       "analytics": { "REQUEST_OUTCOMES": "request_outcomes", "DOMAIN_EVENTS": "domain_events" },
       "ratelimits": [],
-      "secrets": ["GITHUB_APP_PRIVATE_KEY", "GITHUB_WEBHOOK_SECRET", "GITHUB_CODE_SEARCH_TOKEN", "SELFTEST_HMAC_KEY"],
+      "secrets": ["GITHUB_APP_PRIVATE_KEY", "GITHUB_WEBHOOK_SECRET", "GITHUB_CODE_SEARCH_TOKEN", "SELFTEST_HMAC_KEY", "IP_HASH_MASTER_KEY", "PRINCIPAL_HASH_KEY"],
       "fakes": {}
     },
     "validator": {
       "d1": { "DB": "registry" },
-      "kv": {},
+      "kv": { "TELEMETRY_KV": "telemetry" },
       "r2": {
         "PACKS_STAGING": { "bucket": "packs-staging", "access": "read" },
         "PACKS_PUBLIC": { "bucket": "packs-public", "access": "read-write" },
@@ -110,7 +110,7 @@
         "VALIDATION_EVENTS": "validation_events"
       },
       "ratelimits": [],
-      "secrets": ["SIGNING_KEY_ACTIVE", "SELFTEST_HMAC_KEY"],
+      "secrets": ["SIGNING_KEY_ACTIVE", "SELFTEST_HMAC_KEY", "IP_HASH_MASTER_KEY", "PRINCIPAL_HASH_KEY"],
       "fakes": {
         "AI": "fake-ai",
         "VECTORIZE": "fake-vectorize",
@@ -120,7 +120,7 @@
     },
     "admin": {
       "d1": { "DB": "registry" },
-      "kv": {},
+      "kv": { "TELEMETRY_KV": "telemetry" },
       "r2": {
         "PACKS_STAGING": { "bucket": "packs-staging", "access": "read-write" },
         "VALIDATION_REPORTS": { "bucket": "validation-reports", "access": "read" },
@@ -136,12 +136,12 @@
       "ai": [],
       "analytics": { "REQUEST_OUTCOMES": "request_outcomes", "DOMAIN_EVENTS": "domain_events" },
       "ratelimits": [],
-      "secrets": ["SELFTEST_HMAC_KEY"],
+      "secrets": ["SELFTEST_HMAC_KEY", "IP_HASH_MASTER_KEY", "PRINCIPAL_HASH_KEY"],
       "fakes": { "ACCESS": "fake-access" }
     },
     "judge": {
       "d1": {},
-      "kv": { "GATES_KV": "gates" },
+      "kv": { "GATES_KV": "gates", "TELEMETRY_KV": "telemetry" },
       "r2": {},
       "queues": {},
       "queue_consumers": [],
@@ -158,12 +158,12 @@
         "BUDGET": "budget"
       },
       "ratelimits": [],
-      "secrets": ["SELFTEST_HMAC_KEY"],
+      "secrets": ["SELFTEST_HMAC_KEY", "IP_HASH_MASTER_KEY", "PRINCIPAL_HASH_KEY"],
       "fakes": { "ACCESS": "fake-access" }
     },
     "prober": {
       "d1": {},
-      "kv": {},
+      "kv": { "TELEMETRY_KV": "telemetry" },
       "r2": {},
       "queues": {},
       "queue_consumers": [],
@@ -179,7 +179,7 @@
         "SYNTHETIC_PROBES": "synthetic_probes"
       },
       "ratelimits": [],
-      "secrets": ["SELFTEST_HMAC_KEY"],
+      "secrets": ["SELFTEST_HMAC_KEY", "IP_HASH_MASTER_KEY", "PRINCIPAL_HASH_KEY"],
       "fakes": {}
     }
   }

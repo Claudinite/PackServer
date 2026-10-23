@@ -45,6 +45,7 @@ export function createApp(runtime: WebRuntime, options: AppOptions = {}): Hono {
     versionId: runtime.version.versionId,
     clock: runtime.ports.clock,
     stats: runtime.ports.stats,
+    telemetry: runtime.ports.telemetry,
     checks: () => selfTestChecks(runtime),
     selfTestAllowed: options.selfTestAllowed,
   });

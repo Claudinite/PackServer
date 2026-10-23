@@ -21,7 +21,7 @@ is charged in v1.
 | Durable Object `RootCoordinator` | The one writer of `index/v1/root.json`: current scope hashes and serials, the root serial | Per scope index change, batched on a 10-second alarm; daily re-sign | Same | Yes |
 | Workflows | Validation run state | Per step; steps return keys, never bytes | Resume, dashboard | No (D1 at each milestone) |
 | Queues | Notify, re-index, audit | Per event | Consumed once, idempotent | No |
-| KV `sessions`, `oauth`, `cache`, `gates` | Sessions; OAuth clients, grants, hashed tokens; OAuth state (10 min); JWKS; gate verdicts (judge only) | Per login, at most every 15 min for last-seen | Every signed-in or token request | Sessions and grants |
+| KV `sessions`, `oauth`, `cache`, `gates`, `telemetry` | Sessions; OAuth clients, grants, hashed tokens; OAuth state (10 min); JWKS; gate verdicts (judge only); the `telemetry_mode` switch | Per login, at most every 15 min for last-seen | Every signed-in or token request | Sessions and grants |
 | Analytics Engine | `request_outcomes`, `domain_events`, `validation_events`, `synthetic_probes`, `gate_results`, `budget`, `downloads` | Fire-and-forget points | Gate judge, dashboards, rollups | No (3 months) |
 | Secrets Store | GitHub App key, active signing key, standby signing key (bound to nothing), HMAC keys, hash keys, the code-search token | People, at rotation | Workers at start | Yes |
 | Outside | Email provider, GitHub (read-only), Sigstore Rekor (audit heads) | Per event | Per event | No |
@@ -88,6 +88,10 @@ most every 15 minutes, deleted at logout or revocation, with a 7-day expiry. `wo
 owns the `oauth` namespace. GitHub's JWKS is cached in `cache`. The judge's `gates` namespace is
 bound only to the judge so no other Worker can write a verdict. KV's propagation delay is bounded by
 short MCP tokens (1 hour), refresh checks, and the per-action assertion on sensitive actions.
+The `telemetry` namespace holds one key, `telemetry_mode` (`normal` or `economy`), read by every
+Worker once per isolate per minute and written only through the admin internal API
+(`set_telemetry_mode`). Every Worker binds it because every Worker writes the wide event; a value
+that is missing or unknown means `normal`.
 
 ## Secrets Store
 

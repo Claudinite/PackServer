@@ -45,7 +45,7 @@ describe("the plan", () => {
   it("includes the audit dead-letter queue, the extras, and no shadow-records bucket", () => {
     const p = planResources("production");
     expect(p.queues).toEqual(["audit", "audit-dlq", "notify", "reindex"]);
-    expect(p.kv).toEqual(["cache", "gates", "oauth", "sessions"]);
+    expect(p.kv).toEqual(["cache", "gates", "oauth", "sessions", "telemetry"]);
     expect(p.r2).toEqual(["audit-log", "ops", "packs-private", "packs-public", "packs-staging", "validation-reports"]);
     expect(p.r2.join()).not.toContain("shadow-records");
     expect(planResources("staging").queues).toContain("audit-dlq-staging");
@@ -97,7 +97,7 @@ describe("provisioning", () => {
     expect(r.err).toBe("");
     expect(r.code).toBe(0);
     expect(r.file.d1["registry-staging"].id).toMatch(/^d1-/);
-    expect(Object.keys(r.file.kv)).toEqual(["cache-staging", "gates-staging", "oauth-staging", "sessions-staging"]);
+    expect(Object.keys(r.file.kv)).toEqual(["cache-staging", "gates-staging", "oauth-staging", "sessions-staging", "telemetry-staging"]);
     expect(r.file.secrets_store_id).toMatch(/^store-/);
     expect(r.file.vectorize["packs-staging"].dimensions).toBe(1024);
     expect(r.file.queues["audit-dlq-staging"].id).toMatch(/^queue-/);

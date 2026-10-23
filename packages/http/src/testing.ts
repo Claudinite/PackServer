@@ -105,3 +105,21 @@ export function expectPortsMatchTrustTable(
     expect(typeof port.delete === "function", `${name} delete method`).toBe(writable);
   }
 }
+
+/** Every Worker reads the hash keys and `telemetry_mode` through its own bindings, and nothing else. */
+export async function expectTelemetryWired(
+  worker: WorkerName,
+  createRuntime: (env: never) => { ports: { telemetry: { keys(): Promise<unknown>; mode(): Promise<unknown> } } },
+): Promise<void> {
+  const asked: string[] = [];
+  const env = {
+    ...dummyEnv(worker),
+    IP_HASH_MASTER_KEY: "ip-key",
+    PRINCIPAL_HASH_KEY: { get: async () => "principal-key" },
+    TELEMETRY_KV: { get: async (key: string) => (asked.push(key), "economy") },
+  };
+  const { telemetry } = createRuntime(env as never).ports;
+  expect(await telemetry.keys()).toEqual({ ipMaster: "ip-key", principalKey: "principal-key" });
+  expect(await telemetry.mode()).toBe("economy");
+  expect(asked).toEqual(["telemetry_mode"]);
+}

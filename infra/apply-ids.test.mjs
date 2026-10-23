@@ -19,7 +19,7 @@ function copyRepo() {
 const resources = (env, n) => ({
   secrets_store_id: "store-one",
   d1: { [env === "staging" ? "registry-staging" : "registry"]: { id: `d1-${env}` } },
-  kv: Object.fromEntries(["sessions", "oauth", "cache", "gates"].map((k) => [env === "staging" ? `${k}-staging` : k, { id: `kv-${env}-${k}-${n}` }])),
+  kv: Object.fromEntries(["sessions", "oauth", "cache", "gates", "telemetry"].map((k) => [env === "staging" ? `${k}-staging` : k, { id: `kv-${env}-${k}-${n}` }])),
 });
 
 describe("the repository's own configs", () => {
@@ -41,7 +41,7 @@ describe("apply", () => {
     }
     const web = readConfigs(root).find((c) => c.worker === "web").config.env.staging;
     expect(web.d1_databases[0].database_id).toBe("d1-staging");
-    expect(web.kv_namespaces.map((k) => k.id)).toEqual(["kv-staging-sessions-1", "kv-staging-cache-1"]);
+    expect(web.kv_namespaces.map((k) => k.id)).toEqual(["kv-staging-sessions-1", "kv-staging-cache-1", "kv-staging-telemetry-1"]);
     expect(web.secrets_store_secrets.every((s) => s.store_id === "store-one")).toBe(true);
   });
 
