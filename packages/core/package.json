@@ -29,6 +29,7 @@
     "@packserver/ports": "workspace:*",
     "@packserver/rules": "workspace:*",
     "@packserver/schema": "workspace:*",
+    "@simplewebauthn/server": "catalog:",
     "aws4fetch": "catalog:",
     "zod": "catalog:"
   }

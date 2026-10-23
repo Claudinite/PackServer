@@ -26,6 +26,10 @@ export const credentials = sqliteTable(
     label: text("label"),
     created_at: text("created_at").notNull(),
     last_used_at: text("last_used_at"),
+    /** Until this instant the credential cannot authorise a held action (REQ-ACC-005); null when no hold applies. */
+    hold_until: text("hold_until"),
+    /** Comma-separated transports the authenticator reported, passed back as hints. */
+    transports: text("transports"),
   },
   (t) => [uniqueIndex("credentials_credential_id_unique").on(t.credential_id), index("credentials_user_idx").on(t.user_id)],
 );

@@ -36,6 +36,13 @@
       "when": 1792723833132,
       "tag": "20261023025033_accounts_github_login",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1792727248708,
+      "tag": "20261023034728_mfa_passkeys_recovery",
+      "breakpoints": true
     }
   ]
 }
