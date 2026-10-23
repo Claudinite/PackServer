@@ -228,7 +228,7 @@ describe("object tokens", () => {
     expect(Object.keys(ops.resources)).toEqual(["com.cloudflare.edge.r2.bucket.acct_default_ops"]);
     expect(ops.permission_groups.map((g) => g.id)).toEqual(["pg-write"]);
     expect(JSON.stringify(posts)).not.toContain("pg-admin");
-    expect(cf.state.secrets).toEqual(expect.arrayContaining(["AUDIT_LOG_S3_ACCESS_KEY_ID", "AUDIT_LOG_S3_SECRET_ACCESS_KEY"]));
+    expect(cf.state.secrets).toEqual(expect.arrayContaining(["audit-s3-access-key-id", "audit-s3-secret-access-key"]));
     expect(r.out).toMatch(/CN_RELEASES_S3_ACCESS_KEY_ID=tok-/);
     expect(r.out).not.toContain("value-of-");
   });
@@ -238,14 +238,14 @@ describe("object tokens", () => {
     const r = await run(["--env", "production"], cf);
     expect(r.code).toBe(0);
     expect(r.out).toContain("--print-ops-token");
-    expect(r.out).not.toContain("AUDIT_LOG_S3_SECRET_ACCESS_KEY=");
+    expect(r.out).not.toContain("audit-s3-secret-access-key=");
     expect(cf.state.tokens.map((t) => t.name)).toEqual(["packserver-audit-log"]);
   });
 
   it("revokes a token whose secrets could not be stored", async () => {
     const cf = fakeCloudflare();
     const original = cf.fetch;
-    const fetch = async (url, init) => (init?.method === "POST" && /secrets$/.test(new URL(url).pathname) && JSON.parse(init.body)[0].name.startsWith("AUDIT") ? { ok: false, status: 400, json: async () => ({ success: false, errors: [] }) } : original(url, init));
+    const fetch = async (url, init) => (init?.method === "POST" && /secrets$/.test(new URL(url).pathname) && JSON.parse(init.body)[0].name.startsWith("audit-s3") ? { ok: false, status: 400, json: async () => ({ success: false, errors: [] }) } : original(url, init));
     const r = await run(["--env", "production"], { ...cf, fetch });
     expect(r.code).toBe(1);
     expect(cf.state.tokens).toEqual([]);

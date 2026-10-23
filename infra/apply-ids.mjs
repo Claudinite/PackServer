@@ -40,7 +40,18 @@ export function idSlots(sourceFile, envName, kvNameByBinding, resourceEnv) {
   for (const s of items(prop(block, "secrets_store_secrets"))) {
     slots.push({ label: `secrets store for ${str(prop(s, "binding"))}`, node: prop(s, "store_id"), resource: ["secrets_store_id"] });
   }
+  const endpoint = prop(prop(block, "vars"), "AUDIT_S3_ENDPOINT");
+  if (endpoint) slots.push({ label: "AUDIT_S3_ENDPOINT", node: endpoint, resource: ["audit_endpoint"], kind: "endpoint" });
   return slots.filter((s) => s.node && ts.isStringLiteral(s.node));
+}
+
+// The endpoint keeps its path and takes the account id as the host's first label.
+const R2_HOST = /^(https:\/\/)[^./]+(\.r2\.cloudflarestorage\.com)/;
+function expectedValue(resources, slot) {
+  if (slot.kind === "endpoint") {
+    return resources.account_id && R2_HOST.test(slot.node.text) ? slot.node.text.replace(R2_HOST, `$1${resources.account_id}$2`) : undefined;
+  }
+  return idOf(resources, slot.resource);
 }
 
 function idOf(resources, resource) {
@@ -74,7 +85,7 @@ export function applyIds(env, { root = REPO, resourcesDir = join(root, "infra") 
     const slots = idSlots(sf, env, trust[worker]?.kv ?? {}, env);
     const spliced = [];
     for (const slot of slots) {
-      const id = idOf(resources, slot.resource);
+      const id = expectedValue(resources, slot);
       if (!id) {
         missing.push(`${worker}: ${slot.label}`);
         continue;
@@ -107,6 +118,7 @@ export function checkIds({ root = REPO, resourcesDir = join(root, "infra") } = {
       if (!config.env?.[envName]) continue;
       const resourceEnv = envName === "test" ? "production" : envName;
       for (const slot of idSlots(sf, envName, trust[worker]?.kv ?? {}, resourceEnv)) {
+        if (slot.kind === "endpoint") continue;
         const value = slot.node.text;
         if (!seen[envName].has(value)) seen[envName].set(value, `${worker} ${slot.label}`);
       }
@@ -124,7 +136,7 @@ export function checkIds({ root = REPO, resourcesDir = join(root, "infra") } = {
     for (const { worker, path } of readConfigs(root)) {
       const { sf } = loadSource(path);
       for (const slot of idSlots(sf, env, trust[worker]?.kv ?? {}, env)) {
-        const want = idOf(resources, slot.resource);
+        const want = expectedValue(resources, slot);
         if (!want) problems.push(`${worker} env.${env}: infra/resources.${env}.json has no id for ${slot.label}`);
         else if (slot.node.text !== want) problems.push(`${worker} env.${env}: ${slot.label} is ${slot.node.text}, resources file says ${want}`);
       }

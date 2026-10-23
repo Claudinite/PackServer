@@ -58,6 +58,26 @@ describe("apply", () => {
   });
 });
 
+describe("audit endpoint", () => {
+  it("takes the account id into its host and keeps its path", () => {
+    const root = copyRepo();
+    const p = join(root, "workers", "admin", "wrangler.jsonc");
+    const cfg = JSON.parse(readFileSync(p, "utf8"));
+    cfg.env.staging.vars.AUDIT_S3_ENDPOINT = "https://ACCOUNT_ID.r2.cloudflarestorage.com/audit-log-staging";
+    cfg.env.production.vars.AUDIT_S3_ENDPOINT = "https://ACCOUNT_ID.r2.cloudflarestorage.com/audit-log";
+    writeFileSync(p, JSON.stringify(cfg, null, 2));
+    for (const env of ["staging", "production"]) writeFileSync(join(root, "infra", `resources.${env}.json`), JSON.stringify({ ...resources(env, 1), account_id: "acct123" }));
+    expect(checkIds({ root }).join("\n")).toContain("AUDIT_S3_ENDPOINT");
+    applyIds("staging", { root });
+    applyIds("production", { root });
+    const after = JSON.parse(readFileSync(p, "utf8")).env;
+    expect(after.staging.vars.AUDIT_S3_ENDPOINT).toBe("https://acct123.r2.cloudflarestorage.com/audit-log-staging");
+    expect(after.production.vars.AUDIT_S3_ENDPOINT).toBe("https://acct123.r2.cloudflarestorage.com/audit-log");
+    expect(after.test.vars.AUDIT_S3_ENDPOINT).toBeUndefined();
+    expect(checkIds({ root })).toEqual([]);
+  });
+});
+
 describe("check", () => {
   it("fails when staging and production share an id", () => {
     const root = copyRepo();

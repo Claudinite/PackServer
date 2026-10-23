@@ -9,7 +9,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
-import { ConfigError, call, createSecretsStore, resolveCloudflareConfig, secretPrefix } from "./lib/secrets-store.mjs";
+import { ConfigError, call, createSecretsStore, resolveCloudflareConfig } from "./lib/secrets-store.mjs";
 import { DEFAULT_EMBEDDING_MODEL, ENVS, ZONE, embeddingDimensions, planResources, suffixed } from "./lib/plan.mjs";
 
 const REPO = join(import.meta.dirname, "..");
@@ -19,7 +19,7 @@ export const resourcesPath = (env, dir = import.meta.dirname) => join(dir, `reso
 
 // Object tokens: the least R2 permission each consumer needs. Bucket admin is never requested.
 export const TOKEN_SPECS = [
-  { key: "audit-log", bucket: "audit-log", permissions: ["Workers R2 Storage Bucket Item Read", "Workers R2 Storage Bucket Item Write"], store: "AUDIT_LOG_S3" },
+  { key: "audit-log", bucket: "audit-log", permissions: ["Workers R2 Storage Bucket Item Read", "Workers R2 Storage Bucket Item Write"], audit: true },
   { key: "ops-releases", bucket: "ops", permissions: ["Workers R2 Storage Bucket Item Write"], handOver: "CN_RELEASES_S3" },
 ];
 
@@ -138,7 +138,6 @@ export async function provision(env, opts, deps) {
   });
   ids.secrets_store_id = store?.id;
   const secrets = store ? createSecretsStore({ fetch: fetchImpl, token, accountId, storeId: store.id }) : undefined;
-  const prefix = secretPrefix(env);
 
   // D1
   ids.d1 = {};
@@ -308,7 +307,7 @@ export async function provision(env, opts, deps) {
           continue;
         }
         if (have) {
-          const keyNames = spec.store ? [`${prefix}${spec.store}_ACCESS_KEY_ID`, `${prefix}${spec.store}_SECRET_ACCESS_KEY`] : [];
+          const keyNames = spec.audit ? Object.values(plan.auditSecrets) : [];
           const missing = keyNames.filter((n) => !names.has(n));
           if (missing.length) throw new Error(`token ${name} (${have.id}) exists but ${missing.join(", ")} is not in the Secrets Store; revoke the token and re-run`);
           out(`ok       token ${name} (value not recoverable)`);
@@ -322,15 +321,15 @@ export async function provision(env, opts, deps) {
         const { id, value } = json.result ?? {};
         if (!id || !value) throw new Error(`token ${name} was created without a usable id and value`);
         const secretAccessKey = createHash("sha256").update(value).digest("hex");
-        if (spec.store) {
+        if (spec.audit) {
           try {
-            await secrets.create(`${prefix}${spec.store}_ACCESS_KEY_ID`, id, `${name} (${env})`);
-            await secrets.create(`${prefix}${spec.store}_SECRET_ACCESS_KEY`, secretAccessKey, `${name} (${env})`);
+            await secrets.create(plan.auditSecrets.accessKeyId, id, `${name} (${env})`);
+            await secrets.create(plan.auditSecrets.secretAccessKey, secretAccessKey, `${name} (${env})`);
           } catch (e) {
             await acct("DELETE", `/tokens/${id}`).catch(() => {});
             throw new Error(`could not store ${name}: ${e.message}; the token was revoked`, { cause: e });
           }
-          out(`created  token ${name} -> Secrets Store ${prefix}${spec.store}_*`);
+          out(`created  token ${name} -> Secrets Store ${Object.values(plan.auditSecrets).join(", ")}`);
         } else {
           out(`created  token ${name}`);
           out(`${spec.handOver}_ACCESS_KEY_ID=${id}`);

@@ -27,6 +27,7 @@ export const R2_CUSTOM_DOMAINS = {
 
 export const SECRETS_STORE_NAME = "packserver";
 export const TURNSTILE_BINDING = "TURNSTILE_SECRET";
+export const AUDIT_BINDINGS = { accessKeyId: "AUDIT_S3_ACCESS_KEY_ID", secretAccessKey: "AUDIT_S3_SECRET_ACCESS_KEY" };
 
 export const suffixed = (env, name) => (env === "staging" ? `${name}-staging` : name);
 
@@ -57,6 +58,7 @@ export function planResources(env, { root = REPO } = {}) {
   const vectorize = new Set();
   const hosts = new Map();
   let turnstileSecretName;
+  const audit = {};
   for (const { worker, path, config } of readConfigs(root)) {
     const block = config.env?.[env];
     if (!block) throw new Error(`${path}: no env.${env} block`);
@@ -70,6 +72,7 @@ export function planResources(env, { root = REPO } = {}) {
     for (const v of block.vectorize ?? []) vectorize.add(v.index_name);
     for (const s of block.secrets_store_secrets ?? []) {
       if (s.binding === TURNSTILE_BINDING) turnstileSecretName = s.secret_name;
+      for (const [field, binding] of Object.entries(AUDIT_BINDINGS)) if (s.binding === binding) audit[field] = s.secret_name;
     }
     for (const r of block.routes ?? []) {
       const [host, ...rest] = (typeof r === "string" ? r : r.pattern).split("/");
@@ -93,6 +96,12 @@ export function planResources(env, { root = REPO } = {}) {
     r2CustomDomains: R2_CUSTOM_DOMAINS[env],
     turnstile: { name: suffixed(env, "packserver"), domains: sorted([...hosts.keys()].filter((h) => h.startsWith(env === "staging" ? "registry-staging." : "registry."))), secretName: turnstileSecretName },
     secretsStore: SECRETS_STORE_NAME,
+    // The admin Worker's own secret names; the fallbacks are the names the admin config is to
+    // declare and can go once it does.
+    auditSecrets: {
+      accessKeyId: audit.accessKeyId ?? suffixed(env, "audit-s3-access-key-id"),
+      secretAccessKey: audit.secretAccessKey ?? suffixed(env, "audit-s3-secret-access-key"),
+    },
   };
 }
 
