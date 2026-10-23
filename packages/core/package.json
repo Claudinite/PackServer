@@ -6,6 +6,7 @@
   "exports": {
     "./canonical": "./canonical/index.ts",
     "./canonical/fixtures": "./canonical/fixtures.ts",
+    "./github": "./github/index.ts",
     "./index": "./index/index.ts",
     "./mail": "./mail/index.ts",
     "./mail/testing": "./mail/testing.ts",

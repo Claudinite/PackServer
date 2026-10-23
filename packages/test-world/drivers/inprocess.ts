@@ -26,7 +26,7 @@ const MIGRATION_BINDING = "DB";
  */
 export class InProcessDriver implements Driver {
   readonly kind = "inprocess" as const;
-  static readonly CAPABILITIES: readonly Capability[] = ["fakes", "clock", "reset", "recorder", "mcp"];
+  static readonly CAPABILITIES: readonly Capability[] = ["fakes", "clock", "reset", "recorder", "mcp", "state"];
   readonly capabilities: ReadonlySet<Capability> = new Set(InProcessDriver.CAPABILITIES);
   ui?: UiActions;
   /** Where the running harness listens, for a browser to reach it. */
@@ -62,6 +62,16 @@ export class InProcessDriver implements Driver {
       const out = await toApiResponse(res as unknown as Response);
       this.versions.check(url, out);
       return out;
+    },
+  };
+
+  /** Every Worker's `env.test` points at one registry database, so any Worker that binds it can read it. */
+  state = {
+    d1: async (sql: string, params: unknown[] = []): Promise<Array<Record<string, unknown>>> => {
+      const owner = this.harness.workers.find((w) => MIGRATION_BINDING in TRUST_TABLE[w].d1);
+      if (!owner) throw new InfrastructureError("no booted Worker binds the registry database");
+      const env = (await this.harness.server.getWorker(testWorkerName(owner)).getEnv()) as { DB: { prepare(sql: string): { bind(...values: unknown[]): { all(): Promise<{ results: unknown[] }> } } } };
+      return (await env.DB.prepare(sql).bind(...params).all()).results as Array<Record<string, unknown>>;
     },
   };
 

@@ -6,7 +6,7 @@ import type { McpClient } from "./mcp";
 export type DriverKind = "inprocess" | "http" | "browser" | "mcp";
 
 /** What a driver can offer; a scenario that needs more is skipped with the reason, never passed. */
-export type Capability = "fakes" | "clock" | "reset" | "recorder" | "mcp" | "ui" | "telemetry";
+export type Capability = "fakes" | "clock" | "reset" | "recorder" | "mcp" | "ui" | "telemetry" | "state";
 
 export interface ApiRequest {
   /** Which Worker answers in-process; ignored by a driver that reaches the system through one public host. */
@@ -42,6 +42,8 @@ export interface Driver {
   ui?: UiActions;
   mcp?: { client(credentials?: McpCredentials): Promise<McpClient> };
   fakes?: WorldFakes;
+  /** Reads rows the system stored, for what no response shows; in-process only. */
+  state?: { d1(sql: string, params?: unknown[]): Promise<Array<Record<string, unknown>>> };
   recorder?: { invocations(filter?: InvocationFilter): InvocationView[]; clear(): void };
   /** Every release id seen on a response (REQ-OPS-006). */
   observedVersions(): ReadonlySet<string>;
