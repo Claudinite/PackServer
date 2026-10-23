@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { InProcessDriver } from "../drivers/inprocess";
+import { testWorkerName } from "../harness";
 import { EPOCH } from "../fakes/compose";
 
 interface Rpc {
@@ -18,7 +19,7 @@ const driver = new InProcessDriver();
 /** The service bindings the product Workers hold under env.test, as they see them. */
 /** Calls through a binding stub can throw before they return a promise; a rejection is what a test means. */
 const rejection = (call: () => Promise<unknown>) => (async () => call())();
-const binding = async (worker: string, name: string) => ((await driver.server.getWorker<Record<string, Rpc>>(worker).getEnv())[name] as Rpc);
+const binding = async (worker: string, name: string) => ((await driver.server.getWorker<Record<string, Rpc>>(testWorkerName(worker)).getEnv())[name] as Rpc);
 
 beforeAll(async () => {
   await driver.start();

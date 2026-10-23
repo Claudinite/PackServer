@@ -7,6 +7,9 @@ import { CLOCK_WORKER, FAKE_WORKERS, fakeWorkerConfig } from "./fake-workers";
 
 export { REPO_ROOT } from "./root";
 
+/** The name a product Worker runs under in the harness: its `env.test` block names it `<worker>-test`. */
+export const testWorkerName = (worker: string): string => `${worker}-test`;
+
 /** The Worker that answers a request no route claims; the rest are reached by name. */
 const PRIMARY: WorkerName = "web";
 

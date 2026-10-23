@@ -35,7 +35,7 @@ export function createRuntime(env: Env): McpRuntime {
     kv: { OAUTH_KV: kvPort(env.OAUTH_KV) },
     r2: { PACKS_PRIVATE: r2ReadPort(env.PACKS_PRIVATE) },
     rateLimits: { RATE_LIMIT: rateLimitPort(env.RATE_LIMIT) },
-    vectors: vectorIndexPort(env.VECTORIZE),
-    embedder: embedderFrom(env.AI),
+    vectors: vectorIndexPort(env.ENVIRONMENT, env.VECTORIZE),
+    embedder: embedderFrom(env.ENVIRONMENT, env.AI),
   });
 }

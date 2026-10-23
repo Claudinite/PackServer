@@ -69,9 +69,10 @@ export function describeWorkerShell({ worker, build }: WorkerShellContract): voi
 export const SHELL_RELEASE = RELEASE;
 export const SHELL_VERSION = "version-test";
 
-/** An `env` with every binding the trust table gives the Worker, as an empty object that is never called. */
+/** An `env` with every binding the trust table gives the Worker, as an empty object that is never called; under `env.test` a fake Worker's binding is a service binding. */
 export function dummyEnv(worker: WorkerName, environment = "test"): Record<string, unknown> {
-  const env: Record<string, unknown> = Object.fromEntries(expectedBindings(worker).map((name) => [name, {}]));
+  const fakes = environment === "test" ? Object.keys(TRUST_TABLE[worker].fakes) : [];
+  const env: Record<string, unknown> = Object.fromEntries(expectedBindings(worker).map((name) => [name, fakes.includes(name) ? { fetch: () => {} } : {}]));
   env.WORKER = worker;
   env.ENVIRONMENT = environment;
   env.CF_VERSION_METADATA = { id: "version-9", tag: "rel-9" };

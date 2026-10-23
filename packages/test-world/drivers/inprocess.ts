@@ -1,7 +1,7 @@
 import { TRUST_TABLE, type WorkerName } from "@packserver/ports";
 import type { TestHarness } from "wrangler";
 import { WorldFakes } from "../fakes/compose";
-import { createWorldHarness, type HarnessOptions, type WorldHarness } from "../harness";
+import { createWorldHarness, testWorkerName, type HarnessOptions, type WorldHarness } from "../harness";
 import { InfrastructureError } from "../world/errors";
 import { filterInvocations, invocationsFromLogs, type InvocationFilter, type InvocationView } from "../world/recorder";
 import type { ApiRequest, ApiResponse, Capability, Driver, McpCredentials, UiActions } from "./driver";
@@ -58,7 +58,7 @@ export class InProcessDriver implements Driver {
       const headers = { ...req.headers };
       const url = `http://${req.surface}.internal${req.path}`;
       const body = encodeBody(req.body, headers);
-      const res = await this.harness.server.getWorker(req.surface).fetch(url, { method: req.method, headers, ...(body === undefined ? {} : { body }) } as never);
+      const res = await this.harness.server.getWorker(testWorkerName(req.surface)).fetch(url, { method: req.method, headers, ...(body === undefined ? {} : { body }) } as never);
       const out = await toApiResponse(res as unknown as Response);
       this.versions.check(url, out);
       return out;
@@ -77,7 +77,7 @@ export class InProcessDriver implements Driver {
   /** The Worker that owns the shared registry database applies its migrations; every Worker's `env.test` points at the same one. */
   private async migrate(): Promise<void> {
     const owner = this.harness.workers.find((w) => MIGRATION_BINDING in TRUST_TABLE[w].d1);
-    if (owner) await this.harness.server.getWorker(owner).applyD1Migrations(MIGRATION_BINDING);
+    if (owner) await this.harness.server.getWorker(testWorkerName(owner)).applyD1Migrations(MIGRATION_BINDING);
   }
 
   async reset(): Promise<void> {

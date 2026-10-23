@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { InProcessDriver, stripCredentials } from "../drivers/inprocess";
+import { testWorkerName } from "../harness";
 import { InfrastructureError } from "../world/errors";
 
 const driver = new InProcessDriver();
@@ -16,7 +17,7 @@ interface Db {
 }
 
 const users = async () => {
-  const env = await driver.server.getWorker<{ DB: Db }>("web").getEnv();
+  const env = await driver.server.getWorker<{ DB: Db }>(testWorkerName("web")).getEnv();
   return env.DB;
 };
 
