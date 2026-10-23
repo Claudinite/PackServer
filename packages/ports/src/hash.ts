@@ -6,7 +6,7 @@ const toHex = (buffer: ArrayBuffer): string =>
   [...new Uint8Array(buffer)].map((b) => b.toString(16).padStart(2, "0")).join("");
 
 const bytes = (data: string | Uint8Array): Uint8Array<ArrayBuffer> =>
-  typeof data === "string" ? encoder.encode(data) : new Uint8Array(data);
+  (typeof data === "string" ? encoder.encode(data) : new Uint8Array(data)) as Uint8Array<ArrayBuffer>;
 
 export async function sha256Hex(data: string | Uint8Array): Promise<string> {
   return toHex(await crypto.subtle.digest("SHA-256", bytes(data)));

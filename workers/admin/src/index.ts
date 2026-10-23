@@ -1,0 +1,10 @@
+import { createApp } from "./app";
+import { createRuntime, type Env } from "./bindings";
+import { consumeAudit } from "./consumers/audit";
+import { runCron } from "./crons";
+
+export default {
+  fetch: (request, env, ctx) => createApp(createRuntime(env)).fetch(request, env, ctx),
+  scheduled: (controller, env) => runCron(controller.cron, createRuntime(env)),
+  queue: (batch) => consumeAudit(batch),
+} satisfies ExportedHandler<Env>;

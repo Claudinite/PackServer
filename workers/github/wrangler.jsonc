@@ -1,0 +1,175 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "github",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "env": {
+    "test": {
+      "name": "github",
+      "vars": {
+        "WORKER": "github",
+        "ENVIRONMENT": "test",
+        "GITHUB_APP_PRIVATE_KEY": "test-github-app-private-key",
+        "GITHUB_WEBHOOK_SECRET": "whsec_test_00000000000000000000000000000000",
+        "GITHUB_CODE_SEARCH_TOKEN": "test-github-code-search-token",
+        "SELFTEST_HMAC_KEY": "test-selftest-hmac-key"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "registry",
+          "database_id": "00000000-0000-0000-0000-010000000001",
+          "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    },
+    "staging": {
+      "name": "github-staging",
+      "workers_dev": false,
+      "routes": [
+        {
+          "pattern": "registry-staging.claudinite.com/hooks/github",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry-staging.claudinite.com/github/__selftest",
+          "zone_name": "claudinite.com"
+        }
+      ],
+      "triggers": {
+        "crons": [
+          "0 6 * * 1"
+        ]
+      },
+      "vars": {
+        "WORKER": "github",
+        "ENVIRONMENT": "staging"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "registry-staging",
+          "database_id": "00000000-0000-0000-0000-110000000001",
+          "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes_staging"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events_staging"
+        }
+      ],
+      "secrets_store_secrets": [
+        {
+          "binding": "GITHUB_APP_PRIVATE_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "github-app-private-key-staging"
+        },
+        {
+          "binding": "GITHUB_WEBHOOK_SECRET",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "github-webhook-secret-staging"
+        },
+        {
+          "binding": "GITHUB_CODE_SEARCH_TOKEN",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "github-code-search-token-staging"
+        },
+        {
+          "binding": "SELFTEST_HMAC_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "selftest-hmac-key-staging"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    },
+    "production": {
+      "name": "github",
+      "workers_dev": false,
+      "routes": [
+        {
+          "pattern": "registry.claudinite.com/hooks/github",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry-canary.claudinite.com/github/__selftest",
+          "zone_name": "claudinite.com"
+        }
+      ],
+      "triggers": {
+        "crons": [
+          "0 6 * * 1"
+        ]
+      },
+      "vars": {
+        "WORKER": "github",
+        "ENVIRONMENT": "production"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "registry",
+          "database_id": "00000000-0000-0000-0000-210000000001",
+          "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "REQUEST_OUTCOMES",
+          "dataset": "request_outcomes"
+        },
+        {
+          "binding": "DOMAIN_EVENTS",
+          "dataset": "domain_events"
+        }
+      ],
+      "secrets_store_secrets": [
+        {
+          "binding": "GITHUB_APP_PRIVATE_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "github-app-private-key"
+        },
+        {
+          "binding": "GITHUB_WEBHOOK_SECRET",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "github-webhook-secret"
+        },
+        {
+          "binding": "GITHUB_CODE_SEARCH_TOKEN",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "github-code-search-token"
+        },
+        {
+          "binding": "SELFTEST_HMAC_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "selftest-hmac-key"
+        }
+      ],
+      "version_metadata": {
+        "binding": "CF_VERSION_METADATA"
+      }
+    }
+  }
+}
