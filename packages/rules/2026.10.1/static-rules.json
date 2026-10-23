@@ -123,6 +123,12 @@
       "description": "Prose names a credential or secret as something to read or send."
     },
     {
+      "id": "text.credential-upload",
+      "class": "fail",
+      "category": "credentials",
+      "description": "A command uploads a credential file or secret variable to a network destination."
+    },
+    {
       "id": "text.network-sink-in-prose",
       "class": "fail",
       "category": "network",
