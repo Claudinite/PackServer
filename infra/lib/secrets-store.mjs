@@ -38,7 +38,11 @@ export async function call(fetchImpl, token, method, path, body) {
   }
   if (!res.ok || json.success === false) {
     const detail = (json.errors ?? []).map((e) => `${e.code}: ${e.message}`).join("; ");
-    throw Object.assign(new Error(`Cloudflare ${method} ${path}: HTTP ${res.status} ${detail}`.trim()), { retryable: res.status >= 500 });
+    throw Object.assign(new Error(`Cloudflare ${method} ${path}: HTTP ${res.status} ${detail}`.trim()), {
+      retryable: res.status >= 500,
+      status: res.status,
+      codes: (json.errors ?? []).map((e) => e.code),
+    });
   }
   return json;
 }
