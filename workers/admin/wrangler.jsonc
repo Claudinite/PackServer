@@ -16,7 +16,8 @@
         "ENVIRONMENT": "test",
         "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
         "AUDIT_S3_ACCESS_KEY_ID": "test-audit-access-key-id",
-        "AUDIT_S3_SECRET_ACCESS_KEY": "test-audit-secret-access-key"
+        "AUDIT_S3_SECRET_ACCESS_KEY": "test-audit-secret-access-key",
+        "AUDIT_HEAD_SIGNING_KEY": "test-audit-head-signing-key"
       },
       "d1_databases": [
         {
@@ -179,6 +180,11 @@
           "binding": "AUDIT_S3_SECRET_ACCESS_KEY",
           "store_id": "00000000000000000000190000000004",
           "secret_name": "audit-s3-secret-access-key-staging"
+        },
+        {
+          "binding": "AUDIT_HEAD_SIGNING_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "audit-head-signing-key-staging"
         }
       ],
       "version_metadata": {
@@ -278,6 +284,11 @@
           "binding": "AUDIT_S3_SECRET_ACCESS_KEY",
           "store_id": "00000000000000000000290000000004",
           "secret_name": "audit-s3-secret-access-key"
+        },
+        {
+          "binding": "AUDIT_HEAD_SIGNING_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "audit-head-signing-key"
         }
       ],
       "version_metadata": {

@@ -1,10 +1,10 @@
-import { s3AuditBucket, type AuditBucket } from "@packserver/core/audit";
+import { ecdsaSigner, rekorTransparency, s3AuditBucket, type AppendedPoints, type AuditBucket } from "@packserver/core/audit";
 import { analyticsStats } from "@packserver/http";
 import {
   accessPort, cryptoRng, d1Port, queuePort, r2Port, r2ReadPort, readSecret, systemClock, workerRuntime, workflowPort,
   type WorkerRuntime,
 } from "@packserver/ports/cloudflare";
-import type { Ports, R2, R2Read } from "@packserver/ports";
+import type { Ports, R2, R2Read, Transparency } from "@packserver/ports";
 
 export interface Env {
   WORKER: string;
@@ -23,14 +23,20 @@ export interface Env {
   AUDIT_S3_ENDPOINT?: string;
   AUDIT_S3_ACCESS_KEY_ID: string | SecretsStoreSecret;
   AUDIT_S3_SECRET_ACCESS_KEY: string | SecretsStoreSecret;
+  /** PKCS#8 PEM of the P-256 key that signs the daily audit head before it goes to the transparency log. */
+  AUDIT_HEAD_SIGNING_KEY: string | SecretsStoreSecret;
+  /** The transparency log's base URL; the public Sigstore log when absent. */
+  REKOR_URL?: string;
   CF_VERSION_METADATA: WorkerVersionMetadata;
 }
 
 /** The admin Worker writes no public or private bucket; reports and `ops` are read-only here. */
-export type AdminPorts = Pick<Ports, "clock" | "rng" | "d1" | "stats" | "queues" | "workflows" | "access"> & {
+export type AdminPorts = Pick<Ports, "clock" | "rng" | "d1" | "stats" | "queues" | "workflows" | "access" | "transparency"> & {
   r2: Readonly<{ PACKS_STAGING: R2; VALIDATION_REPORTS: R2Read; OPS_BUCKET: R2Read }>;
   /** The audit chain's bucket over the S3 API with an object-only token; not an R2 binding. */
   auditBucket: AuditBucket;
+  /** Reads `audit.appended` points back for the nightly reconciliation; unset until a reader of the Analytics Engine dataset is wired. */
+  appendedPoints?: AppendedPoints;
 };
 
 /** Reads the token from Secrets Store on first use, so a missing secret fails the batch rather than the isolate. */
@@ -51,6 +57,15 @@ function lazyAuditBucket(env: Env): AuditBucket {
     list: async (prefix, limit, startAfter) => (await resolve()).list(prefix, limit, startAfter),
   };
 }
+function lazyTransparency(env: Env): Transparency {
+  let log: Promise<Transparency> | undefined;
+  return {
+    anchor: async (head) =>
+      (await (log ??= (async () =>
+        rekorTransparency({ signer: await ecdsaSigner(await readSecret(env.AUDIT_HEAD_SIGNING_KEY)), ...(env.REKOR_URL && { url: env.REKOR_URL }) }))())).anchor(head),
+  };
+}
+
 export type AdminRuntime = WorkerRuntime<AdminPorts>;
 
 export function createRuntime(env: Env): AdminRuntime {
@@ -68,5 +83,6 @@ export function createRuntime(env: Env): AdminRuntime {
     workflows: { VALIDATE_PACK: workflowPort(env.VALIDATE_PACK) },
     access: accessPort(env.ENVIRONMENT, env.ACCESS),
     auditBucket: lazyAuditBucket(env),
+    transparency: lazyTransparency(env),
   });
 }
