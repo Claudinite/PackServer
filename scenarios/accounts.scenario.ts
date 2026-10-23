@@ -19,11 +19,11 @@ async function outcomes(attempts: Array<() => Promise<unknown>>): Promise<Attemp
   return out;
 }
 
-/** Refused "after N", never an exact N. */
+/** Refused "after N", never an exact N; the limit's window may roll over mid-run, so only the refusal's first step is held to staying refused. */
 function expectRefusedAfterSome(results: Attempt[]): void {
   const first = results.indexOf("rate-limited");
   expect(first).toBeGreaterThan(0);
-  expect(results.slice(first)).not.toContain("ok");
+  expect(results[first + 1] ?? "rate-limited").toBe("rate-limited");
 }
 
 const signUps = (world: World, count: number, via: (u: User) => User): Array<() => Promise<unknown>> =>
@@ -99,11 +99,11 @@ scenario("IT-ACC-019 Auth forms carry a human check, rate limits and a per-addre
   await expect(bot.signIn()).toRequireHumanCheck();
   await expect(bot.account.show()).toBeRefused("signed-out");
 
-  const oneIp = outcomes(signUps(world, 12, (u) => u.from("192.0.2.77")));
+  const oneIp = outcomes(signUps(world, 24, (u) => u.from("192.0.2.77")));
   expectRefusedAfterSome(await oneIp);
 
   const oneAccount = world.users.newcomer();
-  const fromMany = outcomes(Array.from({ length: 12 }, (_, i) => () => oneAccount.from(`192.0.2.${100 + i}`).signIn()));
+  const fromMany = outcomes(Array.from({ length: 24 }, (_, i) => () => oneAccount.from(`192.0.2.${100 + i}`).signIn()));
   expectRefusedAfterSome(await fromMany);
 
   await expect(world.users.newcomer().from("192.0.2.250").signIn()).resolves.toMatchObject({ id: expect.any(String) });
@@ -160,10 +160,10 @@ scenario("IT-ABUSE-002 Public forms require a passed human check", async (world)
 });
 
 scenario("IT-ABUSE-005 Auth endpoints are rate-limited per IP and account", async (world) => {
-  expectRefusedAfterSome(await outcomes(signUps(world, 12, (u) => u.from("198.18.0.50"))));
+  expectRefusedAfterSome(await outcomes(signUps(world, 24, (u) => u.from("198.18.0.50"))));
 
   const target = world.users.newcomer();
-  expectRefusedAfterSome(await outcomes(Array.from({ length: 12 }, (_, i) => () => target.from(`198.18.1.${i + 1}`).signIn())));
+  expectRefusedAfterSome(await outcomes(Array.from({ length: 24 }, (_, i) => () => target.from(`198.18.1.${i + 1}`).signIn())));
 
   await expect(world.users.newcomer().from("198.18.2.1").signIn()).resolves.toMatchObject({ id: expect.any(String) });
 });

@@ -84,13 +84,18 @@ export class FakeGitHubLogin {
 
   readonly handler: NetHandler = async (request) => {
     const url = new URL(request.url);
-    if (url.host !== "github.com" && url.host !== "api.github.com") return undefined;
-    this.seen.push({ method: request.method, host: url.host, path: url.pathname });
-    if (url.host === "github.com") return url.pathname === "/login/oauth/access_token" && request.method === "POST" ? this.exchange(request) : new Response("Not Found", { status: 404 });
+    const record = () => this.seen.push({ method: request.method, host: url.host, path: url.pathname });
+    if (url.host === "github.com" && url.pathname.startsWith("/login/oauth/")) {
+      record();
+      return url.pathname === "/login/oauth/access_token" && request.method === "POST" ? this.exchange(request) : new Response("Not Found", { status: 404 });
+    }
+    if (url.host !== "api.github.com") return undefined;
 
+    // Only a user token this fake issued is its business; the GitHub App's own traffic belongs to the App fake.
     const token = /^Bearer (.+)$/.exec(request.headers.get("authorization") ?? "")?.[1];
     const account = token === undefined ? undefined : this.accounts.get(this.tokens.get(token) ?? -1);
-    if (!account) return Response.json({ message: "Bad credentials" }, { status: 401 });
+    if (!account) return undefined;
+    record();
     if (request.method !== "GET") return Response.json({ message: "Not Found" }, { status: 404 });
     switch (url.pathname) {
       case "/user":
