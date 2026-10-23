@@ -30,6 +30,31 @@ const score = z.object({
     footprint: z.number(),
   }),
   caps: z.object({ published_advisory: z.number(), no_public_repo: z.number() }),
+  cap_reasons: z.object({ published_advisory: z.string(), no_public_repo: z.string() }),
+  markers: z.object({ no_public_repo: z.string() }),
+  thresholds: z.object({
+    chars_per_token: z.number().positive(),
+    always_loaded_tokens: z.object({ full: z.number(), zero: z.number() }),
+    skill_body_lines: z.object({ full: z.number(), zero: z.number() }),
+    skill_body_tokens_max: z.number(),
+    duplicate_block_min_chars: z.number(),
+    name_max_chars: z.number(),
+    name_reserved_words: z.array(z.string()),
+    description_max_chars: z.number(),
+    description_min_words: z.number(),
+    reference_toc_min_lines: z.number(),
+    checks_neutral_ratio: z.number().min(0).max(1),
+    footprint_costs: z.record(z.string(), z.number()),
+  }),
+  rules: z.array(
+    z.object({
+      id: z.string(),
+      part: z.enum(["context_cost", "skill_structure", "checks", "source", "footprint"]),
+      max: z.number().int().positive(),
+      description: z.string(),
+      fix: z.string(),
+    }),
+  ),
 });
 
 const questions = z.object({
