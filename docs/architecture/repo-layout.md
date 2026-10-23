@@ -52,7 +52,7 @@ packserver/
 │   │         src/bindings.ts (the one seam), test/ (unit, fakes only)
 ├── sandbox/
 │   ├── image-a/                   # Dockerfile: bounded extractor, inspectors, canonical re-packer; no runtime
-│   ├── image-b/                   # Dockerfile: Go, Node 22, pinned cn; the load-and-run runner
+│   ├── image-b/                   # Dockerfile: Go, Node 22; the load-and-run runner (cn releases arrive as input)
 │   ├── runner/                    # the in-container programs, emitting schema-validated reports
 │   └── fixtures/                  # bomb corpus, injection corpus, canon-pack samples for calibration
 ├── scenarios/                     # integration scenarios, one file per requirement area
