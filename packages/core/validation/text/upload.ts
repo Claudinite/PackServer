@@ -127,11 +127,13 @@ function resolveLong(name: string, table: readonly string[]): string | null {
   return second !== undefined && second.startsWith(name) ? null : first;
 }
 
-// Variables that hold credential content, from a loop over credential files or an assignment of one.
-let credVars = new Set<string>();
-function refsVar(text: string): boolean {
+// Variables that carry a credential. A path variable (from `X=<credential path>` or a loop over paths) counts
+// only where the literal path would; a content variable (from a substitution that reads one) counts anywhere.
+let credVars = new Map<string, "path" | "content">();
+function refsVar(text: string, kind: "path" | "content"): boolean {
   if (credVars.size === 0 || text.indexOf("$") < 0) return false;
-  for (const v of credVars) {
+  for (const [v, k] of credVars) {
+    if (k !== kind) continue;
     for (let at = text.indexOf("$" + v); at >= 0; at = text.indexOf("$" + v, at + 1)) {
       if (!/\w/.test(text[at + 1 + v.length] ?? "")) return true;
     }
@@ -139,7 +141,9 @@ function refsVar(text: string): boolean {
   }
   return false;
 }
-const credWord = (w: Word): boolean => w.sub || credFile(w.text) || refsVar(w.text);
+const refsContent = (text: string): boolean => refsVar(text, "content");
+const credPathWord = (w: Word): boolean => w.sub || credFile(w.text) || refsVar(w.text, "path") || refsVar(w.text, "content");
+const credWord = credPathWord;
 const isFlag = (w: Word): boolean => w.text.length > 1 && w.text.charCodeAt(0) === 45;
 const baseName = (t: string): string => {
   let b = t.slice(Math.max(t.lastIndexOf("/"), t.lastIndexOf("\\")) + 1).toLowerCase();
@@ -162,7 +166,7 @@ interface Verdict {
 }
 
 function httpVerdict(args: readonly Word[], stdinTainted: boolean, wget: boolean): boolean {
-  if (args.some((a) => a.sub || refsVar(a.text))) return true;
+  if (args.some((a) => a.sub || refsContent(a.text))) return true;
   let stdinFlag = false;
   for (let k = 0; k < args.length; k++) {
     const a = args[k]!;
@@ -246,7 +250,10 @@ function analyze(cmd: Cmd, depth: number): Verdict {
     const assign = /^([A-Za-z_]\w*)=/.exec(t);
     if (assign) {
       const value = t.slice(assign[0].length);
-      if (credVars.size < 16 && (w[k]!.sub || credFile(value) || refsVar(value))) credVars.add(assign[1]!);
+      if (credVars.size < 16) {
+        if (w[k]!.sub || refsContent(value)) credVars.set(assign[1]!, "content");
+        else if (credFile(value) || refsVar(value, "path")) credVars.set(assign[1]!, "path");
+      }
       k++;
       continue;
     }
@@ -272,14 +279,14 @@ function analyze(cmd: Cmd, depth: number): Verdict {
   const dump = k >= w.length && envOnly;
   const name = k < w.length ? baseName(w[k]!.text) : dump ? "env" : "";
   const args = k < w.length ? w.slice(k + 1) : [];
-  if (name === "for" && args.length > 2 && args[1]!.text === "in" && credVars.size < 16 && args.slice(2).some(credWord)) credVars.add(args[0]!.text);
+  if (name === "for" && args.length > 2 && args[1]!.text === "in" && credVars.size < 16 && args.slice(2).some(credWord)) credVars.set(args[0]!.text, "path");
   const redirected = cmd.redirs.some((r) => r.op.charCodeAt(0) === 60 && r.target !== null && credWord(r.target));
   const stdinTainted = cmd.carry || redirected;
   const stream = HTTP.has(name) || STREAM.has(name) || POWERSHELL.has(name) || COPY.has(name);
 
   let hit = false;
   if (HTTP.has(name)) hit = httpVerdict(args, stdinTainted, name === "wget");
-  else if (STREAM.has(name)) hit = stdinTainted || args.some((a) => a.sub || refsVar(a.text)) || (name === "socat" && args.some((a) => !isFlag(a) && credFile(a.text)));
+  else if (STREAM.has(name)) hit = stdinTainted || args.some((a) => a.sub || refsContent(a.text)) || (name === "socat" && args.some((a) => !isFlag(a) && credPathWord(a)));
   else if (COPY.has(name)) hit = copyVerdict(name, args);
   else if (POWERSHELL.has(name)) hit = powershellVerdict(args, cmd.carry);
   else if (SHELLS.has(name) && depth < MAX_NESTED_SCRIPTS) {
@@ -293,14 +300,14 @@ function analyze(cmd: Cmd, depth: number): Verdict {
       redirected ||
       dump ||
       (name === "printenv" && args.every(isFlag)) ||
-      w.some((x) => x.sub || refsVar(x.text)) ||
-      (READERS.has(name) && args.some((a) => !isFlag(a) && credFile(a.text))));
+      w.some((x) => x.sub || refsContent(x.text)) ||
+      (READERS.has(name) && args.some((a) => !isFlag(a) && credPathWord(a))));
   return { tainted, hit };
 }
 
 function scanText(text: string, depth: number): Hit[] {
   const outer = credVars;
-  credVars = new Set();
+  credVars = new Map();
   try {
     return scanWords(text, depth);
   } finally {
