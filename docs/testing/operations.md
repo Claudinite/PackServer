@@ -24,7 +24,7 @@ is the only gate before every Worker goes to 100% (Ariel B7 2026-10-22).
 ### IT-OPS-003 Production configuration rejects test issuers and bindings
 - **Covers:** REQ-OPS-003
 - **Runs:** push
-- **Action:** boot the publish and github Workers with `env: production` configuration in the harness; exchange a token from the fake issuer `https://oidc.test`; start the github Worker with a webhook secret of `whsec_test…`; grep every production bundle and `wrangler.jsonc` for `oidc.test`, `fake-`, `whsec_test`, `TEST_MODE`, `fireAlarm` and the Turnstile always-pass keys.
+- **Action:** boot the publish and github Workers with `env: production` configuration in the harness; exchange a token from the fake issuer `https://oidc.test`; start the github Worker with a webhook secret of `whsec_test…`; grep every production bundle, and the resolved `env.production` and `env.staging` blocks of every `wrangler.jsonc`, for `oidc.test`, `fake-`, `whsec_test`, `TEST_MODE`, `fireAlarm` and the Turnstile always-pass keys (sitekeys `1x00000000000000000000AA` and `1x00000000000000000000BB`, secret `1x0000000000000000000000000000000AA`). `env.test` holds these strings by design ([README.md](README.md) §5) and is not searched.
 - **Assert:** the exchange is refused as a wrong issuer before any JWKS fetch; the webhook secret is refused at startup; the grep has zero hits.
 
 ## The self-test

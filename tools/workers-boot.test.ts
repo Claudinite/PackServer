@@ -39,24 +39,24 @@ describe("every Worker boots in the harness under env.test", () => {
   });
 
   it.each(WORKERS)("%s answers an unknown path with the version header", async (w) => {
-    const res = await server.getWorker(w).fetch(`http://${w}.internal/nowhere`);
+    const res = await server.getWorker(`${w}-test`).fetch(`http://${w}.internal/nowhere`);
     expect(res.status).toBe(404);
     expect(res.headers.get("x-packserver-version")).toBe("unreleased");
   });
 
   it.each(WORKERS)("%s answers an anonymous /__selftest as an unknown path", async (w) => {
-    const unknown = await server.getWorker(w).fetch(`http://${w}.internal/nowhere`);
-    const selfTest = await server.getWorker(w).fetch(`http://${w}.internal/__selftest`);
+    const unknown = await server.getWorker(`${w}-test`).fetch(`http://${w}.internal/nowhere`);
+    const selfTest = await server.getWorker(`${w}-test`).fetch(`http://${w}.internal/__selftest`);
     expect([selfTest.status, await selfTest.text()]).toEqual([unknown.status, await unknown.text()]);
   });
 
   it("publish hosts the three coordinators and answers their ping", async () => {
-    const env = await server.getWorker<{ QUOTA: DurableObjectNamespace<{ ping(): Promise<unknown> }> }>("publish").getEnv();
+    const env = await server.getWorker<{ QUOTA: DurableObjectNamespace<{ ping(): Promise<unknown> }> }>("publish-test").getEnv();
     expect(await env.QUOTA.getByName("probe").ping()).toEqual({ schema_version: 1, ok: true });
   });
 
   it("admin runs its hourly trigger", async () => {
-    const result = await server.getWorker("admin").scheduled({ cron: "0 * * * *", scheduledTime: new Date() });
+    const result = await server.getWorker("admin-test").scheduled({ cron: "0 * * * *", scheduledTime: new Date() });
     expect(result.outcome).toBe("ok");
   });
 });

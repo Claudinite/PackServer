@@ -1,6 +1,7 @@
 {
+  "name": "validator-local",
+  "workers_dev": false,
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "validator",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": [
@@ -8,7 +9,8 @@
   ],
   "env": {
     "test": {
-      "name": "validator",
+      "name": "validator-test",
+      "workers_dev": false,
       "vars": {
         "WORKER": "validator",
         "ENVIRONMENT": "test",
@@ -18,7 +20,7 @@
       "d1_databases": [
         {
           "binding": "DB",
-          "database_name": "registry",
+          "database_name": "registry-test",
           "database_id": "00000000-0000-0000-0000-010000000001",
           "migrations_dir": "../../packages/schema/migrations"
         }
@@ -26,30 +28,30 @@
       "r2_buckets": [
         {
           "binding": "PACKS_STAGING",
-          "bucket_name": "packs-staging"
+          "bucket_name": "packs-staging-test"
         },
         {
           "binding": "PACKS_PUBLIC",
-          "bucket_name": "packs-public"
+          "bucket_name": "packs-public-test"
         },
         {
           "binding": "PACKS_PRIVATE",
-          "bucket_name": "packs-private"
+          "bucket_name": "packs-private-test"
         },
         {
           "binding": "VALIDATION_REPORTS",
-          "bucket_name": "validation-reports"
+          "bucket_name": "validation-reports-test"
         },
         {
           "binding": "OPS_BUCKET",
-          "bucket_name": "ops"
+          "bucket_name": "ops-test"
         }
       ],
       "queues": {
         "producers": [
           {
             "binding": "NOTIFY_QUEUE",
-            "queue": "notify"
+            "queue": "notify-test"
           }
         ]
       },
@@ -58,19 +60,19 @@
           {
             "name": "SCOPE_COORDINATOR",
             "class_name": "ScopeCoordinator",
-            "script_name": "publish"
+            "script_name": "publish-test"
           },
           {
             "name": "ROOT_COORDINATOR",
             "class_name": "RootCoordinator",
-            "script_name": "publish"
+            "script_name": "publish-test"
           }
         ]
       },
       "workflows": [
         {
           "binding": "VALIDATE_PACK",
-          "name": "validate-pack",
+          "name": "validate-pack-test",
           "class_name": "ValidatePackWorkflow"
         }
       ],
@@ -91,7 +93,7 @@
       "services": [
         {
           "binding": "GITHUB",
-          "service": "github"
+          "service": "github-test"
         },
         {
           "binding": "AI",
@@ -113,15 +115,15 @@
       "analytics_engine_datasets": [
         {
           "binding": "REQUEST_OUTCOMES",
-          "dataset": "request_outcomes"
+          "dataset": "request_outcomes_test"
         },
         {
           "binding": "DOMAIN_EVENTS",
-          "dataset": "domain_events"
+          "dataset": "domain_events_test"
         },
         {
           "binding": "VALIDATION_EVENTS",
-          "dataset": "validation_events"
+          "dataset": "validation_events_test"
         }
       ],
       "version_metadata": {

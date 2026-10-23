@@ -26,6 +26,8 @@ import {
 // The production adapters over Cloudflare bindings. A Worker's `bindings.ts` is the only caller
 // (tools/check-bindings.mjs), so this is the one place a binding's own API is spoken.
 
+export * from "./email-service";
+
 export const EMBEDDING_MODEL = "@cf/baai/bge-m3";
 export const EMBEDDING_DIMENSIONS = 1024;
 const KV_MIN_TTL_S = 60;
@@ -265,27 +267,41 @@ export function workerRuntime<P, S = Record<string, never>>(
   };
 }
 
+/**
+ * Whether a binding is a fake Worker is decided by `ENVIRONMENT`, never by the binding's shape: only `env.test` takes the fake path,
+ * and a binding that disagrees with its environment is refused rather than guessed at. A missing binding is left to `missingBindings`.
+ */
+function takesFake(environment: string, name: string, binding: unknown): boolean {
+  const fake = environment === "test";
+  if (binding !== undefined && isServiceBinding(binding) !== fake) {
+    throw new PortError("binding_shape", `${name} is ${fake ? "not a fake Worker" : "a service binding"} in env.${environment}`);
+  }
+  return fake;
+}
+
 /** Product Vectorize in staging and production, the fake Worker's RPC under `env.test`. */
-export function vectorIndexPort(binding: VectorizeIndex | Fetcher): VectorIndex {
-  return isServiceBinding(binding) ? rpcPort<VectorIndex>(binding) : vectorizePort(binding);
+export function vectorIndexPort(environment: string, binding: VectorizeIndex | Fetcher): VectorIndex {
+  return takesFake(environment, "VECTORIZE", binding) ? rpcPort<VectorIndex>(binding as Fetcher) : vectorizePort(binding as VectorizeIndex);
 }
 
 /** Product Workers AI in staging and production, the fake Worker's RPC under `env.test`. */
-export function embedderFrom(binding: Ai | Fetcher): Embedder {
-  if (!isServiceBinding(binding)) return embedderPort(binding);
-  const fake = rpcPort<Pick<Embedder, "embed">>(binding);
+export function embedderFrom(environment: string, binding: Ai | Fetcher): Embedder {
+  if (!takesFake(environment, "AI", binding)) return embedderPort(binding as Ai);
+  const fake = rpcPort<Pick<Embedder, "embed">>(binding as Fetcher);
   return { model: EMBEDDING_MODEL, dimensions: EMBEDDING_DIMENSIONS, embed: (texts) => fake.embed(texts) };
 }
 
 /** The two fake sandbox Workers under `env.test`; the Containers adapter is not written yet. */
-export function sandboxPort(a: DurableObjectNamespace | Fetcher, b: DurableObjectNamespace | Fetcher): Sandbox {
-  if (!isServiceBinding(a) || !isServiceBinding(b)) return unwiredPort<Sandbox>("sandbox");
-  const sandboxA = rpcPort<Sandbox>(a);
-  const sandboxB = rpcPort<Sandbox>(b);
+export function sandboxPort(environment: string, a: DurableObjectNamespace | Fetcher, b: DurableObjectNamespace | Fetcher): Sandbox {
+  const fakeA = takesFake(environment, "SANDBOX_A", a);
+  const fakeB = takesFake(environment, "SANDBOX_B", b);
+  if (!fakeA || !fakeB) return unwiredPort<Sandbox>("sandbox");
+  const sandboxA = rpcPort<Sandbox>(a as Fetcher);
+  const sandboxB = rpcPort<Sandbox>(b as Fetcher);
   return { inspect: (request) => sandboxA.inspect(request), run: (request) => sandboxB.run(request) };
 }
 
 /** The fake Access Worker under `env.test`; verifying a real assertion is not written yet. */
-export function accessPort(binding: Fetcher | undefined): AccessIdentity {
-  return binding && isServiceBinding(binding) ? rpcPort<AccessIdentity>(binding) : unwiredPort<AccessIdentity>("access");
+export function accessPort(environment: string, binding: Fetcher | undefined): AccessIdentity {
+  return binding !== undefined && takesFake(environment, "ACCESS", binding) ? rpcPort<AccessIdentity>(binding) : unwiredPort<AccessIdentity>("access");
 }
