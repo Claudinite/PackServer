@@ -227,7 +227,7 @@ export const LOAD_RUN_CASES: LoadRunCase[] = [
     name: "floods-output",
     files: {
       ...BASE,
-      "tasks/nightly/worker.mjs": "const line = JSON.stringify({ outcome: 'ok', tree: { matches: true }, pack_code_executed: false }) + '\\n';\nconst end = Date.now() + 1500;\nwhile (Date.now() < end) process.stdout.write(line.repeat(2000));\n",
+      "tasks/nightly/worker.mjs": "const line = JSON.stringify({ outcome: 'ok', tree: { matches: true }, pack_code_executed: false }) + '\\n';\nconst end = Date.now() + 700;\nwhile (Date.now() < end) process.stdout.write(line.repeat(2000));\n",
     },
     minEngineVersion: "1.61001.1",
     problems: (r) => [...fail(r.outcome === "ok" && r.pack_code_executed, "output changed the verdict fields"), ...fail(Buffer.byteLength(JSON.stringify(r)) < 256 * 1024, "report over the cap")],

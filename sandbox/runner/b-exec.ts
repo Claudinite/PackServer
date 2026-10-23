@@ -93,17 +93,28 @@ export function exec(options: ExecOptions): Promise<ExecResult> {
     record?.on("error", () => {});
     child.stdout?.on("error", () => {});
     child.stderr?.on("error", () => {});
+    const finish = (exitCode: number | null, signal: NodeJS.Signals | null) => {
+      for (const s of [child.stdout, child.stderr, record]) s?.destroy();
+      resolve({ exitCode, signal, timedOut, output: clean(kept.toString("utf8")), egressLines: egress.toString("utf8").split("\n").filter(Boolean) });
+    };
     const done = (exitCode: number | null, signal: NodeJS.Signals | null) => {
       clearTimeout(timer);
       killGroup();
-      // What the command wrote before it ended is already in the pipes; give it a moment to arrive, then cut them.
-      setTimeout(() => {
-        for (const s of [child.stdout, child.stderr, record]) s?.destroy();
-        resolve({ exitCode, signal, timedOut, output: clean(kept.toString("utf8")), egressLines: egress.toString("utf8").split("\n").filter(Boolean) });
-      }, 100);
+      // What the command wrote before it ended is already in the pipes and arrives with their close; a daemon that kept them open is cut off after a moment.
+      let settled = false;
+      const settle = () => {
+        if (settled) return;
+        settled = true;
+        finish(exitCode, signal);
+      };
+      const cutoff = setTimeout(settle, 100);
+      child.once("close", () => {
+        clearTimeout(cutoff);
+        settle();
+      });
     };
     child.on("error", () => done(null, null));
-    child.on("exit", done);
+    child.once("exit", done);
   });
 }
 

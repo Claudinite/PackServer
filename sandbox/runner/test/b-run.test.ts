@@ -26,7 +26,7 @@ async function run(files: Record<string, string>, minEngineVersion: string, over
   const saved = Object.fromEntries(Object.keys(over.hostEnv ?? {}).map((k) => [k, process.env[k]]));
   Object.assign(process.env, over.hostEnv);
   try {
-    const report = await bMain({ inDir: dir, outDir: join(dir, "out"), imageDigest: "sha256:" + "c".repeat(64), workerUrl, runtime, stepMs: 2_000 });
+    const report = await bMain({ inDir: dir, outDir: join(dir, "out"), imageDigest: "sha256:" + "c".repeat(64), workerUrl, runtime, stepMs: 1_000 });
     return { report, dir };
   } finally {
     for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k];
@@ -40,10 +40,7 @@ describe("load and run (IT-VAL-010, 011, 029, 032, 045)", () => {
     expect(c.problems(report)).toEqual([]);
     expect(SandboxBReport.parse(JSON.parse(await readFile(join(dir, "out", "report.json"), "utf8")))).toEqual(report);
     expect(report.image_digest).toBe("sha256:" + "c".repeat(64));
-  }, 60_000);
-
-  it("writes the report and nothing else (nothing B produces is served)", async () => {
-    const { dir } = await run(LOAD_RUN_CASES[0]!.files, "1.61001.1");
+    // Nothing B produces is served: the report is all there is.
     expect(await readdir(join(dir, "out"))).toEqual(["report.json"]);
   }, 60_000);
 });
