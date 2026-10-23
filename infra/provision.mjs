@@ -46,7 +46,7 @@ account; CLOUDFLARE_SECRETS_STORE_ID is not used (the store is found or created 
 // One API path read to its last page. Completeness comes from what the server reports: total_pages,
 // else total_count, else the page size it echoes (it may cap the one we asked for). A listing that
 // cannot be shown to be complete is an error.
-async function listAll(api, path, pick, perPage = PER_PAGE) {
+export async function listAll(api, path, pick, perPage = PER_PAGE) {
   const items = [];
   const sep = path.includes("?") ? "&" : "?";
   for (let page = 1; ; page++) {

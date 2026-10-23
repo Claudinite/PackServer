@@ -20,6 +20,9 @@ const ALLOWED_KEYS = new Set([...BINDING_KEYS, ...OTHER_KEYS]);
 const PRODUCT_TYPES = /\b(D1Database|KVNamespace|R2Bucket|VectorizeIndex|AnalyticsEngineDataset|DurableObjectNamespace|SecretsStoreSecret|Fetcher|Ai)\b/;
 // The one folder allowed to speak a binding's own API, besides each Worker's bindings.ts.
 const ADAPTER_DIR = join("packages", "ports", "cloudflare");
+// The test world drives the harness from Node: it reads Workers' bindings through the harness's
+// getEnv() and addresses fake Workers by name, which is the test seam itself and ships in no bundle.
+const TEST_WORLD_DIR = join("packages", "test-world");
 const ENV_IMPORT = /import\s*\{[^}]*\benv\b[^}]*\}\s*from\s*["']cloudflare:workers["']/;
 
 const suffix = (env, name, sep = "-") => (env === "production" ? name : `${name}${sep}${env}`);
@@ -347,7 +350,7 @@ function checkSeam(table) {
   );
   const files = [
     ...Object.keys(table).flatMap((worker) => sourceFiles(join(root, "workers", worker, "src"))),
-    ...sourceFiles(join(root, "packages")).filter((f) => !relative(root, f).startsWith(ADAPTER_DIR + sep)),
+    ...sourceFiles(join(root, "packages")).filter((f) => ![ADAPTER_DIR, TEST_WORLD_DIR].some((dir) => relative(root, f).startsWith(dir + sep))),
   ];
   for (const file of files) {
     const rel = relative(root, file);

@@ -1,0 +1,41 @@
+{
+  "destinationBucket": "ops",
+  "forbiddenFields": ["ClientIP", "ClientRequestURI", "ClientRequestQuery", "ClientRequestReferer", "ClientSrcPort"],
+  "retention": [
+    { "prefix": "logs/http-requests/", "days": 90 },
+    { "prefix": "logs/firewall-events/", "days": 30 }
+  ],
+  "jobs": [
+    {
+      "key": "http-cache-hits",
+      "dataset": "http_requests",
+      "prefix": "logs/http-requests/hits/{DATE}",
+      "sampleRate": 0.1,
+      "where": { "key": "CacheCacheStatus", "operator": "eq", "value": "hit" },
+      "fields": [
+        "CacheCacheStatus", "CacheResponseStatus", "CacheTieredFill", "ClientASN", "ClientCountry", "ClientRequestHost",
+        "ClientRequestMethod", "ClientRequestPath", "ClientRequestProtocol", "ClientRequestUserAgent", "EdgeEndTimestamp",
+        "EdgeResponseBytes", "EdgeResponseStatus", "EdgeStartTimestamp", "OriginResponseStatus", "RayID"
+      ]
+    },
+    {
+      "key": "http-cache-misses",
+      "dataset": "http_requests",
+      "prefix": "logs/http-requests/misses/{DATE}",
+      "sampleRate": 1,
+      "where": { "key": "CacheCacheStatus", "operator": "!eq", "value": "hit" },
+      "fields": [
+        "CacheCacheStatus", "CacheResponseStatus", "CacheTieredFill", "ClientASN", "ClientCountry", "ClientRequestHost",
+        "ClientRequestMethod", "ClientRequestPath", "ClientRequestProtocol", "ClientRequestUserAgent", "EdgeEndTimestamp",
+        "EdgeResponseBytes", "EdgeResponseStatus", "EdgeStartTimestamp", "OriginResponseStatus", "RayID"
+      ]
+    },
+    {
+      "key": "firewall-events",
+      "dataset": "firewall_events",
+      "prefix": "logs/firewall-events/{DATE}",
+      "sampleRate": 1,
+      "fields": ["Action", "ClientASN", "ClientCountry", "ClientRequestHost", "ClientRequestMethod", "ClientRequestPath", "Datetime", "EdgeResponseStatus", "RayID", "RuleID", "Source"]
+    }
+  ]
+}
