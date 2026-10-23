@@ -15,10 +15,12 @@ status, error code), how long (`duration_ms`, `cpu_ms`, `d1_ms`, `r2_ms`, `kv_ms
 `version_override`, `is_synthetic`). It is written as a `console.log` line (Workers Logs, 7 days)
 and as an Analytics Engine point in `request_outcomes` with `index1 = version_id`, never sampled by
 us. Domain events go to `domain_events` indexed by signal name. Workers Traces run at 5% on read
-paths, 100% on the validator. Invocation logs are off everywhere. The zone's two Logpush jobs
-(cache hits at `sample: 0.1`, misses unsampled; ARCH-REV M6) archive `http_requests` to R2 for 90
-days with IPs truncated to /24 and query strings stripped; the network-level counts REQ-TELEM-001
-and REQ-TELEM-002 promise come from them.
+paths, 100% on the validator. Invocation logs are off everywhere. The zone's three Logpush jobs
+(`http_requests` cache hits at `sample: 0.1`, `http_requests` misses unsampled, ARCH-REV M6;
+`firewall_events`) archive to R2 for 90 days (firewall events 30). A Logpush Transformer (D59)
+rewrites each `http_requests` record before Cloudflare delivers it: `ClientIP` becomes
+`ClientNetwork` (/24 for IPv4, /48 for IPv6) and only the path is selected, never the URI or query;
+the network-level counts REQ-TELEM-001 and REQ-TELEM-002 promise come from the archive.
 
 **Sampling and denial of wallet.** Logs on the read-path Workers are head-sampled at 10x scale
 (0.15), never on write paths; synthetic traffic and anonymous 4xx are logged at low rates. A KV
