@@ -21,6 +21,16 @@ describe("refused uploads (IT-VAL-003, 020, 022, 023)", () => {
   });
 });
 
+describe("extraction crash", () => {
+  it("an unexpected decoder failure is a final archive.unsafe", async () => {
+    const { report, canonical } = await runA(null as unknown as Uint8Array, REQUEST, hooks);
+    expect(report.outcome).toBe("refused");
+    expect(report.refusal).toEqual({ reason: "archive.unsafe", code: "extract-crash" });
+    expect(report.findings.map((f) => f.rule)).toEqual(["archive.unsafe"]);
+    expect(canonical).toBeNull();
+  });
+});
+
 describe("accepted uploads (IT-VAL-033, IT-VAL-051)", () => {
   it.each(acceptedCorpus().map((c) => [c.name, c] as const))("%s comes back as the canonical re-pack", async (_name, c) => {
     const upload = c.build();
@@ -72,6 +82,11 @@ describe("optional inspectors", () => {
     await expect(loadOptionalInspectors(["node:path"])).rejects.toThrow("exports no inspector");
   });
 
+  it("does not take a missing dependency of a present module for an absent module", async () => {
+    const broken = "data:text/javascript,import 'no-such-package-for-test';";
+    await expect(loadOptionalInspectors([broken])).rejects.toThrow();
+  });
+
   it("runs an inspector when one is present and takes its findings and capabilities", async () => {
     const seen: unknown[] = [];
     const inspector: Inspector = {
@@ -104,6 +119,9 @@ describe("report cap", () => {
     const fitted = fitToCap(fat)!;
     expect(fitted.findings_truncated).toBe(true);
     expect(Buffer.byteLength(JSON.stringify(fitted))).toBeLessThanOrEqual(1024 * 1024);
-    expect(fitToCap({ ...report, manifest: { big: "x".repeat(2 * 1024 * 1024) } })).toBeNull();
+    const oversized = fitToCap({ ...report, manifest: { big: "x".repeat(2 * 1024 * 1024) } })!;
+    expect(oversized.manifest).toBeNull();
+    expect(oversized.findings_truncated).toBe(true);
+    expect(fitToCap({ ...report, error: "x".repeat(2 * 1024 * 1024) })).toBeNull();
   });
 });

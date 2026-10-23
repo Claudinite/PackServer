@@ -19,7 +19,16 @@ const ABSENT_CODES = new Set(["ERR_MODULE_NOT_FOUND", "ERR_PACKAGE_PATH_NOT_EXPO
 // Test loaders (vite) report the same condition without Node's codes.
 const ABSENT_MESSAGE = /is not exported under|Cannot find (module|package)|Failed to (load|resolve) (url|import)/;
 
-const isAbsent = (e: unknown) => ABSENT_CODES.has((e as { code?: string }).code ?? "") || ABSENT_MESSAGE.test(String((e as Error)?.message));
+/** Absent means the module itself is missing; a module that exists but cannot load one of its own imports is broken. */
+function isAbsent(e: unknown, specifier: string): boolean {
+  const message = String((e as Error)?.message);
+  const code = (e as { code?: string }).code ?? "";
+  if (!ABSENT_CODES.has(code) && !ABSENT_MESSAGE.test(message)) return false;
+  const pkg = /^(@[^/]+\/[^/]+|[^/]+)/.exec(specifier)?.[0] ?? specifier;
+  const subpath = specifier.replace(pkg, ".");
+  const named = (n: string) => message.includes(`'${n}'`) || message.includes(`"${n}"`);
+  return named(specifier) || named(subpath) || named(pkg);
+}
 
 /**
  * The optional inspectors, each with a note saying why it did not load. A module that exists but
@@ -37,7 +46,7 @@ export async function loadOptionalInspectors(
       if (!mod.inspector) throw new Error(`${specifier} exports no inspector`);
       inspectors.push(mod.inspector);
     } catch (e) {
-      if (isAbsent(e)) skipped.push({ name: specifier, note: "module not present in this image" });
+      if (isAbsent(e, specifier)) skipped.push({ name: specifier, note: "module not present in this image" });
       else throw e;
     }
   }

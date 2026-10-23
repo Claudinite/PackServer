@@ -64,7 +64,10 @@ export async function runA(upload: Uint8Array, request: RunRequest, hooks: RunHo
       const t = elapsed();
       return { report: refusedReport(base, e.reason, e.code, archiveFinding(e, make), { extract: t, total: t }), canonical: null };
     }
-    return { report: errorReport(base, "extraction crashed", { extract: null, total: elapsed() }), canonical: null };
+    // A decoder that dies on an archive is a verdict on that archive; retrying would only repeat it.
+    const crash = new ArchiveRefusal("archive.unsafe", "extract-crash");
+    const t = elapsed();
+    return { report: refusedReport(base, crash.reason, crash.code, archiveFinding(crash, make), { extract: t, total: t }), canonical: null };
   }
   const extractMs = elapsed();
   hooks.onExtracted?.();

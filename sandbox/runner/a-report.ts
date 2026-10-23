@@ -83,6 +83,9 @@ export function fitToCap(report: SandboxAReport): SandboxAReport | null {
     findings_truncated: report.findings_truncated || report.findings.length > A_LIMITS.findings,
   };
   if (fits(trimmed)) return trimmed;
-  const bare = { ...trimmed, urls: [], capabilities: null, findings: trimmed.findings.slice(0, 50), findings_truncated: true };
-  return fits(bare) ? bare : null;
+  // Free-form fields go first so the run still yields a verdict.
+  const bare: SandboxAReport = { ...trimmed, urls: [], capabilities: null, manifest: null, findings: trimmed.findings.slice(0, 50), findings_truncated: true };
+  if (fits(bare)) return bare;
+  const minimal: SandboxAReport = { ...bare, findings: [], inspectors: [] };
+  return fits(minimal) ? minimal : null;
 }

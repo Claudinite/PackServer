@@ -73,8 +73,12 @@ export function supervise(upload: Uint8Array, request: RunRequest, options: Supe
           const t = since();
           finish({ report: refusedReport(base, refusal.reason, refusal.code, archiveFinding(refusal, make), { extract: t, total: t }), canonical: null });
         } else finish({ report: errorReport(base, "out of memory", { extract: null, total: since() }), canonical: null });
-      } else finish({ report: errorReport(base, "worker crashed", { extract: null, total: since() }), canonical: null });
+      } else if (!extracted) finish(refuse("extract-crash"));
+      else finish({ report: errorReport(base, "worker crashed", { extract: null, total: since() }), canonical: null });
     });
-    worker.on("exit", () => finish({ report: errorReport(base, "worker exited without a result", { extract: null, total: since() }), canonical: null }));
+    worker.on("exit", () => {
+      if (!extracted) finish(refuse("extract-crash"));
+      else finish({ report: errorReport(base, "worker exited without a result", { extract: null, total: since() }), canonical: null });
+    });
   });
 }

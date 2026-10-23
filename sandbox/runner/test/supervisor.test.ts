@@ -43,14 +43,24 @@ describe("deadlines (IT-VAL-045)", () => {
 });
 
 describe("untrusted worker output", () => {
-  it("a crash is an infrastructure error", async () => {
-    const { report } = await supervise(upload, REQUEST, { ...opts, workerUrl: stub("crash.mjs") });
+  // Cold worker start-up must not be able to reach the deadline.
+  const generous = { ...opts, extractMs: 30_000, runMs: 30_000 };
+
+  it("a crash during extraction is a final archive.unsafe, not a retryable error", async () => {
+    const { report, canonical } = await supervise(upload, REQUEST, { ...generous, workerUrl: stub("crash.mjs") });
+    expect(report.outcome).toBe("refused");
+    expect(report.refusal).toEqual({ reason: "archive.unsafe", code: "extract-crash" });
+    expect(canonical).toBeNull();
+  });
+
+  it("a crash after extraction finished is an infrastructure error", async () => {
+    const { report } = await supervise(upload, REQUEST, { ...generous, workerUrl: stub("crash-after-extract.mjs") });
     expect(report.outcome).toBe("error");
     expect(report.error).toBe("worker crashed");
   });
 
   it("an off-schema report is an infrastructure error", async () => {
-    const { report, canonical } = await supervise(upload, REQUEST, { ...opts, workerUrl: stub("off-schema.mjs") });
+    const { report, canonical } = await supervise(upload, REQUEST, { ...generous, workerUrl: stub("off-schema.mjs") });
     expect(report.outcome).toBe("error");
     expect(canonical).toBeNull();
   });
