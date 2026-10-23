@@ -46,7 +46,8 @@ function runCli(dir: string): { code: number; out: string } {
   }
 }
 
-describe("check-bindings", () => {
+// A cold run parses every source file and the CLI tests start a process, which can pass the 5 s default on a busy runner.
+describe("check-bindings", { timeout: 20_000 }, () => {
   it("accepts the repository", () => {
     expect(run(REPO)).toMatchObject({ ok: true });
   });
