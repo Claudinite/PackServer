@@ -3,3 +3,4 @@ dist/
 .turbo/
 .wrangler/
 /reports/
+test-results/

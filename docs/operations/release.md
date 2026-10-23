@@ -74,7 +74,7 @@ Common to both modes, on merge to `main`:
    candidate, asserting the echoed `version_id` is the candidate's (the override is silently ignored
    on any mistake), `ok` and `release_id`; then the probe-safe scenarios pinned to the candidate
    (`npm run scenarios -- --driver=http --tag=probe-safe` with `PACKSERVER_BASE_URL` set to the
-   canary host, `PACKSERVER_VERSION_OVERRIDE`, `CF_ACCESS_CLIENT_ID`/`SECRET`,
+   canary host, `PACKSERVER_VERSION_OVERRIDE`, `PACKSERVER_EXPECTED_RELEASE` (the candidate's release id), `CF_ACCESS_CLIENT_ID`/`SECRET`,
    `PACKSERVER_PROBE_TENANT`), asserting the version header on every response.
 
 **Candidate gating.** While a version's own id is the manifest's candidate and the release state is
