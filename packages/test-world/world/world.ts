@@ -9,6 +9,7 @@ import { createGitHub } from "./areas/github";
 import { createMember } from "./areas/member";
 import { createModeration } from "./areas/moderation";
 import { createOperator } from "./areas/operator";
+import { createReportsModule } from "./areas/reports";
 import { createPublishing } from "./areas/publishing";
 import { createScopes } from "./areas/scopes";
 import { createTelemetry } from "./areas/telemetry";
@@ -38,6 +39,7 @@ export function createWorld(driver: Driver, title: string) {
     ...createAccess(),
     ...createCommunity(),
     ...createModeration(),
+    ...createReportsModule(driver, aliases),
     ...createAdmin(),
     ...createMember(),
     ...createAgents(),

@@ -13,6 +13,8 @@ const SAMPLES: { [K in NoticeKind]: NoticeData<K> } = {
   "domain-proof-warning": { scope: "@acme", domain: "acme.test", failedChecks: 1, removalDate: "2026-11-21", scopeUrl: url },
   "verified-publisher-decision": { scope: "@acme", decision: "denied", reason: "no MFA", scopeUrl: url },
   "report-status-changed": { pack: "@acme/pack", status: "fixed", fixedIn: "1.0.1", reportUrl: url },
+  "security-report-reminder": { pack: "@acme/pack", deadline: "2027-01-21T00:00:00.000Z", reportUrl: url },
+  "security-report-update": { pack: "@acme/pack", event: "filed", severity: "high", reportUrl: url },
   "version-withdrawn": { items: [{ pack: "@acme/pack", version: "1.0.0", action: "yanked", reason: null, url }] },
   "pack-actioned": { pack: "@acme/pack", action: "quarantined", reason: "malware", appealUrl: url },
   "appeal-decided": { pack: "@acme/pack", outcome: "denied", packUrl: url },

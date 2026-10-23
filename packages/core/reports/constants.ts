@@ -1,0 +1,22 @@
+import { ATTACHMENT_DISPOSITIONS, BUG_TYPES, REPORT_KINDS, REPORT_ROUTES, REPORT_STATUSES, SEVERITIES } from "@packserver/schema/db";
+
+export { ATTACHMENT_DISPOSITIONS, BUG_TYPES, REPORT_KINDS, REPORT_ROUTES, REPORT_STATUSES, SEVERITIES };
+export type ReportKind = (typeof REPORT_KINDS)[number];
+export type ReportStatus = (typeof REPORT_STATUSES)[number];
+export type ReportRoute = (typeof REPORT_ROUTES)[number];
+export type Severity = (typeof SEVERITIES)[number];
+export type BugType = (typeof BUG_TYPES)[number];
+
+export const DISCLOSURE_DAYS = 90;
+export const REMINDER_DAYS = 7;
+export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+export const MAX_ATTACHMENTS_PER_REPORT = 5;
+/** Files uploaded and not yet attached to a report; the cap bounds what an abandoned form can leave behind. */
+export const MAX_PENDING_ATTACHMENTS = 10;
+export const PENDING_ATTACHMENT_TTL_HOURS = 24;
+export const SIMILAR_LIMIT = 5;
+
+/** The data model's roles that publish and yank, which the UI calls maintainers (REQ-PUB-022); owners and admins also hold them. */
+export const MAINTAINER_ROLES = ["owner", "admin", "publisher"] as const;
+/** Who is reminded before a disclosure timer ends. */
+export const REMINDER_ROLES = ["owner", "admin"] as const;

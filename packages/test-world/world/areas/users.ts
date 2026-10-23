@@ -114,6 +114,7 @@ interface Request {
   cookies?: Record<string, string>;
   form?: Record<string, string>;
   json?: unknown;
+  rawBody?: Uint8Array;
   headers?: Record<string, string>;
 }
 
@@ -130,7 +131,7 @@ function request(driver: Driver, client: Client, req: Request): Promise<ApiRespo
     headers["content-type"] = "application/json";
     body = JSON.stringify(req.json);
   }
-  return driver.http.request({ surface: "web", method: req.method, path: req.path, headers, ...(body === undefined ? {} : { body }) });
+  return driver.http.request({ surface: "web", method: req.method, path: req.path, headers, ...(req.rawBody ? { body: req.rawBody } : body === undefined ? {} : { body }) });
 }
 
 class Person implements User {
@@ -263,6 +264,13 @@ class Person implements User {
   open(): Promise<unknown> {
     throw new NotImplemented("users.open");
   }
+  async request(method: string, path: string, o: { json?: unknown; body?: Uint8Array } = {}): Promise<ApiResponse> {
+    const session = this.view;
+    const headers = method === "GET" ? {} : await this.formHeaders(session);
+    if (o.body) headers["content-type"] = "application/octet-stream";
+    return this.send({ method, path, session, headers, ...(o.json !== undefined ? { json: o.json } : {}), ...(o.body ? { rawBody: o.body } : {}) });
+  }
+
   async inbox(): Promise<Notification[]> {
     return createMail(this.ctx.driver).inbox(this).all().map((m) => ({ subject: m.subject }));
   }
