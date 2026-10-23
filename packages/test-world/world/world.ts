@@ -42,7 +42,7 @@ export function createWorld(driver: Driver, title: string) {
     ...createAdmin(),
     ...createMember(),
     ...createAgents(),
-    ...createGitHub(),
+    ...createGitHub(driver),
     ...createAudit(),
     ...createTelemetry(),
     ...createCi(driver, (name) => aliases.alias(name)),

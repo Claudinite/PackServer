@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createTestHarness, type TestHarness } from "wrangler";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { isHarnessProxy, Net } from "../fakes/net";
+import { isHarnessTraffic, Net } from "../fakes/net";
 import { turnstileHandler } from "../fakes/turnstile";
 import { createFakePorts } from "@packserver/ports/fakes";
 import { TURNSTILE_PASS_TOKEN } from "@packserver/ports/fakes";
@@ -76,10 +76,12 @@ describe("outbound traffic is fail-closed", () => {
   });
 });
 
-describe("the harness's own proxy is not the system calling out", () => {
-  it("lets the test process reach a Worker's bindings through the local proxy and nothing else on loopback", () => {
-    expect(isHarnessProxy(new URL("http://127.0.0.1:4000/cdn-cgi/local/platform-proxy"))).toBe(true);
-    expect(isHarnessProxy(new URL("http://127.0.0.1:4000/secret"))).toBe(false);
-    expect(isHarnessProxy(new URL("https://api.example/cdn-cgi/local/platform-proxy"))).toBe(false);
+describe("the harness's own traffic is not the system calling out", () => {
+  it("lets the test process reach the harness on loopback, and no Worker and no other host", () => {
+    const req = (url: string, headers: Record<string, string> = {}) => new Request(url, { headers });
+    expect(isHarnessTraffic(req("http://127.0.0.1:4000/api/oidc/exchange"))).toBe(true);
+    expect(isHarnessTraffic(req("http://127.0.0.1:4000/__control/now"))).toBe(true);
+    expect(isHarnessTraffic(req("http://127.0.0.1:4000/secret", { "cf-worker": "egress" }))).toBe(false);
+    expect(isHarnessTraffic(req("https://api.example/cdn-cgi/local/platform-proxy"))).toBe(false);
   });
 });
