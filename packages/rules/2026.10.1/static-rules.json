@@ -189,6 +189,48 @@
       "description": "An identifier mixes scripts."
     },
     {
+      "id": "code.binary-file",
+      "class": "fail",
+      "category": "archive-safety",
+      "description": "A binary, or a file with NUL bytes at a path that is not a text path."
+    },
+    {
+      "id": "code.foreign-import",
+      "class": "fail",
+      "category": "process-execution",
+      "description": "A coded check imports beyond the check SDK and the Go standard library, or a worker imports beyond @claudinite/sdk."
+    },
+    {
+      "id": "code.undeclared-action",
+      "class": "fail",
+      "category": "process-execution",
+      "description": "The pack uses a GitHub action that pack.json does not declare."
+    },
+    {
+      "id": "code.network",
+      "class": "fail",
+      "category": "network",
+      "description": "Executable content holds a static pattern that opens a network connection."
+    },
+    {
+      "id": "code.eval",
+      "class": "fail",
+      "category": "process-execution",
+      "description": "Executable content builds or loads code at run time."
+    },
+    {
+      "id": "code.base64",
+      "class": "hold",
+      "category": "process-execution",
+      "description": "Executable content decodes base64 or holds a long encoded string."
+    },
+    {
+      "id": "code.time-conditional",
+      "class": "hold",
+      "category": "process-execution",
+      "description": "Executable content branches on the current date or time."
+    },
+    {
       "id": "license.missing",
       "class": "warn",
       "category": "license",

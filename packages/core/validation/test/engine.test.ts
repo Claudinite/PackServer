@@ -76,6 +76,16 @@ describe("runStaticRules", () => {
       await runStaticRules(input({ "pack.json": "{" }), fakePorts()),
       await runStaticRules(input({ "pack.json": JSON.stringify({ version: "1.2", minEngineVersion: "1.0.0" }) }), fakePorts()),
     ];
+    const code = await runStaticRules(
+      input(
+        {
+          ...cleanFiles({ "pack.json": manifestJson({ githubActions: ["a/b"] }), "w.yml": "- uses: c/d@1\n" }),
+          "blob.dat": new Uint8Array([1, 0, 2]),
+          "checks/a.go": 'package checks\nimport (\n\t"net"\n\t"plugin"\n\t"encoding/base64"\n\t"github.com/evil/lib"\n)\nvar _ = time.Now().After(t)\n',
+        },
+      ),
+      fakePorts(),
+    );
     const more = [
       await runStaticRules(input(cleanFiles(), { pack: "@acrne/x" }), fakePorts()),
       await runStaticRules(input(cleanFiles(), { pack: "@acmee/x" }), fakePorts()),
@@ -83,7 +93,7 @@ describe("runStaticRules", () => {
       await runStaticRules(input(cleanFiles({ "pack.json": manifestJson({ skills: [] }), "skills/u/SKILL.md": "x" })), fakePorts()),
       await runStaticRules(input({ ...cleanFiles(), "RULES.md": new Uint8Array([0x61, 0xff, 0x0a]) }), fakePorts()),
     ];
-    for (const f of [...bare.findings, ...lax.findings, ...bad.flatMap((b) => b.findings), ...more.flatMap((b) => b.findings)]) emitted.add(f.rule);
+    for (const f of [...bare.findings, ...lax.findings, ...bad.flatMap((b) => b.findings), ...code.findings, ...more.flatMap((b) => b.findings)]) emitted.add(f.rule);
     const missing = listRules(RULES_VERSION).map((x) => x.id).filter((id) => !id.startsWith("archive.") && !emitted.has(id));
     expect(missing).toEqual([]);
   });
