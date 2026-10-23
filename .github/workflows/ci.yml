@@ -116,7 +116,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [lint, typecheck, tools]
+        shard: [lint, typecheck-0, typecheck-1, typecheck-2, tools]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -133,7 +133,16 @@ jobs:
         run: |
           case "$LEG" in
             lint) pnpm lint ;;
-            typecheck) pnpm typecheck ;;
+            typecheck-*)
+              idx=${LEG#typecheck-}
+              filters=$(pnpm ls -r --depth -1 --json | node -e '
+                const pkgs = JSON.parse(require("fs").readFileSync(0, "utf8"));
+                const names = pkgs.filter((p) => p.name !== "packserver").map((p) => p.name).sort();
+                console.log(names.filter((_, i) => i % 3 === Number(process.argv[1])).map((n) => "--filter=" + n).join(" "));
+              ' "$idx")
+              echo "packages: $filters"
+              [ -n "$filters" ] || { echo "empty leg"; exit 0; }
+              pnpm exec turbo run typecheck --only $filters ;;
             tools) node tools/check-rules.mjs && node tools/check-bindings.mjs && node infra/apply-ids.mjs --check && pnpm db:check ;;
             *) echo "unknown leg $LEG"; exit 1 ;;
           esac
@@ -226,9 +235,11 @@ jobs:
           echo "job results: $RESULTS"
           if [ -n "$START" ]; then
             elapsed=$(( $(date +%s) - START ))
+            echo "start: changes job output (set by the first attempt unless changes re-ran); this is attempt $ATTEMPT"
             echo "elapsed: ${elapsed}s (budget 120s)"
-            # A re-run's start time is stale, so only the first attempt is judged.
-            if [ "$elapsed" -gt 120 ] && [ "$ATTEMPT" = 1 ]; then
+            # Judged on every attempt: a re-run of failed jobs keeps the changes start from the first
+            # attempt, so a breach stays red until a new commit brings a new start.
+            if [ "$elapsed" -gt 120 ]; then
               echo "::error::push CI took ${elapsed}s, over the 2-minute budget"
               exit 1
             fi

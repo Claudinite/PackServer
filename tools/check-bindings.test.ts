@@ -3,6 +3,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { checkBindings } from "./check-bindings.mjs";
 import { TEST_STRINGS } from "./test-strings.mjs";
 
 const REPO = join(import.meta.dirname, "..");
@@ -32,16 +33,29 @@ function edit(dir: string, worker: string, change: (config: Json) => void): void
 }
 
 function run(dir: string): { ok: boolean; out: string } {
+  const { problems } = checkBindings(dir);
+  return { ok: problems.length === 0, out: problems.map((p) => `check-bindings: ${p}`).join("\n") };
+}
+
+function runCli(dir: string): { code: number; out: string } {
   try {
-    return { ok: true, out: execFileSync("node", [TOOL, dir], { stdio: "pipe" }).toString() };
+    return { code: 0, out: execFileSync("node", [TOOL, dir], { stdio: "pipe" }).toString() };
   } catch (e) {
-    return { ok: false, out: String((e as { stderr: Buffer }).stderr) };
+    const err = e as { status: number; stderr: Buffer };
+    return { code: err.status, out: String(err.stderr) };
   }
 }
 
 describe("check-bindings", () => {
   it("accepts the repository", () => {
     expect(run(REPO)).toMatchObject({ ok: true });
+  });
+
+  it("exits 0 on the repository and 1 with the problem on stderr when one is broken", () => {
+    expect(runCli(REPO).code).toBe(0);
+    const dir = copyRepo();
+    edit(dir, "mcp", (c) => delete c.env.staging.ratelimits);
+    expect(runCli(dir)).toMatchObject({ code: 1, out: expect.stringContaining("workers/mcp env.staging: rate limits is []") });
   });
 
   it("fails on a binding the trust table does not give the Worker", () => {
