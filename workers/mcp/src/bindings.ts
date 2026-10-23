@@ -1,5 +1,6 @@
+import { analyticsStats } from "@packserver/http";
 import {
-  cryptoRng, d1Port, embedderFrom, kvPort, r2ReadPort, rateLimitPort, statsPort, systemClock, vectorIndexPort, workerRuntime,
+  cryptoRng, d1Port, embedderFrom, kvPort, r2ReadPort, rateLimitPort, systemClock, vectorIndexPort, workerRuntime,
   type WorkerRuntime,
 } from "@packserver/ports/cloudflare";
 import type { Ports, R2Read } from "@packserver/ports";
@@ -31,7 +32,7 @@ export function createRuntime(env: Env): McpRuntime {
     clock: systemClock,
     rng: cryptoRng,
     d1: d1Port(env.DB),
-    stats: statsPort({ request: env.REQUEST_OUTCOMES, domain: env.DOMAIN_EVENTS }),
+    stats: analyticsStats({ request_outcomes: env.REQUEST_OUTCOMES, domain_events: env.DOMAIN_EVENTS, downloads: env.DOWNLOADS }),
     kv: { OAUTH_KV: kvPort(env.OAUTH_KV) },
     r2: { PACKS_PRIVATE: r2ReadPort(env.PACKS_PRIVATE) },
     rateLimits: { RATE_LIMIT: rateLimitPort(env.RATE_LIMIT) },

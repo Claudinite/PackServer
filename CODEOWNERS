@@ -1,1 +1,8 @@
 * @missingbulb
+/scenarios/ @missingbulb
+/docs/requirements/ @missingbulb
+/docs/testing/ @missingbulb
+/eslint/scenarios.js @missingbulb
+/tools/check-scenarios.mjs @missingbulb
+/tools/check-signals.mjs @missingbulb
+/.github/workflows/scenario-gate.yml @missingbulb

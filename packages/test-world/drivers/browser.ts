@@ -1,6 +1,7 @@
 import { test as base, expect, type Page } from "@playwright/test";
 import { createWorld, type World } from "../world/world";
 import type { Capability, UiActions } from "./driver";
+import { assertNoUnfaked } from "./unfaked";
 import { InProcessDriver } from "./inprocess";
 
 /**
@@ -61,6 +62,7 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
     const world = createWorld(driver, testInfo.title);
     await use(world);
     await world.dispose();
+    assertNoUnfaked(driver);
   },
 });
 
