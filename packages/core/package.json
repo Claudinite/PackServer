@@ -10,6 +10,7 @@
     "./canonical/fixtures": "./canonical/fixtures.ts",
     "./identity": "./identity/index.ts",
     "./identity/testing": "./identity/testing.ts",
+    "./identity/virtual-authenticator": "./identity/virtual-authenticator.ts",
     "./catalog": "./catalog/view.ts",
     "./github": "./github/index.ts",
     "./index": "./index/index.ts",

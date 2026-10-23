@@ -167,6 +167,7 @@ routes.post(
     await recordAudit(c, userId, "factor.removed", id, { kind: "passkey" });
     const last = owned.length === 1;
     await runtime.ports.d1.batch([
+      { sql: "delete from credential_flags where credential_id = ?", params: [id] },
       { sql: "delete from credentials where id = ? and user_id = ?", params: [id, userId] },
       ...(last
         ? [

@@ -73,3 +73,12 @@ export const assertion_failures = sqliteTable("assertion_failures", {
   window_started_at: text("window_started_at").notNull(),
   locked_until: text("locked_until"),
 });
+
+/** What the accounts area records about a passkey beyond the foundation's columns. */
+export const credential_flags = sqliteTable("credential_flags", {
+  credential_id: text("credential_id").primaryKey(),
+  /** Until this instant the credential cannot authorise a held action (REQ-ACC-005); null when no hold applies. */
+  hold_until: text("hold_until"),
+  /** Comma-separated transports the authenticator reported, passed back as hints. */
+  transports: text("transports"),
+});

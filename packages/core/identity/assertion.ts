@@ -176,7 +176,7 @@ export async function consumeGrant(
  */
 export async function holdUntilFor(ports: MfaPorts, userId: string, confirmedBy: Grant | null): Promise<string | null> {
   if (confirmedBy?.method === "passkey" && confirmedBy.credential_id) {
-    const { rows } = await ports.d1.query("select hold_until from credentials where id = ?", [confirmedBy.credential_id]);
+    const { rows } = await ports.d1.query("select f.hold_until from credentials c left join credential_flags f on f.credential_id = c.id where c.id = ?", [confirmedBy.credential_id]);
     const hold = rows[0]?.hold_until;
     if (rows.length === 1 && (typeof hold !== "string" || Date.parse(hold) <= ports.clock.now())) return null;
   }

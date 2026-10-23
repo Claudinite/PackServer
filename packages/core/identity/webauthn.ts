@@ -97,10 +97,12 @@ export interface CredentialRow {
   transports: string | null;
 }
 
-const CREDENTIAL_COLUMNS = "id, user_id, credential_id, public_key, sign_count, label, created_at, last_used_at, hold_until, transports";
+const CREDENTIALS_WITH_FLAGS =
+  `select c.id, c.user_id, c.credential_id, c.public_key, c.sign_count, c.label, c.created_at, c.last_used_at, f.hold_until, f.transports
+   from credentials c left join credential_flags f on f.credential_id = c.id`;
 
 export async function credentialsOf(d1: D1, userId: string): Promise<CredentialRow[]> {
-  const { rows } = await d1.query(`select ${CREDENTIAL_COLUMNS} from credentials where user_id = ? order by created_at, id`, [userId]);
+  const { rows } = await d1.query(`${CREDENTIALS_WITH_FLAGS} where c.user_id = ? order by c.created_at, c.id`, [userId]);
   return rows as unknown as CredentialRow[];
 }
 
@@ -201,7 +203,7 @@ export async function finishAuthentication(
   const challenge = challengeOf(response);
   const taken = challenge ? await takeChallenge(ports, challenge, kind, sidHash) : null;
   if (!challenge || !taken) return null;
-  const { rows } = await ports.d1.query(`select ${CREDENTIAL_COLUMNS} from credentials where credential_id = ?`, [response.id]);
+  const { rows } = await ports.d1.query(`${CREDENTIALS_WITH_FLAGS} where c.credential_id = ?`, [response.id]);
   const credential = rows[0] as unknown as CredentialRow | undefined;
   if (!credential) return null;
   try {
@@ -233,11 +235,13 @@ export async function saveCredential(
 ): Promise<CredentialRow> {
   const id = ports.rng.uuid();
   const at = isoAt(ports.clock);
-  await ports.d1.query(
-    `insert into credentials (id, user_id, credential_id, public_key, sign_count, label, created_at, last_used_at, hold_until, transports)
-     values (?, ?, ?, ?, ?, ?, ?, null, ?, ?)`,
-    [id, registration.user_id, registration.credential_id, registration.public_key, registration.sign_count, extra.label, at, extra.hold_until, registration.transports],
-  );
+  await ports.d1.batch([
+    {
+      sql: `insert into credentials (id, user_id, credential_id, public_key, sign_count, label, created_at, last_used_at) values (?, ?, ?, ?, ?, ?, ?, null)`,
+      params: [id, registration.user_id, registration.credential_id, registration.public_key, registration.sign_count, extra.label, at],
+    },
+    { sql: "insert into credential_flags (credential_id, hold_until, transports) values (?, ?, ?)", params: [id, extra.hold_until, registration.transports] },
+  ]);
   return {
     id, user_id: registration.user_id, credential_id: registration.credential_id, public_key: registration.public_key,
     sign_count: registration.sign_count, label: extra.label, created_at: at, last_used_at: null, hold_until: extra.hold_until, transports: registration.transports,

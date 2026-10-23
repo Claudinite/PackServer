@@ -1,5 +1,5 @@
 import type { SignalName } from "@packserver/schema";
-import type { Mail, MailMessage } from "../src/ports";
+import { TEST_MAIL_URL, type Mail, type MailMessage } from "../src/ports";
 
 /** The Cloudflare Email Service `send_email` binding (structured builder form). */
 export interface SendEmailBinding {
@@ -67,9 +67,6 @@ export class EmailServiceMail implements Mail {
     }
   }
 }
-
-/** Where `env.test` posts a message instead of sending it; the world's mail fake answers at this address. */
-export const TEST_MAIL_URL = "https://mail.test.invalid/send";
 
 /**
  * Email Service in staging and production; under `env.test` a POST to the world's mail fake, chosen

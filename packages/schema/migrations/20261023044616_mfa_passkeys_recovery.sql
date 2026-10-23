@@ -19,6 +19,12 @@ CREATE TABLE `assertion_grants` (
 );
 --> statement-breakpoint
 CREATE INDEX `assertion_grants_expires_idx` ON `assertion_grants` (`expires_at`);--> statement-breakpoint
+CREATE TABLE `credential_flags` (
+	`credential_id` text PRIMARY KEY NOT NULL,
+	`hold_until` text,
+	`transports` text
+);
+--> statement-breakpoint
 CREATE TABLE `recovery_codes` (
 	`user_id` text NOT NULL,
 	`code_hash` text NOT NULL,
@@ -45,6 +51,4 @@ CREATE TABLE `webauthn_challenges` (
 	`expires_at` text NOT NULL
 );
 --> statement-breakpoint
-CREATE INDEX `webauthn_challenges_expires_idx` ON `webauthn_challenges` (`expires_at`);--> statement-breakpoint
-ALTER TABLE `credentials` ADD `hold_until` text;--> statement-breakpoint
-ALTER TABLE `credentials` ADD `transports` text;
+CREATE INDEX `webauthn_challenges_expires_idx` ON `webauthn_challenges` (`expires_at`);

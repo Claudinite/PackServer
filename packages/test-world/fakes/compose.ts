@@ -3,6 +3,7 @@ import { createFakePorts, type FakePorts } from "@packserver/ports/fakes";
 import type { SandboxAReport, SandboxBReport } from "@packserver/ports";
 import { FakeGitHubLogin } from "./github-login";
 import { FakeGithubApp } from "./github-app";
+import { mailHandler } from "./mail";
 import { Net } from "./net";
 import { turnstileHandler } from "./turnstile";
 
@@ -64,6 +65,7 @@ export class WorldFakes {
       if (booted.includes(name)) this.workers[key as keyof FakeWorkers] = new FakeWorkerClient(server, name);
     }
     this.net.use((request) => turnstileHandler(this.ports.turnstile)(request));
+    this.net.use((request) => mailHandler(this.ports.mail)(request));
     this.net.use(this.githubLogin.handler);
     this.net.use(this.githubApp.handler());
     this.net.freeze();

@@ -46,6 +46,12 @@ export interface Assertion {
   readonly action: string;
   readonly target: string;
   readonly method: "passkey" | "recovery";
+  /** The secret the one sensitive request carries in `x-assertion`. */
+  readonly token: string;
+  /** The session the assertion was made on, which the site replaced; the request must use this one. */
+  readonly session: Session;
+  /** The id that session had before the site replaced it. */
+  readonly madeOn: string;
   /** Set when a recovery code made the assertion: the warning and the offer the site gave. */
   readonly notice?: { readonly warning: string; readonly remaining: number; readonly offer: string };
 }
@@ -151,12 +157,14 @@ export interface User {
   signIn(opts?: { via?: "github" | "passkey" | "email"; next?: string }): Promise<Session>;
   signOut(o?: FormFaults): Promise<void>;
   assertionFor(action: SensitiveAction, how?: AssertionChoice): Promise<Assertion>;
-  /** Attempts an assertion that does not verify; resolves never, the refusal is the result. */
+  /** Attempts an assertion that does not verify; resolves once the site has refused it, and rejects if it did not. */
   failAssertion(action: SensitiveAction, how?: { recoveryCode?: string }): Promise<void>;
   mfa: {
     /** The first passkey needs nothing; later ones need an assertion for adding a factor, made for the person by default. */
     enrol(o?: Sensitive & { label?: string; faults?: FormFaults }): Promise<Passkey & { recoveryCodes: string[] }>;
     passkeys(): Promise<PasskeyInfo[]>;
+    /** The recovery codes the person was last shown, as the person's own note of them. */
+    codes(): string[];
     remove(passkey: Passkey, o?: Sensitive): Promise<void>;
     recovery(): Promise<RecoveryInfo>;
     confirmCodesSaved(): Promise<void>;
