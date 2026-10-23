@@ -3,4 +3,6 @@ dist/
 .turbo/
 .wrangler/
 /reports/
+/.vitest/
 test-results/
+/infra/zone/previous/
