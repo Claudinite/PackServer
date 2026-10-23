@@ -1,0 +1,10 @@
+#!/bin/sh
+# Stands in for a network tool (installed under each tool's name): records the attempt on the
+# egress channel and fails, so env setup that reaches for the network leaves evidence.
+name=$(basename "$0")
+if [ -n "$B_EGRESS_PIPE" ]; then
+	args=$(printf '%s' "$*" | tr -c 'A-Za-z0-9 ./:_@?=&%+,-' '?' | cut -c1-150)
+	printf '{"kind":"connect","target":"%s %s"}\n' "$name" "$args" >"$B_EGRESS_PIPE" 2>/dev/null
+fi
+echo "$name: no network in this sandbox" >&2
+exit 1
