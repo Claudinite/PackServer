@@ -227,6 +227,9 @@ importers:
 
   workers/github:
     dependencies:
+      '@packserver/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@packserver/http':
         specifier: workspace:*
         version: link:../../packages/http
@@ -341,6 +344,9 @@ importers:
 
   workers/web:
     dependencies:
+      '@packserver/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@packserver/http':
         specifier: workspace:*
         version: link:../../packages/http

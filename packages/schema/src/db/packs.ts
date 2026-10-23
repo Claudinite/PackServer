@@ -35,7 +35,10 @@ export const pack_versions = sqliteTable(
       .references(() => packs.id),
     version: text("version").notNull(),
     state: text("state", { enum: VERSION_STATES }).notNull(),
+    /** The canonical archive's hash. */
     sha256: text("sha256").notNull(),
+    /** The hash of the bytes the publisher uploaded; absent when it is unknown. */
+    upload_sha256: text("upload_sha256"),
     size_bytes: integer("size_bytes").notNull(),
     /** Absent until promotion. */
     published_at: text("published_at"),
@@ -55,6 +58,8 @@ export const pack_versions = sqliteTable(
   (t) => [
     uniqueIndex("pack_versions_pack_version_unique").on(t.pack_id, t.version),
     index("pack_versions_state_idx").on(t.state),
+    index("pack_versions_sha256_idx").on(t.sha256),
+    index("pack_versions_upload_sha256_idx").on(t.upload_sha256),
     check("pack_versions_state_check", sql`${t.state} in (${inList(VERSION_STATES)})`),
     check("pack_versions_score_check", sql`${t.score} is null or (${t.score} >= 0 and ${t.score} <= 100)`),
   ],

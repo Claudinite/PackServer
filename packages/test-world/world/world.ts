@@ -32,7 +32,7 @@ export function createWorld(driver: Driver, title: string) {
   return {
     driver,
     ...createUsers(),
-    ...createScopes(),
+    ...createScopes(driver, aliases),
     ...createPublishing(),
     ...createValidation(),
     ...createAccess(),
@@ -41,7 +41,7 @@ export function createWorld(driver: Driver, title: string) {
     ...createAdmin(),
     ...createMember(),
     ...createAgents(),
-    ...createGitHub(),
+    ...createGitHub(driver),
     ...createAudit(),
     ...createTelemetry(),
     operator: createOperator(driver),
