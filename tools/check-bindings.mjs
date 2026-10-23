@@ -22,9 +22,8 @@ const PRODUCT_TYPES = /\b(D1Database|KVNamespace|R2Bucket|VectorizeIndex|Analyti
 const ADAPTER_DIR = join("packages", "ports", "cloudflare");
 const ENV_IMPORT = /import\s*\{[^}]*\benv\b[^}]*\}\s*from\s*["']cloudflare:workers["']/;
 
-const suffix = (env, name, sep = "-") => (env === "staging" ? `${name}${sep}staging` : name);
-/** Only Workers differ between the local test environment and production by name; its resources are local. */
-const workerName = (env, name) => (env === "test" ? `${name}-test` : suffix(env, name));
+const suffix = (env, name, sep = "-") => (env === "production" ? name : `${name}${sep}${env}`);
+const workerName = suffix;
 const kebab = (s) => s.toLowerCase().replaceAll("_", "-");
 
 function readJsonc(path) {
@@ -71,6 +70,7 @@ function checkEnv(worker, t, env, block) {
   const want = expected(worker, t, env);
   const pairs = (list) => list.map(([a, b]) => `${a}=${b}`);
 
+  if (block.workers_dev !== false) problem(where, "workers_dev must be false");
   if (block.name !== workerName(env, worker)) problem(where, `name is "${block.name}", expected "${workerName(env, worker)}"`);
   if (block.vars?.WORKER !== worker) problem(where, `vars.WORKER must be "${worker}"`);
   if (block.vars?.ENVIRONMENT !== env) problem(where, `vars.ENVIRONMENT must be "${env}"`);
@@ -107,7 +107,6 @@ function checkEnv(worker, t, env, block) {
     sameSet(where, "Secrets Store bindings", (block.secrets_store_secrets ?? []).map((s) => `${s.binding}=${s.secret_name}`), want.secrets.map((s) => `${s}=${suffix(env, kebab(s))}`));
     sameSet(where, "containers", (block.containers ?? []).map((c) => c.class_name), Object.values(t.containers));
     for (const s of want.secrets) if (block.vars?.[s] !== undefined) problem(where, `secret ${s} must not be a plain var outside env.test`);
-    if (block.workers_dev !== false) problem(where, "workers_dev must be false");
     for (const r of block.ratelimits ?? []) if (!/^\d+$/.test(String(r.namespace_id))) problem(where, `rate limit ${r.name} needs a numeric namespace_id`);
   }
   for (const [name, cls] of Object.entries(t.containers)) {
@@ -199,6 +198,8 @@ function checkResources(table, configs) {
   for (const [a, b] of [["test", "production"], ["test", "staging"], ["staging", "production"]]) compare(a, b, workerNames, "Worker name");
   compare("test", "production", deployedIds, "resource");
   compare("test", "staging", deployedIds, "resource");
+  compare("test", "production", names, "resource");
+  compare("test", "staging", names, "resource");
 }
 
 function sourceFiles(dir) {
@@ -261,6 +262,61 @@ function bindingReads(sourceFile, names) {
   return reads;
 }
 
+const DO_BASES = new Set(["DurableObject", "WorkflowEntrypoint"]);
+const inObjectClass = (node) => {
+  for (let n = node.parent; n; n = n.parent) {
+    if (ts.isClassLike(n)) return (n.heritageClauses ?? []).some((h) => h.types.some((t) => DO_BASES.has(t.expression.getText())));
+  }
+  return false;
+};
+
+/** What a file does with `env` itself, whatever it then reads from it: a `.env` member, an `env` key in a destructure, the Env type. */
+function envStructure(sourceFile) {
+  const found = { dotEnv: false, destructured: false, envImport: false };
+  const visit = (node) => {
+    // A Durable Object or Workflow class owns its `this.env`; the binding names it may read off it are still held to bindings.ts.
+    if (ts.isPropertyAccessExpression(node) && node.name.text === "env" && !(ts.isIdentifier(node.expression) && node.expression.text === "process") && !(node.expression.kind === ts.SyntaxKind.ThisKeyword && inObjectClass(node))) found.dotEnv = true;
+    if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent) && (node.propertyName ?? node.name).getText() === "env") found.destructured = true;
+    if (ts.isImportDeclaration(node) && /(^|\/)bindings$/.test(literalText(node.moduleSpecifier) ?? "")) {
+      const named = node.importClause?.namedBindings;
+      if (named && ts.isNamedImports(named) && named.elements.some((e) => (e.propertyName ?? e.name).text === "Env")) found.envImport = true;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return found;
+}
+
+/** A Worker's handlers get `env` as their second parameter; in index.ts it may be used only as `createRuntime(env)`. */
+function handlerEnvOnlyReachesRuntime(sourceFile) {
+  let ok = true;
+  const guardedUse = (ref) => {
+    let child = ref;
+    while (ts.isParenthesizedExpression(child.parent) || ts.isAsExpression(child.parent) || ts.isNonNullExpression(child.parent)) child = child.parent;
+    const call = child.parent;
+    return ts.isCallExpression(call) && call.arguments[0] === child && ts.isIdentifier(call.expression) && call.expression.text === "createRuntime";
+  };
+  const visit = (node) => {
+    const handler =
+      (ts.isPropertyAssignment(node) && ts.isObjectLiteralExpression(node.parent) && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)) && node.initializer) ||
+      (ts.isMethodDeclaration(node) && ts.isObjectLiteralExpression(node.parent) && node);
+    const param = handler && handler.parameters[1];
+    if (param && !ts.isIdentifier(param.name)) ok = false;
+    if (param && ts.isIdentifier(param.name) && handler.body) {
+      const refs = [];
+      const collect = (n) => {
+        if (ts.isIdentifier(n) && n.text === param.name.text && n !== param.name && !(ts.isPropertyAccessExpression(n.parent) && n.parent.name === n)) refs.push(n);
+        ts.forEachChild(n, collect);
+      };
+      collect(handler.body);
+      if (!refs.every(guardedUse)) ok = false;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return ok;
+}
+
 function parse(file) {
   const text = readFileSync(file, "utf8");
   return { text, sourceFile: ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS) };
@@ -304,6 +360,13 @@ function checkSeam(table) {
     }
     const hit = bindingReads(sourceFile, names)[0];
     if (hit) problem(rel, `touches binding ${hit.name} outside bindings.ts`);
+    const structure = envStructure(sourceFile);
+    if (structure.dotEnv) problem(rel, "reads `.env` outside bindings.ts");
+    if (structure.destructured) problem(rel, "destructures `env` outside bindings.ts");
+    if (structure.envImport && !/^workers\/[^/]+\/src\/index\.ts$/.test(rel.split(sep).join("/"))) problem(rel, "imports the Env type outside bindings.ts and index.ts");
+    if (/^workers\/[^/]+\/src\/index\.ts$/.test(rel.split(sep).join("/")) && !handlerEnvOnlyReachesRuntime(sourceFile)) {
+      problem(rel, "hands the handler's env to something other than createRuntime");
+    }
     if (ENV_IMPORT.test(text)) problem(rel, 'imports `env` from "cloudflare:workers"; bindings are read in bindings.ts only');
     const type = PRODUCT_TYPES.exec(text);
     if (type) problem(rel, `names the Cloudflare binding type ${type[1]} outside bindings.ts`);
@@ -320,6 +383,12 @@ for (const [worker, t] of Object.entries(table)) {
   }
   const config = readJsonc(path);
   configs[worker] = config;
+  if (!readFileSync(path, "utf8").endsWith("\n")) problem(`workers/${worker}`, "wrangler.jsonc must end with a newline");
+  // A bare `wrangler deploy` reads the top level, so it must name a Worker that exists nowhere and bind and route nothing.
+  if (config.name !== `${worker}-local`) problem(`workers/${worker}`, `top-level name is "${config.name}", expected "${worker}-local"`);
+  if (config.workers_dev !== false) problem(`workers/${worker}`, "the top level needs workers_dev: false");
+  if (config.routes?.length || config.route) problem(`workers/${worker}`, "the top level must not declare routes");
+  for (const key of [...BINDING_KEYS, "triggers"]) if (config[key] !== undefined) problem(`workers/${worker}`, `the top level must not declare ${key}`);
   if (!config.name || !config.main || !config.compatibility_date) problem(`workers/${worker}`, "needs name, main and compatibility_date at the top level");
   sameSet(`workers/${worker}`, "environments", Object.keys(config.env ?? {}), ENVS);
   for (const env of ENVS) {

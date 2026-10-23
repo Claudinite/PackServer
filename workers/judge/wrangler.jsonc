@@ -1,6 +1,7 @@
 {
+  "name": "judge-local",
+  "workers_dev": false,
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "judge",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": [
@@ -9,6 +10,7 @@
   "env": {
     "test": {
       "name": "judge-test",
+      "workers_dev": false,
       "vars": {
         "WORKER": "judge",
         "ENVIRONMENT": "test",
@@ -33,19 +35,19 @@
       "analytics_engine_datasets": [
         {
           "binding": "REQUEST_OUTCOMES",
-          "dataset": "request_outcomes"
+          "dataset": "request_outcomes_test"
         },
         {
           "binding": "DOMAIN_EVENTS",
-          "dataset": "domain_events"
+          "dataset": "domain_events_test"
         },
         {
           "binding": "GATE_RESULTS",
-          "dataset": "gate_results"
+          "dataset": "gate_results_test"
         },
         {
           "binding": "BUDGET",
-          "dataset": "budget"
+          "dataset": "budget_test"
         }
       ],
       "version_metadata": {

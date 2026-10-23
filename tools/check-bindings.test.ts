@@ -28,7 +28,7 @@ function edit(dir: string, worker: string, change: (config: Json) => void): void
   const path = join(dir, "workers", worker, "wrangler.jsonc");
   const config = JSON.parse(readFileSync(path, "utf8")) as Json;
   change(config);
-  writeFileSync(path, JSON.stringify(config, null, 2));
+  writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
 }
 
 function run(dir: string): { ok: boolean; out: string } {
@@ -176,6 +176,45 @@ describe("check-bindings", () => {
     expect(run(dir).ok).toBe(true);
   });
 
+  it.each([
+    ["a renamed destructure of the holder", "export const f = (c: { env: unknown }) => { const { env: e } = c; return e; };", "destructures `env`"],
+    ["a renamed destructured parameter", "export const f = ({ env: x }: { env: unknown }) => x;", "destructures `env`"],
+    ["a nested destructure", "export const f = (c: { env: unknown }) => { const { env: { DB } } = c as never; return DB; };", "destructures `env`"],
+    ["an assignment alias", "export const f = (c: { env: unknown }) => { let e: unknown; e = c.env; return e; };", "reads `.env`"],
+    ["a computed key", 'export const f = (c: { env: Record<string, unknown> }, k: string) => c.env[k];', "reads `.env`"],
+    ["a spread", "export const f = (c: { env: object }) => ({ ...c.env });", "reads `.env`"],
+    ["Reflect.get", 'export const f = (c: { env: object }) => Reflect.get(c.env, "DB");', "reads `.env`"],
+    ["Object.values", "export const f = (c: { env: object }) => Object.values(c.env);", "reads `.env`"],
+    ["a parameter type alias", 'import type { Env } from "./bindings";\ntype E = Env;\nexport const f = (x: E) => x;', "imports the Env type"],
+  ])("fails on %s outside bindings.ts", (_name, code, message) => {
+    const dir = copyRepo();
+    writeFileSync(join(dir, "workers/web/src/app.ts"), `${code}\n`);
+    expect(run(dir).out).toContain(`workers/web/src/app.ts: ${message} outside bindings.ts`);
+  });
+
+  it.each([
+    ["an untyped handler parameter", "export default { fetch: (request: Request, e: any) => e.DB };", "workers/web/src/index.ts: hands the handler's env to something other than createRuntime"],
+    ["env passed on to the app", 'import { createApp } from "./app";\nexport default { fetch: (request: Request, env: unknown) => createApp({} as never).fetch(request, env) };', "workers/web/src/index.ts: hands the handler's env to something other than createRuntime"],
+    ["env kept in a variable", "export default { scheduled: (controller: unknown, env: unknown) => { const kept = env; return kept; } };", "workers/web/src/index.ts: hands the handler's env to something other than createRuntime"],
+  ])("fails on %s in index.ts", (_name, code, message) => {
+    const dir = copyRepo();
+    writeFileSync(join(dir, "workers/web/src/index.ts"), `${code}\n`);
+    expect(run(dir).out).toContain(message);
+  });
+
+  it("lets a Durable Object class keep its own env but not read a binding off it", () => {
+    const dir = copyRepo();
+    const file = join(dir, "workers/publish/src/objects.ts");
+    const source = readFileSync(file, "utf8");
+    writeFileSync(join(dir, "workers/publish/src/more.ts"), 'import { DurableObject } from "cloudflare:workers";\nexport class A extends DurableObject { keep() { return this.env; } }\n');
+    expect(run(dir).ok).toBe(true);
+    writeFileSync(join(dir, "workers/publish/src/more.ts"), 'import { DurableObject } from "cloudflare:workers";\nexport class A extends DurableObject { read() { return (this.env as never as { DB: unknown }).DB; } }\n');
+    expect(run(dir).out).toContain("workers/publish/src/more.ts: touches binding DB outside bindings.ts");
+    writeFileSync(join(dir, "workers/publish/src/more.ts"), "export class B { keep() { return (this as never as { env: unknown }).env; } }\n");
+    expect(run(dir).out).toContain("workers/publish/src/more.ts: reads `.env` outside bindings.ts");
+    expect(source).toContain("DurableObject");
+  });
+
   it("fails on an env import from cloudflare:workers and on a binding type outside bindings.ts", () => {
     const dir = copyRepo();
     writeFileSync(join(dir, "workers/web/src/app.ts"), 'import { env } from "cloudflare:workers";\nexport const db: D1Database = env.DB;\n');
@@ -219,6 +258,41 @@ describe("check-bindings", () => {
     const out = run(dir).out;
     expect(out).toContain('env.test and env.staging share the Worker name "web-staging"');
     expect(out).toContain(`env.test and env.production share the resource "rate limit namespace ${web.production.ratelimits[0].namespace_id}"`);
+  });
+
+  it("requires workers_dev: false in env.test", () => {
+    const dir = copyRepo();
+    edit(dir, "prober", (c) => delete c.env.test.workers_dev);
+    expect(run(dir).out).toContain("workers/prober env.test: workers_dev must be false");
+  });
+
+  it.each([
+    ["an Analytics Engine dataset", "prober", (b: Json) => (b.analytics_engine_datasets[2].dataset = "synthetic_probes"), 'share the resource "dataset synthetic_probes"'],
+    ["an R2 bucket", "web", (b: Json) => (b.r2_buckets[0].bucket_name = "packs-public"), 'share the resource "r2 packs-public"'],
+    ["a queue", "publish", (b: Json) => (b.queues.producers[0].queue = "notify"), 'share the resource "queue notify"'],
+    ["a D1 database", "web", (b: Json) => (b.d1_databases[0].database_name = "registry"), 'share the resource "d1 registry"'],
+  ])("fails when env.test shares %s with production", (_name, worker, change, message) => {
+    const dir = copyRepo();
+    edit(dir, worker, (c) => change(c.env.test));
+    expect(run(dir).out).toContain(`env.test and env.production ${message}`);
+  });
+
+  it("names the top level <worker>-local, with no routes, so a bare deploy replaces nothing", () => {
+    const dir = copyRepo();
+    edit(dir, "web", (c) => (c.name = "web"));
+    expect(run(dir).out).toContain('workers/web: top-level name is "web", expected "web-local"');
+    const routed = copyRepo();
+    edit(routed, "web", (c) => ((c.routes = ["registry.claudinite.com/*"]), (c.workers_dev = true)));
+    const out = run(routed).out;
+    expect(out).toContain("workers/web: the top level must not declare routes");
+    expect(out).toContain("workers/web: the top level needs workers_dev: false");
+  });
+
+  it("requires a final newline in every wrangler.jsonc", () => {
+    const dir = copyRepo();
+    const path = join(dir, "workers/admin/wrangler.jsonc");
+    writeFileSync(path, readFileSync(path, "utf8").trimEnd());
+    expect(run(dir).out).toContain("workers/admin: wrangler.jsonc must end with a newline");
   });
 
   it("fails when a shared KV namespace has two ids in one environment", () => {

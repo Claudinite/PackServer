@@ -150,7 +150,7 @@ describe("fake Workers are chosen by ENVIRONMENT, never by the binding's shape",
   const service = { fetch: () => {}, query: async () => [], embed: async () => [[1]], inspect: async () => ({}), run: async () => ({}), verify: async () => ({}) };
   const product = { query: async () => ({ matches: [] }), run: async () => ({ data: [[1]] }), getByName: () => ({}) };
 
-  it.each(["production", "staging"])("refuses a service binding where %s expects the product binding", (environment) => {
+  it.each(["production", "staging", "prod", ""])("refuses a service binding where environment \"%s\" expects the product binding", (environment) => {
     expect(() => vectorIndexPort(environment, service as never)).toThrow(expect.objectContaining({ code: "binding_shape" }));
     expect(() => embedderFrom(environment, service as never)).toThrow(expect.objectContaining({ code: "binding_shape" }));
     expect(() => sandboxPort(environment, service as never, service as never)).toThrow(expect.objectContaining({ code: "binding_shape" }));

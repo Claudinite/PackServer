@@ -1,6 +1,7 @@
 {
+  "name": "web-local",
+  "workers_dev": false,
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "web",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": [
@@ -9,6 +10,7 @@
   "env": {
     "test": {
       "name": "web-test",
+      "workers_dev": false,
       "vars": {
         "WORKER": "web",
         "ENVIRONMENT": "test",
@@ -18,7 +20,7 @@
       "d1_databases": [
         {
           "binding": "DB",
-          "database_name": "registry",
+          "database_name": "registry-test",
           "database_id": "00000000-0000-0000-0000-010000000001",
           "migrations_dir": "../../packages/schema/migrations"
         }
@@ -36,11 +38,11 @@
       "r2_buckets": [
         {
           "binding": "PACKS_PUBLIC",
-          "bucket_name": "packs-public"
+          "bucket_name": "packs-public-test"
         },
         {
           "binding": "PACKS_PRIVATE",
-          "bucket_name": "packs-private"
+          "bucket_name": "packs-private-test"
         }
       ],
       "services": [
@@ -56,15 +58,15 @@
       "analytics_engine_datasets": [
         {
           "binding": "REQUEST_OUTCOMES",
-          "dataset": "request_outcomes"
+          "dataset": "request_outcomes_test"
         },
         {
           "binding": "DOMAIN_EVENTS",
-          "dataset": "domain_events"
+          "dataset": "domain_events_test"
         },
         {
           "binding": "DOWNLOADS",
-          "dataset": "downloads"
+          "dataset": "downloads_test"
         }
       ],
       "ratelimits": [

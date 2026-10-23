@@ -1,6 +1,7 @@
 {
+  "name": "prober-local",
+  "workers_dev": false,
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "prober",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": [
@@ -9,6 +10,7 @@
   "env": {
     "test": {
       "name": "prober-test",
+      "workers_dev": false,
       "vars": {
         "WORKER": "prober",
         "ENVIRONMENT": "test",
@@ -17,15 +19,15 @@
       "analytics_engine_datasets": [
         {
           "binding": "REQUEST_OUTCOMES",
-          "dataset": "request_outcomes"
+          "dataset": "request_outcomes_test"
         },
         {
           "binding": "DOMAIN_EVENTS",
-          "dataset": "domain_events"
+          "dataset": "domain_events_test"
         },
         {
           "binding": "SYNTHETIC_PROBES",
-          "dataset": "synthetic_probes"
+          "dataset": "synthetic_probes_test"
         }
       ],
       "version_metadata": {

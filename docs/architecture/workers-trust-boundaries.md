@@ -22,8 +22,11 @@ Three cross-cutting rules:
 - **"(read)" on a bucket is enforced at the seam, not by the platform.** An R2 binding cannot be
   made read-only, so `bindings.ts` hands each read-only bucket to `r2ReadPort` and to nothing else,
   and the port has no write method. `tools/check-bindings.mjs` asserts that every read-only bucket in
-  the trust table appears in its Worker's `bindings.ts` only as `r2ReadPort(env.X)`, and that no
-  other file touches a binding at all.
+  the trust table appears in its Worker's `bindings.ts` only as `r2ReadPort(env.X)`. It also flags,
+  outside `bindings.ts` and `packages/ports/cloudflare`, any read of a binding by name, any `.env`
+  member access (a Durable Object's own `this.env` excepted), any `env` key in a destructure, and any
+  import of the `Env` type; and in a Worker's `index.ts` the handler's `env` may be used only as
+  `createRuntime(env)`.
 - **No Worker has a binding to `audit-log`.** The audit consumer writes through the S3 API with an
   object-only token ([data-stores.md](data-stores.md) §Audit log).
 
@@ -39,11 +42,15 @@ compromised public Worker therefore cannot forge a passing probe.
 
 ## The test environment
 
-Each Worker's `env.test` block is named `<worker>-test`, points its service bindings and
-`script_name`s at the other `-test` Workers, and takes rate-limit namespace ids of its own, so that a
-stray `wrangler deploy --env test` replaces nothing deployed. `tools/check-bindings.mjs` fails when
-a test Worker name, D1 or KV id or rate-limit namespace equals a staging or production one, and
-when a KV namespace bound by more than one Worker (such as `cache`) has two ids in one environment.
+Each Worker's `env.test` block is named `<worker>-test`, has `workers_dev: false` and no routes,
+points its service bindings and `script_name`s at the other `-test` Workers, suffixes its D1, R2,
+queue, workflow and Analytics Engine names with `-test` (`_test`), and takes rate-limit namespace
+ids of its own, so that a stray `wrangler deploy --env test` replaces nothing deployed and writes
+no deployed dataset. The top level of each `wrangler.jsonc` is named `<worker>-local` with no
+bindings, routes or `workers_dev`, so a bare `wrangler deploy` replaces nothing either.
+`tools/check-bindings.mjs` fails when a test Worker name, resource name, D1 or KV id or rate-limit
+namespace equals a staging or production one, and when a KV namespace bound by more than one Worker
+(such as `cache`) has two ids in one environment.
 A fake Worker (`fake-*`) is chosen by `ENVIRONMENT === "test"`, never by the shape of the binding;
 in staging and production a service binding where a product binding belongs is refused.
 
