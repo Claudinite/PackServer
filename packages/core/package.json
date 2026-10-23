@@ -9,6 +9,7 @@
     "./canonical": "./canonical/index.ts",
     "./canonical/fixtures": "./canonical/fixtures.ts",
     "./index": "./index/index.ts",
+    "./score": "./score/index.ts",
     "./mail": "./mail/index.ts",
     "./mail/testing": "./mail/testing.ts",
     "./telemetry": "./telemetry/index.ts",
