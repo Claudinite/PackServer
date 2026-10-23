@@ -11,6 +11,7 @@
     "./identity": "./identity/index.ts",
     "./identity/testing": "./identity/testing.ts",
     "./catalog": "./catalog/view.ts",
+    "./github": "./github/index.ts",
     "./index": "./index/index.ts",
     "./score": "./score/index.ts",
     "./mail": "./mail/index.ts",

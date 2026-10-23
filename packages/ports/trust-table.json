@@ -80,7 +80,7 @@
       "ai": [],
       "analytics": { "REQUEST_OUTCOMES": "request_outcomes", "DOMAIN_EVENTS": "domain_events" },
       "ratelimits": [],
-      "secrets": ["GITHUB_APP_PRIVATE_KEY", "GITHUB_WEBHOOK_SECRET", "GITHUB_CODE_SEARCH_TOKEN", "SELFTEST_HMAC_KEY"],
+      "secrets": ["GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY", "GITHUB_WEBHOOK_SECRET", "GITHUB_CODE_SEARCH_TOKEN", "SELFTEST_HMAC_KEY"],
       "fakes": {}
     },
     "validator": {

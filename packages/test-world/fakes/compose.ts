@@ -2,6 +2,7 @@ import type { TestHarness } from "wrangler";
 import { createFakePorts, type FakePorts } from "@packserver/ports/fakes";
 import type { SandboxAReport, SandboxBReport } from "@packserver/ports";
 import { FakeGitHubLogin } from "./github-login";
+import { FakeGithubApp } from "./github-app";
 import { Net } from "./net";
 import { turnstileHandler } from "./turnstile";
 
@@ -50,6 +51,7 @@ const WORKER_FOR: Record<keyof FakeWorkers, string> = {
  */
 export class WorldFakes {
   readonly net = new Net();
+  readonly githubApp = new FakeGithubApp();
   ports: FakePorts = createFakePorts();
   readonly githubLogin = new FakeGitHubLogin();
   readonly workers: Partial<FakeWorkers> = {};
@@ -63,6 +65,7 @@ export class WorldFakes {
     }
     this.net.use((request) => turnstileHandler(this.ports.turnstile)(request));
     this.net.use(this.githubLogin.handler);
+    this.net.use(this.githubApp.handler());
     this.net.freeze();
   }
 
@@ -83,6 +86,7 @@ export class WorldFakes {
 
   async reset(): Promise<void> {
     this.net.reset();
+    this.githubApp.reset();
     this.ports = createFakePorts();
     this.githubLogin.reset();
     await Promise.all(Object.values(this.workers).map((w) => w.call("reset")));
