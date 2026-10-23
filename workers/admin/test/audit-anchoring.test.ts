@@ -1,11 +1,10 @@
-import { createAudit, type AuditEvent } from "@packserver/core/audit";
+import { appendBatch, createAudit, type AuditEvent } from "@packserver/core/audit";
 import { MemoryAuditBucket, SqliteD1 } from "@packserver/core/audit/testing";
 import { createFakePorts } from "@packserver/ports/fakes";
 import { SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
 import { describe, expect, it, vi } from "vitest";
 import type { AdminRuntime } from "../src/bindings";
 import { runCron, CRON_DAILY } from "../src/crons";
-import { appendBatch } from "@packserver/core/audit";
 
 function setup() {
   const fakes = createFakePorts({ worker: "admin" });

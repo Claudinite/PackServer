@@ -5,6 +5,7 @@ export * from "./chain";
 export * from "./consumer";
 export * from "./emit";
 export * from "./event";
+export * from "./points";
 export * from "./rekor";
 export * from "./verify";
 export * from "./writer";

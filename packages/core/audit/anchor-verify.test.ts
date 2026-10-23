@@ -6,6 +6,8 @@ import { createAudit } from "./emit";
 import type { AuditEvent } from "./event";
 import { ecdsaSigner, headStatement, rawToDer, rekorTransparency } from "./rekor";
 import { MemoryAuditBucket, SqliteD1 } from "./testing";
+import { analyticsAppendedPoints } from "./points";
+import { HEAD_KEY } from "./chain";
 import { verifyAuditChain } from "./verify";
 import { appendBatch, type ConsumedMessage } from "./writer";
 
@@ -82,6 +84,40 @@ describe("nightly verifier", () => {
     const lines = s.bucket.objects.get(key)!.split("\n");
     s.bucket.objects.set(key, [lines[0], lines[1], ""].join("\n"));
     expect(reasons(await s.verify())).toContain("event_ids");
+  });
+
+  it("flags a chain cut back to an earlier batch after its head was published", async () => {
+    const s = setup();
+    await s.batch(); await s.batch(); await s.batch();
+    const ports = { auditBucket: s.bucket, d1: s.d1, transparency: s.fakes.transparency, clock: s.fakes.clock };
+    expect((await anchorDailyHead(ports)).status).toBe("anchored");
+    const keys = s.bucket.batchKeys();
+    const previous = JSON.parse(s.bucket.objects.get(HEAD_KEY)!) as { seq: number; hash: string; key: string };
+    s.bucket.tamper(keys[2]!, { drop: true });
+    const { sha256Hex } = await import("@packserver/ports");
+    s.bucket.objects.set(HEAD_KEY, JSON.stringify({ ...previous, seq: 1, key: keys[1], hash: await sha256Hex(s.bucket.objects.get(keys[1]!)!) }));
+    const report = await s.verify();
+    expect(reasons(report)).toEqual(expect.arrayContaining(["anchored_head_missing"]));
+    expect(s.fakes.stats.points.some((p) => p.name === "audit.chain_broken" && p.blobs[1] === "anchored_head_missing")).toBe(true);
+    expect(s.fakes.stats.points.some((p) => p.name === "audit.chain_verified")).toBe(false);
+  });
+
+  it("flags a published head whose batch was rewritten", async () => {
+    const s = setup();
+    await s.batch(); await s.batch();
+    await anchorDailyHead({ auditBucket: s.bucket, d1: s.d1, transparency: s.fakes.transparency, clock: s.fakes.clock });
+    s.d1.db.exec("update audit_heads set hash = '" + "0".repeat(64) + "'");
+    expect(reasons(await s.verify())).toEqual(["anchored_head_changed"]);
+  });
+
+  it("reports an unreadable head pointer instead of throwing", async () => {
+    const s = setup();
+    await s.batch();
+    s.bucket.objects.set(HEAD_KEY, "{not json");
+    expect(reasons(await s.verify())).toEqual(["head_corrupt"]);
+    s.bucket.objects.set(HEAD_KEY, JSON.stringify({ seq: "x" }));
+    expect(reasons(await s.verify())).toEqual(["head_corrupt"]);
+    expect(s.fakes.stats.points.filter((p) => p.name === "audit.chain_broken")).toHaveLength(2);
   });
 
   it("reconciles in both directions against the copy, grouped by day", async () => {
@@ -164,7 +200,7 @@ describe("daily head anchoring", () => {
     const other: typeof fetch = async () =>
       Response.json({ u: { body: Buffer.from(JSON.stringify({ spec: { data: { hash: { value: "00" } } } })).toString("base64"), logIndex: 1 } }, { status: 201 });
     await expect(rekorTransparency({ signer, url: "https://rekor.test" }, other).anchor({ seq: 0, hash: "a".repeat(64) })).rejects.toThrow(/different digest/);
-    await expect(rekorTransparency({ signer, url: "https://rekor.test" }, logOver(503).fetchImpl).anchor({ seq: 0, hash: "a".repeat(64) })).rejects.toThrow(/503/);
+    await expect(rekorTransparency({ signer, url: "https://rekor.test" }, logOver(503).fetchImpl).anchor({ seq: 0, hash: "a".repeat(64) })).rejects.toThrow(/503: no/);
     await expect(rekorTransparency({ signer, url: "https://rekor.test" }, async () => Response.json({}, { status: 201 })).anchor({ seq: 0, hash: "a".repeat(64) })).rejects.toThrow(/without a log entry/);
   });
 
@@ -203,5 +239,33 @@ describe("daily head anchoring", () => {
     const s = setup();
     const outcome = await anchorDailyHead({ auditBucket: s.bucket, d1: s.d1, transparency: { anchor: async () => { throw new Error("unexpected"); } }, clock: s.fakes.clock });
     expect(outcome).toEqual({ status: "empty" });
+  });
+});
+
+describe("analytics engine points reader", () => {
+  const config = { accountId: "acc1", dataset: "domain_events_test", token: async () => "tok" };
+
+  it("queries audit.appended since the time given, pages through results and returns the ids", async () => {
+    const calls: Array<{ url: string; auth: string | null; sql: string }> = [];
+    const full = Array.from({ length: 10_000 }, (_, i) => ({ id: `e${i}` }));
+    const fetchImpl: typeof fetch = async (input, init) => {
+      calls.push({ url: String(input), auth: new Headers(init?.headers).get("authorization"), sql: String(init?.body) });
+      return Response.json({ data: calls.length === 1 ? full : [{ id: "last" }] });
+    };
+    const ids = await analyticsAppendedPoints(config, fetchImpl)("2026-07-26T00:00:00.000Z");
+    expect(ids).toHaveLength(10_001);
+    expect(calls[0]).toMatchObject({ url: "https://api.cloudflare.com/client/v4/accounts/acc1/analytics_engine/sql", auth: "Bearer tok" });
+    expect(calls[0]!.sql).toContain("index1 = 'audit.appended'");
+    expect(calls[0]!.sql).toContain("toDateTime('2026-07-26 00:00:00')");
+    expect(calls[1]!.sql).toContain("OFFSET 10000");
+  });
+
+  it("fails with the service's answer rather than reporting no points", async () => {
+    await expect(analyticsAppendedPoints(config, async () => new Response("bad token", { status: 403 }))("2026-07-26T00:00:00.000Z")).rejects.toThrow(/403: bad token/);
+    await expect(analyticsAppendedPoints(config, async () => Response.json({}))("2026-07-26T00:00:00.000Z")).rejects.toThrow(/without data/);
+  });
+
+  it("refuses a dataset name that is not an identifier", () => {
+    expect(() => analyticsAppendedPoints({ ...config, dataset: "x; drop" })).toThrow(/not a dataset name/);
   });
 });

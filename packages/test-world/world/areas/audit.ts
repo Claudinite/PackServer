@@ -1,7 +1,7 @@
 import { generateKeyPairSync } from "node:crypto";
 import { FakeQueue } from "@packserver/ports/fakes";
 import {
-  anchorDailyHead, consumeAuditMessages, headStatement, createAudit, ecdsaSigner, listAnchoredHeads, parseBatch, rekorTransparency, scopeActivity,
+  anchorDailyHead, consumeAuditMessages, headStatement, createAudit, ecdsaSigner, auditHeadsResponse, parseBatch, rekorTransparency, scopeActivity,
   userActivity, verifyAuditChain,
   type ActivityRow, type AnchoredHead, type AnchorOutcome, type Problem, type AuditAction, type AuditActor, type AuditExtra, type AuditEvent, type AuditReceipt, type BatchHeader,
 } from "@packserver/core/audit";
@@ -35,7 +35,7 @@ export interface AuditModule {
     batches(): Promise<AuditBatchView[]>;
     /** Runs the daily head publication (shipped `anchorDailyHead`) at the current time. */
     publishHead(): Promise<AnchorOutcome>;
-    /** What `/.well-known/audit-heads` serves, newest first. */
+    /** The body `/.well-known/audit-heads` serves (the shipped response builder the route returns), newest first. */
     heads(): Promise<AnchoredHead[]>;
     /**
      * Runs the nightly verifier (shipped `verifyAuditChain`): the chain recomputed and reconciled with the D1 copy and
@@ -150,7 +150,7 @@ export function createAuditModule(driver: Driver): AuditModule {
         const s = st();
         return anchorDailyHead({ auditBucket: s.bucket, d1: s.d1, transparency: await transparency(), clock: await clockNow() });
       },
-      heads: () => listAnchoredHeads(st().d1),
+      heads: async () => ((await (await auditHeadsResponse(st().d1)).json()) as { heads: AnchoredHead[] }).heads,
       async verify() {
         const s = st();
         const report = await verifyAuditChain({

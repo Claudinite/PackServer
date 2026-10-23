@@ -60,3 +60,8 @@ export async function listAnchoredHeads(d1: D1, limit = 1000): Promise<AnchoredH
   );
   return r.rows as unknown as AnchoredHead[];
 }
+
+/** The body of `/.well-known/audit-heads`, shared by the route and the test world. */
+export async function auditHeadsResponse(d1: D1): Promise<Response> {
+  return Response.json({ heads: await listAnchoredHeads(d1) }, { headers: { "cache-control": "public, max-age=300" } });
+}

@@ -79,7 +79,7 @@ export function rekorTransparency(config: RekorConfig, fetchImpl: typeof fetch =
         headers: { "content-type": "application/json", accept: "application/json" },
         body: JSON.stringify(entry),
       });
-      if (res.status !== 201) throw new Error(`rekor answered ${res.status}`);
+      if (res.status !== 201) throw new Error(`rekor answered ${res.status}: ${(await res.text()).slice(0, 300)}`);
       const created = (await res.json()) as Record<string, { body?: string; logIndex?: number }>;
       const logged = Object.values(created)[0];
       if (!logged || typeof logged.logIndex !== "number" || typeof logged.body !== "string") throw new Error("rekor answered without a log entry");
