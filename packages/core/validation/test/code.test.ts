@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { checkCode, extractCapabilities, readManifest, runStaticRules } from "../index.ts";
 import { cleanFiles, fakePorts, input, make, manifestJson, treeOf } from "./helpers.ts";
+import { expectLinear } from "./growth.ts";
 import { pack, TASK_JSON, WORKER } from "./pack-fixtures.ts";
 
 type Files = Record<string, string | Uint8Array>;
@@ -313,20 +314,29 @@ describe("code.base64 and code.time-conditional hold", () => {
     expect(rulesOf(worker('const s = "a".repeat(10); // base64 is a word'))).toEqual([]);
     expect(rulesOf(worker(`const s = "${"word ".repeat(80)}";`))).toEqual([]);
   });
-  it("holds a clock that steers a branch, directly or through a variable", () => {
-    for (const body of ['if (Date.now() > 1893456000000) { go(); }', "const d = new Date(); if (d.getFullYear() > 2026) go();", "const t = Date.now();\nconst late = t > 5;", "const n = Date.now();\nlet x = 1;\nif (n) x = 2;", "x = Date.now() > y ? 1 : 2;", "while (Date.now() < y) {}", "const now = new Date();\nswitch (now.getDay()) {}"]) {
+  it("holds a clock compared with a date constant or read as a calendar field", () => {
+    for (const body of ['if (Date.now() > 1893456000000) { go(); }', "const d = new Date(); if (d.getFullYear() > 2026) go();", "const t = Date.now();\nconst late = t > 1893456000;", "x = Date.now() > 1893456000000 ? 1 : 2;", "const now = new Date();\nswitch (now.getDay()) {}", 'if (new Date() > new Date("2027-01-01")) go();']) {
       const f = findings(worker(body)).find((x) => x.rule === "code.time-conditional");
       expect(f, body).toMatchObject({ class: "hold" });
     }
-    const goBodies = ["func f() bool { return time.Now().After(t) }", "func f() bool {\n\tnow := time.Now()\n\tif now.Year() > 2026 {\n\t\treturn true\n\t}\n\treturn false\n}", "func f() bool { return time.Since(t) > time.Hour }", "func f() { switch time.Now().Weekday() {} }"];
+    const goBodies = ["func f() bool {\n\tnow := time.Now()\n\tif now.Year() > 2026 {\n\t\treturn true\n\t}\n\treturn false\n}", "func f() { switch time.Now().Weekday() {} }"];
     for (const body of goBodies) {
       expect(findings(go(body, '"time"\n\t"claudinite.com/checksdk"')).find((x) => x.rule === "code.time-conditional"), body).toMatchObject({ class: "hold" });
     }
   });
-  it("lets a timestamp that steers nothing through", () => {
-    expect(rulesOf(worker("const stamp = new Date(); const label = `run-${Date.now()}`; log(stamp, label);"))).toEqual([]);
-    expect(rulesOf(worker("const d = new Date('2026-01-01'); if (d) log(d);"))).toEqual([]);
-    expect(rulesOf(go('func f() string { return time.Now().Format("2006") }', '"time"'))).toEqual([]);
+  it("lets age arithmetic, formatting and a stored timestamp through", () => {
+    for (const body of [
+      "const age = Date.now() - Date.parse(run.created_at); if (age > 3600) go();",
+      "const since = new Date(Date.now() - 86400 * 1000).toISOString().slice(0, 10);",
+      "const n = Date.now();\nlet x = 1;\nif (n) x = 2;",
+      "const t = Date.now();\nconst late = t > 5;",
+      "while (Date.now() < deadline) {}",
+      "const stamp = new Date(); const label = `run-${Date.now()}`; log(stamp, label);",
+      "const d = new Date('2026-01-01'); if (d) log(d);",
+    ]) expect(rulesOf(worker(body)), body).toEqual([]);
+    for (const body of ["func f() bool { return time.Now().After(t) }", "func f() bool { return time.Since(t) > time.Hour }", 'func f() string { return time.Now().Format("2006") }']) {
+      expect(rulesOf(go(body, '"time"\n\t"claudinite.com/checksdk"')), body).toEqual([]);
+    }
   });
 });
 
@@ -350,33 +360,26 @@ describe("findings stay clean", () => {
   });
 });
 
-describe("every code scan is linear in the size of the input (5 MiB, hostile)", () => {
-  const MIB = 1024 * 1024;
-  const repeatTo = (unit: string, size: number) => unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
-  const cases: Record<string, Files> = {
-    "Go imports": { "checks/a.go": repeatTo('import "x"\n', 5 * MIB) },
-    "Go unterminated comment": { "checks/a.go": "/*" + repeatTo("a", 5 * MIB) },
-    "Go clock stored then read": { "checks/a.go": repeatTo("n := time.Now()\nn\n", 5 * MIB) },
-    "JS import and from": { "tasks/t/w.mjs": repeatTo("import a from ", 5 * MIB) },
-    "JS regex classes": { "tasks/t/w.mjs": "x = /" + repeatTo("[", 5 * MIB) },
-    "JS concatenation": { "tasks/t/w.mjs": repeatTo("'a'+'b'+", 5 * MIB) },
-    "JS clock stored": { "tasks/t/w.mjs": repeatTo("n = Date.now()\nif (n) {}\n", 5 * MIB) },
-    "shell curl lines": { "env/setup.sh": repeatTo("curl x\n", 5 * MIB) },
-    "shell one long line": { "env/setup.sh": repeatTo("a ", 5 * MIB) },
-    "python lines": { "env/p.py": repeatTo("socket\n", 5 * MIB) },
-    "workflow uses": { "w.yml": repeatTo("- uses: a/b\n", 5 * MIB) },
-    "frontmatter never closed": { "skills/s/SKILL.md": "---\n" + repeatTo("forced: no\n", 5 * MIB) },
-    "NUL file": { "a.dat": "\0".repeat(5 * MIB) },
-    "task.json deep": { "tasks/t/task.json": repeatTo("[", 5 * MIB) },
-    "many tasks": Object.fromEntries(Array.from({ length: 4000 }, (_, i) => [`tasks/t${i}/task.json`, "{}"])),
+describe("every code scan is linear in the size of the input (ratio of a large input to a small one)", () => {
+    const repeatTo = (unit: string, size: number) => unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
+  const cases: Record<string, (n: number) => Files> = {
+    "Go imports": (n) => ({ "checks/a.go": repeatTo('import "x"\n', n) }),
+    "Go unterminated comment": (n) => ({ "checks/a.go": "/*" + repeatTo("a", n) }),
+    "Go clock stored then read": (n) => ({ "checks/a.go": repeatTo("n := time.Now()\nn\n", n) }),
+    "JS import and from": (n) => ({ "tasks/t/w.mjs": repeatTo("import a from ", n) }),
+    "JS regex classes": (n) => ({ "tasks/t/w.mjs": "x = /" + repeatTo("[", n) }),
+    "JS concatenation": (n) => ({ "tasks/t/w.mjs": repeatTo("'a'+'b'+", n) }),
+    "JS clock stored": (n) => ({ "tasks/t/w.mjs": repeatTo("n = Date.now()\nif (n) {}\n", n) }),
+    "shell curl lines": (n) => ({ "env/setup.sh": repeatTo("curl x\n", n) }),
+    "shell one long line": (n) => ({ "env/setup.sh": repeatTo("a ", n) }),
+    "python lines": (n) => ({ "env/p.py": repeatTo("socket\n", n) }),
+    "workflow uses": (n) => ({ "w.yml": repeatTo("- uses: a/b\n", n) }),
+    "frontmatter never closed": (n) => ({ "skills/s/SKILL.md": "---\n" + repeatTo("forced: no\n", n) }),
+    "NUL file": (n) => ({ "a.dat": "\0".repeat(n) }),
+    "task.json deep": (n) => ({ "tasks/t/task.json": repeatTo("[", n) }),
+    "many tasks": (n) => Object.fromEntries(Array.from({ length: Math.floor(n / 64) }, (_, i) => [`tasks/t${i}/task.json`, "{}"])),
   };
-  for (const [name, files] of Object.entries(cases)) {
-    it(name, async () => {
-      const t = Date.now();
-      await runStaticRules(input({ ...cleanFiles(), ...(files as Record<string, string>) }), fakePorts());
-      expect(Date.now() - t).toBeLessThan(15_000);
-    }, 60_000);
-  }
+  for (const [name, files] of Object.entries(cases)) it(name, () => expectLinear(files), 60_000);
 });
 
 describe("the run keeps at most 25 findings of one rule per file", () => {

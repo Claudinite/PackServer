@@ -78,9 +78,14 @@ const EVAL_GLOBALS = new Set(["eval", "Function", "AsyncFunction", "GeneratorFun
 const PROCESS_ESCAPES = new Set(["binding", "dlopen", "getBuiltinModule", "mainModule", "_linkedBinding"]);
 const TIMER_STRINGS = new Set(["setTimeout", "setInterval", "setImmediate"]);
 const CLOCK_METHODS = new Set(["now", "getTime", "valueOf"]);
-const BRANCH_WORDS = new Set(["if", "else", "switch", "case", "while"]);
 const COMPARATORS = new Set(["<", ">", "<=", ">=", "==", "!=", "===", "!==", "?", "&&", "||"]);
-const CLOCK_USERS = new Set(["After", "Before", "Equal", "Compare", "Year", "Month", "Day", "Weekday", "YearDay", "Hour", "Unix", "UnixNano", "UnixMilli", "getTime", "getFullYear", "getMonth", "getDate", "getDay", "getHours", "getUTCFullYear", "getUTCMonth", "getUTCDate", "getUTCDay", "toISOString", "valueOf"]);
+const CALENDAR_GETTERS = new Set(["Year", "Month", "Day", "Weekday", "YearDay", "Hour", "Minute", "getFullYear", "getMonth", "getDate", "getDay", "getHours", "getMinutes", "getUTCFullYear", "getUTCMonth", "getUTCDate", "getUTCDay", "getUTCHours"]);
+const DATE_STRING = /^\d{4}-\d{2}(?:-\d{2})?/;
+/** A number the size of an epoch timestamp (seconds or milliseconds), or a date written out. */
+function isDateConstant(t: Tok): boolean {
+  if (t.k === "num") return /^\d{10,}$/.test(t.v.replace(/_/g, ""));
+  return t.k === "str" && DATE_STRING.test(t.v);
+}
 const DYNAMIC_HINT = "A name or object built at run time cannot be checked against the network and eval rules. Write the name out, or do not reach the global object this way.";
 
 const isP = (t: Tok | undefined, v: string) => t?.k === "p" && t.v === v;
@@ -90,6 +95,33 @@ function propertyOf(toks: readonly Tok[], n: number): string | null {
   if (!isP(before, ".") && !isP(before, "?.")) return null;
   const owner = toks[n - 2];
   return owner?.k === "id" ? owner.v : "";
+}
+
+const REFLECT_READS = new Set(["get", "getOwnPropertyDescriptor"]);
+
+/** `Reflect.get(globalThis, key)` is computed access in a call: judge the key when it folds, hold when it cannot. */
+function reflectRule(toks: readonly Tok[], open: number, at: Tok, say: (kind: "network" | "eval" | "dynamic", t: Tok, quote: string) => void): void {
+  const close = matchBracket(toks, open);
+  if (close === -1) return say("dynamic", at, "Reflect.get(...)");
+  let depth = 0;
+  let comma = -1;
+  let end = close;
+  for (let k = open + 1; k < close; k++) {
+    const x = toks[k]!;
+    if (x.k !== "p") continue;
+    if (x.v === "(" || x.v === "[") depth++;
+    else if (x.v === ")" || x.v === "]") depth--;
+    else if (x.v === "," && depth === 0) {
+      if (comma === -1) comma = k;
+      else {
+        end = k;
+        break;
+      }
+    }
+  }
+  const key = comma === -1 ? null : foldString(toks, comma + 1, end);
+  const judged = judgeName(key);
+  if (judged && (key !== null || /^(?:globalThis|self|window|global)$/.test(toks[open + 1]?.v ?? "") || judged === "dynamic")) say(judged, at, "Reflect.get(...)");
 }
 
 /** What reaching a name through the global object means: fail for a banned name, hold when the name cannot be read. */
@@ -150,18 +182,32 @@ export function jsRules(src: Source, lex: JsLex, emit: Emit, path = src.file, pr
     if (t.v === "Date" && toks[n - 1]?.v === "new" && isP(toks[n + 1], "(") && isP(toks[n + 2], ")")) clocks.push(n);
 
     if (owner === null && (globals.has(t.v) || t.v === "process")) {
-      const next = toks[n + 1];
-      if (isP(next, "[")) {
-        const close = matchBracket(toks, n + 1);
-        const key = close === -1 ? null : foldString(toks, n + 2, close);
+      // `globalThis.self.window[...]`: follow a chain of names that all stand for the global object.
+      let m = n;
+      if (t.v !== "process") while ((isP(toks[m + 1], ".") || isP(toks[m + 1], "?.")) && globals.has(toks[m + 2]?.v ?? "") && toks[m + 2]!.k === "id") m += 2;
+      const next = toks[m + 1];
+      const bracket = isP(next, "[") ? m + 1 : isP(next, "?.") && isP(toks[m + 2], "[") ? m + 2 : -1;
+      if (bracket !== -1) {
+        const close = matchBracket(toks, bracket);
+        const key = close === -1 ? null : foldString(toks, bracket + 1, close);
         const judged = t.v === "process" ? (key !== null && PROCESS_ESCAPES.has(key) ? "eval" : key === null ? "dynamic" : null) : judgeName(key);
         if (judged) say(judged, t, `${t.v}[...]`);
-      } else if (globals.has(t.v) && !isP(next, ".") && !isP(next, "?.") && toks[n - 1]?.v !== "typeof") {
+      } else if (globals.has(t.v) && m === n && !isP(next, ".") && !isP(next, "?.") && toks[n - 1]?.v !== "typeof") {
         const assigned = isP(toks[n - 1], "=") && !toks[n - 1]!.afterBrace && toks[n - 2]?.k === "id";
         if (isP(toks[n - 1], "=") && toks[n - 1]!.afterBrace) say("dynamic", t, `${t.v} taken apart`);
         else if (!assigned) say("dynamic", t, `${t.v} used as a value`);
       }
     }
+    if (t.v === "Reflect" && isP(toks[n + 1], ".") && REFLECT_READS.has(toks[n + 2]?.v ?? "") && isP(toks[n + 3], "(")) reflectRule(toks, n + 3, t, say);
+  }
+  // Any computed key that folds to `constructor` reaches the Function constructor, whatever it is read from.
+  for (let n = 1; n < toks.length; n++) {
+    const t = toks[n]!;
+    if (!isP(t, "[") || !(toks[n - 1]!.k === "id" || isP(toks[n - 1], ")") || isP(toks[n - 1], "]"))) continue;
+    const next = toks[n + 1];
+    if (next?.k === "str" && next.v === "constructor") continue;
+    const close = matchBracket(toks, n, 40);
+    if (close !== -1 && foldString(toks, n + 1, close) === "constructor") say("eval", t, "[...constructor]");
   }
   for (const r of regexBodies) {
     if (/\b(?:fetch|XMLHttpRequest|WebSocket)\b/.test(r.v)) emit("code.network", { file: src.file, line: r.line, quote: clip(r.v), hint: NETWORK_HINT });
@@ -188,15 +234,25 @@ function isLocalImport(from: string, spec: string, present: ReadonlySet<string>)
 
 const TIME_HINT = "Behaviour that depends on the date can pass review today and change later. Remove the clock from the decision.";
 
-/** A clock read matters when what it returns steers a branch: on its own line, or through a variable it was stored in. */
+/**
+ * A clock read matters when the date itself decides something: its line compares against a date constant or reads a calendar
+ * field (weekday, month, year, hour). Age arithmetic, formatting and storing a timestamp steer nothing.
+ */
 function timeRules(toks: readonly Tok[], clocks: readonly number[], src: Source, emit: Emit): void {
   if (clocks.length === 0) return;
-  const steering = new Set<number>();
-  for (const t of toks) if ((t.k === "id" && (BRANCH_WORDS.has(t.v) || CLOCK_USERS.has(t.v))) || (t.k === "p" && COMPARATORS.has(t.v))) steering.add(t.line);
+  const calendar = new Set<number>();
+  const compares = new Set<number>();
+  const constants = new Set<number>();
+  toks.forEach((t, n) => {
+    if (t.k === "id" && CALENDAR_GETTERS.has(t.v) && isP(toks[n + 1], "(")) calendar.add(t.line);
+    if (t.k === "p" && COMPARATORS.has(t.v)) compares.add(t.line);
+    if (isDateConstant(t)) constants.add(t.line);
+  });
+  const decides = (line: number) => calendar.has(line) || (compares.has(line) && constants.has(line));
   const stored = new Set<string>();
   for (const at of clocks) {
     const t = toks[at]!;
-    if (steering.has(t.line)) {
+    if (decides(t.line)) {
       emit("code.time-conditional", { file: src.file, line: t.line, quote: excerpt(src.text, t.i, 12), hint: TIME_HINT });
       continue;
     }
@@ -208,7 +264,7 @@ function timeRules(toks: readonly Tok[], clocks: readonly number[], src: Source,
   }
   if (stored.size === 0) return;
   toks.forEach((t, k) => {
-    if (t.k === "id" && stored.has(t.v) && steering.has(t.line) && !isP(toks[k + 1], ":=") && !isP(toks[k + 1], "=")) {
+    if (t.k === "id" && stored.has(t.v) && decides(t.line) && !isP(toks[k + 1], ":=") && !isP(toks[k + 1], "=")) {
       emit("code.time-conditional", { file: src.file, line: t.line, quote: excerpt(src.text, t.i, t.v.length), hint: TIME_HINT });
     }
   });

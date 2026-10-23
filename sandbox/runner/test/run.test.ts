@@ -75,13 +75,13 @@ describe("optional inspectors", () => {
 
   it("is skipped, and says so, while an inspector module is absent", async () => {
     const { inspectors, skipped } = await loadOptionalInspectors([ABSENT]);
-    expect(inspectors).toEqual([]);
+    expect(inspectors.map((i) => i.name)).toEqual(["capabilities"]);
     expect(skipped).toEqual([{ name: ABSENT, note: "module not present in this image" }]);
     const { report } = await runA(fixtureArchive("gcp"), REQUEST, { ...hooks, skippedInspectors: skipped });
     expect(report.inspectors).toEqual([{ name: ABSENT, status: "skipped", note: "module not present in this image" }]);
   });
 
-  it("loads the capability inspector from core", async () => {
+  it("always carries the capability inspector from core, bound statically", async () => {
     const { inspectors, skipped } = await loadOptionalInspectors();
     expect(skipped).toEqual([]);
     expect(inspectors.map((i) => i.name)).toEqual(["capabilities"]);

@@ -16,6 +16,7 @@ const SEPARATORS = new Set([";", "&", "|", "(", ")", "{", "}", "\n"]);
 /** Splits one logical line into simple commands of words, with quotes and backslashes resolved. */
 function parse(line: string): Command[] {
   const commands: Command[] = [];
+  const n = line.length;
   let cur: Command = [];
   let word: Word | null = null;
   const flushWord = () => {
@@ -27,27 +28,38 @@ function parse(line: string): Command[] {
     if (cur.length) commands.push(cur);
     cur = [];
   };
+  // A word that begins right after a closing substitution (`$(printf cu)rl`) is partly computed.
+  let pending = false;
+  const kinds: boolean[] = [];
+  let backtick = false;
+  const begin = (): Word => {
+    word ??= { text: "", dynamic: pending, literal: !pending };
+    pending = false;
+    return word;
+  };
+  const afterSubstitution = (at: number) => {
+    if (at < n && !/[\s;&|()<>]/.test(line[at]!)) pending = true;
+  };
   const add = (c: string, dynamic = false, literal = true) => {
-    word ??= { text: "", dynamic: false, literal: true };
-    word.text += c;
-    if (dynamic) word.dynamic = true;
-    if (!literal) word.literal = false;
+    begin();
+    word!.text += c;
+    if (dynamic) word!.dynamic = true;
+    if (!literal) word!.literal = false;
   };
   let i = 0;
-  const n = line.length;
   while (i < n) {
     const c = line[i]!;
     if (c === "\\") {
       add(line[i + 1] ?? "");
       i += 2;
     } else if (c === "'") {
-      word ??= { text: "", dynamic: false, literal: true };
+      begin();
       const end = line.indexOf("'", i + 1);
       const stop = end === -1 ? n : end;
-      word.text += line.slice(i + 1, stop);
+      word!.text += line.slice(i + 1, stop);
       i = stop + 1;
     } else if (c === '"') {
-      word ??= { text: "", dynamic: false, literal: true };
+      begin();
       i++;
       while (i < n && line[i] !== '"') {
         if (line[i] === "\\") {
@@ -67,9 +79,23 @@ function parse(line: string): Command[] {
       }
       i++;
     } else if (c === "$" && line[i + 1] === "(") {
+      if (word) (word as Word).dynamic = true;
       flushCommand();
+      kinds.push(true);
       i += 2;
     } else if (c === "`") {
+      if (!backtick && word) (word as Word).dynamic = true;
+      flushCommand();
+      backtick = !backtick;
+      i++;
+      if (!backtick) afterSubstitution(i);
+    } else if (c === ")") {
+      const wasSubstitution = kinds.pop() === true;
+      flushCommand();
+      i++;
+      if (wasSubstitution) afterSubstitution(i);
+    } else if (c === "(") {
+      kinds.push(false);
       flushCommand();
       i++;
     } else if ((c === "<" || c === ">") && line[i + 1] === "(") {
@@ -95,7 +121,7 @@ function parse(line: string): Command[] {
   return commands;
 }
 
-const WRAPPERS = new Set(["sudo", "doas", "env", "command", "builtin", "exec", "nohup", "time", "xargs", "nice", "ionice", "timeout", "busybox", "stdbuf", "setsid", "then", "do", "else", "elif", "if", "while", "until", "!", "&&", "||"]);
+const WRAPPERS = new Set(["sudo", "doas", "env", "command", "builtin", "exec", "nohup", "time", "xargs", "nice", "ionice", "timeout", "busybox", "stdbuf", "setsid", "watch", "strace", "ltrace", "then", "do", "else", "elif", "if", "while", "until", "!", "&&", "||"]);
 const NETWORK_COMMANDS = new Set(["curl", "wget", "nc", "ncat", "netcat", "socat", "telnet", "ssh", "scp", "sftp", "ftp", "tftp", "rsync", "dig", "nslookup", "host", "gh", "apt", "apt-get", "apk", "brew", "npm", "npx", "pnpm", "yarn", "pip", "pip3", "pipx", "gem", "cargo", "bun", "bunx", "deno", "dnf", "yum", "zypper"]);
 const GIT_NETWORK = new Set(["clone", "fetch", "pull", "push", "ls-remote", "submodule", "remote"]);
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh", "ash", "fish"]);
@@ -123,10 +149,29 @@ function commandWord(words: Command): { index: number; name: string; dynamic: bo
     if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w.text)) k++;
     else if (WRAPPERS.has(base) && !w.dynamic) {
       k++;
-      while (k < words.length && (/^-/.test(words[k]!.text) || /^\d+$/.test(words[k]!.text) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[k]!.text))) k++;
+      while (k < words.length && (/^-/.test(words[k]!.text) || /^\d+[smhd]?$/.test(words[k]!.text) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[k]!.text))) {
+        // `env -u NAME` and `env -C DIR` take a separate argument.
+        if (base === "env" && /^-[uC]$/.test(words[k]!.text)) k++;
+        k++;
+      }
     } else return { index: k, name: base, dynamic: w.dynamic };
   }
   return null;
+}
+
+const STDIN_PATHS = new Set(["-", "/dev/stdin", "/proc/self/fd/0", "/dev/fd/0"]);
+const INFO_FLAGS = /^-(?:-version|-help|v|V|h)$/;
+
+/** An interpreter given no script file reads its program from standard input, which a scan cannot see. */
+function readsProgramFromStdin(args: Command): boolean {
+  let redirected = false;
+  for (const a of args) {
+    if (STDIN_PATHS.has(a.text)) return true;
+    if (a.text.startsWith("<")) redirected = true;
+    else if (INFO_FLAGS.test(a.text)) return false;
+  }
+  if (redirected) return true;
+  return !args.some((a) => !a.text.startsWith("-") && !/^\d*>/.test(a.text) && a.text !== "");
 }
 
 function analyse(words: Command, line: number, src: Source, emit: Emit, depth: number): void {
@@ -147,6 +192,7 @@ function analyse(words: Command, line: number, src: Source, emit: Emit, depth: n
     if (args.some((a) => a.dynamic) || args.length === 0) where("code.eval", "Sourcing a computed file cannot be read in advance.");
   } else if (SHELLS.has(name)) {
     const c = args.findIndex((a) => /^-[a-z]*c[a-z]*$/.test(a.text));
+    if (c === -1 && readsProgramFromStdin(args)) where("code.dynamic-access", "A shell reading its program from standard input runs text this scan cannot see. Put the commands in a file.");
     if (c !== -1) {
       const arg = args[c + 1];
       if (!arg || arg.dynamic || !arg.literal) where("code.eval", "A shell given a computed command string cannot be read in advance.");
@@ -154,6 +200,20 @@ function analyse(words: Command, line: number, src: Source, emit: Emit, depth: n
     }
   } else if (INTERPRETERS[name] && args.some((a) => givesProgram(a.text, INTERPRETERS[name]!))) {
     where("code.eval", "An interpreter given its program on the command line hides the program from review. Put it in a file.");
+  } else if (INTERPRETERS[name] && readsProgramFromStdin(args)) {
+    where("code.dynamic-access", "An interpreter reading its program from standard input runs text this scan cannot see. Put it in a file.");
+  } else if (/^(?:g|m|n)?awk$/.test(name) && args.some((a) => /\bsystem\s*\(/.test(a.text))) {
+    where("code.dynamic-access", "awk's system() runs a command this scan cannot read. Write the command out.");
+  } else if (name === "find" && depth < 3) {
+    const x = args.findIndex((a) => /^-(?:exec|execdir|ok|okdir)$/.test(a.text));
+    if (x !== -1) {
+      const inner: Command = [];
+      for (const a of args.slice(x + 1)) {
+        if (a.text === ";" || a.text === "+") break;
+        inner.push(a);
+      }
+      analyse(inner, line, src, emit, depth + 1);
+    }
   }
 }
 

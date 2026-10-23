@@ -59,34 +59,39 @@ export function goChecks(toks: readonly Tok[]): GoChecks {
   const checks: GoCheck[] = [];
   let strayHook = false;
   const claimed = new Set<number>();
+  // One pass: an open Register( call owns the fields seen until its parenthesis closes, so nested or unclosed calls never rescan.
+  const parens: boolean[] = [];
+  const open: GoCheck[] = [];
   for (let n = 0; n < toks.length; n++) {
     const t = toks[n]!;
-    if (t.k === "id" && t.v === "Register" && toks[n + 1]?.v === "(" && toks[n + 1]!.k === "p") {
-      let depth = 0;
-      let end = n + 1;
-      for (; end < toks.length; end++) {
-        const x = toks[end]!;
-        if (x.k !== "p") continue;
-        if (x.v === "(") depth++;
-        else if (x.v === ")" && --depth === 0) break;
+    if (t.k === "p" && t.v === "(") {
+      const prev = toks[n - 1];
+      const isReg = prev?.k === "id" && prev.v === "Register";
+      parens.push(isReg);
+      if (isReg) {
+        const check: GoCheck = { id: null, tags: [], tagsKnown: true, line: prev!.line };
+        checks.push(check);
+        open.push(check);
       }
-      const check: GoCheck = { id: null, tags: [], tagsKnown: true, line: t.line };
-      for (let m = n + 2; m < end; m++) {
-        const x = toks[m]!;
-        if (x.k !== "id" || toks[m + 1]?.v !== ":") continue;
-        if (x.v === "ID" && toks[m + 2]?.k === "str") check.id = toks[m + 2]!.v;
-        if (x.v === "Tags") {
-          let k = m + 2;
-          if (toks[k]?.k === "id" && toks[k]!.v === "string") {
-            k++;
-            for (; k < end && (toks[k]!.k === "str" || toks[k]!.v === ","); k++) {
-              claimed.add(k);
-              if (toks[k]!.k === "str") check.tags.push(toks[k]!.v);
-            }
-          } else check.tagsKnown = false;
-        }
+    } else if (t.k === "p" && t.v === ")") {
+      if (parens.pop()) open.pop();
+    } else if (t.k === "id" && toks[n + 1]?.v === ":" && open.length) {
+      const check = open[open.length - 1]!;
+      if (t.v === "ID" && toks[n + 2]?.k === "str") check.id = toks[n + 2]!.v;
+      if (t.v === "Tags") {
+        let k = n + 2;
+        if (toks[k]?.k === "id" && toks[k]!.v === "string") {
+          k++;
+          for (; k < toks.length && (toks[k]!.k === "str" || toks[k]!.v === ","); k++) {
+            claimed.add(k);
+            if (toks[k]!.k === "str") check.tags.push(toks[k]!.v);
+          }
+          // After the literal list the next token is the next field's key or the closing parenthesis; anything else (an identifier, `+`, a call) is a tag the scan cannot read.
+          const after = toks[k];
+          const ends = after === undefined || (after.k === "p" && after.v === ")") || (after.k === "id" && toks[k + 1]?.v === ":");
+          if (!ends) check.tagsKnown = false;
+        } else check.tagsKnown = false;
       }
-      checks.push(check);
     }
   }
   for (let n = 0; n < toks.length; n++) {

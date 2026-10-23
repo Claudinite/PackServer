@@ -86,7 +86,7 @@ describe("runStaticRules", () => {
       ),
       fakePorts(),
     );
-    const dynamic = await runStaticRules(input({ ...cleanFiles(), "env/setup.sh": "$CMD x\n" }), fakePorts());
+    const dynamic = await runStaticRules(input({ ...cleanFiles(), "env/setup.sh": "$CMD x\n", "tasks/t/task.json": "{}", "tasks/t/w.mjs": "if (Date.now() > 1893456000000) go();\n" }), fakePorts());
     const more = [
       await runStaticRules(input(cleanFiles(), { pack: "@acrne/x" }), fakePorts()),
       await runStaticRules(input(cleanFiles(), { pack: "@acmee/x" }), fakePorts()),

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { inspector } from "@packserver/core/capabilities";
-import { checkCode, extractCapabilities, readManifest, runStaticRules } from "../index.ts";
+import { checkCode, extractCapabilities, readManifest } from "../index.ts";
 import { CANON_PACKS, canonPack } from "./canon.ts";
-import { cleanFiles, fakePorts, input, make, treeOf } from "./helpers.ts";
+import { cleanFiles, make, treeOf } from "./helpers.ts";
+import { expectLinear } from "./growth.ts";
 import { TASK_JSON } from "./pack-fixtures.ts";
 
 type Files = Record<string, string | Uint8Array>;
@@ -56,12 +57,10 @@ describe("the vendored canon packs are the authority for file formats", () => {
     });
   }
   it("records what the scanner really finds in the canon task workers", () => {
-    // Known: the canon's own ci-performance worker defaults a parameter to the bare global fetch and
-    // reads the clock three times; the scanner reports them as it would for any pack.
+    // The canon must change, not the rule: github-api.mjs reaches the network through a bare global fetch.
     const found = analyse(canonPack("basics")).findings.map((f) => `${f.rule} ${f.file}`);
     expect(found.filter((x) => x.startsWith("code.network"))).toEqual(["code.network tasks/ci-performance/github-api.mjs"]);
-    expect(found.filter((x) => x.startsWith("code.time-conditional"))).toEqual(Array(3).fill("code.time-conditional tasks/ci-performance/worker.mjs"));
-    expect(found.filter((x) => !/^code\.(network|time-conditional) /.test(x))).toEqual([]);
+    expect(found.filter((x) => !x.startsWith("code.network "))).toEqual([]);
   });
 });
 
@@ -207,24 +206,64 @@ describe("the capability inspector sandbox A imports", () => {
   });
 });
 
-describe("hostile 5 MiB inputs that once went quadratic", () => {
-  const MIB = 1024 * 1024;
+describe("further evasions and their contrasts", () => {
+  const has = (files: Files, rule: string) => rules(files).includes(rule);
+  it("JS: optional access and alias chains reach the same names", () => {
+    for (const body of ['globalThis?.["fe"+"tch"]("x");', 'globalThis.self["fetch"]("x");', 'window.globalThis.window?.["ev"+"al"]("1");', 'self.self.fetch("x");']) {
+      expect(rules(task(`${body}\n`)), body).toEqual(expect.arrayContaining([expect.stringMatching(/^code\.(network|eval)$/)]));
+    }
+  });
+  it("JS: Reflect and computed constructor access", () => {
+    expect(has(task("Reflect.get(globalThis, process.env.K)('x');\n"), "code.dynamic-access")).toBe(true);
+    expect(has(task("Reflect.get(globalThis, 'fe' + 'tch')('x');\n"), "code.network")).toBe(true);
+    expect(has(task("const f = (() => 1)['constr' + 'uctor']; f('return 1')();\n"), "code.eval")).toBe(true);
+    expect(rules(task("const v = Reflect.get(config, 'name'); log(v);\n"))).toEqual([]);
+    expect(rules(task("const x = list[i + 1]; log(x);\n"))).toEqual([]);
+  });
+  it("shell: a substitution inside the command word is held", () => {
+    for (const body of ["$(printf cu)rl x", "cu$(printf rl) x", "`printf cu`rl x"]) expect(has(sh(body), "code.dynamic-access"), body).toBe(true);
+    expect(rules(sh("echo $(date) done"))).toEqual([]);
+    expect(rules(sh("x=$(printf hi)\necho \"$x\""))).toEqual([]);
+  });
+  it("shell: an interpreter reading its program from stdin is held", () => {
+    for (const body of ["echo hi | sh", "printf x | bash", "python3 -", "node <<EOF\nx\nEOF", "bash /dev/stdin", "node < prog.js"]) expect(has(sh(body), "code.dynamic-access"), body).toBe(true);
+    for (const body of ["bash build.sh", "node --version", "python3 tool.py --flag", "sh ./run.sh"]) expect(rules(sh(body)), body).toEqual([]);
+  });
+  it("shell: launchers scan the command they run", () => {
+    for (const body of ["find . -name x -exec curl {} ;", "find . -execdir wget {} +", "echo a | xargs -n1 curl", "watch -n 5 curl x", "nohup curl x &", "timeout 5s curl x", "env -u HOME curl x", "xargs -I {} wget {}"]) expect(has(sh(body), "code.network"), body).toBe(true);
+    expect(rules(sh("find . -name '*.js' -exec echo {} ;"))).toEqual([]);
+    expect(has(sh("awk 'BEGIN { system(\"id\") }'"), "code.dynamic-access")).toBe(true);
+    expect(rules(sh("awk '{ print $1 }' file"))).toEqual([]);
+  });
+  it("Go: a Register whose tags are not all literals is a guard on every tool", () => {
+    const go = (tags: string) => analyse({ ...cleanFiles(), "checks/c.go": `package checks\nimport "claudinite.com/checksdk"\nfunc init() { checksdk.Register(checksdk.Check{ID: "c", Tags: []string{${tags}}}) }\n` }).extraction.preinstall.guards;
+    expect(go('"world", extra')).toEqual([{ name: "c", tool_calls: ["*"] }]);
+    expect(go('"world" + x')).toEqual([{ name: "c", tool_calls: ["*"] }]);
+    expect(go('strings.Title("preToolUse")')).toEqual([{ name: "c", tool_calls: ["*"] }]);
+    expect(go('"world", strings.Title("preToolUse")')).toEqual([{ name: "c", tool_calls: ["*"] }]);
+    expect(go("hook")).toEqual([{ name: "c", tool_calls: ["*"] }]);
+    expect(go('"world", "work"')).toEqual([]);
+  });
+});
+
+describe("scans grow linearly (ratio of a large input to a small one)", () => {
   const repeatTo = (unit: string, size: number) => unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
-  const cases: Record<string, Files> = {
-    'JS "/[" repeated': { "tasks/t/w.mjs": repeatTo('"/[', 5 * MIB) },
-    "JS /[ repeated": { "tasks/t/w.mjs": repeatTo("/[", 5 * MIB) },
-    "JS folded names": { "tasks/t/w.mjs": repeatTo("globalThis['a'+'b'+`c`]; ", 5 * MIB) },
-    "JS brackets": { "tasks/t/w.mjs": repeatTo("[", 5 * MIB) },
-    "shell dynamic words": { "env/setup.sh": repeatTo("$X ", 5 * MIB) },
-    "shell nested bash -c": { "env/setup.sh": repeatTo("bash -c '", 5 * MIB) },
-    "shell continuation lines": { "env/setup.sh": repeatTo("a \\\n", 5 * MIB) },
-    "UTF-16 mark with a long body": { "a.txt": Uint8Array.from([0xff, 0xfe, ...new Uint8Array(5 * MIB).fill(0x41)]) },
+  const cases: Record<string, (size: number) => Files> = {
+    'JS "/[" repeated': (n) => ({ "tasks/t/w.mjs": repeatTo('"/[', n) }),
+    "JS brackets": (n) => ({ "tasks/t/w.mjs": repeatTo("[", n) }),
+    "JS folded names": (n) => ({ "tasks/t/w.mjs": repeatTo("globalThis['a'+'b'+`c`]; ", n) }),
+    "JS constructor probes": (n) => ({ "tasks/t/w.mjs": repeatTo("x[a+", n) }),
+    "JS Reflect": (n) => ({ "tasks/t/w.mjs": repeatTo("Reflect.get(", n) }),
+    "Go Register nested": (n) => ({ "checks/a.go": repeatTo("checksdk.Register(", n) }),
+    "Go Register tags": (n) => ({ "checks/a.go": "checksdk.Register(" + repeatTo('Tags: []string{"a"}, ', n) }),
+    "shell dynamic words": (n) => ({ "env/setup.sh": repeatTo("$X ", n) }),
+    "shell nested substitutions": (n) => ({ "env/setup.sh": repeatTo("$(a", n) }),
+    "shell nested bash -c": (n) => ({ "env/setup.sh": repeatTo("bash -c '", n) }),
+    "shell find exec": (n) => ({ "env/setup.sh": repeatTo("find -exec ", n) }),
+    "shell continuation lines": (n) => ({ "env/setup.sh": repeatTo("a \\\n", n) }),
+    "UTF-16 mark with a long body": (n) => ({ "a.txt": Uint8Array.from([0xff, 0xfe, ...new Uint8Array(n).fill(0x41)]) }),
   };
   for (const [name, files] of Object.entries(cases)) {
-    it(name, async () => {
-      const t = Date.now();
-      await runStaticRules(input({ ...cleanFiles(), ...(files as Record<string, string>) }), fakePorts());
-      expect(Date.now() - t).toBeLessThan(15_000);
-    }, 60_000);
+    it(name, () => expectLinear(files), 60_000);
   }
 });

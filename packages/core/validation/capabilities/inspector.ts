@@ -11,7 +11,7 @@ export interface InspectorInput {
   tree: Tree;
   pack: string;
   /** The previous promoted version: its capability set alone, or the set with its pre-install manifest (needed to mark what is new). */
-  previousCapabilities?: CapabilitySet | Promoted | null;
+  previousCapabilities?: unknown;
   rulesVersion?: string;
 }
 
@@ -25,13 +25,13 @@ export const DEFAULT_RULES_VERSION = "2026.10.1";
 const isPromoted = (v: unknown): v is Promoted => !!v && typeof v === "object" && !Array.isArray(v) && "capabilities" in v && "preinstall" in v;
 
 /**
- * With only the previous set, an entry cannot be told new from changed, so every entry whose capability
- * the set lacks is new and the rest are not.
+ * A bare capability set carries no entries to compare with, so every entry the new version has is reported as new;
+ * only the full previous record (set and pre-install manifest) lets unchanged entries stay unmarked.
  */
 function previousOf(prev: InspectorInput["previousCapabilities"]): Promoted | null {
   if (prev === undefined || prev === null) return null;
   if (isPromoted(prev)) return prev;
-  if (Array.isArray(prev)) return { capabilities: prev, preinstall: { guards: [], tasks: [], forced_skills: [], github_actions: [], new: [] } };
+  if (Array.isArray(prev)) return { capabilities: prev as CapabilitySet, preinstall: { guards: [], tasks: [], forced_skills: [], github_actions: [], new: [] } };
   return null;
 }
 
