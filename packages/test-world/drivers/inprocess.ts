@@ -68,7 +68,7 @@ export class InProcessDriver implements Driver {
       const headers = { ...req.headers };
       const url = `http://${req.surface}.internal${req.path}`;
       const body = encodeBody(req.body, headers);
-      const res = await this.harness.server.getWorker(testWorkerName(req.surface)).fetch(url, { method: req.method, headers, ...(body === undefined ? {} : { body }) } as never);
+      const res = await this.harness.server.getWorker(testWorkerName(req.surface)).fetch(url, { method: req.method, headers, redirect: "manual", ...(body === undefined ? {} : { body }) } as never);
       const out = await toApiResponse(res as unknown as Response);
       this.versions.check(url, out);
       return out;

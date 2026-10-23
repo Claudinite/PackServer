@@ -8,7 +8,7 @@ export type RefusalReason =
 export class Refusal {
   constructor(
     readonly reason: RefusalReason,
-    readonly detail: { claimDiff?: readonly string[] } = {},
+    readonly detail: { claimDiff?: readonly string[]; message?: string; retryAfterS?: number } = {},
   ) {}
 }
 

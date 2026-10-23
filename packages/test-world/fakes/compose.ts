@@ -2,6 +2,7 @@ import type { TestHarness } from "wrangler";
 import { createFakePorts, type FakePorts } from "@packserver/ports/fakes";
 import type { SandboxAReport, SandboxBReport } from "@packserver/ports";
 import { FakeGithubOidc } from "./github-oidc";
+import { FakeGitHubLogin } from "./github-login";
 import { FakeGithubApp } from "./github-app";
 import { Net } from "./net";
 import { publishTestConfig } from "./publish-config";
@@ -55,6 +56,7 @@ export class WorldFakes {
   readonly net = new Net();
   readonly githubApp = new FakeGithubApp();
   ports: FakePorts = createFakePorts();
+  readonly githubLogin = new FakeGitHubLogin();
   readonly workers: Partial<FakeWorkers> = {};
   /** GitHub's token issuer and the staging bucket's S3 endpoint; present when the publish Worker is configured. */
   readonly oidc: FakeGithubOidc | undefined;
@@ -79,6 +81,7 @@ export class WorldFakes {
       this.net.use(this.oidc.handler);
       this.net.use(this.stagingS3.handler);
     }
+    this.net.use(this.githubLogin.handler);
     this.net.use(this.githubApp.handler());
     this.net.freeze();
   }
@@ -104,6 +107,7 @@ export class WorldFakes {
     await this.oidc?.reset();
     this.githubApp.reset();
     this.ports = createFakePorts();
+    this.githubLogin.reset();
     await Promise.all(Object.values(this.workers).map((w) => w.call("reset")));
   }
 }

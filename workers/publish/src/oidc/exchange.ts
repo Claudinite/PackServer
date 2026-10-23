@@ -76,7 +76,7 @@ export function oidcRoutes(runtime: PublishRuntime): Hono {
       `select p.visibility from packs p join scopes s on s.id = p.scope_id where s.name = ? and p.name = ?`,
       [scopeName, packName],
     );
-    if (visibility.rows[0]?.visibility === "private") return noRegistration();
+    const isPrivate = visibility.rows[0]?.visibility === "private";
 
     const { rows } = await d1.query(
       `select tp.id, tp.scope_id, tp.repository_id, tp.repository_owner_id, tp.workflow, tp.environment, tp.refs, tp.events, tp.pending_until
@@ -96,7 +96,10 @@ export function oidcRoutes(runtime: PublishRuntime): Hono {
     }));
     const chosen = chooseRegistration(claims, job ?? null, registrations);
     if (chosen === null) return noRegistration();
-    if (!chosen.ok) return refusal(chosen.reason, { message: "the token does not match a trusted publisher registered for this pack", claim_diff: chosen.categories });
+    if (!chosen.ok) {
+      if (isPrivate) return noRegistration();
+      return refusal(chosen.reason, { message: "the token does not match a trusted publisher registered for this pack", claim_diff: chosen.categories });
+    }
 
     const existing = await d1.query(
       `select 1 from pack_versions v join packs p on p.id = v.pack_id join scopes s on s.id = p.scope_id where s.name = ? and p.name = ? and v.version = ?`,

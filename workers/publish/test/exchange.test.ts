@@ -83,11 +83,22 @@ describe("POST /api/oidc/exchange", () => {
     for (const secret of ["release", ".github/workflows/publish.yml", "refs/tags/gcp/*", "1001"]) expect(text).not.toContain(secret);
   });
 
-  it("answers a private pack as it answers a pack with no registration, with no diff", async () => {
+  it("issues a credential for a private pack whose registration matches", async () => {
     const t = setup({ visibility: "private" });
-    const res = await t.exchange(await ask({ ref: "refs/heads/feature" }));
-    expect(await res.json()).toMatchObject({ reason: "forbidden" });
-    expect(t.ports.d1.executed.some((e) => /from trusted_publishers/.test(e.sql))).toBe(false);
+    const res = await t.exchange(await ask());
+    expect(res.status).toBe(200);
+  });
+
+  it("answers a private pack's miss as it answers a pack with no registration, with no diff, after the same queries", async () => {
+    const priv = setup({ visibility: "private" });
+    const missed = await priv.exchange(await ask({ ref: "refs/heads/feature" }));
+    expect(missed.status).toBe(403);
+    const body = await missed.json();
+    expect(body).toMatchObject({ reason: "forbidden" });
+    expect(body).not.toHaveProperty("claim_diff");
+    const pub = setup();
+    await pub.exchange(await ask({ ref: "refs/heads/feature" }));
+    expect(priv.ports.d1.executed.map((e) => e.sql)).toEqual(pub.ports.d1.executed.map((e) => e.sql));
   });
 
   it("limits exchanges per client address", async () => {

@@ -1,4 +1,5 @@
 import type { Queue as CfQueue, RateLimit as CfRateLimit, Workflow as CfWorkflow } from "@cloudflare/workers-types";
+import type { SyncedClock } from "../src/clock";
 import { missingBindings, TRUST_TABLE, type WorkerName } from "../src/trust-table";
 import {
   PortError,
@@ -201,6 +202,20 @@ export function turnstilePort(secret: () => Promise<string>, fetcher: typeof fet
 }
 
 export const systemClock: Clock = { now: () => Date.now() };
+
+/** The system clock in staging and production; under `env.test`, the instant the fake clock Worker reports as of the last `sync()`. */
+export function clockFrom(environment: string, binding: Fetcher | undefined): Clock {
+  if (environment !== "test" || binding === undefined) return systemClock;
+  const fake = rpcPort<{ now(): Promise<number> }>(binding);
+  let ms = Date.now();
+  const clock: SyncedClock = {
+    now: () => ms,
+    async sync() {
+      ms = await fake.now();
+    },
+  };
+  return clock;
+}
 
 export const cryptoRng: Rng = {
   float: () => crypto.getRandomValues(new Uint32Array(1))[0]! / 4294967296,
