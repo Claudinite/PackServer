@@ -373,13 +373,13 @@ describe("review fixes", () => {
     expect(sink.points).toEqual([]);
   });
 
-  const hidden = ["upstream_10.0.0.1", "a1.2.3.4", "v1.2.3.4", "10.0.0.1x", "x2001:db8::1", "2001%3Adb8%3A%3A1", "%31%30.0.0.1", "2001:db8::1x", "::1"];
+  const hidden = ["upstream_10.0.0.1", "a1.2.3.4", "v1.2.3.4", "10.0.0.1x", "x2001:db8::1", "2001%3Adb8%3A%3A1", "%31%30.0.0.1", "2001:db8::1x", "::1", "100% 2001%3Adb8%3A%3A1", "50% off 198%2E51%2E100%2E7", "%ZZ 10%2E0%2E0%2E1", "10%252E0%252E0%252E1", "10%25252E0%25252E0%25252E1", "failed for 2001:db8::1: timeout", "2001:db8:0:0:0:0:0:1:", "a2001:db8::1", "１.２.３.４", "2001：db8：：1", "0x7f.0.0.1", "0xC0.0xA8.0.1"];
   it.each(hidden)("scrubs %s", (text) => {
     const out = scrubIp(text);
     expect(out).toContain("[ip]");
-    expect(out).not.toMatch(/10\.0\.0\.1|1\.2\.3\.4|db8/);
+    expect(out).not.toMatch(/10\.0\.0\.1|1\.2\.3\.4|db8|198|7f|0xC0/);
   });
-  it.each(["std::vector", "1.2.3", "10:20:30", "1.2.3.256", "v1.2.3-beta", "12:00", "ns::Type<int>", "2026-10-22T10:20:30Z"])("leaves %s alone", (text) => {
+  it.each(["std::vector", "1.2.3", "10:20:30", "1.2.3.256", "v1.2.3-beta", "12:00", "ns::Type<int>", "2026-10-22T10:20:30Z", "2130706433", "127.1", "100% sure", "3.14", "%ZZ"])("leaves %s alone", (text) => {
     expect(scrubIp(text)).toBe(text);
   });
 
@@ -390,12 +390,12 @@ describe("review fixes", () => {
     expect(parseUserAgent("cn/1.2")).toEqual({ client: "cn" });
   });
 
-  it("clamps handler timings to zero and normalises the method and journey", async () => {
+  it("drops negative handler timings as unknown and normalises the method and journey", async () => {
     const { sink, telemetry } = setup();
     const { event } = await telemetry.request(obs({ method: "BREW", facts: { journey: "adopt 10.0.0.1", timings: { d1_ms: -1, r2_ms: Number.NaN, kv_ms: 3 }, cpuMs: -5 } }), always);
     expect(event.method).toBe("OTHER");
     expect(event.journey).toBe("adopt [ip]");
-    expect([event.d1_ms, event.r2_ms, event.kv_ms, event.cpu_ms]).toEqual([0, undefined, 3, 0]);
+    expect([event.d1_ms, event.r2_ms, event.kv_ms, event.cpu_ms]).toEqual([undefined, undefined, 3, undefined]);
     expect(sink.everything()).not.toContain("10.0.0.1");
   });
 });

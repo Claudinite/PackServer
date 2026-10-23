@@ -112,7 +112,7 @@ export const SIGNAL_NUMBERS: Readonly<Partial<Record<SignalName, readonly string
 
 const OWN_WRITER = new Set<string>(["download.served", "http.request"]);
 
-const nonNegative = (n: number | undefined): number | undefined => (n === undefined || !Number.isFinite(n) ? undefined : Math.max(0, n));
+const nonNegative = (n: number | undefined): number | undefined => (n === undefined || !Number.isFinite(n) || n < 0 ? undefined : n);
 
 const cleanAttrs = (attrs: SignalAttrs): Record<string, string | number | boolean> =>
   Object.fromEntries(Object.entries(attrs).map(([k, v]) => [k, typeof v === "string" ? scrubIp(v) : v]));

@@ -68,9 +68,11 @@ export function dedupeKey(
     : `public:${who.network}:${versionId}:${day}`;
 }
 
-const V4 = /(?<!\d)\d{1,3}(?:\.\d{1,3}){3}(?!\d)/g;
-const V6_RUN = /(?<![0-9a-f:])[0-9a-f:]{2,}(?![0-9a-f:])/gi;
+const PART = "(?:0x[0-9a-f]{1,2}|\\d{1,3})";
+const V4 = new RegExp(`(?<![\\d])${PART}(?:\\.${PART}){3}(?!\\d)`, "gi");
+const V6_RUN = /[0-9a-f:]{2,}/gi;
 const HEX_GROUP = /^[0-9a-f]{1,4}$/i;
+const MAX_V6 = 45;
 
 const isIpv6 = (text: string): boolean => {
   if ((text.match(/:/g) ?? []).length < 2) return false;
@@ -81,30 +83,46 @@ const isIpv6 = (text: string): boolean => {
   return halves.length === 2 ? groups.length < 8 : groups.length === 8;
 };
 
-const decodePercent = (text: string): string => {
+const octet = (part: string): number => Number(part.toLowerCase().startsWith("0x") ? part : part);
+
+/** Each %XX is decoded on its own (a stray % must not stop the rest), until nothing changes. */
+function decodePercent(text: string): string {
   let out = text;
-  for (let i = 0; i < 2; i++) {
-    try {
-      const next = decodeURIComponent(out);
-      if (next === out) break;
-      out = next;
-    } catch {
-      break;
-    }
+  for (let i = 0; i < 8; i++) {
+    const next = out.replace(/%([0-9a-f]{2})/gi, (m, hex: string) => {
+      const code = parseInt(hex, 16);
+      return code < 128 ? String.fromCharCode(code) : m;
+    });
+    if (next === out) break;
+    out = next;
   }
   return out;
-};
+}
+
+function scrubV6Run(run: string, offset: number, whole: string): string {
+  for (let len = Math.min(run.length, MAX_V6); len >= 2; len--) {
+    for (let start = 0; start + len <= run.length; start++) {
+      const candidate = run.slice(start, start + len);
+      if (!isIpv6(candidate)) continue;
+      if (candidate.endsWith("::") && /[A-Za-z_]/.test(whole[offset + start + len] ?? "")) continue;
+      return `${run.slice(0, start)}[ip]${run.slice(start + len)}`;
+    }
+  }
+  return run;
+}
 
 /**
  * Replaces anything that parses as an IPv4 or IPv6 address, wherever it sits in the text and
- * however it is glued to other characters, after percent-decoding. `std::vector` is left alone.
+ * however it is glued to other characters: after NFKC folding (full-width digits and colons) and
+ * percent-decoding, with the longest valid IPv6 inside a hex/colon run. Dotted IPv4 with decimal
+ * or 0x parts is recognised; the shorthand `127.1` and the bare integer `2130706433` are not,
+ * since they cannot be told from versions, decimals, byte counts and timestamps. `std::vector`
+ * is left alone. Text with nothing to scrub is returned exactly as given.
  */
 export function scrubIp(text: string): string {
-  return decodePercent(text)
-    .replace(V4, (m) => (m.split(".").every((o) => Number(o) <= 255) ? "[ip]" : m))
-    .replace(V6_RUN, (m, offset: number, whole: string) => {
-      if (!isIpv6(m)) return m;
-      if (m.endsWith("::") && /[A-Za-z_]/.test(whole[offset + m.length] ?? "")) return m;
-      return "[ip]";
-    });
+  const folded = decodePercent(text.normalize("NFKC"));
+  const out = folded
+    .replace(V4, (m) => (m.split(".").every((o) => octet(o) <= 255) ? "[ip]" : m))
+    .replace(V6_RUN, (m, offset: number, whole: string) => scrubV6Run(m, offset, whole));
+  return out === folded ? text : out;
 }
