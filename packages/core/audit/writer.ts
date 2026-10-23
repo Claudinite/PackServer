@@ -1,14 +1,14 @@
-import { buildBatch, GENESIS_HASH, HEAD_KEY, HeadSchema, type Head } from "./chain";
+import { sha256Hex } from "@packserver/ports";
+import { buildBatch, GENESIS_HASH, HEAD_KEY, HeadSchema, parseBatch, RECENT_MESSAGE_IDS, type Head } from "./chain";
 import type { AuditBucket } from "./bucket";
 import type { AuditEvent } from "./event";
 
 export interface WrittenBatch {
   head: Head;
-  key: string;
-  /** Events appended now; empty when every message had already been consumed. */
+  /** Events newly recorded by this call: the appended ones and those of an adopted batch. */
   written: AuditEvent[];
-  /** `fresh` for a new object, `present` when an earlier attempt had already stored these exact bytes. */
-  object: "fresh" | "present" | "none";
+  /** `fresh` for a new object, `adopted` when an earlier attempt's batch was taken over, `none` when nothing was left to append. */
+  object: "fresh" | "adopted" | "none";
 }
 
 export interface ConsumedMessage {
@@ -16,35 +16,69 @@ export interface ConsumedMessage {
   event: AuditEvent;
 }
 
+const ORPHAN_SCAN = 50;
+const START: Head = { seq: -1, hash: GENESIS_HASH, key: "audit/", at: "1970-01-01T00:00:00.000Z", message_ids: [] };
+
 async function readHead(bucket: AuditBucket): Promise<Head | null> {
   const raw = await bucket.get(HEAD_KEY);
-  if (raw !== null) return HeadSchema.parse(JSON.parse(raw));
-  // No pointer is only the start of the chain when nothing else was ever written.
-  const existing = (await bucket.list("audit/", 2)).filter((k) => k !== HEAD_KEY);
-  if (existing.length > 0) throw new Error(`audit head pointer is missing but ${existing[0]} exists`);
-  return null;
+  return raw === null ? null : HeadSchema.parse(JSON.parse(raw));
 }
 
 /**
- * Appends one batch to the chain. A retry of the same messages after a crash lands on the same key with the
- * same bytes, and messages already in the head batch are skipped, so queue redelivery never duplicates an event.
+ * A batch object is written before the head pointer, so a failed pointer write leaves a batch the pointer does not
+ * name. Batch keys sort in chain order, so the orphans are the keys after the head; each is adopted only if it
+ * continues the chain exactly (next seq, previous hash).
+ */
+async function adoptOrphans(bucket: AuditBucket, from: Head | null): Promise<{ head: Head | null; events: AuditEvent[] }> {
+  let head = from;
+  const events: AuditEvent[] = [];
+  for (;;) {
+    const cursor = head ?? START;
+    const next = (await bucket.list("audit/", ORPHAN_SCAN, cursor.key)).find((k) => k.endsWith(".ndjson"));
+    if (next === undefined) return { head, events };
+    const body = await bucket.get(next);
+    if (body === null) return { head, events };
+    const batch = parseBatch(body);
+    if (batch.header.seq !== cursor.seq + 1 || batch.header.prev_hash !== cursor.hash) {
+      throw new Error(`audit batch ${next} does not continue the chain after ${cursor.key}`);
+    }
+    head = {
+      seq: batch.header.seq,
+      hash: await sha256Hex(body),
+      key: next,
+      at: batch.header.at,
+      message_ids: [...cursor.message_ids, ...batch.header.message_ids].slice(-RECENT_MESSAGE_IDS),
+    };
+    events.push(...batch.events);
+  }
+}
+
+/**
+ * Appends one batch to the chain. A message whose id is among the most recent consumed ones is skipped, so
+ * redelivery within that window never duplicates an event; a crash between the batch object and the head
+ * pointer is repaired by adopting the object on the next call.
  */
 export async function appendBatch(bucket: AuditBucket, messages: readonly ConsumedMessage[]): Promise<WrittenBatch | null> {
-  const head = await readHead(bucket);
+  const adopted = await adoptOrphans(bucket, await readHead(bucket));
+  let head = adopted.head;
+  if (adopted.events.length > 0) await bucket.put(HEAD_KEY, JSON.stringify(head));
+
   const seen = new Set(head?.message_ids ?? []);
   const fresh = new Map<string, ConsumedMessage>();
   for (const m of messages) if (!seen.has(m.messageId) && !fresh.has(m.event.id)) fresh.set(m.event.id, m);
-  if (fresh.size === 0) return head ? { head, key: head.key, written: [], object: "none" } : null;
+  const adoptedState = adopted.events.length > 0 ? "adopted" : "none";
+  if (fresh.size === 0) return head ? { head, written: adopted.events, object: adoptedState } : null;
 
   const batch = await buildBatch({
     seq: head ? head.seq + 1 : 0,
     prev_hash: head?.hash ?? GENESIS_HASH,
+    ...(head && { prev_at: head.at }),
     events: [...fresh.values()].map((m) => m.event),
     message_ids: [...fresh.values()].map((m) => m.messageId),
   });
-  const existing = await bucket.get(batch.key);
-  if (existing !== null && existing !== batch.body) throw new Error(`audit batch ${batch.key} exists with different content`);
-  if (existing === null) await bucket.put(batch.key, batch.body);
-  await bucket.put(HEAD_KEY, JSON.stringify(batch.head));
-  return { head: batch.head, key: batch.key, written: [...fresh.values()].map((m) => m.event), object: existing === null ? "fresh" : "present" };
+  if ((await bucket.get(batch.key)) !== null) throw new Error(`audit batch ${batch.key} already exists`);
+  await bucket.put(batch.key, batch.body);
+  head = { ...batch.head, message_ids: [...(head?.message_ids ?? []), ...batch.head.message_ids].slice(-RECENT_MESSAGE_IDS) };
+  await bucket.put(HEAD_KEY, JSON.stringify(head));
+  return { head, written: [...adopted.events, ...[...fresh.values()].map((m) => m.event)], object: adopted.events.length > 0 ? "adopted" : "fresh" };
 }

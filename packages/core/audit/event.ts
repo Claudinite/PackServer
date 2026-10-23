@@ -31,6 +31,26 @@ export const AuditActorSchema = z.object({
 });
 export type AuditActor = z.infer<typeof AuditActorSchema>;
 
+/** The only detail fields each action may carry; a caller cannot put anything else, a secret included, in the record. */
+export const DETAIL_FIELDS: Record<AuditAction, readonly string[]> = {
+  login: ["method"],
+  "factor.added": ["kind"],
+  "factor.removed": ["kind"],
+  "provider.linked": ["provider"],
+  "token.minted": ["name", "scopes", "expires_at"],
+  "token.revoked": ["name", "reason"],
+  "grant.changed": ["role", "change"],
+  "trusted_publisher.changed": ["change"],
+  "publish.approved": ["version"],
+  "visibility.changed": ["from", "to"],
+  "version.yanked": ["version", "reason"],
+  "admin.action": ["verb"],
+  "signin.refused": ["reason"],
+  "assertion.refused": ["reason"],
+  "token.refused": ["reason"],
+  "oidc.refused": ["reason"],
+};
+
 const Detail = z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]));
 
 export const AuditEventSchema = queueMessage({
@@ -48,6 +68,11 @@ export const AuditEventSchema = queueMessage({
   /** Daily-rotating hash of the source address; the address itself never enters an event. */
   ip_hash: z.string().regex(/^[0-9a-f]{64}$/).optional(),
   detail: Detail.optional(),
+}).superRefine((event, ctx) => {
+  const allowed = DETAIL_FIELDS[event.action];
+  for (const key of Object.keys(event.detail ?? {})) {
+    if (!allowed.includes(key)) ctx.addIssue({ code: "custom", path: ["detail", key], message: `${event.action} does not take detail.${key}` });
+  }
 });
 export type AuditEvent = z.infer<typeof AuditEventSchema>;
 

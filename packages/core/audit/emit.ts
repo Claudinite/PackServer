@@ -1,5 +1,5 @@
 import { deriveDayKey, ipHash, type Clock, type D1, type HashKey, type Queue, type Rng } from "@packserver/ports";
-import { AUDIT_SCHEMA, type AuditActor, type AuditAction, type AuditEvent } from "./event";
+import { AUDIT_SCHEMA, AuditEventSchema, type AuditActor, type AuditAction, type AuditEvent } from "./event";
 
 /** What a Worker hands `createAudit`; every Worker that audits holds these ports. */
 export interface AuditEmitterPorts {
@@ -52,6 +52,7 @@ export function createAudit(ports: AuditEmitterPorts, options: { ipKey: HashKey 
       ...(extra.ip !== undefined && { ip_hash: await ipHash(await deriveDayKey(options.ipKey, at.slice(0, 10)), extra.ip) }),
       ...(extra.detail !== undefined && { detail: extra.detail }),
     };
+    AuditEventSchema.parse(event);
     await ports.queue.send(event);
     try {
       await ports.d1.query(INSERT_RECENT_ACTIVITY, [

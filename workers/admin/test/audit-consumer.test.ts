@@ -46,6 +46,10 @@ describe("admin audit consumer", () => {
     expect(d1.rows("select id from recent_activity")).toHaveLength(2);
     expect(msgs.every((m) => m.ack.mock.calls.length === 1 && m.retry.mock.calls.length === 0)).toBe(true);
     expect(fakes.stats.points.map((p) => p.name)).toEqual(["audit.appended", "audit.appended", "audit.batch_written"]);
+    const appended = fakes.stats.points.filter((p) => p.name === "audit.appended");
+    expect(appended.map((p) => p.blobs.slice(2)).sort()).toEqual(
+      queue.messages.map((e) => [e.id, e.at.slice(0, 10)]).sort(),
+    );
   });
 
   it("still writes and acks when D1 is down", async () => {

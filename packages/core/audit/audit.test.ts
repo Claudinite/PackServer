@@ -87,6 +87,16 @@ describe("IT-AUDIT-004 hashed IPs, no secrets", () => {
   });
 });
 
+describe("detail is allowlisted per action", () => {
+  it("refuses a field the action does not name, so a secret cannot be logged", async () => {
+    const { audit, events } = setup();
+    await expect(audit({ kind: "user", id: "u1" }, "token.minted", "t", { detail: { token: TOKEN } })).rejects.toThrow();
+    expect(events()).toHaveLength(0);
+    await audit({ kind: "user", id: "u1" }, "token.minted", "t", { detail: { name: "ci" } });
+    expect(events()).toHaveLength(1);
+  });
+});
+
 describe("IT-AUDIT-007 refusals are audited with a hashed source", () => {
   it("records each refusal kind with ip_hash", async () => {
     const { audit, events } = setup();
@@ -146,25 +156,68 @@ describe("IT-AUDIT-005 chain half", () => {
     expect(first?.head.seq).toBe(0);
   });
 
-  it("re-uses the object a crashed attempt already stored", async () => {
-    const { audit, bucket, consume } = setup();
+  it("adopts a batch whose head update failed, then appends the rest (same day)", async () => {
+    const { audit, bucket, consume, events } = setup();
+    for (let i = 0; i < 4; i++) await audit({ kind: "system" }, "admin.action", `t${i}`);
+    await consume(0, 1);
+    const headBefore = bucket.objects.get(HEAD_KEY)!;
+    await consume(1, 2);
+    const orphanKey = bucket.batchKeys()[1]!;
+    bucket.objects.set(HEAD_KEY, headBefore);
+    // redelivery carries the orphan's message again plus two that arrived since
+    const result = await appendBatch(bucket, [1, 2, 3].map((i) => ({ messageId: `m${i}`, event: events()[i]! })));
+    expect(bucket.batchKeys()).toHaveLength(3);
+    expect(result?.written.map((e) => e.id).sort()).toEqual([1, 2, 3].map((i) => events()[i]!.id).sort());
+    expect(parseBatch(bucket.objects.get(bucket.batchKeys()[2]!)!).header).toMatchObject({ seq: 2, message_ids: ["m2", "m3"] });
+    expect(JSON.parse(bucket.objects.get(HEAD_KEY)!).seq).toBe(2);
+    expect(bucket.batchKeys()[1]).toBe(orphanKey);
+    expect(await chainErrors(bucket)).toEqual([]);
+  });
+
+  it("does not fork when the redelivery lands after midnight", async () => {
+    const { audit, bucket, consume, events, fakes } = setup();
+    fakes.clock.advance("719m");
     await audit({ kind: "system" }, "admin.action", "a");
     await audit({ kind: "system" }, "admin.action", "b");
     await consume(0, 1);
     const headBefore = bucket.objects.get(HEAD_KEY)!;
     await consume(1, 2);
     bucket.objects.set(HEAD_KEY, headBefore);
-    expect(await consume(1, 2)).toMatchObject({ object: "present" });
-    expect(bucket.batchKeys()).toHaveLength(2);
+    fakes.clock.advance("2h");
+    await audit({ kind: "system" }, "admin.action", "c");
+    await appendBatch(bucket, [1, 2].map((i) => ({ messageId: `m${i}`, event: events()[i]! })));
+    const seqs = bucket.batchKeys().map((k) => parseBatch(bucket.objects.get(k)!).header.seq);
+    expect(seqs).toEqual([0, 1, 2]);
     expect(await chainErrors(bucket)).toEqual([]);
   });
 
-  it("refuses to start a second chain when the pointer is gone", async () => {
+  it("adopts a first batch whose pointer was never written", async () => {
+    const { audit, bucket, consume } = setup();
+    await audit({ kind: "system" }, "admin.action", "a");
+    await consume(0);
+    bucket.objects.delete(HEAD_KEY);
+    expect(await consume(0)).toMatchObject({ written: [expect.anything()], object: "adopted" });
+    expect(await chainErrors(bucket)).toEqual([]);
+  });
+
+  it("skips a message consumed several batches ago", async () => {
+    const { audit, bucket, consume, events } = setup();
+    for (let i = 0; i < 4; i++) await audit({ kind: "system" }, "admin.action", `t${i}`);
+    await consume(0, 1);
+    await consume(1, 2);
+    await consume(2, 3);
+    const again = await appendBatch(bucket, [{ messageId: "m0", event: events()[0]! }]);
+    expect(again?.written).toEqual([]);
+    expect(bucket.batchKeys()).toHaveLength(3);
+  });
+
+  it("refuses to start a second chain when the pointer is gone and the batches do not start from genesis", async () => {
     const { audit, bucket, consume } = setup();
     await audit({ kind: "system" }, "admin.action", "t");
     await consume(0);
+    bucket.tamper(bucket.batchKeys()[0]!, 50);
     bucket.objects.delete(HEAD_KEY);
-    await expect(consume(0)).rejects.toThrow(/head pointer is missing/);
+    await expect(consume(0)).rejects.toThrow(/does not continue the chain/);
   });
 
   it("fails the append when the bucket is down", async () => {

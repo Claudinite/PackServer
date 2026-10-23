@@ -23,7 +23,17 @@ export const BatchHeaderSchema = z.object({
 });
 export type BatchHeader = z.infer<typeof BatchHeaderSchema>;
 
-export const HeadSchema = z.object({ seq: z.number().int().nonnegative(), hash: Hash, key: z.string(), message_ids: z.array(z.string()) });
+/** Message ids kept on the head for redelivery checks: the most recent consumed, bounded. */
+export const RECENT_MESSAGE_IDS = 2000;
+
+export const HeadSchema = z.object({
+  seq: z.number().int().nonnegative(),
+  hash: Hash,
+  key: z.string(),
+  /** The head batch's `at`, the floor for the next one so keys sort in chain order. */
+  at: z.iso.datetime(),
+  message_ids: z.array(z.string()),
+});
 export type Head = z.infer<typeof HeadSchema>;
 
 export interface BatchInput {
@@ -31,6 +41,8 @@ export interface BatchInput {
   prev_hash: string;
   events: AuditEvent[];
   message_ids: string[];
+  /** The previous batch's `at`; a batch is never dated before it. */
+  prev_at?: string;
 }
 
 export function batchKey(seq: number, at: string): string {
@@ -38,7 +50,10 @@ export function batchKey(seq: number, at: string): string {
   return `audit/${y}/${m}/${d}/${String(seq).padStart(10, "0")}.ndjson`;
 }
 
-/** Events and ids are sorted so the same input always serialises to the same bytes. */
+/**
+ * Events and ids are sorted so the same input always serialises to the same bytes. The batch date never moves
+ * backwards, so keys sort in chain order across days.
+ */
 export async function buildBatch(input: BatchInput): Promise<{ key: string; body: string; head: Head; header: BatchHeader }> {
   const events = [...input.events].sort((a, b) => (a.at === b.at ? (a.id < b.id ? -1 : 1) : a.at < b.at ? -1 : 1));
   if (events.length === 0) throw new Error("a batch holds at least one event");
@@ -47,13 +62,13 @@ export async function buildBatch(input: BatchInput): Promise<{ key: string; body
     v: BATCH_VERSION,
     seq: input.seq,
     prev_hash: input.prev_hash,
-    at: events[events.length - 1]!.at,
+    at: input.prev_at && input.prev_at > events[events.length - 1]!.at ? input.prev_at : events[events.length - 1]!.at,
     message_ids: [...input.message_ids].sort(),
     event_ids: events.map((e) => e.id),
   };
   const body = `${[JSON.stringify(header), ...events.map((e) => JSON.stringify(e))].join("\n")}\n`;
   const key = batchKey(header.seq, header.at);
-  return { key, body, header, head: { seq: header.seq, hash: await sha256Hex(body), key, message_ids: header.message_ids } };
+  return { key, body, header, head: { seq: header.seq, hash: await sha256Hex(body), key, at: header.at, message_ids: header.message_ids } };
 }
 
 export function parseBatch(body: string): { header: BatchHeader; events: AuditEvent[] } {

@@ -29,9 +29,9 @@ export class MemoryAuditBucket implements AuditBucket {
     this.check();
     this.objects.set(key, body);
   }
-  async list(prefix: string, limit: number) {
+  async list(prefix: string, limit: number, startAfter = "") {
     this.check();
-    return [...this.objects.keys()].filter((k) => k.startsWith(prefix)).sort().slice(0, limit);
+    return [...this.objects.keys()].filter((k) => k.startsWith(prefix) && k > startAfter).sort().slice(0, limit);
   }
   /** Batch objects in chain order. */
   batchKeys(): string[] {
