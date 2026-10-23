@@ -164,6 +164,8 @@ jobs:
           [ -n "$filters" ] || { echo "::error::shard $SHARD of $TOTAL has no packages"; exit 1; }
           pnpm exec turbo run typecheck --only $filters
 
+  # Every package runs in every shard on vitest's own file split, so one heavy package cannot
+  # fill a single shard.
   unit:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -185,20 +187,11 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: test this shard's packages
+      - name: test this shard's files
         env:
           SHARD: ${{ matrix.shard }}
           TOTAL: ${{ strategy.job-total }}
-        run: |
-          filters=$(pnpm ls -r --depth -1 --json | node -e '
-            const pkgs = JSON.parse(require("fs").readFileSync(0, "utf8"));
-            const names = pkgs.filter((p) => p.name !== "packserver").map((p) => p.name).sort();
-            const [shard, total] = process.argv.slice(1).map(Number);
-            console.log(names.filter((_, i) => i % total === shard - 1).map((n) => "--filter=" + n).join(" "));
-          ' "$SHARD" "$TOTAL")
-          echo "packages: $filters"
-          [ -n "$filters" ] || { echo "::error::shard $SHARD of $TOTAL has no packages"; exit 1; }
-          pnpm exec turbo run test --only $filters
+        run: pnpm exec turbo run test --only -- --shard="$SHARD/$TOTAL" --passWithNoTests
 
   infra:
     needs: changes
