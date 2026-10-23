@@ -2,8 +2,9 @@
 // Holds each Worker's wrangler.jsonc to the trust table (docs/architecture/workers-trust-boundaries.md,
 // as data in packages/ports/trust-table.json) and keeps Cloudflare bindings behind each Worker's bindings.ts.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
 import ts from "typescript";
+import { TEST_STRINGS } from "./test-strings.mjs";
 
 const root = process.argv[2] ?? join(import.meta.dirname, "..");
 const ENVS = ["test", "staging", "production"];
@@ -16,12 +17,14 @@ const BINDING_KEYS = [
 ];
 const OTHER_KEYS = ["name", "workers_dev", "routes", "triggers", "vars", "exports"];
 const ALLOWED_KEYS = new Set([...BINDING_KEYS, ...OTHER_KEYS]);
-// REQ-OPS-003's grep, applied to the configuration a deployment would use.
-const TEST_STRINGS = ["fake-", "whsec_test", "1x0000000000000000000000000000000AA", "TEST_MODE", "fireAlarm", "oidc.test"];
 const PRODUCT_TYPES = /\b(D1Database|KVNamespace|R2Bucket|VectorizeIndex|AnalyticsEngineDataset|DurableObjectNamespace|SecretsStoreSecret|Fetcher|Ai)\b/;
+// The one folder allowed to speak a binding's own API, besides each Worker's bindings.ts.
+const ADAPTER_DIR = join("packages", "ports", "cloudflare");
 const ENV_IMPORT = /import\s*\{[^}]*\benv\b[^}]*\}\s*from\s*["']cloudflare:workers["']/;
 
 const suffix = (env, name, sep = "-") => (env === "staging" ? `${name}${sep}staging` : name);
+/** Only Workers differ between the local test environment and production by name; its resources are local. */
+const workerName = (env, name) => (env === "test" ? `${name}-test` : suffix(env, name));
 const kebab = (s) => s.toLowerCase().replaceAll("_", "-");
 
 function readJsonc(path) {
@@ -40,7 +43,7 @@ function sameSet(where, what, actual, expected) {
 function expected(worker, t, env) {
   const fakeNames = env === "test" ? Object.keys(t.fakes) : [];
   const real = (names) => names.filter((n) => !fakeNames.includes(n));
-  const services = Object.entries(t.services).map(([b, target]) => [b, suffix(env, target)]);
+  const services = Object.entries(t.services).map(([b, target]) => [b, workerName(env, target)]);
   if (env === "test") services.push(...Object.entries(t.fakes));
   return {
     d1: Object.entries(t.d1).map(([b, n]) => [b, suffix(env, n)]),
@@ -50,7 +53,7 @@ function expected(worker, t, env) {
     consumers: t.queue_consumers.map((n) => suffix(env, n)),
     workflows: Object.entries(t.workflows).map(([b, n]) => [b, suffix(env, n)]),
     doBindings: [
-      ...Object.entries(t.durable_objects).map(([b, v]) => [b, v.class, v.host === worker ? undefined : suffix(env, v.host)]),
+      ...Object.entries(t.durable_objects).map(([b, v]) => [b, v.class, v.host === worker ? undefined : workerName(env, v.host)]),
       ...Object.entries(t.containers).filter(([b]) => !fakeNames.includes(b)).map(([b, cls]) => [b, cls, undefined]),
     ],
     services,
@@ -68,7 +71,7 @@ function checkEnv(worker, t, env, block) {
   const want = expected(worker, t, env);
   const pairs = (list) => list.map(([a, b]) => `${a}=${b}`);
 
-  if (block.name !== suffix(env, worker)) problem(where, `name is "${block.name}", expected "${suffix(env, worker)}"`);
+  if (block.name !== workerName(env, worker)) problem(where, `name is "${block.name}", expected "${workerName(env, worker)}"`);
   if (block.vars?.WORKER !== worker) problem(where, `vars.WORKER must be "${worker}"`);
   if (block.vars?.ENVIRONMENT !== env) problem(where, `vars.ENVIRONMENT must be "${env}"`);
   if (block.version_metadata?.binding !== "CF_VERSION_METADATA") problem(where, "version_metadata must bind CF_VERSION_METADATA");
@@ -79,6 +82,10 @@ function checkEnv(worker, t, env, block) {
   sameSet(where, "queue producers", pairs((block.queues?.producers ?? []).map((q) => [q.binding, q.queue])), pairs(want.producers));
   sameSet(where, "queue consumers", (block.queues?.consumers ?? []).map((q) => q.queue), want.consumers);
   sameSet(where, "workflows", pairs((block.workflows ?? []).map((w) => [w.binding, w.name])), pairs(want.workflows));
+  for (const w of block.workflows ?? []) {
+    const host = worker === "validator" ? undefined : workerName(env, "validator");
+    if (w.script_name !== host) problem(where, `workflow ${w.binding} runs in "${w.script_name}", expected "${host}"`);
+  }
   sameSet(
     where,
     "Durable Object bindings",
@@ -142,14 +149,14 @@ function checkInvariants(worker, t, env, block) {
   if (secrets.some((s) => s.startsWith("SIGNING_KEY_") && s !== "SIGNING_KEY_ACTIVE")) problem(where, "the standby signing key is bound to nothing");
   if (secrets.some((s) => s.startsWith("GITHUB_")) && worker !== "github") problem(where, "GitHub App secrets belong to the github Worker alone");
   if (secrets.includes("TURNSTILE_SECRET") && worker !== "web") problem(where, "only web holds the Turnstile secret");
-  if ((block.workflows ?? []).length && !["publish", "validator", "admin"].includes(worker)) problem(where, "this Worker must never hold Workflows");
+  if ((block.workflows ?? []).length && !["validator", "admin"].includes(worker)) problem(where, "this Worker must never hold Workflows");
   if (env !== "test") {
     const text = JSON.stringify(block);
     for (const s of TEST_STRINGS) if (text.includes(s)) problem(where, `test string "${s}" in a deployed configuration`);
   }
 }
 
-function checkResources(configs) {
+function checkResources(table, configs) {
   // The same logical resource has one id wherever it is bound; no staging or production id or name is shared.
   // The test environment is local, so only its D1 and KV ids are held apart from the deployed ones.
   const seen = new Map();
@@ -162,7 +169,7 @@ function checkResources(configs) {
     for (const env of ENVS) {
       const b = config.env?.[env] ?? {};
       for (const d of b.d1_databases ?? []) note(env, `d1:${d.database_name.replace(/-staging$/, "")}`, d.database_id);
-      for (const k of b.kv_namespaces ?? []) note(env, `kv:${worker}:${k.binding}`, k.id);
+      for (const k of b.kv_namespaces ?? []) note(env, `kv:${table[worker].kv[k.binding] ?? `${worker}:${k.binding}`}`, k.id);
     }
   }
   const ids = (b) => [
@@ -185,33 +192,118 @@ function checkResources(configs) {
     const left = collect(a, pick);
     for (const x of collect(b, pick)) if (left.has(x)) problem("resources", `env.${a} and env.${b} share the ${what} "${x}"`);
   };
+  // A stray `wrangler deploy --env test` must replace nothing deployed, so no test Worker name or id may equal one.
+  const workerNames = (b) => [b.name];
   compare("staging", "production", deployedIds, "resource");
   compare("staging", "production", names, "resource");
-  compare("test", "production", ids, "resource");
-  compare("test", "staging", ids, "resource");
+  for (const [a, b] of [["test", "production"], ["test", "staging"], ["staging", "production"]]) compare(a, b, workerNames, "Worker name");
+  compare("test", "production", deployedIds, "resource");
+  compare("test", "staging", deployedIds, "resource");
 }
 
 function sourceFiles(dir) {
   if (!existsSync(dir)) return [];
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    if (e.name === "node_modules" || e.name === ".wrangler") return [];
     const path = join(dir, e.name);
     return e.isDirectory() ? sourceFiles(path) : /\.(ts|tsx)$/.test(e.name) ? [path] : [];
   });
 }
 
-function checkSeam(worker, t) {
-  const names = [
-    ...["d1", "kv", "r2", "queues", "workflows", "durable_objects", "containers", "services", "vectorize", "analytics"].flatMap((k) => Object.keys(t[k])),
-    ...t.ai, ...t.ratelimits, ...t.secrets, ...Object.keys(t.fakes), "CF_VERSION_METADATA",
+const unwrap = (node) => {
+  while (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isNonNullExpression(node) || ts.isTypeAssertionExpression(node) || ts.isSatisfiesExpression(node)) node = node.expression;
+  return node;
+};
+const isEnvType = (type) => type !== undefined && ts.isTypeReferenceNode(type) && /Env$/.test(type.typeName.getText());
+const literalText = (node) => (ts.isStringLiteralLike(node) ? node.text : undefined);
+
+/** Every place a source file reads a binding by name off `env`, in any spelling: `env.X`, `c.env.X`, `env["X"]`, `{ X } = env`, or any of those through an alias of `env` or a parameter typed `Env`. */
+function bindingReads(sourceFile, names) {
+  const aliases = new Set(["env"]);
+  const isEnvLike = (node) => {
+    const n = unwrap(node);
+    return (ts.isIdentifier(n) && aliases.has(n.text)) || (ts.isPropertyAccessExpression(n) && n.name.text === "env");
+  };
+  const holdsEnv = (decl) => (decl.initializer !== undefined && isEnvLike(decl.initializer)) || isEnvType(decl.type);
+  const declarations = [];
+  const visit = (node) => {
+    if (ts.isVariableDeclaration(node) || ts.isParameter(node)) declarations.push(node);
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const d of declarations) {
+      if (ts.isIdentifier(d.name) && holdsEnv(d) && !aliases.has(d.name.text)) {
+        aliases.add(d.name.text);
+        grew = true;
+      }
+    }
+  }
+  const reads = [];
+  // Building an env (`env.X = …`) is not reading one.
+  const assigned = (node) => node.parent !== undefined && ts.isBinaryExpression(node.parent) && node.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken && node.parent.left === node;
+  const scan = (node) => {
+    if (assigned(node)) return ts.forEachChild(node, scan);
+    if (ts.isPropertyAccessExpression(node) && isEnvLike(node.expression) && names.has(node.name.text)) reads.push({ node, name: node.name.text });
+    if (ts.isElementAccessExpression(node) && isEnvLike(node.expression) && names.has(literalText(node.argumentExpression) ?? "")) {
+      reads.push({ node, name: literalText(node.argumentExpression) });
+    }
+    if ((ts.isVariableDeclaration(node) || ts.isParameter(node)) && ts.isObjectBindingPattern(node.name) && holdsEnv(node)) {
+      for (const element of node.name.elements) {
+        const name = (element.propertyName ?? element.name).getText();
+        if (names.has(name)) reads.push({ node: element, name });
+      }
+    }
+    ts.forEachChild(node, scan);
+  };
+  scan(sourceFile);
+  return reads;
+}
+
+function parse(file) {
+  const text = readFileSync(file, "utf8");
+  return { text, sourceFile: ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS) };
+}
+
+/** A read-only bucket is read-only because `bindings.ts` hands it to `r2ReadPort` and to nothing else; the platform has no such binding. */
+function checkReadOnlyBuckets(worker, t, sourceFile, rel) {
+  const readOnly = Object.entries(t.r2).filter(([, v]) => v.access === "read").map(([b]) => b);
+  const reads = bindingReads(sourceFile, new Set(readOnly));
+  for (const bucket of readOnly) {
+    const mine = reads.filter((r) => r.name === bucket);
+    const guarded = (r) => {
+      let child = r.node;
+      while (ts.isParenthesizedExpression(child.parent) || ts.isAsExpression(child.parent) || ts.isNonNullExpression(child.parent)) child = child.parent;
+      const call = child.parent;
+      return ts.isCallExpression(call) && call.arguments[0] === child && ts.isIdentifier(call.expression) && call.expression.text === "r2ReadPort";
+    };
+    if (mine.length === 0 || !mine.every(guarded)) problem(rel, `read-only bucket ${bucket} must reach the code only as r2ReadPort(env.${bucket})`);
+  }
+}
+
+function checkSeam(table) {
+  const names = new Set(
+    Object.values(table).flatMap((t) => [
+      ...["d1", "kv", "r2", "queues", "workflows", "durable_objects", "containers", "services", "vectorize", "analytics"].flatMap((k) => Object.keys(t[k])),
+      ...t.ai, ...t.ratelimits, ...t.secrets, ...Object.keys(t.fakes), "CF_VERSION_METADATA",
+    ]),
+  );
+  const files = [
+    ...Object.keys(table).flatMap((worker) => sourceFiles(join(root, "workers", worker, "src"))),
+    ...sourceFiles(join(root, "packages")).filter((f) => !relative(root, f).startsWith(ADAPTER_DIR + sep)),
   ];
-  // `env` (or a cast of it) followed by a property access of a binding name; `ports.kv.NAME` is a port, not a binding.
-  const named = new RegExp(`\\benv\\b[^;\\n]{0,24}?(?:\\.|\\[\\s*["'])\\s*(${names.join("|")})\\b`);
-  for (const file of sourceFiles(join(root, "workers", worker, "src"))) {
-    if (file.endsWith("/bindings.ts")) continue;
-    const rel = file.slice(root.length + 1);
-    const text = readFileSync(file, "utf8");
-    const hit = named.exec(text);
-    if (hit) problem(rel, `touches binding ${hit[1]} outside bindings.ts`);
+  for (const file of files) {
+    const rel = relative(root, file);
+    const { text, sourceFile } = parse(file);
+    const seam = /^workers\/[^/]+\/src\/bindings\.ts$/.test(rel.split(sep).join("/"));
+    if (seam) {
+      const worker = rel.split(sep)[1];
+      if (table[worker]) checkReadOnlyBuckets(worker, table[worker], sourceFile, rel);
+      continue;
+    }
+    const hit = bindingReads(sourceFile, names)[0];
+    if (hit) problem(rel, `touches binding ${hit.name} outside bindings.ts`);
     if (ENV_IMPORT.test(text)) problem(rel, 'imports `env` from "cloudflare:workers"; bindings are read in bindings.ts only');
     const type = PRODUCT_TYPES.exec(text);
     if (type) problem(rel, `names the Cloudflare binding type ${type[1]} outside bindings.ts`);
@@ -240,14 +332,14 @@ for (const [worker, t] of Object.entries(table)) {
       problem(`workers/${worker} env.${env}`, "needs cron triggers");
     }
   }
-  checkSeam(worker, t);
 }
 const writers = Object.entries(table).filter(([, t]) => Object.values(t.r2).some((v) => v.access !== "read" && ["packs-public", "packs-private"].includes(v.bucket))).map(([w]) => w);
 sameSet("trust table", "Workers that can write the public and private buckets", writers, ["validator"]);
 for (const [w, t] of Object.entries(table)) {
   for (const f of Object.keys(t.fakes)) if (!/^[A-Z][A-Z0-9_]*$/.test(f)) problem(`trust table ${w}`, `fake binding ${f} is not an env name`);
 }
-checkResources(configs);
+checkSeam(table);
+checkResources(table, configs);
 
 if (problems.length > 0) {
   console.error(problems.map((p) => `check-bindings: ${p}`).join("\n"));

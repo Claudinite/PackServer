@@ -8,7 +8,7 @@
   ],
   "env": {
     "test": {
-      "name": "github",
+      "name": "github-test",
       "vars": {
         "WORKER": "github",
         "ENVIRONMENT": "test",

@@ -6,8 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./fakes": "./fakes/index.ts",
-    "./cloudflare": "./cloudflare/index.ts",
-    "./adapters/email-service": "./adapters/email-service.ts"
+    "./cloudflare": "./cloudflare/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { PortError } from "../src/ports";
 import { missingBindings, expectedBindings } from "../src/trust-table";
 import {
-  d1Port, durableObjectsPort, isServiceBinding, kvPort, queuePort, r2Port, r2ReadPort, rateLimitPort, readSecret, statsPort,
+  accessPort, d1Port, durableObjectsPort, embedderFrom, sandboxPort, vectorIndexPort, isServiceBinding, kvPort, queuePort, r2Port, r2ReadPort, rateLimitPort, readSecret, statsPort,
   turnstilePort, unwiredPort, versionInfo, workflowPort,
 } from "./index";
 
@@ -143,6 +143,41 @@ describe("secrets, turnstile, service bindings", () => {
   it("reports a call on an unwired port instead of doing nothing", () => {
     const port = unwiredPort<{ verify(): void }>("access");
     expect(() => port.verify()).toThrow("access.verify has no production adapter yet");
+  });
+});
+
+describe("fake Workers are chosen by ENVIRONMENT, never by the binding's shape", () => {
+  const service = { fetch: () => {}, query: async () => [], embed: async () => [[1]], inspect: async () => ({}), run: async () => ({}), verify: async () => ({}) };
+  const product = { query: async () => ({ matches: [] }), run: async () => ({ data: [[1]] }), getByName: () => ({}) };
+
+  it.each(["production", "staging"])("refuses a service binding where %s expects the product binding", (environment) => {
+    expect(() => vectorIndexPort(environment, service as never)).toThrow(expect.objectContaining({ code: "binding_shape" }));
+    expect(() => embedderFrom(environment, service as never)).toThrow(expect.objectContaining({ code: "binding_shape" }));
+    expect(() => sandboxPort(environment, service as never, service as never)).toThrow(expect.objectContaining({ code: "binding_shape" }));
+    expect(() => accessPort(environment, service as never)).toThrow(expect.objectContaining({ code: "binding_shape" }));
+  });
+
+  it("refuses a product binding where env.test expects a fake Worker", () => {
+    expect(() => vectorIndexPort("test", product as never)).toThrow(expect.objectContaining({ code: "binding_shape" }));
+    expect(() => embedderFrom("test", product as never)).toThrow(expect.objectContaining({ code: "binding_shape" }));
+    expect(() => sandboxPort("test", product as never, service as never)).toThrow(expect.objectContaining({ code: "binding_shape" }));
+    expect(() => accessPort("test", product as never)).toThrow(expect.objectContaining({ code: "binding_shape" }));
+  });
+
+  it("takes the fake Worker under env.test and the product binding elsewhere", async () => {
+    expect(await vectorIndexPort("test", service as never).query([1], { topK: 1 })).toEqual([]);
+    expect(await vectorIndexPort("production", product as never).query([1], { topK: 1 })).toEqual([]);
+    expect(await embedderFrom("test", service as never).embed(["x"])).toEqual([[1]]);
+    expect(await embedderFrom("production", product as never).embed(["x"])).toEqual([[1]]);
+  });
+
+  it("leaves the sandbox and Access unwired where only the product bindings exist", () => {
+    expect(() => sandboxPort("production", product as never, product as never).inspect({ archive_key: "k" })).toThrow("no production adapter");
+    expect(() => accessPort("production", undefined).verify({} as never)).toThrow("no production adapter");
+  });
+
+  it("does not take a Worker for a fake because its binding is missing", () => {
+    expect(() => accessPort("test", undefined).verify({} as never)).toThrow("no production adapter");
   });
 });
 

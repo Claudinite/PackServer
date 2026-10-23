@@ -8,7 +8,7 @@
   ],
   "env": {
     "test": {
-      "name": "mcp",
+      "name": "mcp-test",
       "vars": {
         "WORKER": "mcp",
         "ENVIRONMENT": "test",
@@ -61,7 +61,7 @@
       "ratelimits": [
         {
           "name": "RATE_LIMIT",
-          "namespace_id": "1002",
+          "namespace_id": "3002",
           "simple": {
             "limit": 60,
             "period": 60

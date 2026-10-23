@@ -8,7 +8,7 @@
   ],
   "env": {
     "test": {
-      "name": "admin",
+      "name": "admin-test",
       "vars": {
         "WORKER": "admin",
         "ENVIRONMENT": "test",
@@ -58,7 +58,7 @@
           "binding": "VALIDATE_PACK",
           "name": "validate-pack",
           "class_name": "ValidatePackWorkflow",
-          "script_name": "validator"
+          "script_name": "validator-test"
         }
       ],
       "services": [

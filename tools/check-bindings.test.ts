@@ -1,8 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { TEST_STRINGS } from "./test-strings.mjs";
 
 const REPO = join(import.meta.dirname, "..");
 const TOOL = join(REPO, "tools/check-bindings.mjs");
@@ -58,7 +59,17 @@ describe("check-bindings", () => {
   it("fails on a Workflows binding where the trust table forbids one", () => {
     const dir = copyRepo();
     edit(dir, "github", (c) => (c.env.production.workflows = [{ binding: "VALIDATE_PACK", name: "validate-pack", class_name: "ValidatePackWorkflow" }]));
-    expect(run(dir).out).toContain("workers/github env.production: this Worker must never hold Workflows");
+    const out = run(dir).out;
+    expect(out).toContain("workers/github env.production: workflows is");
+    expect(out).toContain("workers/github env.production: this Worker must never hold Workflows");
+  });
+
+  it("fails on a Workflows binding on publish, which starts runs only through the validator", () => {
+    const dir = copyRepo();
+    edit(dir, "publish", (c) => (c.env.staging.workflows = [{ binding: "VALIDATE_PACK", name: "validate-pack-staging", class_name: "ValidatePackWorkflow" }]));
+    const out = run(dir).out;
+    expect(out).toContain("workers/publish env.staging: workflows is");
+    expect(out).toContain("workers/publish env.staging: this Worker must never hold Workflows");
   });
 
   it("fails on a bucket binding to audit-log", () => {
@@ -104,10 +115,19 @@ describe("check-bindings", () => {
     expect(run(dir).out).toContain("d1:registry has two ids in env.production");
   });
 
-  it("fails on a test-only string in a deployed environment", () => {
+  it.each(TEST_STRINGS)("fails on the test string %s in a deployed configuration no set check looks at", (testString) => {
     const dir = copyRepo();
-    edit(dir, "mcp", (c) => (c.env.production.services = [{ binding: "AI", service: "fake-ai" }]));
-    expect(run(dir).out).toContain('test string "fake-" in a deployed configuration');
+    edit(dir, "mcp", (c) => (c.env.production.vars.NOTE = `x ${testString} y`));
+    expect(run(dir).out).toContain(`workers/mcp env.production: test string "${testString}" in a deployed configuration`);
+  });
+
+  it("holds the test strings to the list IT-OPS-003 names", () => {
+    const section = /### IT-OPS-003[\s\S]*?(?=\n### )/.exec(readFileSync(join(REPO, "docs/testing/operations.md"), "utf8"))![0];
+    expect(TEST_STRINGS.filter((s) => !section.includes(s))).toEqual([]);
+  });
+
+  it("includes the Turnstile always-pass sitekey", () => {
+    expect(TEST_STRINGS).toContain("1x00000000000000000000AA");
   });
 
   it("fails on a secret given as a plain var outside env.test", () => {
@@ -122,12 +142,89 @@ describe("check-bindings", () => {
     expect(run(dir).out).toContain("workers/web/src/app.ts: touches binding SESSIONS_KV outside bindings.ts");
   });
 
+  it.each([
+    ["destructuring", "export const x = (c: { env: Env }) => { const { SESSIONS_KV } = c.env; return SESSIONS_KV; };"],
+    ["a renamed destructured name", "export const x = (env: Env) => { const { SESSIONS_KV: kv } = env; return kv; };"],
+    ["an alias", "export const x = (c: { env: Env }) => { const e = c.env; return e.SESSIONS_KV; };"],
+    ["an alias of an alias", "export const x = (c: { env: Env }) => { const e = c.env; const f = e as Env; return f.SESSIONS_KV; };"],
+    ["a line break before the name", "export const x = (env: Env) =>\n  env\n    .SESSIONS_KV;"],
+    ["an element access", 'export const x = (env: Env) => env["SESSIONS_KV"];'],
+    ["a parameter typed Env", "export const x = ({ SESSIONS_KV }: Env) => SESSIONS_KV;"],
+  ])("fails on a binding read through %s", (_name, code) => {
+    const dir = copyRepo();
+    writeFileSync(join(dir, "workers/web/src/app.ts"), `interface Env { SESSIONS_KV: unknown }\n${code}\n`);
+    expect(run(dir).out).toContain("workers/web/src/app.ts: touches binding SESSIONS_KV outside bindings.ts");
+  });
+
+  it("does not take a port named like a binding for the binding", () => {
+    const dir = copyRepo();
+    writeFileSync(join(dir, "workers/web/src/app.ts"), "export const x = (ports: { kv: { SESSIONS_KV: unknown } }) => ports.kv.SESSIONS_KV;\n");
+    expect(run(dir).ok).toBe(true);
+  });
+
+  it("scans packages for a binding read outside the Cloudflare adapters", () => {
+    const dir = copyRepo();
+    mkdirSync(join(dir, "packages/http/src"), { recursive: true });
+    writeFileSync(join(dir, "packages/http/src/leak.ts"), "export const x = (c: { env: { DB: unknown } }) => c.env.DB;\n");
+    expect(run(dir).out).toContain("packages/http/src/leak.ts: touches binding DB outside bindings.ts");
+  });
+
+  it("leaves packages/ports/cloudflare free to speak the bindings", () => {
+    const dir = copyRepo();
+    mkdirSync(join(dir, "packages/ports/cloudflare"), { recursive: true });
+    writeFileSync(join(dir, "packages/ports/cloudflare/x.ts"), "export const x = (env: { DB: unknown }) => env.DB;\n");
+    expect(run(dir).ok).toBe(true);
+  });
+
   it("fails on an env import from cloudflare:workers and on a binding type outside bindings.ts", () => {
     const dir = copyRepo();
     writeFileSync(join(dir, "workers/web/src/app.ts"), 'import { env } from "cloudflare:workers";\nexport const db: D1Database = env.DB;\n');
     const out = run(dir).out;
     expect(out).toContain("imports `env` from \"cloudflare:workers\"");
     expect(out).toContain("names the Cloudflare binding type D1Database");
+  });
+
+  it.each([
+    ["handed to a variable first", "const bucket = env.PACKS_PUBLIC;\n  return { r2: { PACKS_PUBLIC: r2ReadPort(bucket) } };"],
+    ["wrapped in the writing port", "return { r2: { PACKS_PUBLIC: r2Port(env.PACKS_PUBLIC) } };"],
+    ["passed along raw", "return { r2: { PACKS_PUBLIC: env.PACKS_PUBLIC } };"],
+  ])("fails on a read-only bucket %s", (_name, body) => {
+    const dir = copyRepo();
+    const path = join(dir, "workers/web/src/bindings.ts");
+    const source = readFileSync(path, "utf8");
+    writeFileSync(path, source.replace(/export function createRuntime/, `export function leak(env: Env) {\n  ${body}\n}\n\nexport function createRuntime`));
+    expect(run(dir).out).toContain("workers/web/src/bindings.ts: read-only bucket PACKS_PUBLIC");
+  });
+
+  it("fails when a read-only bucket never goes through r2ReadPort", () => {
+    const dir = copyRepo();
+    const path = join(dir, "workers/mcp/src/bindings.ts");
+    writeFileSync(path, readFileSync(path, "utf8").replace("r2ReadPort(env.PACKS_PRIVATE)", "undefined as never"));
+    expect(run(dir).out).toContain("workers/mcp/src/bindings.ts: read-only bucket PACKS_PRIVATE");
+  });
+
+  it("names every test Worker <worker>-test", () => {
+    const dir = copyRepo();
+    edit(dir, "web", (c) => (c.env.test.name = "web"));
+    expect(run(dir).out).toContain('workers/web env.test: name is "web", expected "web-test"');
+  });
+
+  it("fails when a test name or a rate-limit namespace equals a deployed one", () => {
+    const dir = copyRepo();
+    const web = JSON.parse(readFileSync(join(dir, "workers/web/wrangler.jsonc"), "utf8")).env;
+    edit(dir, "web", (c) => {
+      c.env.test.name = c.env.staging.name;
+      c.env.test.ratelimits[0].namespace_id = web.production.ratelimits[0].namespace_id;
+    });
+    const out = run(dir).out;
+    expect(out).toContain('env.test and env.staging share the Worker name "web-staging"');
+    expect(out).toContain(`env.test and env.production share the resource "rate limit namespace ${web.production.ratelimits[0].namespace_id}"`);
+  });
+
+  it("fails when a shared KV namespace has two ids in one environment", () => {
+    const dir = copyRepo();
+    edit(dir, "publish", (c) => (c.env.production.kv_namespaces[0].id = "00000000000000000000229999999999"));
+    expect(run(dir).out).toContain("kv:cache has two ids in env.production");
   });
 
   it("allows a Durable Object class to import from cloudflare:workers", () => {

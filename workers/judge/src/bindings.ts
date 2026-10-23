@@ -7,6 +7,7 @@ export interface Env {
   GATES_KV: KVNamespace;
   ADMIN: Fetcher;
   ACCESS?: Fetcher;
+  SELFTEST_HMAC_KEY: string | SecretsStoreSecret;
   REQUEST_OUTCOMES: AnalyticsEngineDataset;
   DOMAIN_EVENTS: AnalyticsEngineDataset;
   GATE_RESULTS: AnalyticsEngineDataset;
@@ -29,7 +30,7 @@ export function createRuntime(env: Env): JudgeRuntime {
       rng: cryptoRng,
       stats: statsPort({ request: env.REQUEST_OUTCOMES, domain: env.DOMAIN_EVENTS }),
       kv: { GATES_KV: kvPort(env.GATES_KV) },
-      access: accessPort(env.ACCESS),
+      access: accessPort(env.ENVIRONMENT, env.ACCESS),
     },
     { admin: env.ADMIN },
   );

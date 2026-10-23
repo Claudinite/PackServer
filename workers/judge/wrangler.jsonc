@@ -8,10 +8,11 @@
   ],
   "env": {
     "test": {
-      "name": "judge",
+      "name": "judge-test",
       "vars": {
         "WORKER": "judge",
-        "ENVIRONMENT": "test"
+        "ENVIRONMENT": "test",
+        "SELFTEST_HMAC_KEY": "test-selftest-hmac-key"
       },
       "kv_namespaces": [
         {
@@ -22,7 +23,7 @@
       "services": [
         {
           "binding": "ADMIN",
-          "service": "admin"
+          "service": "admin-test"
         },
         {
           "binding": "ACCESS",
@@ -119,6 +120,13 @@
           "dataset": "budget_staging"
         }
       ],
+      "secrets_store_secrets": [
+        {
+          "binding": "SELFTEST_HMAC_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "selftest-hmac-key-staging"
+        }
+      ],
       "version_metadata": {
         "binding": "CF_VERSION_METADATA"
       }
@@ -189,6 +197,13 @@
         {
           "binding": "BUDGET",
           "dataset": "budget"
+        }
+      ],
+      "secrets_store_secrets": [
+        {
+          "binding": "SELFTEST_HMAC_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "selftest-hmac-key"
         }
       ],
       "version_metadata": {

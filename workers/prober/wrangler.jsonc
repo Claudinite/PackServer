@@ -8,7 +8,7 @@
   ],
   "env": {
     "test": {
-      "name": "prober",
+      "name": "prober-test",
       "vars": {
         "WORKER": "prober",
         "ENVIRONMENT": "test",

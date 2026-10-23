@@ -8,7 +8,7 @@
   ],
   "env": {
     "test": {
-      "name": "publish",
+      "name": "publish-test",
       "vars": {
         "WORKER": "publish",
         "ENVIRONMENT": "test",
@@ -58,14 +58,6 @@
           }
         ]
       },
-      "workflows": [
-        {
-          "binding": "VALIDATE_PACK",
-          "name": "validate-pack",
-          "class_name": "ValidatePackWorkflow",
-          "script_name": "validator"
-        }
-      ],
       "exports": {
         "ScopeCoordinator": {
           "type": "durable-object",
@@ -83,7 +75,7 @@
       "services": [
         {
           "binding": "VALIDATOR",
-          "service": "validator"
+          "service": "validator-test"
         }
       ],
       "analytics_engine_datasets": [
@@ -165,14 +157,6 @@
           }
         ]
       },
-      "workflows": [
-        {
-          "binding": "VALIDATE_PACK",
-          "name": "validate-pack-staging",
-          "class_name": "ValidatePackWorkflow",
-          "script_name": "validator-staging"
-        }
-      ],
       "exports": {
         "ScopeCoordinator": {
           "type": "durable-object",
@@ -291,14 +275,6 @@
           }
         ]
       },
-      "workflows": [
-        {
-          "binding": "VALIDATE_PACK",
-          "name": "validate-pack",
-          "class_name": "ValidatePackWorkflow",
-          "script_name": "validator"
-        }
-      ],
       "exports": {
         "ScopeCoordinator": {
           "type": "durable-object",
