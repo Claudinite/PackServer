@@ -42,6 +42,9 @@ scenario("IT-SCOPE-003 Org owners manage the org's people and roles; maintainers
   const u = await world.publishers.create({ handle: "u" });
   const org = await p.orgs.create("acme");
   await org.invite(m).as("maintainer");
+  await expect(org.people()).resolves.toMatchObject({ people: [{ handle: "p", role: "owner" }], invitations: [{ handle: "m", role: "maintainer" }] });
+  const [offered] = await world.invitations.pending(m);
+  await world.invitations.accept(m, { id: offered!.id });
 
   const asMaintainer = org.as(m);
   await expect(asMaintainer.invite(u).as("maintainer")).toBeRefused("forbidden");
@@ -51,6 +54,7 @@ scenario("IT-SCOPE-003 Org owners manage the org's people and roles; maintainers
 
   await expect(org.invite(u).as("maintainer", { assertion: "none" })).toBeRefused("step-up");
   await org.invite(u).as("maintainer");
+  await world.invitations.accept(u, { id: (await world.invitations.pending(u))[0]!.id });
   const invited = await org.invite({ email: "newcomer@example.test" }).as("maintainer");
   await expect(org.people()).resolves.toMatchObject({ invitations: [{ email: "newcomer@example.test", role: "maintainer" }] });
   await org.setRole(m, "owner");

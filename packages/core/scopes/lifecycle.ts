@@ -18,13 +18,22 @@ export async function deleteOrg(ports: ScopePorts, scope: ScopeRow): Promise<Del
   if (packs.length > 0) {
     return { ok: false, reason: "owns_packs", message: `${scope.name} still owns ${packs.join(", ")}; transfer ${packs.length === 1 ? "it" : "them"} first.`, packs };
   }
-  await ports.d1.batch([
+  try {
+    await ports.d1.batch([
     { sql: "delete from scope_invites where scope_id = ?", params: [scope.id] },
     { sql: "delete from vp_applications where scope_id = ?", params: [scope.id] },
     { sql: "delete from scope_members where scope_id = ?", params: [scope.id] },
     { sql: "delete from scopes where id = ?", params: [scope.id] },
     { sql: "insert or ignore into retired_names (kind, name, retired_at) values ('scope', ?, ?)", params: [scope.name, new Date(ports.clock.now()).toISOString()] },
-  ]);
+    ]);
+  } catch (error) {
+    // A pack created after the check above trips the pack-to-scope key and rolls the whole batch back.
+    if (/FOREIGN KEY|constraint/i.test(String(error))) {
+      const now = await ownedPacks(ports.d1, scope);
+      if (now.length > 0) return { ok: false, reason: "owns_packs", message: `${scope.name} still owns ${now.join(", ")}; transfer ${now.length === 1 ? "it" : "them"} first.`, packs: now };
+    }
+    throw error;
+  }
   return { ok: true };
 }
 

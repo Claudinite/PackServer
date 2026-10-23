@@ -1,6 +1,6 @@
 import type { D1 } from "@packserver/ports";
 import { judgeScopeName } from "./names.ts";
-import { loadScope, type ScopeRow } from "./access.ts";
+import { loadScope, roleOf, type ScopeRow } from "./access.ts";
 import { iso, newId, type ScopePorts } from "./personal.ts";
 import type { ScopeRole } from "./roles.ts";
 
@@ -38,7 +38,9 @@ export interface Person {
 }
 export interface Invitation {
   id: string;
-  email: string;
+  /** The address invited; null when an account was invited by handle. */
+  email: string | null;
+  handle: string | null;
   role: ScopeRole;
   invited_at: string;
 }
@@ -50,7 +52,11 @@ export async function listPeople(d1: D1, scopeId: string): Promise<{ people: Per
             where m.scope_id = ? order by m.created_at, u.handle`,
       params: [scopeId],
     },
-    { sql: "select id, email, role, created_at as invited_at from scope_invites where scope_id = ? order by created_at, email", params: [scopeId] },
+    {
+      sql: `select i.id, i.email, u.handle, i.role, i.created_at as invited_at from scope_invites i left join users u on u.id = i.user_id
+            where i.scope_id = ? order by i.created_at, i.email, u.handle`,
+      params: [scopeId],
+    },
   ]);
   return {
     people: people!.rows.map((r) => ({ handle: String(r.handle), display_name: (r.display_name as string | null) ?? null, role: r.role as ScopeRole, since: String(r.since) })),
@@ -66,7 +72,7 @@ const fail = (reason: Extract<PeopleResult, { ok: false }>["reason"], message: s
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Adds a person by handle, or records an invitation for an address. A personal scope has exactly one owner and no one else. */
+/** Records an invitation for a handle or an address; nothing is granted until the invited person accepts. A personal scope has exactly one owner and no one else. */
 export async function invite(
   ports: ScopePorts,
   scope: ScopeRow,
@@ -80,13 +86,14 @@ export async function invite(
     const { rows } = await ports.d1.query("select id from users where handle = ?", [who.handle.trim().toLowerCase()]);
     const userId = rows[0]?.id;
     if (typeof userId !== "string") return fail("unknown_person", "No signed-in person has that handle.");
+    if (await roleOf(ports.d1, scope.id, userId)) return fail("already_a_person", "That person is already an owner or maintainer.");
     try {
-      await ports.d1.query("insert into scope_members (scope_id, user_id, role, created_at) values (?, ?, ?, ?)", [scope.id, userId, role, now]);
+      await ports.d1.query("insert into scope_invites (id, scope_id, user_id, role, invited_by, created_at) values (?, ?, ?, ?, ?, ?)", [newId(ports), scope.id, userId, role, invitedBy, now]);
     } catch (error) {
-      if (isUnique(error)) return fail("already_a_person", "That person is already an owner or maintainer.");
+      if (isUnique(error)) return fail("already_a_person", "That person is already invited.");
       throw error;
     }
-    return { ok: true, outcome: "added" };
+    return { ok: true, outcome: "invited" };
   }
   const email = who.email.trim().toLowerCase();
   if (!EMAIL.test(email)) return fail("unverified_address", "That is not an email address.");
@@ -99,11 +106,6 @@ export async function invite(
   return { ok: true, outcome: "invited" };
 }
 
-async function ownerCount(d1: D1, scopeId: string): Promise<number> {
-  const { rows } = await d1.query("select count(*) as n from scope_members where scope_id = ? and role = 'owner'", [scopeId]);
-  return Number(rows[0]?.n ?? 0);
-}
-
 async function memberByHandle(d1: D1, scopeId: string, handle: string): Promise<{ user_id: string; role: ScopeRole } | null> {
   const { rows } = await d1.query(
     "select m.user_id, m.role from scope_members m join users u on u.id = m.user_id where m.scope_id = ? and u.handle = ?",
@@ -112,27 +114,31 @@ async function memberByHandle(d1: D1, scopeId: string, handle: string): Promise<
   return (rows[0] as unknown as { user_id: string; role: ScopeRole } | undefined) ?? null;
 }
 
+const LAST_OWNER = "An organisation needs an owner; make someone else an owner first.";
+
+/** The guard runs inside the statement that changes the row, so two owners leaving at once cannot both succeed. */
+const NOT_THE_LAST_OWNER = "(role <> 'owner' or (select count(*) from scope_members where scope_id = ? and role = 'owner') > 1)";
+
 /** An organisation always keeps an owner: the last one can be neither demoted nor removed. */
 export async function setRole(ports: ScopePorts, scope: ScopeRow, handle: string, role: ScopeRole): Promise<PeopleResult> {
   if (scope.kind === "user") return fail("personal_scope", "A personal scope has exactly one owner.");
   const member = await memberByHandle(ports.d1, scope.id, handle);
   if (!member) return fail("not_a_person", "That person is not an owner or maintainer here.");
-  if (member.role === "owner" && role !== "owner" && (await ownerCount(ports.d1, scope.id)) <= 1) {
-    return fail("last_owner", "An organisation needs an owner; make someone else an owner first.");
-  }
-  await ports.d1.query("update scope_members set role = ? where scope_id = ? and user_id = ?", [role, scope.id, member.user_id]);
-  return { ok: true, outcome: "changed" };
+  const { meta } = await ports.d1.query(
+    `update scope_members set role = ? where scope_id = ? and user_id = ? and (? = 'owner' or ${NOT_THE_LAST_OWNER})`,
+    [role, scope.id, member.user_id, role, scope.id],
+  );
+  if (meta.changes > 0) return { ok: true, outcome: "changed" };
+  return (await memberByHandle(ports.d1, scope.id, handle)) ? fail("last_owner", LAST_OWNER) : fail("not_a_person", "That person is not an owner or maintainer here.");
 }
 
 export async function removePerson(ports: ScopePorts, scope: ScopeRow, handle: string): Promise<PeopleResult> {
   if (scope.kind === "user") return fail("personal_scope", "A personal scope has exactly one owner.");
   const member = await memberByHandle(ports.d1, scope.id, handle);
   if (!member) return fail("not_a_person", "That person is not an owner or maintainer here.");
-  if (member.role === "owner" && (await ownerCount(ports.d1, scope.id)) <= 1) {
-    return fail("last_owner", "An organisation needs an owner; make someone else an owner first.");
-  }
-  await ports.d1.query("delete from scope_members where scope_id = ? and user_id = ?", [scope.id, member.user_id]);
-  return { ok: true, outcome: "removed" };
+  const { meta } = await ports.d1.query(`delete from scope_members where scope_id = ? and user_id = ? and ${NOT_THE_LAST_OWNER}`, [scope.id, member.user_id, scope.id]);
+  if (meta.changes > 0) return { ok: true, outcome: "removed" };
+  return (await memberByHandle(ports.d1, scope.id, handle)) ? fail("last_owner", LAST_OWNER) : fail("not_a_person", "That person is not an owner or maintainer here.");
 }
 
 export async function removeInvitation(d1: D1, scope: ScopeRow, invitationId: string): Promise<PeopleResult> {
@@ -140,24 +146,23 @@ export async function removeInvitation(d1: D1, scope: ScopeRow, invitationId: st
   return meta.changes > 0 ? { ok: true, outcome: "removed" } : fail("not_a_person", "No such invitation.");
 }
 
-/** Invitations addressed to an address the person holds verified. */
+const ADDRESSED_TO_PERSON = "(i.user_id = ? or i.email in (select address from user_emails where user_id = ?))";
+
+/** Invitations naming this account, or an address it holds verified. */
 export async function pendingFor(d1: D1, userId: string): Promise<Array<{ id: string; scope: string; role: ScopeRole }>> {
   const { rows } = await d1.query(
     `select i.id, s.name as scope, i.role from scope_invites i join scopes s on s.id = i.scope_id
-     join user_emails e on e.address = i.email where e.user_id = ? order by i.created_at`,
-    [userId],
+     where ${ADDRESSED_TO_PERSON} order by i.created_at`,
+    [userId, userId],
   );
   return rows as unknown as Array<{ id: string; scope: string; role: ScopeRole }>;
 }
 
-/** Accepting turns the invitation into membership, and only for a person who holds the invited address verified. */
+/** Accepting turns the invitation into membership, and only for the invited account or a person who holds the invited address verified. */
 export async function acceptInvitation(ports: ScopePorts, userId: string, invitationId: string): Promise<PeopleResult> {
-  const { rows } = await ports.d1.query(
-    `select i.id, i.scope_id, i.role from scope_invites i join user_emails e on e.address = i.email where i.id = ? and e.user_id = ?`,
-    [invitationId, userId],
-  );
+  const { rows } = await ports.d1.query(`select i.id, i.scope_id, i.role from scope_invites i where i.id = ? and ${ADDRESSED_TO_PERSON}`, [invitationId, userId, userId]);
   const row = rows[0] as { id: string; scope_id: string; role: ScopeRole } | undefined;
-  if (!row) return fail("unverified_address", "No invitation for an address you have verified.");
+  if (!row) return fail("unverified_address", "No invitation for you.");
   await ports.d1.batch([
     { sql: "insert or ignore into scope_members (scope_id, user_id, role, created_at) values (?, ?, ?, ?)", params: [row.scope_id, userId, row.role, iso(ports)] },
     { sql: "delete from scope_invites where id = ?", params: [row.id] },

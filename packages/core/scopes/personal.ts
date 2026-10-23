@@ -26,3 +26,21 @@ export function personalScopeStatements(ports: ScopePorts, userId: string, handl
     },
   ];
 }
+
+/**
+ * Gives an account that already holds a handle the personal scope it lacks (a handle claimed before
+ * scopes existed); a no-op for an account that has one, and for a name another scope already holds.
+ */
+export async function ensurePersonalScope(ports: ScopePorts, userId: string, handle: string): Promise<void> {
+  const id = newId(ports);
+  const now = iso(ports);
+  await ports.d1.batch([
+    {
+      sql: `insert or ignore into scopes (id, name, kind, state, created_at)
+            select ?, ?, 'user', 'active', ? where exists (select 1 from users where id = ? and handle = ?)
+            and not exists (select 1 from scope_members m join scopes s on s.id = m.scope_id where m.user_id = ? and s.kind = 'user')`,
+      params: [id, handle, now, userId, handle, userId],
+    },
+    { sql: "insert into scope_members (scope_id, user_id, role, created_at) select ?, ?, 'owner', ? where exists (select 1 from scopes where id = ?)", params: [id, userId, now, id] },
+  ]);
+}

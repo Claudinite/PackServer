@@ -12,9 +12,9 @@ routes.get("/scopes/:scope", async (c) => {
   return profile ? c.json(profile, 200, { "cache-control": "no-cache" }) : notFound();
 });
 
-/** Where a pack that changed scope went; absent for a pack that never moved. */
+/** Where a pack that changed scope went. A pack that never moved, and a private one the caller cannot read, answer alike. */
 routes.get("/scopes/:scope/moved/:pack", async (c) => {
-  const to = await movedTo(c.get("runtime").ports.d1, c.req.param("scope"), c.req.param("pack"));
+  const to = await movedTo(c.get("runtime").ports.d1, c.req.param("scope"), c.req.param("pack"), c.get("session")?.record.user_id);
   return to ? c.json({ moved_to: to }, 200, { "cache-control": "no-cache" }) : notFound();
 });
 
@@ -50,5 +50,6 @@ routes.post("/transfers/:id/accept", sensitive("pack.transfer.accept"), async (c
   if (result.ok) return ok(c, { transfer: result.transfer });
   if (result.reason === "not_found") return notFound();
   if (result.reason === "forbidden") return refusal("forbidden", { message: result.message });
-  return refusal(result.reason === "lapsed" ? "forbidden" : "exists", { status: result.reason === "lapsed" ? 410 : 409, message: result.message });
+  const gone = result.reason === "lapsed" || result.reason === "void";
+  return refusal(gone ? "forbidden" : "exists", { status: gone ? 410 : 409, message: result.message });
 });

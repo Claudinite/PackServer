@@ -13,7 +13,8 @@ export interface PersonView {
 }
 export interface InvitationView {
   id: string;
-  email: string;
+  email: string | null;
+  handle: string | null;
   role: ScopeRole;
 }
 export interface PeopleView {
@@ -35,7 +36,7 @@ export interface ProfileView {
 
 export interface Invitation {
   readonly id: string;
-  readonly email: string;
+  readonly email?: string;
 }
 
 export interface OrgHandle extends Org {
@@ -159,11 +160,11 @@ export function createScopeVerbs(driver: Driver, aliases: Aliases): ScopeVerbs {
             const target = "handle" in who ? { handle: aliases.alias(who.handle) } : who;
             const body = done(await call("POST", "/people", "org.invite", o, { ...target, role }), "org.invite");
             if (body.outcome !== "invited") return undefined;
-            const email = (target as { email: string }).email;
             const view = (await self.people()) as PeopleView;
-            const found = view.invitations.find((i) => i.email === email.toLowerCase());
+            const email = "email" in target ? target.email : undefined;
+            const found = view.invitations.find((i) => (email ? i.email === email.toLowerCase() : i.handle === (who as User).handle));
             if (!found) throw new InfrastructureError("org.invite: the invitation is not listed");
-            return { id: found.id, email };
+            return email ? { id: found.id, email } : { id: found.id };
           },
         };
       },

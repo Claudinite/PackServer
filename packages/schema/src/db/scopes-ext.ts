@@ -9,10 +9,14 @@ import { users } from "./users";
 export const SCOPE_ROLES = ["owner", "maintainer"] as const;
 export type ScopeRole = (typeof SCOPE_ROLES)[number];
 
-export const TRANSFER_STATES = ["offered", "accepted", "lapsed"] as const;
+/** `void` is an offer whose offerer stopped being an owner of the offering scope before it was accepted. */
+export const TRANSFER_STATES = ["offered", "accepted", "lapsed", "void"] as const;
 export const VP_APPLICATION_STATES = ["pending", "approved", "rejected", "revoked"] as const;
 
-/** A person asked to join an organisation by an address; it holds no access until a person with that verified address accepts. */
+/**
+ * A person asked to join an organisation, by an address or by handle; it holds no access until that
+ * person accepts (with a verified address, or as the invited account).
+ */
 export const scope_invites = sqliteTable(
   "scope_invites",
   {
@@ -20,8 +24,10 @@ export const scope_invites = sqliteTable(
     scope_id: text("scope_id")
       .notNull()
       .references(() => scopes.id),
-    /** Lower-cased. */
-    email: text("email").notNull(),
+    /** Lower-cased; null when the invitation names an account. */
+    email: text("email"),
+    /** Null when the invitation names an address. */
+    user_id: text("user_id").references(() => users.id),
     role: text("role", { enum: SCOPE_ROLES }).notNull(),
     invited_by: text("invited_by")
       .notNull()
@@ -30,6 +36,8 @@ export const scope_invites = sqliteTable(
   },
   (t) => [
     uniqueIndex("scope_invites_scope_email_unique").on(t.scope_id, t.email),
+    uniqueIndex("scope_invites_scope_user_unique").on(t.scope_id, t.user_id),
+    check("scope_invites_target_check", sql`(${t.email} is null) <> (${t.user_id} is null)`),
     check("scope_invites_role_check", sql`${t.role} in (${inList(SCOPE_ROLES)})`),
   ],
 );
@@ -58,6 +66,7 @@ export const pack_transfers = sqliteTable(
     resolved_at: text("resolved_at"),
   },
   (t) => [
+    uniqueIndex("pack_transfers_one_open_per_pack").on(t.pack_id).where(sql`${t.state} = 'offered'`),
     index("pack_transfers_pack_idx").on(t.pack_id),
     index("pack_transfers_to_idx").on(t.to_scope, t.state),
     index("pack_transfers_from_idx").on(t.from_scope, t.pack_name),

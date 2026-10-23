@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { migratedD1 } from "../../identity/testing.ts";
 import {
-  TRANSFER_WINDOW_MS, acceptTransfer, authorize, createOrg, deleteOrg, expireOffers, invite, loadProfile, loadScope, movedTo, offerTransfer, personalScopeStatements,
+  TRANSFER_WINDOW_MS, acceptInvitation, acceptTransfer, ensurePersonalScope, incomingFor, pendingFor, authorize, createOrg, deleteOrg, expireOffers, invite, loadProfile, loadScope, movedTo, offerTransfer, personalScopeStatements,
   publisherMark, removePerson, renameScope, satisfies, setRole, type ScopePorts,
 } from "../index.ts";
 
@@ -53,6 +53,14 @@ describe("personal scopes (REQ-SCOPE-001)", () => {
     expect(await deleteOrg(w.ports, scope)).toMatchObject({ ok: false, reason: "personal_scope" });
   });
 
+  it("backfills the scope of an account that held its handle before scopes existed, once", async () => {
+    const w = world();
+    w.db.exec(`insert into users (id, handle, created_at) values ('u1', 'old', '${new Date(NOW).toISOString()}')`);
+    await ensurePersonalScope(w.ports, "u1", "old");
+    await ensurePersonalScope(w.ports, "u1", "old");
+    expect((await w.d1.query("select s.name, m.role from scope_members m join scopes s on s.id = m.scope_id where m.user_id = 'u1'")).rows).toEqual([{ name: "old", role: "owner" }]);
+  });
+
   it("makes no scope for a handle the account does not hold", async () => {
     const w = world();
     w.db.exec(`insert into users (id, handle, created_at) values ('u1', null, '${new Date(NOW).toISOString()}')`);
@@ -82,7 +90,11 @@ describe("organisations and their people (REQ-SCOPE-002, REQ-SCOPE-003)", () => 
     const org = ((await createOrg(w.ports, "u1", "acme")) as { scope: Parameters<typeof invite>[1] }).scope;
     expect(await setRole(w.ports, org, "ann", "maintainer")).toMatchObject({ ok: false, reason: "last_owner" });
     expect(await removePerson(w.ports, org, "ann")).toMatchObject({ ok: false, reason: "last_owner" });
-    expect(await invite(w.ports, org, "u1", { handle: "bob" }, "owner")).toEqual({ ok: true, outcome: "added" });
+    expect(await invite(w.ports, org, "u1", { handle: "bob" }, "owner")).toEqual({ ok: true, outcome: "invited" });
+    expect(await removePerson(w.ports, org, "bob")).toMatchObject({ ok: false, reason: "not_a_person" });
+    const [waiting] = await pendingFor(w.d1, "u2");
+    expect(await acceptInvitation(w.ports, "u1", waiting!.id)).toMatchObject({ ok: false });
+    expect(await acceptInvitation(w.ports, "u2", waiting!.id)).toEqual({ ok: true, outcome: "added" });
     expect(await invite(w.ports, org, "u1", { handle: "bob" }, "owner")).toMatchObject({ ok: false, reason: "already_a_person" });
     expect(await setRole(w.ports, org, "ann", "maintainer")).toEqual({ ok: true, outcome: "changed" });
     expect(await removePerson(w.ports, org, "bob")).toMatchObject({ ok: false, reason: "last_owner" });
@@ -167,10 +179,99 @@ describe("transfers (REQ-SCOPE-014)", () => {
     expect(await offer()).toMatchObject({ ok: true });
   });
 
-  it("refuses an offer that would collide with a pack of the same name", async () => {
-    const { w, offer } = await setup();
+  it("lets the receiving scope's own pack of that name stop the accept, not the offer, and leaves the offer open", async () => {
+    const { w, packId, offer } = await setup();
     w.pack("dst", "gcp");
-    expect(await offer()).toMatchObject({ ok: false, reason: "name_taken" });
+    const id = ((await offer()) as { transfer: { id: string } }).transfer.id;
+    expect(await acceptTransfer(w.ports, "u2", id)).toMatchObject({ ok: false, reason: "name_taken" });
+    expect((await w.d1.query("select state from pack_transfers where id = ?", [id])).rows).toEqual([{ state: "offered" }]);
+    expect((await w.d1.query("select s.name from packs p join scopes s on s.id = p.scope_id where p.id = ?", [packId])).rows).toEqual([{ name: "src" }]);
+  });
+
+  it("allows one open offer per pack, even when two are made together", async () => {
+    const { w, packId } = await setup();
+    const make = () => offerTransfer(w.ports, { packId, packName: "gcp", fromScope: "src", toScope: "dst", offeredBy: "u1" });
+    const both = await Promise.all([make(), make()]);
+    expect(both.filter((r) => r.ok)).toHaveLength(1);
+    expect(both.find((r) => !r.ok)).toMatchObject({ reason: "already_offered" });
+  });
+
+  it("voids an offer whose offerer stopped being an owner of the offering scope", async () => {
+    const { w, packId, offer } = await setup();
+    await w.person("u3", "cy");
+    await invite(w.ports, (await loadScope(w.d1, "src"))!, "u1", { handle: "cy" }, "owner");
+    await acceptInvitation(w.ports, "u3", (await pendingFor(w.d1, "u3"))[0]!.id);
+    const id = ((await offerTransfer(w.ports, { packId, packName: "gcp", fromScope: "src", toScope: "dst", offeredBy: "u3" })) as { transfer: { id: string } }).transfer.id;
+    expect(await incomingFor(w.ports, "u2")).toHaveLength(1);
+    await removePerson(w.ports, (await loadScope(w.d1, "src"))!, "cy");
+    expect(await incomingFor(w.ports, "u2")).toHaveLength(0);
+    expect(await acceptTransfer(w.ports, "u2", id)).toMatchObject({ ok: false, reason: "void" });
+    expect((await w.d1.query("select state from pack_transfers where id = ?", [id])).rows).toEqual([{ state: "void" }]);
+    expect((await w.d1.query("select s.name from packs p join scopes s on s.id = p.scope_id where p.id = ?", [packId])).rows).toEqual([{ name: "src" }]);
+    void offer;
+  });
+
+  it("does not mark an offer accepted when the pack had already moved elsewhere", async () => {
+    const { w, packId, offer } = await setup();
+    const id = ((await offer()) as { transfer: { id: string } }).transfer.id;
+    await createOrg(w.ports, "u2", "elsewhere");
+    w.db.exec(`update packs set scope_id = (select id from scopes where name = 'elsewhere') where id = '${packId}'`);
+    expect(await acceptTransfer(w.ports, "u2", id)).toMatchObject({ ok: false, reason: "moved_on" });
+    expect((await w.d1.query("select state from pack_transfers where id = ?", [id])).rows).toEqual([{ state: "offered" }]);
+  });
+
+  it("answers where a private pack went only to someone who can read it there (REQ-SCOPE-016)", async () => {
+    const w = world();
+    await w.person("u1", "ann");
+    await w.person("u2", "bob");
+    await w.person("u3", "eve");
+    await createOrg(w.ports, "u1", "src");
+    await createOrg(w.ports, "u2", "dst");
+    const packId = w.pack("src", "hid", "private");
+    const id = ((await offerTransfer(w.ports, { packId, packName: "hid", fromScope: "src", toScope: "dst", offeredBy: "u1" })) as { transfer: { id: string } }).transfer.id;
+    await acceptTransfer(w.ports, "u2", id);
+    expect(await movedTo(w.d1, "src", "hid", "u2")).toBe("@dst/hid");
+    expect(await movedTo(w.d1, "src", "hid", "u3")).toBeNull();
+    expect(await movedTo(w.d1, "src", "hid")).toBeNull();
+    expect(await movedTo(w.d1, "src", "never")).toBeNull();
+    w.db.exec("update packs set visibility = 'public'");
+    expect(await movedTo(w.d1, "src", "hid")).toBe("@dst/hid");
+  });
+});
+
+describe("races", () => {
+  it("lets only one of two owners leave an organisation at once", async () => {
+    const w = world();
+    await w.person("u1", "ann");
+    await w.person("u2", "bob");
+    const org = ((await createOrg(w.ports, "u1", "acme")) as { scope: Parameters<typeof invite>[1] }).scope;
+    await invite(w.ports, org, "u1", { handle: "bob" }, "owner");
+    await acceptInvitation(w.ports, "u2", (await pendingFor(w.d1, "u2"))[0]!.id);
+    const out = await Promise.all([removePerson(w.ports, org, "ann"), removePerson(w.ports, org, "bob")]);
+    expect(out.filter((r) => r.ok)).toHaveLength(1);
+    expect(out.find((r) => !r.ok)).toMatchObject({ reason: "last_owner" });
+    expect((await w.d1.query("select count(*) as n from scope_members where scope_id = ?", [org.id])).rows).toEqual([{ n: 1 }]);
+  });
+
+  it("answers 'owns packs' when a pack appears after the check", async () => {
+    const w = world();
+    await w.person("u1", "ann");
+    const org = ((await createOrg(w.ports, "u1", "acme")) as { scope: Parameters<typeof deleteOrg>[1] }).scope;
+    let sneaked = false;
+    const d1: ScopePorts["d1"] = {
+      ...w.d1,
+      query: async (sql, params) => {
+        const result = await w.d1.query(sql, params);
+        if (!sneaked && /from packs where scope_id/.test(sql)) {
+          sneaked = true;
+          w.pack("acme", "late");
+        }
+        return result;
+      },
+      batch: (statements) => w.d1.batch(statements),
+    };
+    expect(await deleteOrg({ ...w.ports, d1 }, org)).toMatchObject({ ok: false, reason: "owns_packs", packs: ["@acme/late"] });
+    expect(await loadScope(w.d1, "acme")).not.toBeNull();
   });
 });
 

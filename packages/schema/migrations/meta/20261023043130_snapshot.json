@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "c3eb425b-6d77-426d-a2c4-ae7c78a5a917",
+  "id": "dfac7783-8e6f-42c2-ae23-321360e033be",
   "prevId": "dfb9ec22-371e-4d05-a3c3-596d1170c19b",
   "tables": {
     "credentials": {
@@ -1010,6 +1010,14 @@
         }
       },
       "indexes": {
+        "pack_transfers_one_open_per_pack": {
+          "name": "pack_transfers_one_open_per_pack",
+          "columns": [
+            "pack_id"
+          ],
+          "isUnique": true,
+          "where": "\"pack_transfers\".\"state\" = 'offered'"
+        },
         "pack_transfers_pack_idx": {
           "name": "pack_transfers_pack_idx",
           "columns": [
@@ -1080,7 +1088,7 @@
       "checkConstraints": {
         "pack_transfers_state_check": {
           "name": "pack_transfers_state_check",
-          "value": "\"pack_transfers\".\"state\" in ('offered', 'accepted', 'lapsed')"
+          "value": "\"pack_transfers\".\"state\" in ('offered', 'accepted', 'lapsed', 'void')"
         }
       }
     },
@@ -1105,7 +1113,14 @@
           "name": "email",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "role": {
@@ -1138,6 +1153,14 @@
             "email"
           ],
           "isUnique": true
+        },
+        "scope_invites_scope_user_unique": {
+          "name": "scope_invites_scope_user_unique",
+          "columns": [
+            "scope_id",
+            "user_id"
+          ],
+          "isUnique": true
         }
       },
       "foreignKeys": {
@@ -1147,6 +1170,19 @@
           "tableTo": "scopes",
           "columnsFrom": [
             "scope_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "scope_invites_user_id_users_id_fk": {
+          "name": "scope_invites_user_id_users_id_fk",
+          "tableFrom": "scope_invites",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
           ],
           "columnsTo": [
             "id"
@@ -1171,6 +1207,10 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
+        "scope_invites_target_check": {
+          "name": "scope_invites_target_check",
+          "value": "(\"scope_invites\".\"email\" is null) <> (\"scope_invites\".\"user_id\" is null)"
+        },
         "scope_invites_role_check": {
           "name": "scope_invites_role_check",
           "value": "\"scope_invites\".\"role\" in ('owner', 'maintainer')"
