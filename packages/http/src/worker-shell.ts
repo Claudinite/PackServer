@@ -1,6 +1,7 @@
 import { Hono, type Env } from "hono";
 import { createHasher, createTelemetry, type TelemetryKeys, type TelemetryMode } from "@packserver/core/telemetry";
 import type { Clock, Stats } from "@packserver/ports";
+import { securityHeaders } from "@packserver/ui/headers";
 import { recorder } from "./recorder-middleware";
 import { runSelfTest, type SelfTestCheck } from "./selftest-runner";
 import { versionHeader } from "./version";
@@ -34,6 +35,7 @@ export function unknownPath(): Response {
 export function createShell<E extends Env = Env>(options: WorkerShellOptions): Hono<E> {
   const app = new Hono<E>();
   app.use(versionHeader(options.releaseId));
+  app.use(securityHeaders());
   if (options.stats) {
     app.use(
       recorder({

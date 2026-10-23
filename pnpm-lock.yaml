@@ -101,6 +101,9 @@ importers:
       '@packserver/schema':
         specifier: workspace:*
         version: link:../schema
+      '@packserver/ui':
+        specifier: workspace:*
+        version: link:../ui
       hono:
         specifier: 'catalog:'
         version: 4.13.13

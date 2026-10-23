@@ -1,5 +1,6 @@
 import { expectedBindings, TRUST_TABLE, type WorkerName } from "@packserver/ports";
 import { expect, it, describe } from "vitest";
+import { baseSecurityHeaders, NON_HTML_CSP } from "@packserver/ui/headers";
 import { VERSION_HEADER } from "./version";
 
 type Fetchable = { fetch(request: Request): Response | Promise<Response> };
@@ -30,6 +31,12 @@ export function describeWorkerShell({ worker, build }: WorkerShellContract): voi
       const res = await build({ allowSelfTest: false }).fetch(new Request("https://registry.test/no/such/path"));
       expect(res.status).toBe(404);
       expect(res.headers.get(VERSION_HEADER)).toBe(RELEASE);
+    });
+
+    it("carries the security headers on an unknown path", async () => {
+      const res = await build({ allowSelfTest: false }).fetch(new Request("https://registry.test/no/such/path"));
+      for (const [name, value] of Object.entries(baseSecurityHeaders)) expect(res.headers.get(name), name).toBe(value);
+      expect(res.headers.get("content-security-policy")).toBe(NON_HTML_CSP);
     });
 
     it.each(SELFTEST_PATHS(worker))("IT-OPS-004 answers an anonymous %s exactly as an unknown path", async (path) => {
