@@ -1,4 +1,4 @@
-import { acceptAuditEvent, appendBatch, copyToActivity, type ConsumedMessage } from "@packserver/core/audit";
+import { acceptAuditEvent, appendBatch, ChainBrokenError, copyToActivity, type ConsumedMessage } from "@packserver/core/audit";
 import type { AdminRuntime } from "../bindings";
 
 /**
@@ -22,6 +22,7 @@ export async function consumeAudit(batch: MessageBatch<unknown>, runtime: AdminR
   try {
     result = await appendBatch(auditBucket, accepted);
   } catch (error) {
+    if (error instanceof ChainBrokenError) stats.write({ name: "audit.chain_broken", blobs: [error.key, error.reason], doubles: [1] });
     console.error(JSON.stringify({ at: "consumer.audit", failed: "append", error: String(error) }));
     for (const m of accepted) m.message.retry();
     return;
@@ -31,7 +32,7 @@ export async function consumeAudit(batch: MessageBatch<unknown>, runtime: AdminR
   const copy = await copyToActivity(d1, result?.written ?? []);
   for (const e of result?.written ?? []) stats.write({ name: "audit.appended", blobs: [e.action, e.actor.kind, e.id, e.at.slice(0, 10)], doubles: [1] });
   if (result && result.written.length > 0) {
-    stats.write({ name: "audit.batch_written", blobs: [result.head.key, result.object, copy], doubles: [result.head.seq, result.written.length] });
+    stats.write({ name: "audit.batch_written", blobs: [result.head.key, result.object, copy, "if-none-match"], doubles: [result.head.seq, result.written.length] });
   }
   for (const m of accepted) m.message.ack();
 }

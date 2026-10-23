@@ -16,7 +16,15 @@ export interface ConsumedMessage {
   event: AuditEvent;
 }
 
-const ORPHAN_SCAN = 50;
+/** Unreferenced batches adopted in one call. With a missing pointer this is also how far the chain may be re-walked from genesis. */
+export const MAX_ADOPT = 50;
+
+export class ChainBrokenError extends Error {
+  constructor(readonly key: string, readonly reason: string) {
+    super(`audit batch ${key} does not continue the chain: ${reason}`);
+  }
+}
+
 const START: Head = { seq: -1, hash: GENESIS_HASH, key: "audit/", at: "1970-01-01T00:00:00.000Z", message_ids: [] };
 
 async function readHead(bucket: AuditBucket): Promise<Head | null> {
@@ -32,16 +40,18 @@ async function readHead(bucket: AuditBucket): Promise<Head | null> {
 async function adoptOrphans(bucket: AuditBucket, from: Head | null): Promise<{ head: Head | null; events: AuditEvent[] }> {
   let head = from;
   const events: AuditEvent[] = [];
-  for (;;) {
+  for (let adopted = 0; ; adopted++) {
     const cursor = head ?? START;
-    const next = (await bucket.list("audit/", ORPHAN_SCAN, cursor.key)).find((k) => k.endsWith(".ndjson"));
+    const next = (await bucket.list("audit/", 2, cursor.key)).find((k) => k.endsWith(".ndjson"));
     if (next === undefined) return { head, events };
+    if (adopted === MAX_ADOPT) {
+      throw new Error(`more than ${MAX_ADOPT} audit batches after ${cursor.key}; restore audit/head.json from the last verified head`);
+    }
     const body = await bucket.get(next);
     if (body === null) return { head, events };
     const batch = parseBatch(body);
-    if (batch.header.seq !== cursor.seq + 1 || batch.header.prev_hash !== cursor.hash) {
-      throw new Error(`audit batch ${next} does not continue the chain after ${cursor.key}`);
-    }
+    if (batch.header.seq !== cursor.seq + 1) throw new ChainBrokenError(next, `expected seq ${cursor.seq + 1}, found ${batch.header.seq}`);
+    if (batch.header.prev_hash !== cursor.hash) throw new ChainBrokenError(next, "prev_hash differs from the preceding batch");
     head = {
       seq: batch.header.seq,
       hash: await sha256Hex(body),
@@ -54,6 +64,7 @@ async function adoptOrphans(bucket: AuditBucket, from: Head | null): Promise<{ h
 }
 
 /**
+ * The head pointer is written once, last, so a failed call leaves every adopted event to be recorded by the retry.
  * Appends one batch to the chain. A message whose id is among the most recent consumed ones is skipped, so
  * redelivery within that window never duplicates an event; a crash between the batch object and the head
  * pointer is repaired by adopting the object on the next call.
@@ -61,13 +72,15 @@ async function adoptOrphans(bucket: AuditBucket, from: Head | null): Promise<{ h
 export async function appendBatch(bucket: AuditBucket, messages: readonly ConsumedMessage[]): Promise<WrittenBatch | null> {
   const adopted = await adoptOrphans(bucket, await readHead(bucket));
   let head = adopted.head;
-  if (adopted.events.length > 0) await bucket.put(HEAD_KEY, JSON.stringify(head));
 
   const seen = new Set(head?.message_ids ?? []);
   const fresh = new Map<string, ConsumedMessage>();
   for (const m of messages) if (!seen.has(m.messageId) && !fresh.has(m.event.id)) fresh.set(m.event.id, m);
   const adoptedState = adopted.events.length > 0 ? "adopted" : "none";
-  if (fresh.size === 0) return head ? { head, written: adopted.events, object: adoptedState } : null;
+  if (fresh.size === 0) {
+    if (adopted.events.length > 0) await bucket.put(HEAD_KEY, JSON.stringify(head));
+    return head ? { head, written: adopted.events, object: adoptedState } : null;
+  }
 
   const batch = await buildBatch({
     seq: head ? head.seq + 1 : 0,
@@ -76,8 +89,8 @@ export async function appendBatch(bucket: AuditBucket, messages: readonly Consum
     events: [...fresh.values()].map((m) => m.event),
     message_ids: [...fresh.values()].map((m) => m.messageId),
   });
-  if ((await bucket.get(batch.key)) !== null) throw new Error(`audit batch ${batch.key} already exists`);
-  await bucket.put(batch.key, batch.body);
+  // Create-only (R2 PutObject honours If-None-Match: *), so a batch object is never replaced.
+  if ((await bucket.put(batch.key, batch.body, { ifAbsent: true })) === "exists") throw new Error(`audit batch ${batch.key} already exists`);
   head = { ...batch.head, message_ids: [...(head?.message_ids ?? []), ...batch.head.message_ids].slice(-RECENT_MESSAGE_IDS) };
   await bucket.put(HEAD_KEY, JSON.stringify(head));
   return { head, written: [...adopted.events, ...[...fresh.values()].map((m) => m.event)], object: adopted.events.length > 0 ? "adopted" : "fresh" };

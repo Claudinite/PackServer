@@ -83,6 +83,21 @@ describe("admin audit consumer", () => {
     expect(auditBucket.batchKeys()).toHaveLength(1);
   });
 
+  it("signals audit.chain_broken and retries when a batch does not continue the chain", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { runtime, queue, audit, auditBucket, fakes } = setup();
+    await audit({ kind: "system" }, "admin.action", "a");
+    await consumeAudit(messages(queue.messages).batch, runtime);
+    const key = auditBucket.batchKeys()[0]!;
+    const forged = auditBucket.objects.get(key)!.replace('"seq":0', '"seq":1');
+    auditBucket.objects.set(key.replace("0000000000", "0000000001"), forged);
+    await audit({ kind: "system" }, "admin.action", "b");
+    const next = messages([queue.messages[1]], 5);
+    await consumeAudit(next.batch, runtime);
+    expect(next.msgs[0]!.retry).toHaveBeenCalledOnce();
+    expect(fakes.stats.points.some((p) => p.name === "audit.chain_broken")).toBe(true);
+  });
+
   it("acks a redelivered batch without writing again", async () => {
     const { runtime, queue, audit, auditBucket } = setup();
     await audit({ kind: "system" }, "admin.action", "x");

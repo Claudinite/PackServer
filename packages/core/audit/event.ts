@@ -53,7 +53,8 @@ export const DETAIL_FIELDS: Record<AuditAction, readonly string[]> = {
 
 const Detail = z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]));
 
-export const AuditEventSchema = queueMessage({
+/** An event as stored: shape only. The detail allowlist applies to what is emitted now, not to batches already written. */
+export const StoredAuditEventSchema = queueMessage({
   /** Unique per event; the chain, the D1 copy and the verifier all reconcile on it. */
   id: z.string().min(1),
   /** ISO-8601 UTC. */
@@ -68,7 +69,9 @@ export const AuditEventSchema = queueMessage({
   /** Daily-rotating hash of the source address; the address itself never enters an event. */
   ip_hash: z.string().regex(/^[0-9a-f]{64}$/).optional(),
   detail: Detail.optional(),
-}).superRefine((event, ctx) => {
+});
+
+export const AuditEventSchema = StoredAuditEventSchema.superRefine((event, ctx) => {
   const allowed = DETAIL_FIELDS[event.action];
   for (const key of Object.keys(event.detail ?? {})) {
     if (!allowed.includes(key)) ctx.addIssue({ code: "custom", path: ["detail", key], message: `${event.action} does not take detail.${key}` });

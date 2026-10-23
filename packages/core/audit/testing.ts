@@ -25,9 +25,17 @@ export class MemoryAuditBucket implements AuditBucket {
     this.check();
     return this.objects.get(key) ?? null;
   }
-  async put(key: string, body: string) {
+  /** Makes a write fail, as a lost request would. */
+  failPut: ((key: string) => boolean) | undefined;
+  /** Runs before a write lands, to stage another writer getting there first. */
+  onPut: ((key: string) => void) | undefined;
+  async put(key: string, body: string, options?: { ifAbsent?: boolean }) {
     this.check();
+    if (this.failPut?.(key)) throw new Error(`put ${key} failed`);
+    this.onPut?.(key);
+    if (options?.ifAbsent && this.objects.has(key)) return "exists" as const;
     this.objects.set(key, body);
+    return "stored" as const;
   }
   async list(prefix: string, limit: number, startAfter = "") {
     this.check();

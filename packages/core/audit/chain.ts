@@ -1,6 +1,6 @@
 import { sha256Hex } from "@packserver/ports";
 import { z } from "zod";
-import { AuditEventSchema, type AuditEvent } from "./event";
+import { StoredAuditEventSchema, type AuditEvent } from "./event";
 
 export const GENESIS_HASH = "0".repeat(64);
 export const HEAD_KEY = "audit/head.json";
@@ -74,5 +74,5 @@ export async function buildBatch(input: BatchInput): Promise<{ key: string; body
 export function parseBatch(body: string): { header: BatchHeader; events: AuditEvent[] } {
   const lines = body.split("\n").filter((l) => l !== "");
   const header = BatchHeaderSchema.parse(JSON.parse(lines[0] ?? ""));
-  return { header, events: lines.slice(1).map((l) => AuditEventSchema.parse(JSON.parse(l))) };
+  return { header, events: lines.slice(1).map((l) => StoredAuditEventSchema.parse(JSON.parse(l))) };
 }

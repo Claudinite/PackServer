@@ -3,7 +3,8 @@ import { AwsClient } from "aws4fetch";
 /** The audit bucket as the consumer sees it: objects only, reached over the S3 API and never through a binding. */
 export interface AuditBucket {
   get(key: string): Promise<string | null>;
-  put(key: string, body: string): Promise<void>;
+  /** With `ifAbsent` the write happens only if the key is free (S3 `If-None-Match: *`); `exists` means it was not made. */
+  put(key: string, body: string, options?: { ifAbsent?: boolean }): Promise<"stored" | "exists">;
   /** Up to `limit` keys under the prefix in key order, starting after `startAfter`. */
   list(prefix: string, limit: number, startAfter?: string): Promise<string[]>;
 }
@@ -27,9 +28,12 @@ export function s3AuditBucket(config: S3Config, fetchImpl: typeof fetch = fetch)
       if (!res.ok) throw new Error(`audit bucket GET ${key}: ${res.status}`);
       return res.text();
     },
-    async put(key, body) {
-      const res = await send(`${base}/${key}`, { method: "PUT", body, headers: { "content-type": "application/x-ndjson" } });
+    async put(key, body, options) {
+      const headers: Record<string, string> = { "content-type": "application/x-ndjson", ...(options?.ifAbsent && { "if-none-match": "*" }) };
+      const res = await send(`${base}/${key}`, { method: "PUT", body, headers });
+      if (options?.ifAbsent && res.status === 412) return "exists";
       if (!res.ok) throw new Error(`audit bucket PUT ${key}: ${res.status}`);
+      return "stored";
     },
     async list(prefix, limit, startAfter) {
       const after = startAfter ? `&start-after=${encodeURIComponent(startAfter)}` : "";

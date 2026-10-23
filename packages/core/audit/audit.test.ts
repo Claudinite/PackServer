@@ -4,11 +4,11 @@ import { describe, expect, it } from "vitest";
 import * as api from "./index";
 import { pruneActivity, scopeActivity, userActivity } from "./activity";
 import { s3AuditBucket } from "./bucket";
-import { GENESIS_HASH, HEAD_KEY, parseBatch } from "./chain";
+import { buildBatch, GENESIS_HASH, HEAD_KEY, parseBatch } from "./chain";
 import { createAudit } from "./emit";
 import { AUDIT_ACTIONS, acceptAuditEvent, type AuditEvent } from "./event";
 import { MemoryAuditBucket, SqliteD1 } from "./testing";
-import { appendBatch, type ConsumedMessage } from "./writer";
+import { appendBatch, MAX_ADOPT, type ConsumedMessage } from "./writer";
 
 const IP = "203.0.113.9";
 const TOKEN = "psk_live_0123456789abcdef";
@@ -200,6 +200,66 @@ describe("IT-AUDIT-005 chain half", () => {
     expect(await chainErrors(bucket)).toEqual([]);
   });
 
+  it("records an adopted batch's events even when the head write fails after adoption", async () => {
+    const { audit, bucket, consume, events } = setup();
+    for (let i = 0; i < 3; i++) await audit({ kind: "system" }, "admin.action", `t${i}`);
+    await consume(0, 1);
+    const headBefore = bucket.objects.get(HEAD_KEY)!;
+    await consume(1, 2);
+    bucket.objects.set(HEAD_KEY, headBefore);
+    const redelivery = [1, 2].map((i) => ({ messageId: `m${i}`, event: events()[i]! }));
+    bucket.failPut = (key) => key === HEAD_KEY;
+    await expect(appendBatch(bucket, redelivery)).rejects.toThrow();
+    bucket.failPut = undefined;
+    const result = await appendBatch(bucket, redelivery);
+    expect(result?.written.map((e) => e.id).sort()).toEqual([1, 2].map((i) => events()[i]!.id).sort());
+    expect(await chainErrors(bucket)).toEqual([]);
+  });
+
+  it("records the orphan's events when nothing else is left to append", async () => {
+    const { audit, bucket, consume, events } = setup();
+    for (let i = 0; i < 2; i++) await audit({ kind: "system" }, "admin.action", `t${i}`);
+    await consume(0, 1);
+    const headBefore = bucket.objects.get(HEAD_KEY)!;
+    await consume(1, 2);
+    bucket.objects.set(HEAD_KEY, headBefore);
+    const redelivery = [{ messageId: "m1", event: events()[1]! }];
+    bucket.failPut = (key) => key === HEAD_KEY;
+    await expect(appendBatch(bucket, redelivery)).rejects.toThrow();
+    bucket.failPut = undefined;
+    expect((await appendBatch(bucket, redelivery))?.written).toEqual([events()[1]]);
+  });
+
+  it("refuses to walk an unbounded chain when the pointer is missing", async () => {
+    const { audit, bucket, consume } = setup();
+    for (let i = 0; i < MAX_ADOPT + 2; i++) {
+      await audit({ kind: "system" }, "admin.action", `t${i}`);
+      await consume(i, i + 1);
+    }
+    bucket.objects.delete(HEAD_KEY);
+    await expect(consume(0, 1)).rejects.toThrow(/restore audit\/head.json/);
+  });
+
+  it("never overwrites a batch object another writer created first", async () => {
+    const { audit, bucket, consume } = setup();
+    await audit({ kind: "system" }, "admin.action", "a");
+    bucket.onPut = (key) => {
+      if (key.endsWith(".ndjson")) bucket.objects.set(key, "someone else\n");
+    };
+    await expect(consume(0)).rejects.toThrow(/already exists/);
+    expect(bucket.objects.get(bucket.batchKeys()[0]!)).toBe("someone else\n");
+  });
+
+  it("adopts a batch written under an older detail allowlist", async () => {
+    const { audit, bucket, events } = setup();
+    await audit({ kind: "system" }, "admin.action", "a");
+    const old = { ...events()[0]!, detail: { legacy_field: "x" } } as AuditEvent;
+    const batch = await buildBatch({ seq: 0, prev_hash: GENESIS_HASH, events: [old], message_ids: ["m0"] });
+    bucket.objects.set(batch.key, batch.body);
+    const result = await appendBatch(bucket, [{ messageId: "m0", event: old }]);
+    expect(result).toMatchObject({ object: "adopted" });
+  });
+
   it("skips a message consumed several batches ago", async () => {
     const { audit, bucket, consume, events } = setup();
     for (let i = 0; i < 4; i++) await audit({ kind: "system" }, "admin.action", `t${i}`);
@@ -258,6 +318,16 @@ describe("the S3 writer", () => {
     expect(await bucket.list("audit/", 2)).toEqual(["audit/a", "audit/b"]);
     expect(calls[0]!.url).toBe("https://acct.r2.cloudflarestorage.com/audit-log/audit/x.ndjson");
     expect(calls[0]!.headers.get("authorization")).toMatch(/^AWS4-HMAC-SHA256 Credential=AK\/\d{8}\/auto\/s3\/aws4_request/);
+  });
+
+  it("sends If-None-Match for a create-only write and reports an existing key", async () => {
+    const seen: Request[] = [];
+    const bucket = s3AuditBucket({ endpoint: "https://e/b", accessKeyId: "a", secretAccessKey: "s" }, (async (req: Request) => {
+      seen.push(req);
+      return new Response("", { status: 412 });
+    }) as unknown as typeof fetch);
+    expect(await bucket.put("audit/x", "y", { ifAbsent: true })).toBe("exists");
+    expect(seen[0]!.headers.get("if-none-match")).toBe("*");
   });
 
   it("throws on a refused write", async () => {
