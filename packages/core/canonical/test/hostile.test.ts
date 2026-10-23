@@ -147,6 +147,27 @@ describe("nested archives (IT-VAL-020)", () => {
       await expectRefused(up([{ name: "docs/notes.txt", content: Uint8Array.from(head) }]), "archive.unsafe", "nested-archive");
     });
   }
+  const hex = (h: string) => Uint8Array.from(Buffer.from(h, "hex"));
+  const bz2Real = hex("425a68393141592653591931653d00000081000244a000219a68334d07338bb9229c28480c98b29e80");
+  const bz2Empty = hex("425a683917724538509000000000");
+  const xzReal = hex("fd377a585a000004e6d6b4460200210116000000742fe5a301000468656c6c6f00000000b137b9dbe5da1e9b00011d05b82d80af1fb6f37d010000000004595a");
+  const real: [string, Uint8Array][] = [
+    ["a real bzip2 stream", bz2Real],
+    ["an empty bzip2 stream", bz2Empty],
+    ["an empty bzip2 stream followed by a real one", Uint8Array.from([...bz2Empty, ...bz2Real])],
+    ["a real xz stream", xzReal],
+    ["a legacy LZ4 frame", Uint8Array.from([0x02, 0x21, 0x4c, 0x18, 0, 0, 0, 0])],
+    ["a zstd stream that starts with a skippable frame", Uint8Array.from([0x5a, 0x2a, 0x4d, 0x18, 0, 0, 0, 0])],
+    ["a skippable frame of the lowest magic", Uint8Array.from([0x50, 0x2a, 0x4d, 0x18, 0, 0, 0, 0])],
+  ];
+  for (const [what, content] of real) {
+    it(`refuses ${what}`, async () => {
+      await expectRefused(up([{ name: "docs/notes.txt", content }]), "archive.unsafe", "nested-archive");
+    });
+  }
+  it("accepts a skippable-looking magic with another low byte", async () => {
+    await extractArchive(up([{ name: "a.bin", content: Uint8Array.from([0x4f, 0x2a, 0x4d, 0x18, 0]) }]));
+  });
   it("refuses a real gzip file", async () => {
     await expectRefused(up([{ name: "docs/notes.txt", content: gzipSync("hello") }]), "archive.unsafe", "nested-archive");
   });
