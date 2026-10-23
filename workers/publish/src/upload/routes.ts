@@ -1,5 +1,5 @@
 import {
-  fitsStagingCap, LIFETIME_METADATA_HEADER, MAX_UPLOAD_BYTES, STAGING_CONTENT_TYPE, STAGING_PREFIX_CAP_BYTES,
+  LIFETIME_METADATA_HEADER, MAX_UPLOAD_BYTES, STAGING_CONTENT_TYPE, STAGING_PREFIX_CAP_BYTES,
 } from "@packserver/core/publishing";
 import { refusal } from "@packserver/http";
 import { Hono } from "hono";
@@ -20,10 +20,10 @@ export function uploadRoutes(runtime: PublishRuntime): Hono {
   const { d1, clock, r2 } = runtime.ports;
   const staging = r2.PACKS_STAGING!;
 
-  async function authorise(request: Request, bound: Bound): Promise<Authorised> {
+  async function authorise(request: Request, bound: Bound, options: { allowExpired?: boolean } = {}): Promise<Authorised> {
     const secret = bearer(request);
     if (!secret) return { ok: false, response: refusal("oidc.invalid", { message: "an upload credential is required" }) };
-    const found = await lookupCredential({ d1, clock }, secret, bound);
+    const found = await lookupCredential({ d1, clock }, secret, bound, options);
     if (found.ok) return found;
     if (found.why === "wrong-pack") return { ok: false, response: refusal("forbidden", { message: "this credential is bound to another pack or version" }) };
     return { ok: false, response: refusal("oidc.invalid", { message: found.why === "expired" ? "the credential has expired" : "the credential is not recognised" }) };
@@ -43,12 +43,12 @@ export function uploadRoutes(runtime: PublishRuntime): Hono {
     const bytes = parsed.data.content_length;
     if (bytes > MAX_UPLOAD_BYTES) return refusal("quota", { status: 413, message: `an archive is at most ${MAX_UPLOAD_BYTES / MiB} MiB` });
 
-    const held = await heldBytes({ d1, clock }, credential.scope_id, credential.id);
-    if (!fitsStagingCap(held, bytes)) {
+    const spent = await spendCredential({ d1, clock }, credential, bytes, STAGING_PREFIX_CAP_BYTES);
+    if (spent === "used") return refusal("oidc.invalid", { message: "the credential has already been used" });
+    if (spent === "over-cap") {
+      const held = await heldBytes({ d1, clock }, credential.scope_id);
       return refusal("quota", { message: `staging holds ${Math.ceil(held / MiB)} of ${STAGING_PREFIX_CAP_BYTES / MiB} MiB; free space or wait for drafts to expire` });
     }
-
-    if (!(await spendCredential({ d1, clock }, credential, bytes))) return refusal("oidc.invalid", { message: "the credential has already been used" });
 
     const now = clock.now();
     const presigned = await runtime.config.presigner.presignPut({
@@ -65,9 +65,9 @@ export function uploadRoutes(runtime: PublishRuntime): Hono {
     );
   });
 
-  /** The client's own word that the PUT finished; the object is measured here, not trusted. */
+  /** The client's own word that the PUT finished; the object is measured here, not trusted. Accepted after the credential expires, so a late confirmation is still counted. */
   app.post("/:scope/:name/:version/uploaded", async (c) => {
-    const auth = await authorise(c.req.raw, boundOf(c));
+    const auth = await authorise(c.req.raw, boundOf(c), { allowExpired: true });
     if (!auth.ok) return auth.response;
     const { credential } = auth;
     if (credential.used_at === null) return refusal("oidc.invalid", { message: "no upload URL was issued for this credential" });

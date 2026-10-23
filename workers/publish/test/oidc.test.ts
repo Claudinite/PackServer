@@ -1,7 +1,7 @@
 import { base64url, exportJWK, generateKeyPair, SignJWT, type JWK } from "jose";
 import { createFakePorts } from "@packserver/ports/fakes";
-import { beforeAll, describe, expect, it } from "vitest";
-import { findKey, JWKS_FRESH_MS, JwksUnavailable } from "../src/oidc/jwks";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { findKey, JWKS_FRESH_MS, JWKS_REFETCH_COOLDOWN_MS, JwksUnavailable, resetJwksMemory } from "../src/oidc/jwks";
 import { verifyActionsToken } from "../src/oidc/verify";
 import { oidcConfig } from "../src/bindings";
 import { GITHUB_OIDC_ISSUER, OIDC_AUDIENCE } from "@packserver/core/publishing";
@@ -52,6 +52,8 @@ function setup(nowMs = 1_000_000_000) {
 }
 
 describe("jwks cache", () => {
+  beforeEach(resetJwksMemory);
+
   it("serves a fresh cached key without asking the issuer, and asks again after the window", async () => {
     const t = setup();
     expect((await findKey(t.deps, "k1")).source).toBe("fetch");
@@ -66,8 +68,42 @@ describe("jwks cache", () => {
     const t = setup();
     await findKey(t.deps, "k1");
     t.setKeys([{ ...jwk, kid: "k2" }]);
+    t.advance(JWKS_REFETCH_COOLDOWN_MS);
     expect((await findKey(t.deps, "k2")).jwk?.kid).toBe("k2");
     expect((await findKey(t.deps, "k1")).jwk).toBeNull();
+  });
+
+  it("asks the issuer once per cooldown however many unknown kids are presented", async () => {
+    const t = setup();
+    await findKey(t.deps, "k1");
+    for (const kid of ["x1", "x2", "x3"]) expect(await findKey(t.deps, kid)).toEqual({ jwk: null, source: "cache" });
+    expect(t.fetched).toHaveLength(1);
+    t.advance(JWKS_REFETCH_COOLDOWN_MS);
+    await findKey(t.deps, "x4");
+    expect(t.fetched).toHaveLength(2);
+  });
+
+  it("shares one fetch between concurrent lookups", async () => {
+    const t = setup();
+    await Promise.all(["k1", "k1", "nope"].map((kid) => findKey(t.deps, kid)));
+    expect(t.fetched).toHaveLength(1);
+  });
+
+  it("does not hammer an issuer that just failed", async () => {
+    const t = setup();
+    t.fail();
+    await expect(findKey(t.deps, "k1")).rejects.toBeInstanceOf(JwksUnavailable);
+    await expect(findKey(t.deps, "k1")).rejects.toBeInstanceOf(JwksUnavailable);
+    expect(t.fetched).toHaveLength(1);
+  });
+
+  it("answers from what it fetched when the cache cannot be written, and when it cannot be read", async () => {
+    const t = setup();
+    const kv = t.deps.kv;
+    const broken = { get: kv.get.bind(kv), put: async (): Promise<void> => { throw new Error("KV PUT failed: 429"); }, delete: kv.delete.bind(kv), list: kv.list.bind(kv) };
+    expect((await findKey({ ...t.deps, kv: broken }, "k1")).jwk?.kid).toBe("k1");
+    expect((await findKey({ ...t.deps, kv: { get: async (): Promise<string | null> => { throw new Error("KV down"); }, put: kv.put.bind(kv), delete: kv.delete.bind(kv), list: kv.list.bind(kv) } }, "k1")).jwk?.kid).toBe("k1");
+    expect(t.fetched).toHaveLength(1);
   });
 
   it("does not treat an entry from the future as fresh", async () => {
@@ -87,6 +123,7 @@ describe("jwks cache", () => {
 });
 
 describe("verifyActionsToken", () => {
+  beforeEach(resetJwksMemory);
   const nowMs = 1_000_000 * 1000;
   it("returns the claims of a token signed by the issuer's key", async () => {
     const t = setup(nowMs);
@@ -99,6 +136,8 @@ describe("verifyActionsToken", () => {
     ["wrong issuer", { iss: "https://other.example" }, "issuer"],
     ["expired", { iat: 1_000_000 - 900, exp: 1_000_000 - 600 }, "expired"],
     ["not yet valid", { nbf: 1_000_000 + 3600 }, "not-yet-valid"],
+    ["older than the longest age accepted", { iat: 1_000_000 - 700, exp: 1_000_000 + 300 }, "expired"],
+    ["issued in the future", { iat: 1_000_000 + 60, exp: 1_000_000 + 360 }, "claims"],
     ["unknown kid", { kid: "nope" }, "key"],
   ] as const)("refuses a token with %s", async (_label, over, because) => {
     const t = setup(nowMs);

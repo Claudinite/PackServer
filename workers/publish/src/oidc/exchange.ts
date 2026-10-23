@@ -1,11 +1,11 @@
 import { chooseRegistration, type Registration } from "@packserver/core/publishing";
-import { refusal } from "@packserver/http";
+import { clientIp, rateLimit, refusal } from "@packserver/http";
 import { PackName, PackVersion } from "@packserver/schema";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { PublishRuntime } from "../bindings";
-import { badRequest, unavailable } from "../respond";
-import { issueCredential } from "../upload/credentials";
+import { badRequest, readJson, unavailable } from "../respond";
+import { issueCredential, TokenAlreadyUsed } from "../upload/credentials";
 import { JwksUnavailable } from "./jwks";
 import { verifyActionsToken } from "./verify";
 
@@ -48,9 +48,13 @@ export function oidcRoutes(runtime: PublishRuntime): Hono {
   const { d1, clock, kv } = runtime.ports;
   const cache = kv.CACHE_KV!;
 
-  app.post("/exchange", async (c) => {
-    if (Number(c.req.header("content-length") ?? 0) > MAX_BODY_BYTES) return badRequest("request too large");
-    const parsed = ExchangeRequest.safeParse(await c.req.json().catch(() => null));
+  const limiter = runtime.ports.rateLimits.RATE_LIMIT;
+  if (!limiter) throw new Error("the RATE_LIMIT binding is missing");
+
+  app.post("/exchange", rateLimit({ limiter, key: (c) => `oidc-exchange:${clientIp(c)}` }), async (c) => {
+    const body = await readJson(c.req.raw, MAX_BODY_BYTES);
+    if (!body.ok) return badRequest(body.because === "too-large" ? "request too large" : "expected { token, pack, version, job }");
+    const parsed = ExchangeRequest.safeParse(body.value);
     if (!parsed.success) return badRequest("expected { token, pack, version, job }");
     const { token, pack, version, job } = parsed.data;
 
@@ -68,6 +72,12 @@ export function oidcRoutes(runtime: PublishRuntime): Hono {
     const { claims } = verified;
 
     const [scopeName, packName] = pack.slice(1).split("/") as [string, string];
+    const visibility = await d1.query(
+      `select p.visibility from packs p join scopes s on s.id = p.scope_id where s.name = ? and p.name = ?`,
+      [scopeName, packName],
+    );
+    if (visibility.rows[0]?.visibility === "private") return noRegistration();
+
     const { rows } = await d1.query(
       `select tp.id, tp.scope_id, tp.repository_id, tp.repository_owner_id, tp.workflow, tp.environment, tp.refs, tp.events, tp.pending_until
        from trusted_publishers tp join scopes s on s.id = tp.scope_id where s.name = ? and tp.pack_name = ?`,
@@ -86,7 +96,7 @@ export function oidcRoutes(runtime: PublishRuntime): Hono {
     }));
     const chosen = chooseRegistration(claims, job ?? null, registrations);
     if (chosen === null) return noRegistration();
-    if (!chosen.ok) return refusal(chosen.reason, { message: "the token does not match the registered trusted publisher", claim_diff: chosen.diff });
+    if (!chosen.ok) return refusal(chosen.reason, { message: "the token does not match a trusted publisher registered for this pack", claim_diff: chosen.categories });
 
     const existing = await d1.query(
       `select 1 from pack_versions v join packs p on p.id = v.pack_id join scopes s on s.id = p.scope_id where s.name = ? and p.name = ? and v.version = ?`,
@@ -95,26 +105,33 @@ export function oidcRoutes(runtime: PublishRuntime): Hono {
     if (existing.rows.length > 0) return refusal("exists", { message: `${pack}@${version} already exists` });
 
     const registration = live.find((r) => r.id === chosen.registration.id)!;
-    const issued = await issueCredential(runtime.ports, {
-      source: "oidc",
-      scope: { id: registration.scope_id, name: scopeName },
-      packName,
-      version,
-      lifetime: "draft",
-      trustedPublisherId: registration.id,
-      claims: {
-        repository: claims.repository,
-        repository_id: claims.repository_id,
-        repository_owner_id: claims.repository_owner_id,
-        ref: claims.ref,
-        sha: claims.sha,
-        run_id: claims.run_id,
-        event_name: claims.event_name,
-        job_workflow_ref: claims.job_workflow_ref,
-        environment: claims.environment ?? null,
-        jti: claims.jti,
-      },
-    });
+    let issued;
+    try {
+      issued = await issueCredential(runtime.ports, {
+        source: "oidc",
+        scope: { id: registration.scope_id, name: scopeName },
+        packName,
+        version,
+        lifetime: "draft",
+        trustedPublisherId: registration.id,
+        claims: {
+          repository: claims.repository,
+          repository_id: claims.repository_id,
+          repository_owner_id: claims.repository_owner_id,
+          ref: claims.ref,
+          sha: claims.sha,
+          run_id: claims.run_id,
+          event_name: claims.event_name,
+          job_workflow_ref: claims.job_workflow_ref,
+          environment: claims.environment ?? null,
+          jti: claims.jti,
+        },
+        oidcJti: claims.jti,
+      });
+    } catch (error) {
+      if (error instanceof TokenAlreadyUsed) return refusal("oidc.invalid", { message: "token already used" });
+      throw error;
+    }
     return Response.json(
       {
         credential_id: issued.id,

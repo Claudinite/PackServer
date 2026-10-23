@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ClaimDiff, RefusalReason } from "@packserver/schema";
+import type { ClaimCategory, RefusalReason } from "@packserver/schema";
 
 export const GITHUB_OIDC_ISSUER = "https://token.actions.githubusercontent.com";
 export const GITHUB_OIDC_JWKS_URL = `${GITHUB_OIDC_ISSUER}/.well-known/jwks`;
@@ -45,7 +45,8 @@ export interface Registration {
   events: readonly string[];
 }
 
-export type ClaimVerdict = { ok: true } | { ok: false; reason: RefusalReason; diff: ClaimDiff };
+/** `claims` names what mismatched for tests and logs; only `categories` may be sent to a caller. */
+export type ClaimVerdict = { ok: true } | { ok: false; reason: RefusalReason; categories: ClaimCategory[]; claims: string[] };
 
 /** The tag and branch patterns a registration gets when its owner names none. */
 export function defaultRefs(packName: string, defaultBranch: string): string[] {
@@ -67,45 +68,44 @@ export function parseWorkflowRef(value: string): { repository: string; path: str
   return { repository: segments.slice(0, 2).join("/"), path: segments.slice(2).join("/") };
 }
 
+const CATEGORY_OF: Record<string, ClaimCategory> = { "oidc.fork": "fork", "oidc.workflow": "workflow", "oidc.environment": "environment" };
 const REASON_ORDER: RefusalReason[] = ["oidc.fork", "oidc.workflow", "oidc.environment"];
 
 /**
  * Whether a verified token and the job it names fit one registration. Every mismatched claim is
- * reported, not the first, so a publisher fixes a workflow in one pass.
+ * counted, not the first, so the nearest registration can be chosen.
  */
 export function matchRegistration(claims: ActionsClaims, job: string | null, reg: Registration): ClaimVerdict {
-  const diff: ClaimDiff = {};
+  const missed: string[] = [];
   const reasons = new Set<RefusalReason>();
-  const miss = (claim: string, reason: RefusalReason, expected: unknown, actual: unknown) => {
-    diff[claim] = { expected, actual };
+  const miss = (claim: string, reason: RefusalReason) => {
+    missed.push(claim);
     reasons.add(reason);
   };
 
-  if (claims.repository_id !== reg.repository_id) miss("repository_id", "oidc.fork", reg.repository_id, claims.repository_id);
-  if (claims.repository_owner_id !== reg.repository_owner_id) miss("repository_owner_id", "oidc.fork", reg.repository_owner_id, claims.repository_owner_id);
+  if (claims.repository_id !== reg.repository_id) miss("repository_id", "oidc.fork");
+  if (claims.repository_owner_id !== reg.repository_owner_id) miss("repository_owner_id", "oidc.fork");
 
   const allowedEvents = reg.events.filter((e) => !(FORBIDDEN_EVENTS as readonly string[]).includes(e));
-  if ((FORBIDDEN_EVENTS as readonly string[]).includes(claims.event_name)) miss("event_name", "oidc.fork", allowedEvents, claims.event_name);
-  else if (!allowedEvents.includes(claims.event_name)) miss("event_name", "oidc.workflow", allowedEvents, claims.event_name);
+  if ((FORBIDDEN_EVENTS as readonly string[]).includes(claims.event_name)) miss("event_name", "oidc.fork");
+  else if (!allowedEvents.includes(claims.event_name)) miss("event_name", "oidc.workflow");
 
   const workflow = parseWorkflowRef(claims.job_workflow_ref);
-  if (workflow?.repository !== claims.repository || workflow.path !== reg.workflow) {
-    miss("job_workflow_ref", "oidc.workflow", `${claims.repository}/${reg.workflow}`, workflow ? `${workflow.repository}/${workflow.path}` : claims.job_workflow_ref);
-  }
+  if (workflow?.repository !== claims.repository || workflow.path !== reg.workflow) miss("job_workflow_ref", "oidc.workflow");
 
   if (reg.environment !== null) {
-    if (claims.environment !== reg.environment) miss("environment", "oidc.environment", reg.environment, claims.environment ?? null);
+    if (claims.environment !== reg.environment) miss("environment", "oidc.environment");
   } else if (claims.ref_protected !== "true") {
-    miss("ref_protected", "oidc.workflow", "true", claims.ref_protected);
+    miss("ref_protected", "oidc.workflow");
   }
 
-  if (!reg.refs.some((pattern) => refMatches(pattern, claims.ref))) miss("ref", "oidc.workflow", reg.refs, claims.ref);
+  if (!reg.refs.some((pattern) => refMatches(pattern, claims.ref))) miss("ref", "oidc.workflow");
 
-  if (job === null || job === "") miss("job", "oidc.workflow", `any job but ${PACK_CODE_JOB}`, null);
-  else if (job === PACK_CODE_JOB) miss("job", "oidc.workflow", `any job but ${PACK_CODE_JOB}`, job);
+  if (job === null || job === "" || job === PACK_CODE_JOB) miss("job", "oidc.workflow");
 
-  const reason = REASON_ORDER.find((r) => reasons.has(r));
-  return reason === undefined ? { ok: true } : { ok: false, reason, diff };
+  const ordered = REASON_ORDER.filter((r) => reasons.has(r));
+  const reason = ordered[0];
+  return reason === undefined ? { ok: true } : { ok: false, reason, categories: ordered.map((r) => CATEGORY_OF[r]!), claims: missed };
 }
 
 /** The first registration the token fits, else the nearest miss: fewest mismatched claims, then the lowest id. */
@@ -113,12 +113,12 @@ export function chooseRegistration(
   claims: ActionsClaims,
   job: string | null,
   regs: readonly Registration[],
-): { ok: true; registration: Registration } | { ok: false; reason: RefusalReason; diff: ClaimDiff } | null {
-  let nearest: { reason: RefusalReason; diff: ClaimDiff; reg: Registration } | undefined;
+): { ok: true; registration: Registration } | { ok: false; reason: RefusalReason; categories: ClaimCategory[] } | null {
+  let nearest: { reason: RefusalReason; categories: ClaimCategory[]; claims: string[] } | undefined;
   for (const reg of [...regs].sort((a, b) => a.id.localeCompare(b.id))) {
     const verdict = matchRegistration(claims, job, reg);
     if (verdict.ok) return { ok: true, registration: reg };
-    if (!nearest || Object.keys(verdict.diff).length < Object.keys(nearest.diff).length) nearest = { ...verdict, reg };
+    if (!nearest || verdict.claims.length < nearest.claims.length) nearest = verdict;
   }
-  return nearest ? { ok: false, reason: nearest.reason, diff: nearest.diff } : null;
+  return nearest ? { ok: false, reason: nearest.reason, categories: nearest.categories } : null;
 }

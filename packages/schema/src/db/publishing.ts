@@ -70,6 +70,8 @@ export const upload_credentials = sqliteTable(
     user_id: text("user_id").references(() => users.id),
     /** The verified token claims the version's provenance is read from; never client input. */
     claims: text("claims"),
+    /** The token's `jti`: one token buys one credential. */
+    oidc_jti: text("oidc_jti"),
     staging_key: text("staging_key").notNull(),
     lifetime: text("lifetime", { enum: STAGING_LIFETIMES }).notNull(),
     issued_at: text("issued_at").notNull(),
@@ -88,6 +90,7 @@ export const upload_credentials = sqliteTable(
   (t) => [
     uniqueIndex("upload_credentials_secret_hash_unique").on(t.secret_hash),
     uniqueIndex("upload_credentials_staging_key_unique").on(t.staging_key),
+    uniqueIndex("upload_credentials_oidc_jti_unique").on(t.oidc_jti),
     index("upload_credentials_scope_idx").on(t.scope_id),
     check("upload_credentials_source_check", sql`${t.source} in (${inList(CREDENTIAL_SOURCES)})`),
     check("upload_credentials_lifetime_check", sql`${t.lifetime} in (${inList(STAGING_LIFETIMES)})`),

@@ -95,6 +95,16 @@
           "dataset": "domain_events_test"
         }
       ],
+      "ratelimits": [
+        {
+          "name": "RATE_LIMIT",
+          "namespace_id": "3003",
+          "simple": {
+            "limit": 1000,
+            "period": 60
+          }
+        }
+      ],
       "version_metadata": {
         "binding": "CF_VERSION_METADATA"
       }
@@ -214,6 +224,16 @@
           "binding": "SELFTEST_HMAC_KEY",
           "store_id": "00000000000000000000190000000004",
           "secret_name": "selftest-hmac-key-staging"
+        }
+      ],
+      "ratelimits": [
+        {
+          "name": "RATE_LIMIT",
+          "namespace_id": "2003",
+          "simple": {
+            "limit": 30,
+            "period": 60
+          }
         }
       ],
       "version_metadata": {
@@ -347,6 +367,16 @@
           "binding": "SELFTEST_HMAC_KEY",
           "store_id": "00000000000000000000290000000004",
           "secret_name": "selftest-hmac-key"
+        }
+      ],
+      "ratelimits": [
+        {
+          "name": "RATE_LIMIT",
+          "namespace_id": "1003",
+          "simple": {
+            "limit": 30,
+            "period": 60
+          }
         }
       ],
       "version_metadata": {

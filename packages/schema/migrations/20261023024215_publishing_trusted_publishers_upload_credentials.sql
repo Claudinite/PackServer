@@ -30,6 +30,7 @@ CREATE TABLE `upload_credentials` (
 	`trusted_publisher_id` text,
 	`user_id` text,
 	`claims` text,
+	`oidc_jti` text,
 	`staging_key` text NOT NULL,
 	`lifetime` text NOT NULL,
 	`issued_at` text NOT NULL,
@@ -49,4 +50,5 @@ CREATE TABLE `upload_credentials` (
 --> statement-breakpoint
 CREATE UNIQUE INDEX `upload_credentials_secret_hash_unique` ON `upload_credentials` (`secret_hash`);--> statement-breakpoint
 CREATE UNIQUE INDEX `upload_credentials_staging_key_unique` ON `upload_credentials` (`staging_key`);--> statement-breakpoint
+CREATE UNIQUE INDEX `upload_credentials_oidc_jti_unique` ON `upload_credentials` (`oidc_jti`);--> statement-breakpoint
 CREATE INDEX `upload_credentials_scope_idx` ON `upload_credentials` (`scope_id`);

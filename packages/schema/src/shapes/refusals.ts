@@ -27,9 +27,11 @@ export const REFUSAL_REASONS = [
 export const RefusalReason = z.enum(REFUSAL_REASONS);
 export type RefusalReason = z.infer<typeof RefusalReason>;
 
-/** One claim an OIDC token carried that the registration does not allow, beside the value it wanted. */
-export const ClaimMismatch = z.object({ expected: z.unknown(), actual: z.unknown() });
-export const ClaimDiff = z.record(z.string(), ClaimMismatch);
+/** What kind of claim an OIDC token got wrong. Never the registered values, which would tell any GitHub user what a registration holds. */
+export const CLAIM_CATEGORIES = ["fork", "workflow", "environment"] as const;
+export const ClaimCategory = z.enum(CLAIM_CATEGORIES);
+export type ClaimCategory = z.infer<typeof ClaimCategory>;
+export const ClaimDiff = z.array(ClaimCategory);
 export type ClaimDiff = z.infer<typeof ClaimDiff>;
 
 export const Refusal = z.object({

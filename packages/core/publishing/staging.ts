@@ -27,11 +27,6 @@ export function stagingPrefix(scope: string): string {
   return `staging/${scope}/`;
 }
 
-/** Whether a draft of `bytes` fits beside what the scope already holds. */
-export function fitsStagingCap(heldBytes: number, bytes: number): boolean {
-  return heldBytes + bytes <= STAGING_PREFIX_CAP_BYTES;
-}
-
 export function objectExpiry(issuedAtMs: number, lifetime: StagingLifetime): number {
   return issuedAtMs + STAGING_LIFETIME_MS[lifetime];
 }

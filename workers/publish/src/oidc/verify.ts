@@ -5,6 +5,8 @@ import { findKey, type JwksDeps } from "./jwks";
 
 export const SUPPORTED_ALGORITHM = "RS256";
 const CLOCK_TOLERANCE_S = 10;
+/** GitHub tokens live minutes; an older one is a leaked or replayed token, and one issued in the future is forged. */
+const MAX_TOKEN_AGE = "10m";
 
 export type RejectedBecause = "malformed" | "algorithm" | "issuer" | "audience" | "key" | "signature" | "expired" | "not-yet-valid" | "claims";
 
@@ -47,6 +49,7 @@ export async function verifyActionsToken(token: string, deps: VerifyDeps): Promi
       requiredClaims: ["exp", "iat"],
       currentDate: new Date(deps.clock.now()),
       clockTolerance: CLOCK_TOLERANCE_S,
+      maxTokenAge: MAX_TOKEN_AGE,
     });
     const claims = ActionsClaims.safeParse(verified);
     return claims.success ? { ok: true, claims: claims.data } : { ok: false, because: "claims" };

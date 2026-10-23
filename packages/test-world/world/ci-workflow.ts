@@ -128,7 +128,7 @@ export function createCi(driver: Driver, alias: (name: string) => string) {
     }
     if (res.status < 400) return ok(body);
     if (typeof body.reason === "string" && KNOWN.has(body.reason)) {
-      const diff = body.claim_diff as Record<string, { expected: unknown; actual: unknown }> | undefined;
+      const diff = Array.isArray(body.claim_diff) ? (body.claim_diff as string[]) : undefined;
       return new Refusal(body.reason as RefusalReason, diff ? { claimDiff: diff } : {});
     }
     throw new InfrastructureError(`the publish Worker answered ${res.status} with no refusal: ${res.text.slice(0, 200)}`);
@@ -167,13 +167,13 @@ export function createCi(driver: Driver, alias: (name: string) => string) {
     return self;
   }
 
-  /** The client's own PUT to the presigned URL; a storage refusal is reported as the signature failing, which is what it is. */
+  /** The client's own PUT to the presigned URL; a refused precondition is reported as the object already existing and any other storage refusal as the signature failing. */
   async function putTo(presigned: Presigned, body: Uint8Array, over: { url?: string } = {}): Promise<true | Refusal> {
     const headers = Object.fromEntries(Object.entries(presigned.headers).filter(([k]) => k.toLowerCase() !== "content-length"));
     const res = await fetch(over.url ?? presigned.url, { method: "PUT", headers, body: body as Uint8Array<ArrayBuffer> });
     if (res.ok) return true;
     await res.arrayBuffer();
-    return new Refusal("signature");
+    return new Refusal(res.status === 412 ? "exists" : "signature");
   }
 
   /** Tries to open a multipart upload with a URL that was presigned for one PUT. */
@@ -261,14 +261,21 @@ export function createCi(driver: Driver, alias: (name: string) => string) {
           if (!bytes) throw new InfrastructureError(`no staged object ${key}`);
           return createHash("sha256").update(bytes).digest("hex");
         },
-        /** Stages `mib` mebibytes the way a publisher does, in objects of at most 3 MiB, each through its own credential. */
-        async fill(workflow: CiWorkflow, pack: string, mib: number): Promise<void> {
+        /** Stages `mib` mebibytes the way a publisher does, in objects of at most 3 MiB, each through its own credential; `confirm: false` leaves the uploads unreported. */
+        async fill(workflow: CiWorkflow, pack: string, mib: number, options: { confirm?: boolean } = {}): Promise<void> {
           let remaining = mib * MiB;
           for (let i = 0; remaining > 0; i++) {
             const size = Math.min(MAX_UPLOAD_BYTES, remaining);
             const credential = await workflow.exchange(pack, `0.0.${i}`);
             if (credential instanceof Refusal) throw new InfrastructureError(`filling staging was refused at object ${i}: ${credential.reason}`);
-            const staged = await credential.upload(archiveBytes(size, i));
+            const bytes = archiveBytes(size, i);
+            let staged: unknown;
+            if (options.confirm === false) {
+              const url = await credential.presign(bytes.byteLength);
+              staged = url instanceof Refusal ? url : await putTo(url, bytes);
+            } else {
+              staged = await credential.upload(bytes);
+            }
             if (staged instanceof Refusal) throw new InfrastructureError(`filling staging was refused at object ${i}: ${staged.reason}`);
             remaining -= size;
           }

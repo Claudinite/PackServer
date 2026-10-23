@@ -1,6 +1,6 @@
 import { analyticsStats } from "@packserver/http";
 import {
-  cryptoRng, d1Port, durableObjectsPort, kvPort, queuePort, r2Port, readSecret, systemClock, workerRuntime,
+  cryptoRng, d1Port, durableObjectsPort, kvPort, queuePort, r2Port, rateLimitPort, readSecret, systemClock, workerRuntime,
   type WorkerRuntime,
 } from "@packserver/ports/cloudflare";
 import { GITHUB_OIDC_ISSUER, GITHUB_OIDC_JWKS_URL, OIDC_AUDIENCE } from "@packserver/core/publishing";
@@ -22,6 +22,7 @@ export interface Env {
   VALIDATOR: Fetcher;
   REQUEST_OUTCOMES: AnalyticsEngineDataset;
   DOMAIN_EVENTS: AnalyticsEngineDataset;
+  RATE_LIMIT: RateLimit;
   SELFTEST_HMAC_KEY: Secret;
   STAGING_S3_ENDPOINT: Secret;
   STAGING_S3_ACCESS_KEY_ID: Secret;
@@ -34,7 +35,7 @@ export interface Env {
   CLOCK?: Fetcher & { now(): Promise<number> };
 }
 
-export type PublishPorts = Pick<Ports, "clock" | "rng" | "d1" | "stats" | "kv" | "r2" | "queues" | "durableObjects">;
+export type PublishPorts = Pick<Ports, "clock" | "rng" | "d1" | "stats" | "kv" | "r2" | "queues" | "durableObjects" | "rateLimits">;
 export interface PublishServices {
   validator: Fetcher;
 }
@@ -87,6 +88,7 @@ export async function createRuntime(env: Env): Promise<PublishRuntime> {
       d1: d1Port(env.DB),
       stats: analyticsStats({ request_outcomes: env.REQUEST_OUTCOMES, domain_events: env.DOMAIN_EVENTS }),
       kv: { CACHE_KV: kvPort(env.CACHE_KV) },
+      rateLimits: { RATE_LIMIT: rateLimitPort(env.RATE_LIMIT) },
       r2: { PACKS_STAGING: r2Port(env.PACKS_STAGING) },
       queues: { NOTIFY_QUEUE: queuePort(env.NOTIFY_QUEUE) },
       durableObjects: durableObjectsPort({

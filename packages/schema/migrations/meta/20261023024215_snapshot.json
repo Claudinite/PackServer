@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "808c22d0-61e5-4829-8f81-336018416255",
+  "id": "14a3854f-810a-4122-9e80-5c2873ca49b6",
   "prevId": "e8611faf-edb9-4b57-a42e-2b39256b0696",
   "tables": {
     "credentials": {
@@ -1015,6 +1015,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "oidc_jti": {
+          "name": "oidc_jti",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "staging_key": {
           "name": "staging_key",
           "type": "text",
@@ -1091,6 +1098,13 @@
           "name": "upload_credentials_staging_key_unique",
           "columns": [
             "staging_key"
+          ],
+          "isUnique": true
+        },
+        "upload_credentials_oidc_jti_unique": {
+          "name": "upload_credentials_oidc_jti_unique",
+          "columns": [
+            "oidc_jti"
           ],
           "isUnique": true
         },

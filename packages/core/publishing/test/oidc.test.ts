@@ -65,21 +65,21 @@ describe("matchRegistration", () => {
     const renamed = claims({ repository: "acme/packs-v2", job_workflow_ref: "acme/packs-v2/.github/workflows/publish.yml@refs/tags/gcp/1.0.0" });
     expect(matchRegistration(renamed, "publish", reg())).toEqual({ ok: true });
     const transferred = matchRegistration(claims({ repository_owner_id: "2002" }), "publish", reg());
-    expect(transferred).toMatchObject({ ok: false, reason: "oidc.fork", diff: { repository_owner_id: { expected: "1001", actual: "2002" } } });
+    expect(transferred).toMatchObject({ ok: false, reason: "oidc.fork", categories: ["fork"], claims: ["repository_owner_id"] });
     const recreated = matchRegistration(claims({ repository_id: "501" }), "publish", reg());
-    expect(recreated).toMatchObject({ ok: false, reason: "oidc.fork", diff: { repository_id: { expected: "500", actual: "501" } } });
+    expect(recreated).toMatchObject({ ok: false, reason: "oidc.fork", categories: ["fork"], claims: ["repository_id"] });
   });
 
   it.each(["pull_request", "pull_request_target", "workflow_run"])("refuses %s even when the registration lists it", (event) => {
     const verdict = matchRegistration(claims({ event_name: event }), "publish", reg({ events: ["push", event] }));
-    expect(verdict).toMatchObject({ ok: false, reason: "oidc.fork", diff: { event_name: { expected: ["push"], actual: event } } });
+    expect(verdict).toMatchObject({ ok: false, reason: "oidc.fork", categories: ["fork"], claims: ["event_name"] });
   });
 
   it("refuses an event outside the set, a ref outside the patterns and a different workflow file", () => {
-    expect(matchRegistration(claims({ event_name: "schedule" }), "publish", reg())).toMatchObject({ ok: false, reason: "oidc.workflow", diff: { event_name: { actual: "schedule" } } });
-    expect(matchRegistration(claims({ ref: "refs/heads/feature" }), "publish", reg())).toMatchObject({ ok: false, reason: "oidc.workflow", diff: { ref: { actual: "refs/heads/feature" } } });
+    expect(matchRegistration(claims({ event_name: "schedule" }), "publish", reg())).toMatchObject({ ok: false, reason: "oidc.workflow", categories: ["workflow"], claims: ["event_name"] });
+    expect(matchRegistration(claims({ ref: "refs/heads/feature" }), "publish", reg())).toMatchObject({ ok: false, reason: "oidc.workflow", categories: ["workflow"], claims: ["ref"] });
     const other = claims({ job_workflow_ref: "acme/packs/.github/workflows/other.yml@refs/tags/gcp/1.0.0" });
-    expect(matchRegistration(other, "publish", reg())).toMatchObject({ ok: false, reason: "oidc.workflow", diff: { job_workflow_ref: { expected: "acme/packs/.github/workflows/publish.yml", actual: "acme/packs/.github/workflows/other.yml" } } });
+    expect(matchRegistration(other, "publish", reg())).toMatchObject({ ok: false, reason: "oidc.workflow", categories: ["workflow"], claims: ["job_workflow_ref"] });
   });
 
   it("refuses a reusable workflow from another repository", () => {
@@ -88,22 +88,23 @@ describe("matchRegistration", () => {
   });
 
   it("requires the registered environment, and ref_protected only when there is none", () => {
-    expect(matchRegistration(claims({ environment: undefined }), "publish", reg())).toMatchObject({ ok: false, reason: "oidc.environment", diff: { environment: { expected: "release", actual: null } } });
+    expect(matchRegistration(claims({ environment: undefined }), "publish", reg())).toMatchObject({ ok: false, reason: "oidc.environment", categories: ["environment"], claims: ["environment"] });
     expect(matchRegistration(claims({ environment: "staging" }), "publish", reg())).toMatchObject({ ok: false, reason: "oidc.environment" });
     const bare = reg({ environment: null });
-    expect(matchRegistration(claims({ environment: undefined, ref_protected: "false" }), "publish", bare)).toMatchObject({ ok: false, diff: { ref_protected: { expected: "true", actual: "false" } } });
+    expect(matchRegistration(claims({ environment: undefined, ref_protected: "false" }), "publish", bare)).toMatchObject({ ok: false, claims: ["ref_protected"] });
     expect(matchRegistration(claims({ environment: undefined, ref_protected: "true" }), "publish", bare)).toEqual({ ok: true });
     expect(matchRegistration(claims({ ref_protected: "false" }), "publish", reg())).toEqual({ ok: true });
   });
 
   it("refuses the job cn's template reserves for pack code, and a job it was not told", () => {
-    expect(matchRegistration(claims(), PACK_CODE_JOB, reg())).toMatchObject({ ok: false, reason: "oidc.workflow", diff: { job: { actual: PACK_CODE_JOB } } });
-    expect(matchRegistration(claims(), null, reg())).toMatchObject({ ok: false, diff: { job: { actual: null } } });
+    expect(matchRegistration(claims(), PACK_CODE_JOB, reg())).toMatchObject({ ok: false, reason: "oidc.workflow", claims: ["job"] });
+    expect(matchRegistration(claims(), null, reg())).toMatchObject({ ok: false, claims: ["job"] });
   });
 
-  it("names every mismatched claim, not the first", () => {
+  it("counts every mismatched claim and reports categories, never values", () => {
     const verdict = matchRegistration(claims({ ref: "refs/heads/x", event_name: "schedule", environment: undefined }), "publish", reg());
-    expect(verdict.ok ? [] : Object.keys(verdict.diff).sort()).toEqual(["environment", "event_name", "ref"]);
+    expect(verdict.ok ? [] : verdict.claims.sort()).toEqual(["environment", "event_name", "ref"]);
+    expect(verdict).toMatchObject({ categories: ["workflow", "environment"] });
   });
 });
 
