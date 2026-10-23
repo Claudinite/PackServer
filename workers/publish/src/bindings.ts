@@ -1,5 +1,6 @@
+import { analyticsStats } from "@packserver/http";
 import {
-  cryptoRng, d1Port, durableObjectsPort, kvPort, queuePort, r2Port, statsPort, systemClock, workerRuntime, workflowPort,
+  cryptoRng, d1Port, durableObjectsPort, kvPort, queuePort, r2Port, systemClock, workerRuntime, workflowPort,
   type WorkerRuntime,
 } from "@packserver/ports/cloudflare";
 import type { Ports } from "@packserver/ports";
@@ -36,7 +37,7 @@ export function createRuntime(env: Env): PublishRuntime {
       clock: systemClock,
       rng: cryptoRng,
       d1: d1Port(env.DB),
-      stats: statsPort({ request: env.REQUEST_OUTCOMES, domain: env.DOMAIN_EVENTS }),
+      stats: analyticsStats({ request_outcomes: env.REQUEST_OUTCOMES, domain_events: env.DOMAIN_EVENTS }),
       kv: { CACHE_KV: kvPort(env.CACHE_KV) },
       r2: { PACKS_STAGING: r2Port(env.PACKS_STAGING) },
       queues: { NOTIFY_QUEUE: queuePort(env.NOTIFY_QUEUE) },

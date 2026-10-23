@@ -1,4 +1,5 @@
-import { cryptoRng, statsPort, systemClock, workerRuntime, type WorkerRuntime } from "@packserver/ports/cloudflare";
+import { analyticsStats } from "@packserver/http";
+import { cryptoRng, systemClock, workerRuntime, type WorkerRuntime } from "@packserver/ports/cloudflare";
 import type { Ports } from "@packserver/ports";
 
 export interface Env {
@@ -18,6 +19,6 @@ export function createRuntime(env: Env): ProberRuntime {
   return workerRuntime("prober", env, {
     clock: systemClock,
     rng: cryptoRng,
-    stats: statsPort({ request: env.REQUEST_OUTCOMES, domain: env.DOMAIN_EVENTS }),
+    stats: analyticsStats({ request_outcomes: env.REQUEST_OUTCOMES, domain_events: env.DOMAIN_EVENTS, synthetic_probes: env.SYNTHETIC_PROBES }),
   });
 }

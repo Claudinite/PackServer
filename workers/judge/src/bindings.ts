@@ -1,4 +1,5 @@
-import { accessPort, cryptoRng, kvPort, statsPort, systemClock, workerRuntime, type WorkerRuntime } from "@packserver/ports/cloudflare";
+import { analyticsStats } from "@packserver/http";
+import { accessPort, cryptoRng, kvPort, systemClock, workerRuntime, type WorkerRuntime } from "@packserver/ports/cloudflare";
 import type { Ports } from "@packserver/ports";
 
 export interface Env {
@@ -27,7 +28,7 @@ export function createRuntime(env: Env): JudgeRuntime {
     {
       clock: systemClock,
       rng: cryptoRng,
-      stats: statsPort({ request: env.REQUEST_OUTCOMES, domain: env.DOMAIN_EVENTS }),
+      stats: analyticsStats({ request_outcomes: env.REQUEST_OUTCOMES, domain_events: env.DOMAIN_EVENTS, gate_results: env.GATE_RESULTS, budget: env.BUDGET }),
       kv: { GATES_KV: kvPort(env.GATES_KV) },
       access: accessPort(env.ACCESS),
     },
