@@ -19,6 +19,7 @@ import {
   type R2,
   type Rng,
   type Stats,
+  type TelemetryConfig,
   type StatsPoint,
   type Transparency,
   type Uploads,
@@ -203,6 +204,17 @@ export class FakeStats implements Stats {
   readonly points: StatsPoint[] = [];
   write(point: StatsPoint) {
     this.points.push(point);
+  }
+}
+
+export class FakeTelemetryConfig implements TelemetryConfig {
+  mode_: "normal" | "economy" = "normal";
+  keys_: { ipMaster?: string; principalKey?: string } = { ipMaster: "fake-ip-hash-master", principalKey: "fake-principal-hash-key" };
+  async keys() {
+    return this.keys_;
+  }
+  async mode() {
+    return this.mode_;
   }
 }
 

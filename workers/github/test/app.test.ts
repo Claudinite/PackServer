@@ -1,4 +1,4 @@
-import { describeWorkerShell, dummyEnv, expectPortsMatchTrustTable, SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
+import { describeWorkerShell, dummyEnv, expectTelemetryWired, expectPortsMatchTrustTable, SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
 import { createFakePorts } from "@packserver/ports/fakes";
 import { describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
@@ -12,7 +12,7 @@ const runtime = (missingBindings: string[] = []): GithubRuntime => ({
   missingBindings,
   missingSecrets: [],
   ports: fakes,
-  services: {},
+  services: { secrets: { webhook: async () => "", appId: async () => "", privateKey: async () => "" }, fetch },
 });
 
 describeWorkerShell({
@@ -37,5 +37,29 @@ describe("github bindings seam", () => {
     expect(built.missingSecrets).toContain("SELFTEST_HMAC_KEY");
     expect(built.missingBindings).toContain("CF_VERSION_METADATA");
     expect(built.version.releaseId).toBe("unreleased");
+  });
+});
+
+describe("github telemetry wiring", () => {
+  it("reads the hash keys and telemetry_mode through its bindings", () => expectTelemetryWired("github", createRuntime));
+});
+
+describe("webhook body cap", () => {
+  const post = (body: BodyInit, headers: Record<string, string> = {}) =>
+    createApp(runtime()).fetch(new Request("https://registry.test/hooks/github", { method: "POST", body, headers }));
+
+  it("refuses an oversize body with no content-length, and one whose content-length lies", async () => {
+    const big = new Uint8Array(1024 * 1024 + 1);
+    const chunked = new ReadableStream({ start: (c) => (c.enqueue(big), c.close()) });
+    const a = await createApp(runtime()).fetch(new Request("https://registry.test/hooks/github", { method: "POST", body: chunked, duplex: "half" } as RequestInit));
+    const b = await post(big, { "content-length": "10" });
+    expect(a.status).toBe(401);
+    expect(await b.text()).toBe(await a.text());
+  });
+
+  it("reads exactly up to the cap", async () => {
+    const { readCappedBody } = await import("../src/webhooks/route");
+    expect(await readCappedBody(new Request("https://x.test", { method: "POST", body: new Uint8Array(100) }), 100)).toHaveLength(100);
+    expect(await readCappedBody(new Request("https://x.test", { method: "POST", body: new Uint8Array(101) }), 100)).toBeNull();
   });
 });

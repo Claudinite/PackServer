@@ -31,7 +31,7 @@ export interface GitHubRepo {
 export interface GitHubTreeEntry {
   path: string;
   mode: string;
-  type: "blob" | "tree";
+  type: "blob" | "tree" | "commit";
   sha: string;
   size?: number;
 }
@@ -150,6 +150,13 @@ export interface StatsPoint {
   doubles: number[];
   index?: string;
 }
+/** The secrets telemetry hashes under and the `telemetry_mode` flag, read through the Worker's bindings. */
+export interface TelemetryConfig {
+  /** A key whose secret cannot be read is absent; the hash it would make is then left out of the event. */
+  keys(): Promise<{ ipMaster?: string; principalKey?: string }>;
+  mode(): Promise<"normal" | "economy">;
+}
+
 export interface Stats {
   write(point: StatsPoint): void;
 }
@@ -272,6 +279,7 @@ export interface SinglePorts {
   turnstile: Turnstile;
   access: AccessIdentity;
   stats: Stats;
+  telemetry: TelemetryConfig;
   cache: Cache;
   uploads: Uploads;
   audit: AuditSink;

@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 
 export function buildRunner(outdir) {
   return build({
-    entryPoints: ["a-main.ts", "a-worker.ts", "a-corpus.ts"],
+    entryPoints: ["a-main.ts", "a-worker.ts", "a-corpus.ts", "b-main.ts", "b-worker.ts", "b-preload.ts", "b-corpus.ts"],
     absWorkingDir: import.meta.dirname,
     outdir,
     outExtension: { ".js": ".mjs" },

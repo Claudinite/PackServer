@@ -16,7 +16,9 @@
         "ENVIRONMENT": "test",
         "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
         "AUDIT_S3_ACCESS_KEY_ID": "test-audit-access-key-id",
-        "AUDIT_S3_SECRET_ACCESS_KEY": "test-audit-secret-access-key"
+        "AUDIT_S3_SECRET_ACCESS_KEY": "test-audit-secret-access-key",
+        "IP_HASH_MASTER_KEY": "test-ip-hash-master-key",
+        "PRINCIPAL_HASH_KEY": "test-principal-hash-key"
       },
       "d1_databases": [
         {
@@ -24,6 +26,12 @@
           "database_name": "registry-test",
           "database_id": "00000000-0000-0000-0000-010000000001",
           "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "TELEMETRY_KV",
+          "id": "00000000000000000000020000000007"
         }
       ],
       "r2_buckets": [
@@ -114,6 +122,12 @@
           "migrations_dir": "../../packages/schema/migrations"
         }
       ],
+      "kv_namespaces": [
+        {
+          "binding": "TELEMETRY_KV",
+          "id": "00000000000000000000120000000007"
+        }
+      ],
       "r2_buckets": [
         {
           "binding": "PACKS_STAGING",
@@ -179,6 +193,16 @@
           "binding": "AUDIT_S3_SECRET_ACCESS_KEY",
           "store_id": "00000000000000000000190000000004",
           "secret_name": "audit-s3-secret-access-key-staging"
+        },
+        {
+          "binding": "IP_HASH_MASTER_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "ip-hash-master-key-staging"
+        },
+        {
+          "binding": "PRINCIPAL_HASH_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "principal-hash-key-staging"
         }
       ],
       "version_metadata": {
@@ -211,6 +235,12 @@
           "database_name": "registry",
           "database_id": "00000000-0000-0000-0000-210000000001",
           "migrations_dir": "../../packages/schema/migrations"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "TELEMETRY_KV",
+          "id": "00000000000000000000220000000007"
         }
       ],
       "r2_buckets": [
@@ -278,6 +308,16 @@
           "binding": "AUDIT_S3_SECRET_ACCESS_KEY",
           "store_id": "00000000000000000000290000000004",
           "secret_name": "audit-s3-secret-access-key"
+        },
+        {
+          "binding": "IP_HASH_MASTER_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "ip-hash-master-key"
+        },
+        {
+          "binding": "PRINCIPAL_HASH_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "principal-hash-key"
         }
       ],
       "version_metadata": {

@@ -1,6 +1,6 @@
-import { analyticsStats } from "@packserver/http";
+import { analyticsStats, createIsolateTelemetry } from "@packserver/http";
 import {
-  cryptoRng, d1Port, durableObjectsPort, embedderFrom, queuePort, r2Port, r2ReadPort, sandboxPort, systemClock,
+  cryptoRng, d1Port, durableObjectsPort, embedderFrom, kvPort, queuePort, r2Port, r2ReadPort, readSecret, sandboxPort, systemClock,
   vectorIndexPort, workerRuntime, workflowPort, type WorkerRuntime,
 } from "@packserver/ports/cloudflare";
 import type { Ports, R2, R2Read } from "@packserver/ports";
@@ -28,13 +28,16 @@ export interface Env {
   VALIDATION_EVENTS: AnalyticsEngineDataset;
   SIGNING_KEY_ACTIVE: string | SecretsStoreSecret;
   SELFTEST_HMAC_KEY: string | SecretsStoreSecret;
+  IP_HASH_MASTER_KEY: string | SecretsStoreSecret;
+  PRINCIPAL_HASH_KEY: string | SecretsStoreSecret;
+  TELEMETRY_KV: KVNamespace;
   CF_VERSION_METADATA: WorkerVersionMetadata;
 }
 
 /** The only Worker that writes the public and private buckets; staging and `ops` are read-only here. */
 export type ValidatorPorts = Pick<
   Ports,
-  "clock" | "rng" | "d1" | "stats" | "queues" | "workflows" | "durableObjects" | "vectors" | "embedder" | "sandbox"
+  "clock" | "rng" | "d1" | "stats" | "queues" | "workflows" | "durableObjects" | "vectors" | "embedder" | "sandbox" | "kv" | "telemetry"
 > & {
   r2: Readonly<{ PACKS_STAGING: R2Read; OPS_BUCKET: R2Read } & Record<"PACKS_PUBLIC" | "PACKS_PRIVATE" | "VALIDATION_REPORTS", R2>>;
 };
@@ -43,7 +46,10 @@ export interface ValidatorServices {
 }
 export type ValidatorRuntime = WorkerRuntime<ValidatorPorts, ValidatorServices>;
 
+const isolateTelemetry = createIsolateTelemetry();
+
 export function createRuntime(env: Env): ValidatorRuntime {
+  const telemetryKv = kvPort(env.TELEMETRY_KV);
   return workerRuntime(
     "validator",
     env,
@@ -51,7 +57,12 @@ export function createRuntime(env: Env): ValidatorRuntime {
       clock: systemClock,
       rng: cryptoRng,
       d1: d1Port(env.DB),
+      kv: { TELEMETRY_KV: telemetryKv },
       stats: analyticsStats({ request_outcomes: env.REQUEST_OUTCOMES, domain_events: env.DOMAIN_EVENTS, validation_events: env.VALIDATION_EVENTS }),
+      telemetry: isolateTelemetry.config(
+        { ipMaster: () => readSecret(env.IP_HASH_MASTER_KEY), principalKey: () => readSecret(env.PRINCIPAL_HASH_KEY), kv: telemetryKv },
+        systemClock,
+      ),
       r2: {
         PACKS_STAGING: r2ReadPort(env.PACKS_STAGING),
         OPS_BUCKET: r2ReadPort(env.OPS_BUCKET),
