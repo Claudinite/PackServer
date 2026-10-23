@@ -18,7 +18,7 @@ scenario("IT-AUDIT-001 Every sensitive action writes an entry", async (world) =>
   for (const e of entries) {
     expect(e).toMatchObject({ actor_id: alice.id, actor_kind: "user" });
     expect(e.target).toBe(`target:${e.action}`);
-    expect(Date.parse(e.at)).toBeGreaterThan(0);
+    expect(e.at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
   }
   expect(entries.map((e) => e.action).sort()).toEqual([...SENSITIVE].sort());
 
