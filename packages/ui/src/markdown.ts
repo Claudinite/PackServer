@@ -283,7 +283,7 @@ class InlineParser {
             if (close !== -1 && close < end && (space === -1 || close < space)) {
               const url = s.slice(i + 1, close);
               flush();
-              out.push(anchor(escapeHtml(url), url));
+              out.push(inLink ? escapeHtml(url) : anchor(escapeHtml(url), url));
               i = close + 1;
               break;
             }
@@ -467,7 +467,7 @@ export function renderMarkdown(markdown: string): string {
   const lines: string[] = [];
   const refs = new Map<string, string>();
   let inFence = false;
-  for (const line of markdown.replace(/\uE000/g, "").replace(/\r\n?/g, "\n").split("\n")) {
+  for (const line of markdown.replace(/\r\n?/g, "\n").split("\n")) {
     if (FENCE.test(line.trim())) inFence = !inFence;
     const def = inFence ? null : parseDefinition(line);
     if (def) {

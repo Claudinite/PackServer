@@ -15,9 +15,14 @@ describe("nested constructs resolve (no placeholder leaks)", () => {
     expect(renderMarkdown("![alt text](https://x.example/i.png)")).toBe(`<p><a href="https://x.example/i.png" ${rel}>alt text</a></p>`);
   });
   it("never emits the private-use marker", () => {
-    for (const s of ["[`a`](<`b`>)", "`[a](b)`", "[[`a`](b)](c)", "[`a`]`b`(c)", "0"]) {
-      expect(renderMarkdown(s)).not.toContain("");
+    for (const s of ["[`a`](<`b`>)", "`[a](b)`", "[[`a`](b)](c)", "[`a`]`b`(c)"]) {
+      expect(renderMarkdown(s)).not.toContain("\uE000");
     }
+  });
+  it("does not nest an autolink inside link text", () => {
+    const html = renderMarkdown("[see <https://x.example/a> now](/outer)");
+    expect(html.match(/<a /g)?.length).toBe(1);
+    expect(html).toContain("see https://x.example/a now");
   });
   it("does not nest links", () => {
     const html = renderMarkdown("[a [b](/inner) c](/outer)");

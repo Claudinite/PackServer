@@ -1,3 +1,4 @@
+import { parseFragment } from "parse5";
 import { describe, expect, it } from "vitest";
 import {
   FileText, ManifestLine, NeedsYouQueue, Price, PRICES, Pulse, PublisherMark, Rating, ScoreRing, Severity, ShapeGlyph, StatusChip,
@@ -113,10 +114,16 @@ describe("hover card and manifest accessibility", () => {
     expect(out).toContain(`href="#sheet"`);
     expect(out).not.toContain("tabindex");
   });
-  it("never puts a paragraph inside a span", () => {
+  it("keeps the tooltip's list inside the popup once parsed as HTML", () => {
     const out = html(<ManifestHover counts={{ guards: 1, tasks: 0, checks: 0, skills: 0, githubActions: false }} />);
-    expect(out.startsWith(`<p class="manifest">`)).toBe(true);
-    expect(out.match(/<p[ >]/g)?.length).toBe(1);
+    const fragment = parseFragment(out);
+    const find = (node: { childNodes?: unknown[]; nodeName?: string; attrs?: { name: string; value: string }[] }, test: (n: typeof node) => boolean): (typeof node)[] =>
+      [...(test(node) ? [node] : []), ...((node.childNodes ?? []) as (typeof node)[]).flatMap((c) => find(c, test))];
+    const pop = find(fragment, (n) => n.nodeName === "span" && (n.attrs ?? []).some((a) => a.name === "class" && a.value === "pop"));
+    expect(pop).toHaveLength(1);
+    expect(find(pop[0] as typeof fragment, (n) => n.nodeName === "li")).toHaveLength(4);
+    expect(find(fragment, (n) => n.nodeName === "ul")).toHaveLength(1);
+    expect(find(fragment, (n) => n.nodeName === "p")).toHaveLength(0);
   });
   it("styles Escape dismissal and ships the script that sets it", () => {
     expect(pageCss()).toContain("html.esc .hc:hover .pop");

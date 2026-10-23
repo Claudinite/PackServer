@@ -9,6 +9,7 @@ export const HOVER_DISMISS_SCRIPT =
 
 /**
  * Hover tells: a tooltip-sized breakdown, no actions. Opens on hover and keyboard focus.
+ * The popup is block-level content (lists): never place a HoverCard inside a `<p>`, whose parser closes it before the list. Use a `div`.
  * A label that already holds a link or button passes `focusable={false}` so it is one tab stop, not two.
  */
 export function HoverCard(props: { label: Child; children: Child; align?: "left" | "right"; focusable?: boolean }) {

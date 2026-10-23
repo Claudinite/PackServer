@@ -14,5 +14,8 @@
   },
   "dependencies": {
     "hono": "catalog:"
+  },
+  "devDependencies": {
+    "parse5": "catalog:"
   }
 }

@@ -51,7 +51,7 @@ export function ManifestLine(props: LineProps) {
 export function ManifestHover(props: LineProps) {
   const c = props.counts;
   return (
-    <p class="manifest">
+    <div class="manifest">
       <HoverCard label={<ManifestText {...props} />} focusable={!props.drawerId}>
         <ul>
           <li>{plural(c.guards, "guard")}</li>
@@ -60,6 +60,6 @@ export function ManifestHover(props: LineProps) {
           <li>{plural(c.skills, "skill")}</li>
         </ul>
       </HoverCard>
-    </p>
+    </div>
   );
 }

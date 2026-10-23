@@ -36,7 +36,7 @@ describe("renderMarkdown on 5 MiB of hostile input", () => {
       const elapsed = performance.now() - started;
       expect(typeof html).toBe("string");
       expect(elapsed).toBeLessThan(BUDGET_MS);
-      expect(html).not.toMatch(/<script|/);
+      expect(html).not.toMatch(/<script|\uE000/);
     }, 30_000);
   }
 
