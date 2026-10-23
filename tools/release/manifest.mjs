@@ -8,8 +8,8 @@
 //   node tools/release/manifest.mjs show --release <id>
 //   node tools/release/manifest.mjs tag-message --release <id>    the JSON an annotated release tag carries
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
-import ts from "typescript";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { readJsonc } from "../../infra/lib/plan.mjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -66,11 +66,13 @@ export const readManifest = (store, id) => {
   return JSON.parse(raw.toString("utf8"));
 };
 export const writeManifest = (store, manifest) => store.put(manifestKey(manifest.release_id), `${JSON.stringify(manifest, null, 2)}\n`);
-export const liveRelease = (store) => {
+export const liveRecord = (store) => {
   const raw = store.get(LIVE_POINTER);
-  return raw ? (JSON.parse(raw.toString("utf8")).release_id ?? null) : null;
+  return raw ? JSON.parse(raw.toString("utf8")) : { release_id: null };
 };
-export const writeLive = (store, id) => store.put(LIVE_POINTER, `${JSON.stringify({ release_id: id })}\n`);
+export const liveRelease = (store) => liveRecord(store).release_id ?? null;
+/** `rolledBackFrom` marks a pointer reached by a rollback, so a second default-target rollback cannot walk further back. */
+export const writeLive = (store, id, rolledBackFrom) => store.put(LIVE_POINTER, `${JSON.stringify({ release_id: id, ...(rolledBackFrom ? { rolled_back_from: rolledBackFrom } : {}) })}\n`);
 
 /** Read-modify-write of one manifest; the caller's function returns the new manifest. */
 export function update(store, id, change) {
@@ -88,10 +90,23 @@ const git = defaultGit;
  */
 export function containerChanges(commit, root = REPO, gitFn = defaultGit) {
   const found = gitFn(["diff", "--name-only", commit, "HEAD", "--", "sandbox"]).split("\n").filter(Boolean).map((f) => `${f} changed`);
-  for (const { name } of WORKERS) {
-    const path = `workers/${name}/wrangler.jsonc`;
-    const containersOf = (text) => JSON.stringify(ts.parseConfigFileTextToJson(path, text).config?.env?.production?.containers ?? null);
-    if (containersOf(gitFn(["show", `${commit}:${path}`])) !== containersOf(readFileSync(join(root, path), "utf8"))) found.push(`${path} env.production.containers changed`);
+  const tmp = mkdtempSync(join(tmpdir(), "containers-"));
+  try {
+    for (const { name } of WORKERS) {
+      const path = `workers/${name}/wrangler.jsonc`;
+      const containers = (file) => JSON.stringify(readJsonc(file).env?.production?.containers ?? null);
+      let before = "null";
+      try {
+        const old = join(tmp, `${name}.jsonc`);
+        writeFileSync(old, gitFn(["show", `${commit}:${path}`]));
+        before = containers(old);
+      } catch {
+        // A Worker added since the incumbent has nothing to compare with; only its own containers count.
+      }
+      if (before !== containers(join(root, path))) found.push(`${path} env.production.containers changed`);
+    }
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
   }
   return found;
 }

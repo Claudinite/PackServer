@@ -11,7 +11,7 @@ on:
         type: string
         required: true
       release:
-        description: Release id to roll back (default, the live release)
+        description: Release id to roll back. Default is the live release; pass the id explicitly for a release whose promote failed, or to go back past a rollback
         type: string
         required: false
 

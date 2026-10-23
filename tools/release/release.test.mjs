@@ -6,9 +6,9 @@ import { readConfigs } from "../../infra/lib/plan.mjs";
 import { TEST_STRINGS } from "../test-strings.mjs";
 import { layOutIncumbent } from "../build-n-minus-1.mjs";
 import { REPO, WORKERS, bundleKey, manifestKey, opsStore, sha256 } from "./common.mjs";
-import { changedWorkers, classifyMigrations, cut, liveRelease, newManifest, readManifest, releaseId, update, withStage, withState, writeLive, writeManifest } from "./manifest.mjs";
+import { changedWorkers, classifyMigrations, containerChanges, cut, liveRecord, liveRelease, newManifest, readManifest, releaseId, update, withStage, withState, writeLive, writeManifest } from "./manifest.mjs";
 import { promote } from "./promote.mjs";
-import { rollbackRelease } from "./rollback.mjs";
+import { defaultTarget, rollbackRelease } from "./rollback.mjs";
 import { grepBundles, signSelftest, verifyCandidate } from "./verify.mjs";
 
 const NAMES = WORKERS.map((w) => w.name);
@@ -174,6 +174,15 @@ describe("cut", () => {
     expect(cut({ ...next, gitFn: git("", false) }).state).toBe("verifying");
   });
 
+  it("tolerates a Worker added since the incumbent", () => {
+    const git = (args) => {
+      if (args[0] === "diff") return "";
+      if (args[1].includes("prober")) throw new Error("path does not exist in that commit");
+      return readFileSync(join(REPO, args[1].split(":")[1]), "utf8");
+    };
+    expect(containerChanges("abc", REPO, git)).toEqual([]);
+  });
+
   it("never overwrites a bundle key", () => {
     const store = memoryStore();
     store.put(bundleKey("1.0.0+aaaaaaa", "validator"), "different");
@@ -320,6 +329,18 @@ describe("rollback", () => {
     expect(done.workers.sort()).toEqual(["admin", "validator", "web"]);
     expect(readManifest(store, id).state).toBe("rolled_back");
     expect(liveRelease(store)).toBe("1.0.0+aaaaaaa");
+  });
+
+  it("refuses a second default-target rollback, which would go two releases back", () => {
+    const store = verifyingRelease(["web"]);
+    update(store, id, (m) => withState(withState(m, "rolling", "t"), "live", "t"));
+    writeLive(store, id);
+    expect(defaultTarget(store)).toBe(id);
+    rollbackRelease({ run: fakeWrangler().run, store, id, reason: "bad", now: "t", log: quiet });
+    expect(liveRecord(store)).toEqual({ release_id: "1.0.0+aaaaaaa", rolled_back_from: id });
+    expect(() => defaultTarget(store)).toThrow(/reached by rolling back 2.0.0\+ccccccc/);
+    writeLive(store, "3.0.0+ddddddd");
+    expect(defaultTarget(store)).toBe("3.0.0+ddddddd");
   });
 
   it("is idempotent once rolled back", () => {

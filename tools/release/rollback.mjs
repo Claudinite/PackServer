@@ -5,7 +5,7 @@
 //   node tools/release/rollback.mjs --reason <text> [--release <id>]    (default: the live release)
 import { pathToFileURL } from "node:url";
 import { WORKERS, argOf, opsStore, spawnRunner, wrangler } from "./common.mjs";
-import { liveRelease, readManifest, update, withState, writeLive } from "./manifest.mjs";
+import { liveRecord, readManifest, update, withState, writeLive } from "./manifest.mjs";
 
 /**
  * `only` limits the rollback to Workers a failed promote had already moved. The manifest leaves its
@@ -32,8 +32,17 @@ export function rollbackRelease({ run, store, id, reason, only, root, now = new 
     if (failed.length) return { ...m, rollback: record };
     return { ...(m.state === "rolled_back" ? m : withState(m, "rolled_back", now)), rollback: record };
   });
-  if (failed.length === 0) writeLive(store, manifest.incumbent_release);
+  if (failed.length === 0) writeLive(store, manifest.incumbent_release, id);
   return record;
+}
+
+/** With no release id the target is the live one, unless live is itself the product of a rollback. */
+export function defaultTarget(store) {
+  const live = liveRecord(store);
+  if (live.rolled_back_from) {
+    throw new Error(`live is ${live.release_id}, reached by rolling back ${live.rolled_back_from}; a default rollback would go two releases back. Pass --release explicitly to go further.`);
+  }
+  return live.release_id ?? null;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -41,7 +50,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const store = opsStore(spawnRunner);
     const reason = argOf(process.argv, "--reason");
     if (!reason) throw new Error("--reason is required");
-    const id = argOf(process.argv, "--release") || liveRelease(store);
+    const id = argOf(process.argv, "--release") || defaultTarget(store);
     if (!id) throw new Error("no live release to roll back");
     const record = rollbackRelease({ run: spawnRunner, store, id, reason });
     console.log(JSON.stringify(record, null, 2));
