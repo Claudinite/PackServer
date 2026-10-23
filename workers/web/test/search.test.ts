@@ -65,6 +65,14 @@ describe("GET /api/search", () => {
     }
   });
 
+  it("passes on mcp's degraded 503 as it was made", async () => {
+    const t = app(() => Response.json({ error: "unavailable", degraded: true }, { status: 503 }));
+    const res = await t.app.request("/api/search?q=x");
+    expect(res.status).toBe(503);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(await res.json()).toEqual({ error: "unavailable", degraded: true });
+  });
+
   it("shares an anonymous answer briefly, never a signed-in one nor a degraded one", async () => {
     const ok = app(() => Response.json({ cards: [], degraded: false }));
     expect((await ok.app.request("/api/search?q=x")).headers.get("cache-control")).toContain("public");

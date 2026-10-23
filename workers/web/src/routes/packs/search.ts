@@ -45,6 +45,7 @@ async function ask(c: Context<WebEnv>, path: string, init?: RequestInit): Promis
     return Response.json({ error: "unavailable" }, { status: 503, headers: NO_STORE });
   }
   if (res.status === 400) return Response.json(await res.json().catch(() => ({ error: "invalid_request" })), { status: 400, headers: NO_STORE });
+  if (res.status === 503) return Response.json(await res.json().catch(() => ({ error: "unavailable" })), { status: 503, headers: NO_STORE });
   if (!res.ok) return Response.json({ error: "unavailable" }, { status: 503, headers: NO_STORE });
   return { json: await res.json().catch(() => undefined) };
 }
