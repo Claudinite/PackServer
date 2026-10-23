@@ -1,5 +1,6 @@
+import { analyticsStats } from "@packserver/http";
 import {
-  cryptoRng, d1Port, durableObjectsPort, embedderFrom, queuePort, r2Port, r2ReadPort, sandboxPort, statsPort, systemClock,
+  cryptoRng, d1Port, durableObjectsPort, embedderFrom, queuePort, r2Port, r2ReadPort, sandboxPort, systemClock,
   vectorIndexPort, workerRuntime, workflowPort, type WorkerRuntime,
 } from "@packserver/ports/cloudflare";
 import type { Ports, R2, R2Read } from "@packserver/ports";
@@ -50,7 +51,7 @@ export function createRuntime(env: Env): ValidatorRuntime {
       clock: systemClock,
       rng: cryptoRng,
       d1: d1Port(env.DB),
-      stats: statsPort({ request: env.REQUEST_OUTCOMES, domain: env.DOMAIN_EVENTS }),
+      stats: analyticsStats({ request_outcomes: env.REQUEST_OUTCOMES, domain_events: env.DOMAIN_EVENTS, validation_events: env.VALIDATION_EVENTS }),
       r2: {
         PACKS_STAGING: r2ReadPort(env.PACKS_STAGING),
         OPS_BUCKET: r2ReadPort(env.OPS_BUCKET),
