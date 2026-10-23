@@ -1,0 +1,107 @@
+import { TRUST_TABLE, type WorkerName } from "@packserver/ports";
+import type { TestHarness } from "wrangler";
+import { WorldFakes } from "../fakes/compose";
+import { createWorldHarness, type HarnessOptions, type WorldHarness } from "../harness";
+import { InfrastructureError } from "../world/errors";
+import { filterInvocations, invocationsFromLogs, type InvocationFilter, type InvocationView } from "../world/recorder";
+import type { ApiRequest, ApiResponse, Capability, Driver, McpCredentials, UiActions } from "./driver";
+import { McpClient } from "./mcp";
+import { encodeBody, toApiResponse, VersionObserver } from "./observe";
+
+/** What the harness serves when a version is uploaded without a release tag. */
+const HARNESS_RELEASE = "unreleased";
+const MIGRATION_BINDING = "DB";
+
+/**
+ * All Workers in one local workerd under `createTestHarness`, each under its `env.test`, with
+ * the fake Workers behind their service bindings and every outbound fetch answered by the fakes.
+ */
+export class InProcessDriver implements Driver {
+  readonly kind = "inprocess" as const;
+  static readonly CAPABILITIES: readonly Capability[] = ["fakes", "clock", "reset", "recorder", "mcp"];
+  readonly capabilities: ReadonlySet<Capability> = new Set(InProcessDriver.CAPABILITIES);
+  ui?: UiActions;
+  /** Where the running harness listens, for a browser to reach it. */
+  baseUrl?: URL;
+  private harness!: WorldHarness;
+  private readonly versions = new VersionObserver(new Set([HARNESS_RELEASE]));
+  private logCursor = 0;
+  fakes!: WorldFakes;
+
+  constructor(private readonly options: HarnessOptions = {}) {}
+
+  get surfaces(): readonly WorkerName[] {
+    return this.harness.workers;
+  }
+  get server(): TestHarness {
+    return this.harness.server;
+  }
+
+  async start(): Promise<void> {
+    this.harness = createWorldHarness(this.options);
+    this.fakes = new WorldFakes(this.harness.server, this.harness.fakes);
+    this.fakes.net.listen();
+    this.baseUrl = (await this.harness.server.listen()).url;
+  }
+
+  http = {
+    request: async (req: ApiRequest): Promise<ApiResponse> => {
+      if (!this.harness.workers.includes(req.surface)) throw new InfrastructureError(`the ${req.surface} Worker is not booted`);
+      const headers = { ...req.headers };
+      const url = `http://${req.surface}.internal${req.path}`;
+      const body = encodeBody(req.body, headers);
+      const res = await this.harness.server.getWorker(req.surface).fetch(url, { method: req.method, headers, ...(body === undefined ? {} : { body }) } as never);
+      const out = await toApiResponse(res as unknown as Response);
+      this.versions.check(url, out);
+      return out;
+    },
+  };
+
+  mcp = { client: async (credentials?: McpCredentials) => new McpClient((req) => this.http.request(req), credentials) };
+
+  observedVersions() {
+    return this.versions.observed;
+  }
+  deployedVersion() {
+    return HARNESS_RELEASE;
+  }
+
+  /** The Worker that owns the shared registry database applies its migrations; every Worker's `env.test` points at the same one. */
+  private async migrate(): Promise<void> {
+    const owner = this.harness.workers.find((w) => MIGRATION_BINDING in TRUST_TABLE[w].d1);
+    if (owner) await this.harness.server.getWorker(owner).applyD1Migrations(MIGRATION_BINDING);
+  }
+
+  async reset(): Promise<void> {
+    await this.harness.server.reset();
+    await this.migrate();
+    this.harness.server.clearLogs();
+    this.logCursor = 0;
+    await this.beginScenario();
+  }
+
+  async beginScenario(): Promise<void> {
+    await this.fakes.reset();
+  }
+
+  recorder = {
+    invocations: (filter?: InvocationFilter): InvocationView[] =>
+      filterInvocations(filter?.raw ? this.fakes.net.requests() : invocationsFromLogs(this.harness.server.getLogs().map((l) => l.message)), filter),
+    clear: () => this.harness.server.clearLogs(),
+  };
+
+  async diagnostics(): Promise<Record<string, unknown>> {
+    const logs = this.harness.server.getLogs().slice(this.logCursor);
+    return {
+      driver: this.kind,
+      logs: logs.map((l) => `${l.level} ${l.message}`),
+      invocations: this.recorder.invocations(),
+      egress: this.fakes.net.requests(),
+    };
+  }
+
+  async dispose(): Promise<void> {
+    this.fakes?.net.close();
+    await this.harness?.server.close();
+  }
+}
