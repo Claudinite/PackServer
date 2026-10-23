@@ -1,6 +1,7 @@
 # Builds the two validation sandbox images and runs the bomb corpus through sandbox A on Docker.
-# Its own workflow so push CI stays inside its 120 s budget: it runs on sandbox/** changes, weekly,
-# and on demand. A build that is not a pull request also publishes the image and its digest.
+# Its own workflow so push CI stays inside its 120 s budget: it runs on sandbox/** changes
+# and on demand (the repo permits no cron but the Claudinite scheduler, so the weekly run is a
+# dispatch of this workflow). A build that is not a pull request also publishes the image and its digest.
 name: sandbox-images
 
 on:
@@ -13,8 +14,6 @@ on:
     paths:
       - "sandbox/**"
       - ".github/workflows/sandbox-images.yml"
-  schedule:
-    - cron: "17 4 * * 1"
   workflow_dispatch:
 
 permissions:
