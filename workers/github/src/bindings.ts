@@ -1,13 +1,12 @@
 import { analyticsStats, createIsolateTelemetry } from "@packserver/http";
-import {
-  cryptoRng, d1Port, systemClock, workerRuntime, kvPort, readSecret, type WorkerRuntime,
-} from "@packserver/ports/cloudflare";
+import { cryptoRng, d1Port, kvPort, readSecret, systemClock, workerRuntime, type WorkerRuntime } from "@packserver/ports/cloudflare";
 import type { Ports } from "@packserver/ports";
 
 export interface Env {
   WORKER: string;
   ENVIRONMENT: string;
   DB: D1Database;
+  GITHUB_APP_ID: string | SecretsStoreSecret;
   GITHUB_APP_PRIVATE_KEY: string | SecretsStoreSecret;
   GITHUB_WEBHOOK_SECRET: string | SecretsStoreSecret;
   GITHUB_CODE_SEARCH_TOKEN: string | SecretsStoreSecret;
@@ -21,21 +20,40 @@ export interface Env {
 }
 
 export type GithubPorts = Pick<Ports, "clock" | "rng" | "d1" | "stats" | "telemetry" | "kv">;
-export type GithubRuntime = WorkerRuntime<GithubPorts>;
+
+/** What the webhook and tree routes need beyond the shared ports; secrets are read when a request needs them. */
+export interface GithubServices {
+  secrets: { webhook(): Promise<string>; appId(): Promise<string>; privateKey(): Promise<string> };
+  /** GitHub's REST API; the only outside host this Worker calls. */
+  fetch: typeof fetch;
+}
+export type GithubRuntime = WorkerRuntime<GithubPorts, GithubServices>;
 
 const isolateTelemetry = createIsolateTelemetry();
 
 export function createRuntime(env: Env): GithubRuntime {
   const telemetryKv = kvPort(env.TELEMETRY_KV);
-  return workerRuntime("github", env, {
-    clock: systemClock,
-    rng: cryptoRng,
-    d1: d1Port(env.DB),
-    kv: { TELEMETRY_KV: telemetryKv },
-    stats: analyticsStats({ request_outcomes: env.REQUEST_OUTCOMES, domain_events: env.DOMAIN_EVENTS }),
-    telemetry: isolateTelemetry.config(
-      { ipMaster: () => readSecret(env.IP_HASH_MASTER_KEY), principalKey: () => readSecret(env.PRINCIPAL_HASH_KEY), kv: telemetryKv },
-      systemClock,
-    ),
-  });
+  return workerRuntime(
+    "github",
+    env,
+    {
+      clock: systemClock,
+      rng: cryptoRng,
+      d1: d1Port(env.DB),
+      kv: { TELEMETRY_KV: telemetryKv },
+      stats: analyticsStats({ request_outcomes: env.REQUEST_OUTCOMES, domain_events: env.DOMAIN_EVENTS }),
+      telemetry: isolateTelemetry.config(
+        { ipMaster: () => readSecret(env.IP_HASH_MASTER_KEY), principalKey: () => readSecret(env.PRINCIPAL_HASH_KEY), kv: telemetryKv },
+        systemClock,
+      ),
+    },
+    {
+      secrets: {
+        webhook: () => readSecret(env.GITHUB_WEBHOOK_SECRET),
+        appId: () => readSecret(env.GITHUB_APP_ID),
+        privateKey: () => readSecret(env.GITHUB_APP_PRIVATE_KEY),
+      },
+      fetch: (input, init) => fetch(input, init),
+    },
+  );
 }

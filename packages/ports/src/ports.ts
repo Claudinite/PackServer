@@ -31,7 +31,7 @@ export interface GitHubRepo {
 export interface GitHubTreeEntry {
   path: string;
   mode: string;
-  type: "blob" | "tree";
+  type: "blob" | "tree" | "commit";
   sha: string;
   size?: number;
 }

@@ -23,7 +23,7 @@ describe("foundation tables", () => {
 
   it("declares exactly the foundation tables and each later area's", () => {
     expect(tables.map(getTableName).sort()).toEqual(
-      ["credentials", "feature_flags", "identities", "pack_versions", "packs", "recent_activity", "retired_names", "scope_members", "scopes", "session_revocations", "users"],
+      ["credentials", "feature_flags", "github_deliveries", "github_installations", "github_issue_states", "identities", "pack_versions", "packs", "recent_activity", "retired_names", "scope_members", "scopes", "session_revocations", "users"],
     );
   });
 
