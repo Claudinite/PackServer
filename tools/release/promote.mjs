@@ -22,9 +22,18 @@ export function promote({ run, store, id, root, now = () => new Date().toISOStri
     log(`${r.status === 0 ? "ok  " : "FAIL"} ${name} -> 100%`);
     if (r.status !== 0) {
       log((r.stderr || r.stdout).slice(-2000));
-      if (moved.length) rollbackRelease({ run, store, id, reason: `promote failed at ${name}`, only: moved, root, now: now(), log });
-      else update(store, id, (m) => ({ ...withState(m, "rolled_back", now()), rollback: { at: now(), reason: `promote failed at ${name}`, to_release: m.incumbent_release, workers: [], failed: [] } }));
-      throw new Error(`promote stopped at ${name}; ${moved.length} Worker(s) moved back`);
+      const reason = `promote failed at ${name}`;
+      update(store, id, (m) => ({ ...withState(m, "failed", now()), failure: { at: now(), reason, moved: [...moved] } }));
+      // Nothing moved means every version is still at 0%: `failed` is the whole story. Otherwise put the moved ones back;
+      // if that cannot finish the state stays `failed` and rollback.mjs can be re-run to complete it.
+      if (moved.length) {
+        try {
+          rollbackRelease({ run, store, id, reason, only: moved, root, now: now(), log });
+        } catch (e) {
+          log(`rollback of the moved Workers did not complete: ${e.message}`);
+        }
+      }
+      throw new Error(`promote stopped at ${name}; ${moved.length} Worker(s) had moved`);
     }
     moved.push(name);
   }

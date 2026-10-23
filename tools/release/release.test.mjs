@@ -1,11 +1,11 @@
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readConfigs } from "../../infra/lib/plan.mjs";
 import { TEST_STRINGS } from "../test-strings.mjs";
 import { layOutIncumbent } from "../build-n-minus-1.mjs";
-import { WORKERS, bundleKey, manifestKey, opsStore, sha256 } from "./common.mjs";
+import { REPO, WORKERS, bundleKey, manifestKey, opsStore, sha256 } from "./common.mjs";
 import { changedWorkers, classifyMigrations, cut, liveRelease, newManifest, readManifest, releaseId, update, withStage, withState, writeLive, writeManifest } from "./manifest.mjs";
 import { promote } from "./promote.mjs";
 import { rollbackRelease } from "./rollback.mjs";
@@ -144,6 +144,36 @@ describe("cut", () => {
     expect(() => cut({ run, store: memoryStore(), digests: digestsOf(defaultBundle), bundlesDir: tracked(bundlesDir()), id: "1.0.0+aaaaaaa", commit: "a".repeat(40), now: "t" })).toThrow(/not the one built/);
   });
 
+  it("does not cut a release id whose manifest has moved past verifying, and can re-cut one still verifying", () => {
+    const store = memoryStore();
+    const args = (s) => ({ run: fakeWrangler().run, store: s, digests: digestsOf(defaultBundle), bundlesDir: tracked(bundlesDir()), id: "1.0.0+aaaaaaa", commit: "a".repeat(40), now: "t" });
+    const first = cut(args(store));
+    expect(cut(args(store)).state).toBe("verifying");
+    for (const state of ["rolling", "live"]) {
+      writeManifest(store, { ...first, state });
+      expect(() => cut(args(store))).toThrow(new RegExp(`already exists and is ${state}`));
+    }
+    expect(readManifest(store, "1.0.0+aaaaaaa").state).toBe("live");
+  });
+
+  it("refuses when sandbox files or a Worker's containers config moved since the incumbent", () => {
+    const store = memoryStore();
+    const first = cut({ run: fakeWrangler().run, store, digests: digestsOf(defaultBundle), bundlesDir: tracked(bundlesDir()), id: "1.0.0+aaaaaaa", commit: "a".repeat(40), now: "t" });
+    writeManifest(store, { ...first, state: "live", commit: "HEAD" });
+    writeLive(store, first.release_id);
+    const next = { run: fakeWrangler().run, store, digests: digestsOf(defaultBundle), bundlesDir: tracked(bundlesDir()), id: "1.0.1+bbbbbbb", commit: "b".repeat(40), now: "t" };
+    const current = (path) => readFileSync(join(REPO, path), "utf8");
+    const git = (sandbox, containers) => (args) => {
+      if (args[0] === "diff") return args.includes("sandbox") ? sandbox : "";
+      const text = current(args[1].split(":")[1]);
+      return containers && args[1].includes("validator") ? text.replaceAll('"max_instances": 10', '"max_instances": 99') : text;
+    };
+    expect(() => cut({ ...next, gitFn: git("sandbox/image-a/Dockerfile\n", false) })).toThrow(/sandbox\/image-a\/Dockerfile changed/);
+    expect(() => cut({ ...next, gitFn: git("", true) })).toThrow(/validator\/wrangler.jsonc env.production.containers changed/);
+    expect(readManifest(store, "1.0.0+aaaaaaa").state).toBe("live");
+    expect(cut({ ...next, gitFn: git("", false) }).state).toBe("verifying");
+  });
+
   it("never overwrites a bundle key", () => {
     const store = memoryStore();
     store.put(bundleKey("1.0.0+aaaaaaa", "validator"), "different");
@@ -242,11 +272,20 @@ describe("promote", () => {
     expect(liveRelease(store)).toBe("1.0.0+aaaaaaa");
   });
 
-  it("records a rolled_back release when the very first Worker fails", () => {
+  it("leaves a defined failed state when Workers moved but there is no incumbent to go back to", () => {
+    const store = verified(["validator", "publish"]);
+    update(store, id, (m) => ({ ...m, workers: { ...m.workers, validator: { ...m.workers.validator, incumbent: null } } }));
+    const { run } = fakeWrangler({ failOn: (w, a) => w === "publish" && a[1] === "deploy" });
+    expect(() => promote({ run, store, id, log: quiet })).toThrow(/1 Worker/);
+    expect(readManifest(store, id)).toMatchObject({ state: "failed", failure: { moved: ["validator"] } });
+  });
+
+  it("records a failed release when the very first Worker fails", () => {
     const store = verified();
     const { run } = fakeWrangler({ failOn: () => true });
     expect(() => promote({ run, store, id, log: quiet })).toThrow(/0 Worker/);
-    expect(readManifest(store, id).state).toBe("rolled_back");
+    expect(readManifest(store, id)).toMatchObject({ state: "failed", failure: { reason: "promote failed at validator", moved: [] } });
+    expect(liveRelease(store)).toBeNull();
   });
 });
 
@@ -263,6 +302,43 @@ describe("rollback", () => {
     expect(record).toMatchObject({ reason: "bad", to_release: "1.0.0+aaaaaaa", failed: [] });
     expect(readManifest(store, id)).toMatchObject({ state: "rolled_back", rollback: { reason: "bad" } });
     expect(liveRelease(store)).toBe("1.0.0+aaaaaaa");
+  });
+
+  it("keeps state and live untouched until every Worker is back, and a retry finishes only what is left", () => {
+    const store = verifyingRelease(["validator", "web", "admin"]);
+    update(store, id, (m) => withState(withState(m, "rolling", "t"), "live", "t"));
+    writeLive(store, id);
+    const first = fakeWrangler({ failOn: (w) => w === "web" });
+    const partial = rollbackRelease({ run: first.run, store, id, reason: "bad", now: "t", log: quiet });
+    expect(partial).toMatchObject({ workers: ["admin", "validator"], failed: ["web"] });
+    expect(readManifest(store, id).state).toBe("live");
+    expect(liveRelease(store)).toBe(id);
+    const retry = fakeWrangler();
+    const done = rollbackRelease({ run: retry.run, store, id, reason: "retry", now: "u", log: quiet });
+    expect(retry.calls.map((c) => c.worker)).toEqual(["web"]);
+    expect(done).toMatchObject({ failed: [], reason: "bad" });
+    expect(done.workers.sort()).toEqual(["admin", "validator", "web"]);
+    expect(readManifest(store, id).state).toBe("rolled_back");
+    expect(liveRelease(store)).toBe("1.0.0+aaaaaaa");
+  });
+
+  it("is idempotent once rolled back", () => {
+    const store = verifyingRelease(["web"]);
+    update(store, id, (m) => withState(withState(m, "rolling", "t"), "live", "t"));
+    rollbackRelease({ run: fakeWrangler().run, store, id, reason: "bad", now: "t", log: quiet });
+    const again = fakeWrangler();
+    rollbackRelease({ run: again.run, store, id, reason: "bad", now: "u", log: quiet });
+    expect(again.calls).toEqual([]);
+    expect(readManifest(store, id).state).toBe("rolled_back");
+  });
+
+  it("finishes a failed promote by rolling back only the Workers it had moved", () => {
+    const store = verifyingRelease(["validator", "web"]);
+    update(store, id, (m) => ({ ...withState(withState(m, "rolling", "t"), "failed", "t"), failure: { reason: "x", moved: ["validator"] } }));
+    const { run, calls } = fakeWrangler();
+    rollbackRelease({ run, store, id, reason: "retry", now: "t", log: quiet });
+    expect(calls.map((c) => c.worker)).toEqual(["validator"]);
+    expect(readManifest(store, id).state).toBe("rolled_back");
   });
 
   it("refuses a release with no incumbent to go back to", () => {

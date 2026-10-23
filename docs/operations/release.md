@@ -92,8 +92,6 @@ failed self-test or probe-safe run on any Worker stops the job before any Worker
 versions stay uploaded at 0%. There is no ladder, no bake, no Friday freeze and no one-in-flight
 rule beyond the job's own concurrency group; the release is finalised when the job ends. The
 state it leaves is what REQ-OPS-013's judge watch compares the account's audit events against.
-The workflow reaches production only from a manual dispatch on `main` with `release: true`, held at the
-`production` environment's required approval, until the launch-mode controller replaces that gate.
 
 **Launch mode** (`release.yml`, `rollout.yml`, `rollback.yml`): after step 4, **rollout-<worker>**
 in the same order, callees first: validator, publish, github and admin all-at-once (upload → 0% →

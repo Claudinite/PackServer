@@ -7,22 +7,31 @@ import { pathToFileURL } from "node:url";
 import { WORKERS, argOf, opsStore, spawnRunner, wrangler } from "./common.mjs";
 import { liveRelease, readManifest, update, withState, writeLive } from "./manifest.mjs";
 
-/** `only` limits the rollback to Workers a failed promote had already moved. */
+/**
+ * `only` limits the rollback to Workers a failed promote had already moved. The manifest leaves its
+ * state and live.json alone until every Worker is back, and remembers which already are, so a
+ * retry finishes the job; once rolled back, a repeat does nothing.
+ */
 export function rollbackRelease({ run, store, id, reason, only, root, now = new Date().toISOString(), log = console.log }) {
   const manifest = readManifest(store, id);
+  const before = manifest.rollback;
+  only ??= manifest.failure?.moved;
   const targets = WORKERS.map((w) => w.name).filter((n) => manifest.workers[n]?.changed && (!only || only.includes(n))).reverse();
   const missing = targets.filter((n) => !manifest.workers[n].incumbent?.version_id);
   if (missing.length) throw new Error(`release ${id} recorded no incumbent for ${missing.join(", ")}; nothing to roll back to`);
-  const done = [];
+  const done = [...(before?.workers ?? [])];
   const failed = [];
-  for (const name of targets) {
+  for (const name of targets.filter((n) => !done.includes(n))) {
     const to = manifest.workers[name].incumbent.version_id;
     const r = wrangler(run, name, ["rollback", to, "--env", "production", "--yes", "--message", `rollback of ${id}: ${reason}`], { root });
     log(`${r.status === 0 ? "ok  " : "FAIL"} ${name} -> ${to}`);
     (r.status === 0 ? done : failed).push(name);
   }
-  const record = { at: now, reason, to_release: manifest.incumbent_release, workers: done, failed };
-  update(store, id, (m) => ({ ...withState(m, "rolled_back", now), rollback: record }));
+  const record = { at: before?.at ?? now, reason: before?.reason ?? reason, to_release: manifest.incumbent_release, workers: done, failed };
+  update(store, id, (m) => {
+    if (failed.length) return { ...m, rollback: record };
+    return { ...(m.state === "rolled_back" ? m : withState(m, "rolled_back", now)), rollback: record };
+  });
   if (failed.length === 0) writeLive(store, manifest.incumbent_release);
   return record;
 }

@@ -9,19 +9,21 @@
 //   node tools/release/manifest.mjs tag-message --release <id>    the JSON an annotated release tag carries
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import ts from "typescript";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { LIVE_POINTER, REPO, WORKERS, argOf, bundleFile, bundleKey, dbName, liveVersion, manifestKey, opsStore, sha256File, spawnRunner, wranglerOk } from "./common.mjs";
 
 export const KINDS = ["normal", "hotfix", "lifecycle-only", "migration-only", "compat-only", "rollback-deep"];
-export const STATES = ["building", "verifying", "rolling", "live", "finalised", "rolled_back"];
+export const STATES = ["building", "verifying", "rolling", "live", "finalised", "failed", "rolled_back"];
 const NEXT = {
   building: ["verifying"],
   verifying: ["rolling"],
-  rolling: ["live", "rolled_back"],
+  rolling: ["live", "failed", "rolled_back"],
   live: ["finalised", "rolled_back"],
   finalised: ["rolled_back"],
+  failed: ["rolled_back"],
   rolled_back: [],
 };
 export const CONTRACT_MARKER = /^--\s*contract-of:\s*\S+\.sql\s*$/m;
@@ -77,7 +79,22 @@ export function update(store, id, change) {
   return next;
 }
 
-const git = (args) => execFileSync("git", args, { cwd: REPO, encoding: "utf8" });
+const defaultGit = (args) => execFileSync("git", args, { cwd: REPO, encoding: "utf8" });
+const git = defaultGit;
+
+/**
+ * A version upload cannot create or change a Container image; that is a lifecycle release this
+ * pipeline does not build. Refuse rather than ship a Worker whose images did not move with it.
+ */
+export function containerChanges(commit, root = REPO, gitFn = defaultGit) {
+  const found = gitFn(["diff", "--name-only", commit, "HEAD", "--", "sandbox"]).split("\n").filter(Boolean).map((f) => `${f} changed`);
+  for (const { name } of WORKERS) {
+    const path = `workers/${name}/wrangler.jsonc`;
+    const containersOf = (text) => JSON.stringify(ts.parseConfigFileTextToJson(path, text).config?.env?.production?.containers ?? null);
+    if (containersOf(gitFn(["show", `${commit}:${path}`])) !== containersOf(readFileSync(join(root, path), "utf8"))) found.push(`${path} env.production.containers changed`);
+  }
+  return found;
+}
 
 function migrationsSince(commit) {
   const dir = join(REPO, MIGRATIONS);
@@ -91,9 +108,21 @@ function migrationsSince(commit) {
  * Cut a candidate: expand migrations, then one 0% version per Worker whose bundle changed, every
  * bundle copied once into `ops`, and the manifest left in `verifying`. Nothing here moves traffic.
  */
-export function cut({ run, store, digests, bundlesDir, id, commit, now = new Date().toISOString(), root = REPO }) {
+export function cut({ run, store, digests, bundlesDir, id, commit, now = new Date().toISOString(), root = REPO, gitFn = defaultGit }) {
+  // A re-run must not erase the rollback target of a release that already moved past verifying.
+  const existing = store.get(manifestKey(id));
+  if (existing) {
+    const { state } = JSON.parse(existing.toString("utf8"));
+    if (state !== "building" && state !== "verifying") throw new Error(`release ${id} already exists and is ${state}; it is not cut again`);
+  }
   const liveId = liveRelease(store);
   const incumbent = liveId ? readManifest(store, liveId) : null;
+  if (incumbent) {
+    const moved = containerChanges(incumbent.commit, root, gitFn);
+    if (moved.length) throw new Error(`Container images are not shipped by this pipeline (a lifecycle-only release is out of scope), and ${moved.join("; ")} since ${incumbent.release_id}`);
+  } else {
+    console.warn("first release: Container applications are not created by a version upload and need a lifecycle release");
+  }
   const migrations = migrationsSince(incumbent?.commit);
   if (migrations.contract.length) {
     throw new Error(`contract migrations (${migrations.contract.join(", ")}) are irreversible and do not ship through this pipeline`);
