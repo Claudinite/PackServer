@@ -1,7 +1,7 @@
 import {
-  createSession, describeDevice, destroySession, GitHubLoginError, hashSessionId, safeReturnTarget, signInWithGitHub, toHex,
+  createSession, describeDevice, destroySession, GitHubLoginError, hashSessionId, pkceChallenge, safeReturnTarget, signInWithGitHub, toHex,
 } from "@packserver/core/identity";
-import { clientIp, consume, formFields, rateLimited, refusal, sessionCookie, turnstile } from "@packserver/http";
+import { consume, formFields, rateLimitClient, rateLimited, refusal, sessionCookie, turnstile } from "@packserver/http";
 import { Hono, type MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import { sessionPorts, type WebEnv } from "../../context";
@@ -14,7 +14,7 @@ const STATE_COOKIE = "__Host-github-state";
 /** The binding allows 60 a minute for every route; a sign-in attempt costs 6, which is 10 a minute for one address or one account. */
 const AUTH_COST = 6;
 
-const callbackUri = (url: string) => `${new URL(url).origin}/api/auth/github/callback`;
+const callbackUri = (siteOrigin: string) => `${siteOrigin}/api/auth/github/callback`;
 const stateKey = (hash: string) => `github-state:${hash}`;
 const cookie = (value: string, maxAge: number) => `${STATE_COOKIE}=${value}; Max-Age=${maxAge}; Path=/; Secure; HttpOnly; SameSite=Lax`;
 
@@ -23,7 +23,7 @@ routes.post(
   "/auth/github",
   async (c, next) => {
     const { RATE_LIMIT } = c.get("runtime").ports.rateLimits;
-    return (await consume(RATE_LIMIT!, `auth-ip:${clientIp(c)}`, AUTH_COST)) ? next() : rateLimited();
+    return (await consume(RATE_LIMIT!, `auth-ip:${rateLimitClient(c)}`, AUTH_COST)) ? next() : rateLimited();
   },
   (c, next) => (turnstile({ verifier: c.get("runtime").ports.turnstile, fallbackLimiter: c.get("runtime").ports.rateLimits.RATE_LIMIT! }) as unknown as MiddlewareHandler<WebEnv>)(c, next),
   async (c) => {
@@ -31,8 +31,13 @@ routes.post(
     const fields = await formFields(c);
     const next = safeReturnTarget(typeof fields.next === "string" ? fields.next : undefined);
     const state = toHex(runtime.ports.rng.bytes(32));
-    await runtime.ports.kv.SESSIONS_KV!.put(stateKey(await hashSessionId(state)), JSON.stringify({ next }), { ttl_seconds: STATE_TTL_S });
-    const location = await runtime.ports.githubLogin.authorizeUrl({ state, redirectUri: callbackUri(c.req.url) });
+    const verifier = toHex(runtime.ports.rng.bytes(32));
+    await runtime.ports.kv.SESSIONS_KV!.put(stateKey(await hashSessionId(state)), JSON.stringify({ next, verifier }), { ttl_seconds: STATE_TTL_S });
+    const location = await runtime.ports.githubLogin.authorizeUrl({
+      state,
+      redirectUri: callbackUri(runtime.config.siteOrigin),
+      codeChallenge: await pkceChallenge(verifier),
+    });
     return new Response(null, { status: 303, headers: { location, "set-cookie": cookie(state, STATE_TTL_S), "cache-control": "no-store" } });
   },
 );
@@ -55,11 +60,11 @@ routes.get("/auth/github/callback", async (c) => {
   const stored = await kv.get(key);
   if (stored === null) return expired();
   await kv.delete(key);
-  const { next } = JSON.parse(stored) as { next: string };
+  const { next, verifier } = JSON.parse(stored) as { next: string; verifier: string };
 
   let profile;
   try {
-    profile = await runtime.ports.githubLogin.profile({ code, redirectUri: callbackUri(c.req.url) });
+    profile = await runtime.ports.githubLogin.profile({ code, redirectUri: callbackUri(runtime.config.siteOrigin), codeVerifier: verifier });
   } catch (error) {
     if (!(error instanceof GitHubLoginError)) throw error;
     console.log(JSON.stringify({ event: "auth.github_failed", reason: error.message }));

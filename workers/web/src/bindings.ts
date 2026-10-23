@@ -11,6 +11,7 @@ export interface Env {
   ENVIRONMENT: string;
   /** Where the custom domain for `packs-public` answers; set per environment in wrangler vars. */
   CDN_ORIGIN?: string;
+  SITE_ORIGIN: string;
   DB: D1Database;
   SESSIONS_KV: KVNamespace;
   CACHE_KV: KVNamespace;
@@ -40,7 +41,7 @@ export interface WebServices {
   mcp: Fetcher;
   publish: Fetcher;
 }
-export type WebRuntime = WorkerRuntime<WebPorts, WebServices> & { config: { cdnOrigin: string | undefined } };
+export type WebRuntime = WorkerRuntime<WebPorts, WebServices> & { config: { cdnOrigin: string | undefined; siteOrigin: string } };
 
 export function createRuntime(env: Env): WebRuntime {
   const base = workerRuntime(
@@ -59,7 +60,7 @@ export function createRuntime(env: Env): WebRuntime {
     },
     { mcp: env.MCP, publish: env.PUBLISH },
   );
-  return { ...base, config: { cdnOrigin: env.CDN_ORIGIN } };
+  return { ...base, config: { cdnOrigin: env.CDN_ORIGIN, siteOrigin: env.SITE_ORIGIN } };
 }
 
 /** The credentials come from the Secrets Store, so they are read on first use rather than when the Worker starts. */

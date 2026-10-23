@@ -1,3 +1,4 @@
+import { pkceChallenge } from "@packserver/core/identity";
 import type { NetHandler } from "./net";
 
 export const GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize";
@@ -28,7 +29,7 @@ export interface GitHubLoginRequest {
  */
 export class FakeGitHubLogin {
   private accounts = new Map<number, FakeGitHubAccount>();
-  private codes = new Map<string, { account: number; redirectUri: string }>();
+  private codes = new Map<string, { account: number; redirectUri: string; challenge: string }>();
   private tokens = new Map<string, number>();
   private seen: GitHubLoginRequest[] = [];
   private issued = 0;
@@ -53,8 +54,10 @@ export class FakeGitHubLogin {
     const redirectUri = url.searchParams.get("redirect_uri");
     const state = url.searchParams.get("state");
     if (!redirectUri || !state) throw new Error("the authorize URL lacks a redirect_uri or state");
+    const challenge = url.searchParams.get("code_challenge");
+    if (!challenge || url.searchParams.get("code_challenge_method") !== "S256") throw new Error("the authorize URL lacks an S256 code_challenge");
     const code = `code-${++this.issued}-${accountId}`;
-    this.codes.set(code, { account: accountId, redirectUri });
+    this.codes.set(code, { account: accountId, redirectUri, challenge });
     const callback = new URL(redirectUri);
     callback.searchParams.set("code", code);
     callback.searchParams.set("state", state);
@@ -109,6 +112,7 @@ export class FakeGitHubLogin {
     if (!granted) return fail("bad_verification_code");
     this.codes.delete(String(form.get("code")));
     if (form.get("redirect_uri") !== granted.redirectUri) return fail("redirect_uri_mismatch");
+    if (await pkceChallenge(String(form.get("code_verifier") ?? "")) !== granted.challenge) return fail("bad_verification_code");
     const token = `ghu_fake_${this.tokens.size + 1}_${granted.account}`;
     this.tokens.set(token, granted.account);
     return Response.json({ access_token: token, token_type: "bearer" });

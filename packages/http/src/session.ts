@@ -1,4 +1,4 @@
-import { readSession, type LiveSession, type SessionPorts } from "@packserver/core/identity";
+import { isRevoked, readSession, type LiveSession, type SessionPorts } from "@packserver/core/identity";
 import type { Context, MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import { csrf, csrfToken } from "./csrf";
@@ -43,14 +43,14 @@ export function requireSession<E extends SessionEnv = SessionEnv>(): MiddlewareH
 /** The token a page embeds for the session's forms; another session's token does not verify. */
 export const csrfTokenFor = (live: LiveSession): Promise<string> => csrfToken(live.record.csrf_key, live.sid_hash);
 
-/** Unsafe methods need the request's own origin and the session's token (REQ-ABUSE-007). */
-export function sessionCsrf<E extends SessionEnv = SessionEnv>(): MiddlewareHandler<E> {
+/** Unsafe methods need the site's configured origin and the session's token (REQ-ABUSE-007). */
+export function sessionCsrf<E extends SessionEnv = SessionEnv>(siteOrigin: (c: Context<E>) => string): MiddlewareHandler<E> {
   return (c, next) => {
     const live = c.get("session");
     return csrf({
       secret: live?.record.csrf_key ?? "",
       sessionId: () => live?.sid_hash,
-      allowedOrigins: [new URL(c.req.url).origin],
+      allowedOrigins: [siteOrigin(c)],
     })(c, next);
   };
 }
@@ -61,14 +61,23 @@ export const sessionCaller = (c: Context): string | undefined => (c as Context<S
 /** Carries the action a sensitive request claims an assertion for, until the real check replaces this. */
 export const ASSERTION_STUB_HEADER = "x-assertion-stub";
 
+export interface AssertionStubOptions<E extends SessionEnv> {
+  ports: (c: Context<E>) => SessionPorts;
+  environment: (c: Context<E>) => string;
+}
+
 /**
  * Stand-in for the per-action assertion check, which replaces it. It accepts a request that names
- * the action and nothing more, so it proves no ceremony; a request without it is a `step-up` refusal.
+ * the action and nothing more, so it proves no ceremony, and only in the test environment: anywhere
+ * else every request is a `step-up` refusal. A session that was signed out or rotated away is
+ * refused whatever it presents, even while a store replica still serves it.
  */
-export function requireAssertion<E extends SessionEnv = SessionEnv>(action: string): MiddlewareHandler<E> {
+export function requireAssertion<E extends SessionEnv = SessionEnv>(action: string, options: AssertionStubOptions<E>): MiddlewareHandler<E> {
   return async (c, next) => {
-    if (!c.get("session")) return refusal("signed-out");
-    if (c.req.header(ASSERTION_STUB_HEADER) !== action) return refusal("step-up");
+    const live = c.get("session");
+    if (!live) return refusal("signed-out");
+    if (await isRevoked(options.ports(c), live.sid_hash)) return refusal("signed-out");
+    if (options.environment(c) !== "test" || c.req.header(ASSERTION_STUB_HEADER) !== action) return refusal("step-up");
     return next();
   };
 }

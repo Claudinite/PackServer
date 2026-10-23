@@ -1,4 +1,4 @@
-import type { GitHubProfile } from "@packserver/core/identity";
+import { hashSessionId, pkceChallenge, type GitHubProfile } from "@packserver/core/identity";
 import { migratedD1 } from "@packserver/core/identity/testing";
 import { SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
 import { createFakePorts, FakeRateLimit, TURNSTILE_PASS_TOKEN } from "@packserver/ports/fakes";
@@ -15,7 +15,8 @@ const profile: GitHubProfile = {
   adminOrgs: [{ id: "7", login: "acme" }],
 };
 
-function setup(github: { profile: () => Promise<GitHubProfile> } = { profile: async () => profile }) {
+function setup(github: { profile: (request: { codeVerifier: string }) => Promise<GitHubProfile> } = { profile: async () => profile }) {
+  const seen: { redirectUri?: string; codeChallenge?: string; codeVerifier?: string } = {};
   const fakes = createFakePorts({ worker: "web" });
   const { d1, db } = migratedD1();
   fakes.turnstile.verify = async (token: string) => (token === TURNSTILE_PASS_TOKEN ? { success: true, codes: [] } : { success: false, codes: ["invalid-input-response"] });
@@ -29,10 +30,19 @@ function setup(github: { profile: () => Promise<GitHubProfile> } = { profile: as
       ...fakes,
       d1,
       rateLimits: { RATE_LIMIT: new FakeRateLimit(fakes.clock, 60, 60_000) },
-      githubLogin: { authorizeUrl: async ({ state }) => `https://github.com/login/oauth/authorize?state=${state}`, ...github },
+      githubLogin: {
+        authorizeUrl: async ({ state, redirectUri, codeChallenge }) => {
+          Object.assign(seen, { redirectUri, codeChallenge });
+          return `https://github.com/login/oauth/authorize?state=${state}`;
+        },
+        profile: (request) => {
+          seen.codeVerifier = request.codeVerifier;
+          return github.profile(request);
+        },
+      },
     },
     services: { mcp: {} as Fetcher, publish: {} as Fetcher },
-    config: { cdnOrigin: undefined },
+    config: { cdnOrigin: undefined, siteOrigin: ORIGIN },
   };
   const app = createApp(runtime);
   const request = (path: string, init: RequestInit = {}) => app.request(`${ORIGIN}${path}`, init);
@@ -42,7 +52,7 @@ function setup(github: { profile: () => Promise<GitHubProfile> } = { profile: as
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ "cf-turnstile-response": token, next }),
     });
-  return { request, start, db, fakes };
+  return { request, start, db, fakes, seen };
 }
 
 const cookies = (res: Response) => Object.fromEntries(res.headers.getSetCookie().map((line) => [line.split("=")[0]!, line]));
@@ -60,6 +70,14 @@ describe("starting GitHub sign-in", () => {
     expect(res.status).toBe(303);
     expect(res.headers.get("location")).toBe(`https://github.com/login/oauth/authorize?state=${state}`);
     expect(cookies(res)["__Host-github-state"]).toMatch(/Secure; HttpOnly; SameSite=Lax/);
+  });
+
+  it("names the configured site, not the request URL, as the callback, and binds the code to a PKCE verifier", async () => {
+    const h = setup();
+    const flow = await beginFlow(h);
+    await flow.callback();
+    expect(h.seen.redirectUri).toBe(`${ORIGIN}/api/auth/github/callback`);
+    expect(h.seen.codeChallenge).toBe(await pkceChallenge(h.seen.codeVerifier!));
   });
 
   it("refuses without a passing human check", async () => {
@@ -132,6 +150,39 @@ describe("finishing GitHub sign-in", () => {
     expect(await refused.json()).toMatchObject({ reason: "exists", message: expect.stringContaining("original method") });
     expect(cookies(refused)["__Host-session"]).toBeUndefined();
     expect(h.db.prepare("select count(*) as n from identities").get()).toEqual({ n: 1 });
+  });
+});
+
+describe("IT-ACC-021 server-side invalidation", () => {
+  const signedIn = async (h: ReturnType<typeof setup>) => {
+    const done = await (await beginFlow(h)).callback();
+    const cookie = cookies(done)["__Host-session"]!.split(";")[0]!;
+    const sid = cookieValue(cookie);
+    return { cookie, sid, hash: await hashSessionId(sid) };
+  };
+  const revoked = (h: ReturnType<typeof setup>) => (h.db.prepare("select sid_hash from session_revocations").all() as Array<{ sid_hash: string }>).map((r) => r.sid_hash);
+
+  it("records the session as revoked when its owner signs out", async () => {
+    const h = setup();
+    const { cookie, hash } = await signedIn(h);
+    const me = (await (await h.request("/api/auth/session", { headers: { cookie } })).json()) as { csrf: string };
+    const out = await h.request("/api/auth/signout", {
+      method: "POST",
+      headers: { cookie, origin: ORIGIN, "x-csrf-token": me.csrf, "idempotency-key": "signout-key-000001" },
+    });
+    expect(out.status).toBe(200);
+    expect(revoked(h)).toEqual([hash]);
+    expect((await h.request("/api/auth/session", { headers: { cookie } })).status).toBe(401);
+  });
+
+  it("records the browser's previous session as revoked when a new sign-in replaces it", async () => {
+    const h = setup();
+    const first = await signedIn(h);
+    const next = await beginFlow(h);
+    const replaced = await h.request(`/api/auth/github/callback?code=c1&state=${next.state}`, { headers: { cookie: `__Host-github-state=${next.state}; ${first.cookie}` } });
+    expect(replaced.status).toBe(303);
+    expect(revoked(h)).toEqual([first.hash]);
+    expect(cookieValue(cookies(replaced)["__Host-session"]!)).not.toBe(first.sid);
   });
 });
 

@@ -1,6 +1,7 @@
 {
   "name": "web-local",
   "workers_dev": false,
+  "preview_urls": false,
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
@@ -11,10 +12,12 @@
     "test": {
       "name": "web-test",
       "workers_dev": false,
+      "preview_urls": false,
       "vars": {
         "WORKER": "web",
         "ENVIRONMENT": "test",
         "CDN_ORIGIN": "https://packs.test.invalid",
+        "SITE_ORIGIN": "http://web.internal",
         "TURNSTILE_SECRET": "1x0000000000000000000000000000000AA",
         "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
         "GITHUB_APP_CLIENT_ID": "fake-github-client-id",
@@ -89,6 +92,7 @@
     "staging": {
       "name": "web-staging",
       "workers_dev": false,
+      "preview_urls": false,
       "routes": [
         {
           "pattern": "registry-staging.claudinite.com/*",
@@ -98,7 +102,8 @@
       "vars": {
         "WORKER": "web",
         "ENVIRONMENT": "staging",
-        "CDN_ORIGIN": "https://packs-staging.claudinite.com"
+        "CDN_ORIGIN": "https://packs-staging.claudinite.com",
+        "SITE_ORIGIN": "https://registry-staging.claudinite.com"
       },
       "d1_databases": [
         {
@@ -191,6 +196,7 @@
     "production": {
       "name": "web",
       "workers_dev": false,
+      "preview_urls": false,
       "routes": [
         {
           "pattern": "registry.claudinite.com/*",
@@ -204,7 +210,8 @@
       "vars": {
         "WORKER": "web",
         "ENVIRONMENT": "production",
-        "CDN_ORIGIN": "https://packs.claudinite.com"
+        "CDN_ORIGIN": "https://packs.claudinite.com",
+        "SITE_ORIGIN": "https://registry.claudinite.com"
       },
       "d1_databases": [
         {

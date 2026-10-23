@@ -49,7 +49,7 @@ function app(world: World) {
   const runtime: WebRuntime = {
     worker: "web", environment: "test", version: { versionId: SHELL_VERSION, releaseId: SHELL_RELEASE }, missingBindings: [], missingSecrets: [],
     ports: { ...fakes, githubLogin: { authorizeUrl: async () => "", profile: async () => { throw new Error("unused"); } } }, services: { mcp: {} as Fetcher, publish: {} as Fetcher },
-    config: { cdnOrigin: "https://packs.test.invalid" },
+    config: { cdnOrigin: "https://packs.test.invalid", siteOrigin: "https://registry.test.invalid" },
   };
   return { app: createApp(runtime), fakes };
 }

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
-import { createSession } from "@packserver/core/identity";
+import { createSession, destroySession, type SessionPorts } from "@packserver/core/identity";
+import { migratedD1 } from "@packserver/core/identity/testing";
 import { createFakePorts } from "@packserver/ports/fakes";
 import {
   ASSERTION_STUB_HEADER, clearedSessionCookie, csrfTokenFor, requireAssertion, requireSession, resolveSession, sessionCaller, sessionCookie,
@@ -9,19 +10,21 @@ import {
 
 const ORIGIN = "https://registry.example";
 
-async function setup() {
+async function setup(environment = "test") {
   const fakes = createFakePorts();
-  const ports = { kv: fakes.kv.SESSIONS_KV!, clock: fakes.clock, rng: fakes.rng };
+  const { d1, db } = migratedD1();
+  for (const id of ["u1", "u2"]) db.exec(`insert into users (id, created_at) values ('${id}', '2026-10-22T00:00:00.000Z')`);
+  const ports: SessionPorts = { kv: fakes.kv.SESSIONS_KV!, d1, clock: fakes.clock, rng: fakes.rng };
   const app = new Hono<{ Variables: SessionVariables }>();
   app.use(resolveSession(() => ports));
   app.get("/open", (c) => c.text(c.get("session") ? "signed-in" : "anonymous"));
   app.get("/private", requireSession(), (c) => c.text("private"));
-  app.post("/form", sessionCsrf(), (c) => c.text(`caller:${sessionCaller(c)}`));
-  app.post("/sensitive", requireAssertion("token.mint"), (c) => c.text("done"));
+  app.post("/form", sessionCsrf(() => ORIGIN), (c) => c.text(`caller:${sessionCaller(c)}`));
+  app.post("/sensitive", requireAssertion("token.mint", { ports: () => ports, environment: () => environment }), (c) => c.text("done"));
   const live = await createSession(ports, { user_id: "u1", device: { label: "Firefox on Linux", country: "NO" } });
   const other = await createSession(ports, { user_id: "u2", device: { label: "Firefox on Linux", country: "NO" } });
   const cookie = (sid: string) => ({ cookie: `${SESSION_COOKIE}=${sid}` });
-  return { app: (path: string, init?: RequestInit) => app.request(`${ORIGIN}${path}`, init), fakes, live, other, cookie };
+  return { ports, app: (path: string, init?: RequestInit) => app.request(`${ORIGIN}${path}`, init), fakes, live, other, cookie };
 }
 
 describe("session cookie", () => {
@@ -75,7 +78,7 @@ describe("IT-ABUSE-007 CSRF bound to the session", () => {
   it("stops accepting a token once the session rotated", async () => {
     const h = await setup();
     const { rotateSession } = await import("@packserver/core/identity");
-    const rotated = await rotateSession({ kv: h.fakes.kv.SESSIONS_KV!, clock: h.fakes.clock, rng: h.fakes.rng }, h.live);
+    const rotated = await rotateSession(h.ports, h.live);
     const stale = await csrfTokenFor(h.live);
     expect((await post(h, { ...h.cookie(rotated.sid), origin: ORIGIN }, stale)).status).toBe(403);
     expect((await post(h, { ...h.cookie(rotated.sid), origin: ORIGIN }, await csrfTokenFor(rotated))).status).toBe(200);
@@ -90,5 +93,24 @@ describe("the assertion stand-in", () => {
     expect((await call({ [ASSERTION_STUB_HEADER]: "yank" })).status).toBe(403);
     expect((await call({ [ASSERTION_STUB_HEADER]: "token.mint" })).status).toBe(200);
     expect((await h.app("/sensitive", { method: "POST" })).status).toBe(401);
+  });
+
+  it("fails closed outside the test environment, whatever the request carries", async () => {
+    for (const environment of ["production", "staging", ""]) {
+      const h = await setup(environment);
+      const res = await h.app("/sensitive", { method: "POST", headers: { ...h.cookie(h.live.sid), [ASSERTION_STUB_HEADER]: "token.mint" } });
+      expect(res.status, environment).toBe(403);
+      expect(await res.json(), environment).toMatchObject({ reason: "step-up" });
+    }
+  });
+
+  it("refuses a signed-out id while a store replica still serves it", async () => {
+    const h = await setup();
+    const call = () => h.app("/sensitive", { method: "POST", headers: { ...h.cookie(h.live.sid), [ASSERTION_STUB_HEADER]: "token.mint" } });
+    expect((await call()).status).toBe(200);
+    const record = await h.fakes.kv.SESSIONS_KV!.get(`sess:${h.live.sid_hash}`);
+    await destroySession(h.ports, h.live);
+    await h.fakes.kv.SESSIONS_KV!.put(`sess:${h.live.sid_hash}`, record!, { ttl_seconds: 600 });
+    expect((await call()).status).toBe(401);
   });
 });

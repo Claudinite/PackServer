@@ -22,14 +22,28 @@ export interface GitHubProfile {
   adminOrgs: Array<{ id: string; login: string }>;
 }
 
+const BASE64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+/** The S256 challenge for a PKCE verifier: unpadded base64url of its SHA-256. */
+export async function pkceChallenge(verifier: string): Promise<string> {
+  const bytes = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 3) {
+    const n = (bytes[i]! << 16) | ((bytes[i + 1] ?? 0) << 8) | (bytes[i + 2] ?? 0);
+    const chars = [n >> 18, (n >> 12) & 63, (n >> 6) & 63, n & 63].map((k) => BASE64URL[k]);
+    out += chars.slice(0, Math.min(4, bytes.length - i + 1)).join("");
+  }
+  return out;
+}
+
 export class GitHubLoginError extends Error {
   override readonly name = "GitHubLoginError";
 }
 
 export interface GitHubLogin {
-  authorizeUrl(request: { state: string; redirectUri: string }): Promise<string>;
+  authorizeUrl(request: { state: string; redirectUri: string; codeChallenge: string }): Promise<string>;
   /** Trades the code for a profile. The user token is used for the reads below and never stored. */
-  profile(request: { code: string; redirectUri: string }): Promise<GitHubProfile>;
+  profile(request: { code: string; redirectUri: string; codeVerifier: string }): Promise<GitHubProfile>;
 }
 
 export interface GitHubLoginOptions {
@@ -55,19 +69,21 @@ export function githubLogin(options: GitHubLoginOptions): GitHubLogin {
   };
 
   return {
-    async authorizeUrl({ state, redirectUri }) {
+    async authorizeUrl({ state, redirectUri, codeChallenge }) {
       const url = new URL(GITHUB_AUTHORIZE_URL);
       url.searchParams.set("client_id", options.clientId);
       url.searchParams.set("redirect_uri", redirectUri);
       url.searchParams.set("state", state);
+      url.searchParams.set("code_challenge", codeChallenge);
+      url.searchParams.set("code_challenge_method", "S256");
       return url.toString();
     },
 
-    async profile({ code, redirectUri }) {
+    async profile({ code, redirectUri, codeVerifier }) {
       const exchange = await call(GITHUB_TOKEN_URL, {
         method: "POST",
         headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded", "user-agent": "claudinite-packs" },
-        body: new URLSearchParams({ client_id: options.clientId, client_secret: options.clientSecret, code, redirect_uri: redirectUri }),
+        body: new URLSearchParams({ client_id: options.clientId, client_secret: options.clientSecret, code, redirect_uri: redirectUri, code_verifier: codeVerifier }),
       });
       if (!exchange.ok) throw new GitHubLoginError(`GitHub answered ${exchange.status} to the code exchange`);
       const granted = (await exchange.json()) as { access_token?: unknown; error?: unknown };

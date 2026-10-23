@@ -39,7 +39,7 @@ routes.get("/auth/sessions", requireSession(), async (c) => {
 routes.post(
   "/auth/signout",
   requireSession(),
-  sessionCsrf(),
+  sessionCsrf<WebEnv>((c) => c.get("runtime").config.siteOrigin),
   (c, next) => idempotency({ kv: c.get("runtime").ports.kv.SESSIONS_KV!, caller: sessionCaller })(c, next),
   async (c) => {
     await destroySession(sessionPorts(c.get("runtime")), c.get("session")!);
@@ -51,7 +51,7 @@ routes.post(
 routes.post(
   "/auth/handle",
   requireSession(),
-  sessionCsrf(),
+  sessionCsrf<WebEnv>((c) => c.get("runtime").config.siteOrigin),
   (c, next) => idempotency({ kv: c.get("runtime").ports.kv.SESSIONS_KV!, caller: sessionCaller })(c, next),
   async (c) => {
     const fields = await formFields(c);

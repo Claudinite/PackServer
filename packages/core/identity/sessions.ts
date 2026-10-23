@@ -1,4 +1,4 @@
-import { sha256Hex, type Clock, type KV, type Rng } from "@packserver/ports";
+import { sha256Hex, type Clock, type D1, type KV, type Rng } from "@packserver/ports";
 
 export const SESSION_IDLE_MS = 12 * 3_600_000;
 export const SESSION_ABSOLUTE_MS = 7 * 24 * 3_600_000;
@@ -29,6 +29,8 @@ export interface SessionRecord {
 
 export interface SessionPorts {
   kv: KV;
+  /** Holds the revocation record that outlives the store's propagation delay. */
+  d1: D1;
   clock: Clock;
   rng: Rng;
 }
@@ -64,6 +66,20 @@ async function store(ports: SessionPorts, hash: string, record: SessionRecord): 
 async function drop(ports: SessionPorts, hash: string, userId: string): Promise<void> {
   await ports.kv.delete(recordKey(hash));
   await ports.kv.delete(indexKey(userId, hash));
+}
+
+/** Records the id as revoked until its absolute expiry, so a sensitive action refuses it while a store replica still serves it. */
+async function revoke(ports: SessionPorts, live: Pick<LiveSession, "sid_hash" | "record">): Promise<void> {
+  await ports.d1.query(
+    "insert or ignore into session_revocations (sid_hash, user_id, revoked_at, expires_at) values (?, ?, ?, ?)",
+    [live.sid_hash, live.record.user_id, new Date(ports.clock.now()).toISOString(), new Date(live.record.expires_at).toISOString()],
+  );
+}
+
+/** Whether a sensitive action must refuse this id because it was signed out or rotated away. */
+export async function isRevoked(ports: Pick<SessionPorts, "d1">, sidHash: string): Promise<boolean> {
+  const { rows } = await ports.d1.query("select 1 from session_revocations where sid_hash = ?", [sidHash]);
+  return rows.length > 0;
 }
 
 async function persistNew(ports: SessionPorts, record: SessionRecord): Promise<LiveSession> {
@@ -111,15 +127,17 @@ export async function readSession(ports: SessionPorts, sid: string): Promise<Liv
 
 /**
  * The same session under a new id, for sign-in, a per-action assertion and a factor change. The
- * old id stops working at once; the absolute limit does not move.
+ * old id is revoked in D1 and deleted from the store; the absolute limit does not move.
  */
 export async function rotateSession(ports: SessionPorts, live: LiveSession, patch: Partial<Pick<SessionRecord, "mfa_at">> = {}): Promise<LiveSession> {
   const rotated = await persistNew(ports, { ...live.record, ...patch, csrf_key: toHex(ports.rng.bytes(SID_BYTES)) });
+  await revoke(ports, live);
   await drop(ports, live.sid_hash, live.record.user_id);
   return rotated;
 }
 
 export async function destroySession(ports: SessionPorts, live: Pick<LiveSession, "sid_hash" | "record">): Promise<void> {
+  await revoke(ports, live);
   await drop(ports, live.sid_hash, live.record.user_id);
 }
 

@@ -8,6 +8,17 @@ export function clientIp(c: Context): string {
   return c.req.header("cf-connecting-ip") ?? "unknown";
 }
 
+/** What a rate limit counts a client by: an IPv6 address is a /64, so one host cannot rotate through its own range. */
+export function rateLimitClient(c: Context): string {
+  const ip = clientIp(c);
+  if (!ip.includes(":")) return ip;
+  const [head = "", tail = ""] = ip.split("::");
+  const groups = head.split(":").filter(Boolean);
+  const rest = tail.split(":").filter(Boolean);
+  const all = ip.includes("::") ? [...groups, ...Array<string>(Math.max(0, 8 - groups.length - rest.length)).fill("0"), ...rest] : groups;
+  return `${all.slice(0, 4).map((g) => g.toLowerCase().replace(/^0+(?=.)/, "")).join(":")}::/64`;
+}
+
 /**
  * Counts `cost` units against a key and says whether all of them fit. The binding has one limit
  * for every route, so a route that needs a tighter one spends more per request: a cost of 6 on

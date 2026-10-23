@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createFakePorts } from "@packserver/ports/fakes";
+import { migratedD1 } from "../testing.ts";
 import {
-  createSession, describeDevice, destroySession, hashSessionId, LAST_SEEN_THROTTLE_MS, listSessions, readSession, rotateSession,
+  createSession, describeDevice, destroySession, hashSessionId, isRevoked, LAST_SEEN_THROTTLE_MS, listSessions, readSession, rotateSession,
   SESSION_ABSOLUTE_MS, SESSION_IDLE_MS, type SessionPorts,
 } from "../sessions.ts";
 
@@ -11,8 +12,10 @@ const device = { label: "Firefox on Linux", country: "NO" };
 
 function setup() {
   const fakes = createFakePorts();
-  const ports: SessionPorts = { kv: fakes.kv.SESSIONS_KV!, clock: fakes.clock, rng: fakes.rng };
-  return { fakes, ports };
+  const { d1, db } = migratedD1();
+  for (const id of ["u1", "u2"]) db.exec(`insert into users (id, created_at) values ('${id}', '2026-10-22T00:00:00.000Z')`);
+  const ports: SessionPorts = { kv: fakes.kv.SESSIONS_KV!, d1, clock: fakes.clock, rng: fakes.rng };
+  return { fakes, ports, db };
 }
 
 describe("IT-ACC-013 session lifetime", () => {
@@ -86,6 +89,35 @@ describe("IT-ACC-021 rotation and invalidation", () => {
     expect(await readSession(ports, live.sid)).toBeNull();
     expect(await readSession(ports, "short")).toBeNull();
     expect(await readSession(ports, `sess:${live.sid_hash}`)).toBeNull();
+  });
+
+  it("records a rotated-away id as revoked until its absolute expiry", async () => {
+    const { ports, db } = setup();
+    const live = await createSession(ports, { user_id: "u1", device });
+    const rotated = await rotateSession(ports, live);
+    expect(await isRevoked(ports, live.sid_hash)).toBe(true);
+    expect(await isRevoked(ports, rotated.sid_hash)).toBe(false);
+    expect(db.prepare("select user_id, expires_at from session_revocations where sid_hash = ?").get(live.sid_hash)).toEqual({
+      user_id: "u1",
+      expires_at: new Date(live.record.expires_at).toISOString(),
+    });
+  });
+
+  it("records a signed-out id as revoked, once even when signed out twice", async () => {
+    const { ports, db } = setup();
+    const live = await createSession(ports, { user_id: "u1", device });
+    await destroySession(ports, live);
+    await destroySession(ports, live);
+    expect(await isRevoked(ports, live.sid_hash)).toBe(true);
+    expect(db.prepare("select count(*) as n from session_revocations").get()).toEqual({ n: 1 });
+  });
+
+  it("does not record an idle or expired session as revoked", async () => {
+    const { fakes, ports } = setup();
+    const live = await createSession(ports, { user_id: "u1", device });
+    fakes.clock.advance(SESSION_IDLE_MS);
+    expect(await readSession(ports, live.sid)).toBeNull();
+    expect(await isRevoked(ports, live.sid_hash)).toBe(false);
   });
 
   it("keeps the cookie value out of the store", async () => {

@@ -11,6 +11,7 @@ export type WebEnv = { Variables: WebVariables };
 
 export const sessionPorts = (runtime: WebRuntime): SessionPorts => ({
   kv: runtime.ports.kv.SESSIONS_KV!,
+  d1: runtime.ports.d1,
   clock: runtime.ports.clock,
   rng: runtime.ports.rng,
 });

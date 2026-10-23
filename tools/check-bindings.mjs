@@ -16,7 +16,7 @@ const BINDING_KEYS = [
   "d1_databases", "kv_namespaces", "r2_buckets", "queues", "workflows", "durable_objects", "containers", "services",
   "vectorize", "ai", "analytics_engine_datasets", "ratelimits", "secrets_store_secrets", "version_metadata",
 ];
-const OTHER_KEYS = ["name", "workers_dev", "routes", "triggers", "vars", "exports"];
+const OTHER_KEYS = ["name", "workers_dev", "preview_urls", "routes", "triggers", "vars", "exports"];
 const ALLOWED_KEYS = new Set([...BINDING_KEYS, ...OTHER_KEYS]);
 const PRODUCT_TYPES = /\b(D1Database|KVNamespace|R2Bucket|VectorizeIndex|AnalyticsEngineDataset|DurableObjectNamespace|SecretsStoreSecret|Fetcher|Ai)\b/;
 // The one folder allowed to speak a binding's own API, besides each Worker's bindings.ts.
@@ -78,6 +78,7 @@ function checkEnv(worker, t, env, block) {
   const pairs = (list) => list.map(([a, b]) => `${a}=${b}`);
 
   if (block.workers_dev !== false) problem(where, "workers_dev must be false");
+  if (block.preview_urls !== undefined && block.preview_urls !== false) problem(where, "preview_urls must be false");
   if (block.name !== workerName(env, worker)) problem(where, `name is "${block.name}", expected "${workerName(env, worker)}"`);
   if (block.vars?.WORKER !== worker) problem(where, `vars.WORKER must be "${worker}"`);
   if (block.vars?.ENVIRONMENT !== env) problem(where, `vars.ENVIRONMENT must be "${env}"`);
