@@ -48,7 +48,7 @@ export interface VersionBody {
   report_published: boolean;
   [field: string]: unknown;
 }
-export type Read = (PackBody | { name: string; status: "removed"; version: unknown }) & { http: number };
+export type Read = (PackBody | { name: string; status: "removed"; version: unknown }) & { outcome: "found" | "removed" };
 
 export interface ReadOptions {
   version?: string;
@@ -171,7 +171,7 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
     if (res.status === 429) return new Refusal("rate-limited");
     if (res.status === 451) return new Held((parse(res) as { reason?: string }).reason);
     if (res.status === 503) throw new InfrastructureError(`the read API was unavailable for ${system}: ${res.text}`);
-    return { ...(parse(res) as object), http: res.status } as Read;
+    return { ...(parse(res) as object), outcome: res.status === 410 ? "removed" : "found" } as Read;
   }
 
   async function bodyOf(handle: PackHandle, o: ReadOptions): Promise<PackBody> {
