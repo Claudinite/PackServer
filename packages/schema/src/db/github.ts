@@ -31,11 +31,17 @@ export const github_installations = sqliteTable(
 );
 
 /** Delivery ids already applied, so a redelivery changes nothing. */
-export const github_deliveries = sqliteTable("github_deliveries", {
+export const github_deliveries = sqliteTable(
+  "github_deliveries",
+  {
   delivery_id: text("delivery_id").primaryKey(),
   event: text("event").notNull(),
+  /** A replayed body under a fresh delivery id is still the same delivery. */
+  body_sha256: text("body_sha256").notNull(),
   received_at: text("received_at").notNull(),
-});
+  },
+  (t) => [index("github_deliveries_body_idx").on(t.body_sha256)],
+);
 
 /** State of issues in public repositories, nothing of their content; the report status hook reads it (REQ-MOD-001). */
 export const github_issue_states = sqliteTable(

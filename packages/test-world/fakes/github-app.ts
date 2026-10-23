@@ -47,7 +47,7 @@ export class FakeGithubApp {
   readonly repos = new Map<number, FakeRepo>();
   readonly requests: RecordedRequest[] = [];
   readonly writes: RecordedRequest[] = [];
-  installationIds: number[] = [5];
+  installations: Array<{ id: number; account: { login: string }; suspended_at: string | null }> = [{ id: 5, account: { login: "acme" }, suspended_at: null }];
   tokensMinted = 0;
   /** A status to answer every API call with, to make GitHub fail. */
   failWith: number | undefined;
@@ -57,7 +57,7 @@ export class FakeGithubApp {
     this.repos.clear();
     this.requests.length = 0;
     this.writes.length = 0;
-    this.installationIds = [5];
+    this.installations = [{ id: 5, account: { login: "acme" }, suspended_at: null }];
     this.tokensMinted = 0;
     this.failWith = undefined;
     this.tokens.clear();
@@ -81,7 +81,8 @@ export class FakeGithubApp {
 
   /** A webhook as GitHub would send it, signed with the App's secret unless told otherwise. */
   delivery(event: string, payload: unknown, options: { signature?: "wrong" | "missing"; deliveryId?: string } = {}): Delivery {
-    const body = JSON.stringify(payload);
+    // Real deliveries differ by timestamps and ids; the nonce keeps two sent alike from being one replay.
+    const body = JSON.stringify({ ...(payload as object), delivery_nonce: randomUUID() });
     const mac = (secret: string) => `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
     const headers: Record<string, string> = {
       "content-type": "application/json",
@@ -108,17 +109,20 @@ export class FakeGithubApp {
     };
   }
 
-  private serve(request: Request, url: URL, mint: boolean): Response {
+  private async serve(request: Request, url: URL, mint: boolean): Promise<Response> {
     const bearer = /^Bearer (.+)$/.exec(request.headers.get("authorization") ?? "")?.[1] ?? "";
     const json = (body: unknown, status = 200) => Response.json(body, { status });
     if (url.pathname.startsWith("/app/")) {
       if (!this.validAppJwt(bearer)) return json({ message: "Bad credentials" }, 401);
       if (mint) {
+        const asked = ((await request.json().catch(() => ({}))) as { permissions?: Record<string, string> }).permissions;
+        if (!asked || Object.values(asked).some((level) => level !== "read")) this.writes.push({ method: "POST", path: `${url.pathname} (not read-only)` });
+        if (this.installations.find((i) => url.pathname.includes(`/${i.id}/`))?.suspended_at) return json({ message: "suspended" }, 403);
         const token = `ghs_fake_${++this.tokensMinted}`;
         this.tokens.add(token);
         return json({ token, expires_at: "2099-01-01T00:00:00Z" }, 201);
       }
-      return json(this.installationIds.map((id) => ({ id })));
+      return json(this.installations);
     }
     if (!this.tokens.has(bearer)) return json({ message: "Bad credentials" }, 401);
 
@@ -134,7 +138,7 @@ export class FakeGithubApp {
       const entries = [...files].map(([path, f]) => ({
         path,
         mode: f.mode ?? (f.executable ? "100755" : "100644"),
-        type: "blob",
+        type: (f.mode ?? "") === "160000" ? "commit" : "blob",
         sha: this.blobSha(f),
         size: this.bytes(f).length,
       }));

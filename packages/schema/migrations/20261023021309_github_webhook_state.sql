@@ -1,9 +1,11 @@
 CREATE TABLE `github_deliveries` (
 	`delivery_id` text PRIMARY KEY NOT NULL,
 	`event` text NOT NULL,
+	`body_sha256` text NOT NULL,
 	`received_at` text NOT NULL
 );
 --> statement-breakpoint
+CREATE INDEX `github_deliveries_body_idx` ON `github_deliveries` (`body_sha256`);--> statement-breakpoint
 CREATE TABLE `github_installations` (
 	`installation_id` integer PRIMARY KEY NOT NULL,
 	`account_id` integer NOT NULL,

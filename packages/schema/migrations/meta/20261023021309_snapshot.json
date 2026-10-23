@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "28439b2c-e34e-4d0d-9566-44c08d03f330",
-  "prevId": "194bde16-0daf-4096-b2b1-c891fc193938",
+  "id": "c91cc037-b5cb-4171-bae5-fe0ca9e245e5",
+  "prevId": "282a9096-9dd6-43f0-8424-f12451472c40",
   "tables": {
     "credentials": {
       "name": "credentials",
@@ -770,6 +770,110 @@
         }
       }
     },
+    "recent_activity": {
+      "name": "recent_activity",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "at": {
+          "name": "at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actor_kind": {
+          "name": "actor_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target": {
+          "name": "target",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "scope_id": {
+          "name": "scope_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "ip_hash": {
+          "name": "ip_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "detail": {
+          "name": "detail",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "recent_activity_user_at_idx": {
+          "name": "recent_activity_user_at_idx",
+          "columns": [
+            "user_id",
+            "at"
+          ],
+          "isUnique": false
+        },
+        "recent_activity_scope_at_idx": {
+          "name": "recent_activity_scope_at_idx",
+          "columns": [
+            "scope_id",
+            "at"
+          ],
+          "isUnique": false
+        },
+        "recent_activity_at_idx": {
+          "name": "recent_activity_at_idx",
+          "columns": [
+            "at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "github_deliveries": {
       "name": "github_deliveries",
       "columns": {
@@ -787,6 +891,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "body_sha256": {
+          "name": "body_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "received_at": {
           "name": "received_at",
           "type": "text",
@@ -795,7 +906,15 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "github_deliveries_body_idx": {
+          "name": "github_deliveries_body_idx",
+          "columns": [
+            "body_sha256"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},

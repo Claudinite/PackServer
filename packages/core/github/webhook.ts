@@ -1,17 +1,21 @@
 import { isSubscribedEvent, parseEvent, type GithubFact } from "./events.ts";
 import { verifyWebhookSignature } from "./signature.ts";
 
+async function sha256Hex(data: Uint8Array<ArrayBuffer>): Promise<string> {
+  return [...new Uint8Array(await crypto.subtle.digest("SHA-256", data))].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export type InstallationStatus = "active" | "suspended" | "deleted";
 
 /** What the webhook handler needs to remember; the Worker backs it with D1. */
 export interface GithubStore {
-  hasDelivery(deliveryId: string): Promise<boolean>;
+  hasDelivery(deliveryId: string, bodySha256: string): Promise<boolean>;
   installationStatus(installationId: number): Promise<InstallationStatus | null>;
   recordInstallation(fact: Extract<GithubFact, { kind: "installation" }>, now: string): Promise<void>;
   setInstallationStatus(installationId: number, status: InstallationStatus, now: string): Promise<void>;
   setRepositorySelection(installationId: number, selection: "all" | "selected", now: string): Promise<void>;
   recordIssue(fact: Extract<GithubFact, { kind: "issue" }>, now: string): Promise<void>;
-  recordDelivery(deliveryId: string, event: string, now: string): Promise<void>;
+  recordDelivery(deliveryId: string, event: string, bodySha256: string, now: string): Promise<void>;
 }
 
 export interface WebhookRequest {
@@ -53,7 +57,8 @@ export async function handleWebhook(
   } catch {
     return { result: "malformed" };
   }
-  if (await deps.store.hasDelivery(request.deliveryId)) return { result: "duplicate" };
+  const bodySha256 = await sha256Hex(request.body);
+  if (await deps.store.hasDelivery(request.deliveryId, bodySha256)) return { result: "duplicate" };
 
   // `installation.created` is how the registry first hears of an installation, so it must name this App;
   // every other event needs an installation the registry already knows.
@@ -77,6 +82,6 @@ export async function handleWebhook(
   } else if (!fact.repositoryPrivate) {
     await deps.store.recordIssue(fact, now);
   }
-  await deps.store.recordDelivery(request.deliveryId, request.event, now);
+  await deps.store.recordDelivery(request.deliveryId, request.event, bodySha256, now);
   return { result: "applied", fact };
 }

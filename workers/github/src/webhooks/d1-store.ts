@@ -4,8 +4,8 @@ import type { D1 } from "@packserver/ports";
 /** The webhook handler's memory, in the registry database. */
 export function d1GithubStore(d1: D1): GithubStore {
   return {
-    async hasDelivery(deliveryId) {
-      const { rows } = await d1.query("select 1 from github_deliveries where delivery_id = ?", [deliveryId]);
+    async hasDelivery(deliveryId, bodySha256) {
+      const { rows } = await d1.query("select 1 from github_deliveries where delivery_id = ? or body_sha256 = ? limit 1", [deliveryId, bodySha256]);
       return rows.length > 0;
     },
     async installationStatus(installationId) {
@@ -41,8 +41,8 @@ export function d1GithubStore(d1: D1): GithubStore {
         [fact.repositoryId, fact.number, fact.repository, fact.htmlUrl, fact.state, fact.updatedAt, now],
       );
     },
-    async recordDelivery(deliveryId, event, now) {
-      await d1.query("insert or ignore into github_deliveries (delivery_id, event, received_at) values (?, ?, ?)", [deliveryId, event, now]);
+    async recordDelivery(deliveryId, event, bodySha256, now) {
+      await d1.query("insert or ignore into github_deliveries (delivery_id, event, body_sha256, received_at) values (?, ?, ?, ?)", [deliveryId, event, bodySha256, now]);
     },
   };
 }

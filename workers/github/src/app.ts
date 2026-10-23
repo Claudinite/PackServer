@@ -15,6 +15,7 @@ export function createApp(runtime: GithubRuntime, options: AppOptions = {}): Hon
     releaseId: runtime.version.releaseId,
     versionId: runtime.version.versionId,
     clock: runtime.ports.clock,
+    stats: runtime.ports.stats,
     checks: () => selfTestChecks(runtime),
     selfTestAllowed: options.selfTestAllowed,
   });

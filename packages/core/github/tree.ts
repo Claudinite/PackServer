@@ -29,11 +29,17 @@ function prefixOf(path: string): string | null {
 async function inBatches<T, R>(items: T[], size: number, run: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array<R>(items.length);
   let next = 0;
+  let failed = false;
   await Promise.all(
     Array.from({ length: Math.min(size, items.length) }, async () => {
-      while (next < items.length) {
+      while (next < items.length && !failed) {
         const at = next++;
-        out[at] = await run(items[at]!);
+        try {
+          out[at] = await run(items[at]!);
+        } catch (error) {
+          failed = true;
+          throw error;
+        }
       }
     }),
   );
@@ -61,6 +67,8 @@ export async function fetchSourceTree(
     if (!listing || listing.truncated) return { status: "not_found" };
 
     const under = listing.entries.filter((e) => prefix === "" || e.path.startsWith(`${prefix}/`));
+    // Anything but a plain file or directory (a submodule is type "commit") is something the registry would not verify.
+    if (under.some((e) => e.type !== "blob" && e.type !== "tree")) return { status: "not_found" };
     const files = under.filter((e) => e.type === "blob");
     const modes = new Map(files.map((e) => [e.path, e.mode]));
     if (files.length === 0 || files.length > limits.files || files.some((e) => !REGULAR.has(e.mode))) return { status: "not_found" };

@@ -213,8 +213,9 @@ counted from the zone's request logs, private ones from the serving Worker.
 - source: FLOW 11; ARCH-REV M6
 - coverage: scenario
 
-A public download is counted once per (/24 network, version, day), since the request logs hold no
-caller identity; a private download is counted once per (principal, version, day). Pages say
+A public download is counted once per (network, version, day), a network being the /24 of an IPv4
+address or the /48 of an IPv6 one, since the request logs hold no caller identity; a private
+download is counted once per (principal, version, day). Pages say
 "about N fetches", never a repository count (REQ-TELEM-007 supplies that).
 
 ## REQ-TELEM-004 Counts are approximate; tests assert monotonic behaviour
@@ -233,11 +234,12 @@ totals.
 - status: active
 - since: 2026-10
 - actor: system (security)
-- source: DATA; docs/decisions.md D6 (90-day request records with truncated IPs)
+- source: DATA; docs/decisions.md D6 (90-day request records with truncated IPs), D59 (truncated before delivery)
 - coverage: scenario
 
-Raw IP addresses are never stored; request records keep a /24 truncation and audit and download
-records a daily-rotating keyed hash.
+Raw IP addresses are never stored; request records keep only the client network (/24 for IPv4, /48
+for IPv6), truncated before the record leaves Cloudflare, and audit and download records a
+daily-rotating keyed hash.
 
 ## REQ-TELEM-007 A weekly scan of public repositories counts the repos declaring each pack
 

@@ -14,8 +14,9 @@ export class Aliases {
   private readonly table = new Map<string, string>();
   private readonly rng: FakeRng;
 
-  constructor(title: string) {
-    this.rng = new FakeRng(seedOf(title));
+  /** A `salt` makes names differ between runs of one title, for drivers that share a deployment across runs. */
+  constructor(title: string, salt = "") {
+    this.rng = new FakeRng(seedOf(`${salt}${title}`));
   }
 
   alias(name: string): string {

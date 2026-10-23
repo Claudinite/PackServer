@@ -9,7 +9,9 @@ export function treeRoute(runtime: GithubRuntime) {
     const parsed = TreeFetchRequest.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "invalid tree request" }, 400);
     const { secrets, fetch } = runtime.services;
-    const [appId, privateKey] = await Promise.all([secrets.appId(), secrets.privateKey()]);
+    const credentials = await Promise.all([secrets.appId(), secrets.privateKey()]).catch(() => null);
+    if (!credentials) return c.json({ status: "unreachable", retry_after_s: 60 });
+    const [appId, privateKey] = credentials;
     const result = await fetchSourceTree(
       (signal) => createGithubReader({ fetch, appId, privateKey, signal, nowMs: () => runtime.ports.clock.now() }),
       parsed.data,

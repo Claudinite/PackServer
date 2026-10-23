@@ -1,4 +1,5 @@
-import { cryptoRng, d1Port, readSecret, statsPort, systemClock, workerRuntime, type WorkerRuntime } from "@packserver/ports/cloudflare";
+import { analyticsStats } from "@packserver/http";
+import { cryptoRng, d1Port, readSecret, systemClock, workerRuntime, type WorkerRuntime } from "@packserver/ports/cloudflare";
 import type { Ports } from "@packserver/ports";
 
 export interface Env {
@@ -33,7 +34,7 @@ export function createRuntime(env: Env): GithubRuntime {
       clock: systemClock,
       rng: cryptoRng,
       d1: d1Port(env.DB),
-      stats: statsPort({ request: env.REQUEST_OUTCOMES, domain: env.DOMAIN_EVENTS }),
+      stats: analyticsStats({ request_outcomes: env.REQUEST_OUTCOMES, domain_events: env.DOMAIN_EVENTS }),
     },
     {
       secrets: {

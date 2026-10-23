@@ -6,10 +6,11 @@ const enc = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
 
 class MemoryStore implements GithubStore {
   deliveries = new Set<string>();
+  bodies = new Set<string>();
   installations = new Map<number, InstallationStatus>();
   issues = new Map<string, string>();
-  async hasDelivery(id: string) {
-    return this.deliveries.has(id);
+  async hasDelivery(id: string, body: string) {
+    return this.deliveries.has(id) || this.bodies.has(body);
   }
   async installationStatus(id: number) {
     return this.installations.get(id) ?? null;
@@ -24,8 +25,9 @@ class MemoryStore implements GithubStore {
   async recordIssue(fact: { repositoryId: number; number: number; state: string }) {
     this.issues.set(`${fact.repositoryId}#${fact.number}`, fact.state);
   }
-  async recordDelivery(id: string) {
+  async recordDelivery(id: string, _event: string, body: string) {
     this.deliveries.add(id);
+    this.bodies.add(body);
   }
 }
 
@@ -103,6 +105,13 @@ describe("delivery handling", () => {
     const first = await delivery("installation", installation("created"), { deliveryId: "same" });
     expect((await run(store, first)).result).toBe("applied");
     expect((await run(store, first)).result).toBe("duplicate");
+  });
+
+  it("drops a replayed body under a new delivery id", async () => {
+    const store = new MemoryStore();
+    const first = await delivery("installation", installation("created"));
+    expect((await run(store, first)).result).toBe("applied");
+    expect((await run(store, { ...first, deliveryId: "fresh-id" })).result).toBe("duplicate");
   });
 
   it("does not subscribe to push or anything else", async () => {

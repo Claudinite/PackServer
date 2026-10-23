@@ -67,20 +67,52 @@ export function createGithubReader(options: ReaderOptions): GithubReader {
     "user-agent": "packserver-github-worker",
   });
 
-  let token: Promise<string> | undefined;
-  const installationToken = (): Promise<string> =>
-    (token ??= (async () => {
-      const jwt = await appJwt({ appId: options.appId, privateKey: options.privateKey, nowMs: options.nowMs() });
-      const list = await send(`${API}/app/installations?per_page=1`, { method: "GET", headers: headers(jwt) });
-      const first = list.ok ? ((await list.json()) as Array<{ id: number }>)[0] : undefined;
-      if (!first) throw new GithubUnreachable("the App has no installation to read through");
-      const minted = await send(`${API}/app/installations/${first.id}/access_tokens`, { method: "POST", headers: headers(jwt) });
-      if (!minted.ok) throw new GithubUnreachable(`GitHub refused an installation token (${minted.status})`);
-      return ((await minted.json()) as { token: string }).token;
+  interface Installation {
+    id: number;
+    account?: { login: string };
+    suspended_at?: string | null;
+  }
+  let installations: Promise<Installation[]> | undefined;
+  const tokens = new Map<number, Promise<string>>();
+  const identity = async (): Promise<string> => {
+    try {
+      return await appJwt({ appId: options.appId, privateKey: options.privateKey, nowMs: options.nowMs() });
+    } catch {
+      throw new GithubUnreachable("the App key cannot sign");
+    }
+  };
+  const live = () =>
+    (installations ??= (async () => {
+      const list = await send(`${API}/app/installations?per_page=100`, { method: "GET", headers: headers(await identity()) });
+      if (!list.ok) throw new GithubUnreachable(`GitHub refused the App's installation list (${list.status})`);
+      const all = (await list.json()) as Installation[];
+      const active = all.filter((i) => !i.suspended_at);
+      if (active.length === 0) throw new GithubUnreachable("the App has no active installation to read through");
+      return active;
     })());
+  /** The installation of the repository's owner when the App has one, else any active installation: public reads need no more. */
+  const installationToken = async (owner?: string): Promise<string> => {
+    const active = await live();
+    const chosen = active.find((i) => owner !== undefined && i.account?.login.toLowerCase() === owner.toLowerCase()) ?? active[0]!;
+    let token = tokens.get(chosen.id);
+    if (!token) {
+      token = (async () => {
+        const minted = await send(`${API}/app/installations/${chosen.id}/access_tokens`, {
+          method: "POST",
+          headers: { ...headers(await identity()), "content-type": "application/json" },
+          body: JSON.stringify({ permissions: { contents: "read", metadata: "read" } }),
+        });
+        if (!minted.ok) throw new GithubUnreachable(`GitHub refused an installation token (${minted.status})`);
+        return ((await minted.json()) as { token: string }).token;
+      })();
+      tokens.set(chosen.id, token);
+    }
+    return token;
+  };
 
   const get = async (path: string, accept?: string): Promise<Response | null> => {
-    const res = await send(`${API}${path}`, { method: "GET", headers: headers(await installationToken(), accept) });
+    const owner = /^\/repos\/([^/]+)\//.exec(path)?.[1];
+    const res = await send(`${API}${path}`, { method: "GET", headers: headers(await installationToken(owner), accept) });
     if (res.status === 404 || res.status === 409 || res.status === 451) {
       await res.body?.cancel();
       return null;
