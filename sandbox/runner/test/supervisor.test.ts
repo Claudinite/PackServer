@@ -4,7 +4,7 @@ import { supervise } from "../a-supervisor.ts";
 import { REQUEST, realWorker, stub } from "./helpers.ts";
 
 const upload = fixtureArchive("gcp");
-const opts = { imageDigest: null, extractMs: 300, runMs: 600, heapMb: 64 };
+const opts = { imageDigest: null, extractMs: 300, runMs: 3_000, heapMb: 64 };
 
 describe("deadlines (IT-VAL-045)", () => {
   it("runs the real worker end to end", async () => {
@@ -29,6 +29,13 @@ describe("deadlines (IT-VAL-045)", () => {
     expect(Date.now() - started).toBeLessThan(5_000);
   });
 
+  it("a worker that never starts is an infrastructure error, not a verdict on the archive", async () => {
+    const { report } = await supervise(upload, REQUEST, { ...opts, workerUrl: stub("hang-at-boot.mjs") });
+    expect(report.outcome).toBe("error");
+    expect(report.refusal).toBeNull();
+    expect(report.error).toBe("worker did not start");
+  });
+
   it("a run overrun after extraction is a timeout, not a verdict on the archive", async () => {
     const { report } = await supervise(upload, REQUEST, { ...opts, extractMs: 2_000, runMs: 2_500, workerUrl: stub("hang-after-extract.mjs") });
     expect(report.outcome).toBe("timeout");
@@ -46,8 +53,16 @@ describe("untrusted worker output", () => {
   // Cold worker start-up must not be able to reach the deadline.
   const generous = { ...opts, extractMs: 30_000, runMs: 30_000 };
 
-  it("a crash during extraction is a final archive.unsafe, not a retryable error", async () => {
+  it("a crash while booting is a retryable error, not a verdict on the archive", async () => {
     const { report, canonical } = await supervise(upload, REQUEST, { ...generous, workerUrl: stub("crash.mjs") });
+    expect(report.outcome).toBe("error");
+    expect(report.refusal).toBeNull();
+    expect(report.error).toBe("worker crashed");
+    expect(canonical).toBeNull();
+  });
+
+  it("a crash while the decoder holds the archive is a final archive.unsafe", async () => {
+    const { report, canonical } = await supervise(upload, REQUEST, { ...generous, workerUrl: stub("crash-during-extract.mjs") });
     expect(report.outcome).toBe("refused");
     expect(report.refusal).toEqual({ reason: "archive.unsafe", code: "extract-crash" });
     expect(canonical).toBeNull();

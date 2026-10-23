@@ -62,10 +62,11 @@ describe("accepted uploads (IT-VAL-033, IT-VAL-051)", () => {
   });
 
   it("tells the supervisor when extraction is over", async () => {
-    let calls = 0;
-    await runA(fixtureArchive("gcp"), REQUEST, { ...hooks, onExtracted: () => calls++ });
-    await runA(fixtureArchive("bomb-quine"), REQUEST, { ...hooks, onExtracted: () => calls++ });
-    expect(calls).toBe(1);
+    const calls: string[] = [];
+    const watch = { ...hooks, onExtracting: () => calls.push("extracting"), onExtracted: () => calls.push("extracted") };
+    await runA(fixtureArchive("gcp"), REQUEST, watch);
+    await runA(fixtureArchive("bomb-quine"), REQUEST, watch);
+    expect(calls).toEqual(["extracting", "extracted", "extracting"]);
   });
 });
 
@@ -122,6 +123,11 @@ describe("report cap", () => {
     const oversized = fitToCap({ ...report, manifest: { big: "x".repeat(2 * 1024 * 1024) } })!;
     expect(oversized.manifest).toBeNull();
     expect(oversized.findings_truncated).toBe(true);
+    const hugeHints = { ...report, findings: [{ rule: "docs.readme-missing", class: "warn" as const, file: null, line: null, quote: null, hint: "h".repeat(2 * 1024 * 1024) }], findings_total: 1 };
+    const minimal = fitToCap(hugeHints)!;
+    expect(minimal.findings).toEqual([]);
+    expect(minimal.findings_truncated).toBe(true);
+    expect(minimal.findings_total).toBe(1);
     expect(fitToCap({ ...report, error: "x".repeat(2 * 1024 * 1024) })).toBeNull();
   });
 });

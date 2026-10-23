@@ -87,13 +87,20 @@ jobs:
       matrix:
         image: [a, b]
     steps:
-      - id: handoff
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: sandbox
+      # Leg B has an image to publish exactly when its Dockerfile exists; a missing handoff for a leg that has one fails the download.
+      - id: has
+        run: |
+          if [ -f "sandbox/image-${{ matrix.image }}/Dockerfile" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.has.outputs.present == 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        continue-on-error: true
         with:
           name: tested-image-${{ matrix.image }}
           path: handoff/
-      - if: steps.handoff.outcome == 'success'
+      - if: steps.has.outputs.present == 'true'
         env:
           TOKEN: ${{ github.token }}
           ACTOR: ${{ github.actor }}
@@ -109,7 +116,7 @@ jobs:
           mkdir -p digests
           printf '{"image":"%s","digest":"%s","commit":"%s"}\n' "$repo" "$digest" "${{ github.sha }}" > "digests/sandbox-${{ matrix.image }}.json"
           echo "sandbox-${{ matrix.image }} \`$repo@$digest\`" >> "$GITHUB_STEP_SUMMARY"
-      - if: steps.handoff.outcome == 'success'
+      - if: steps.has.outputs.present == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sandbox-digest-${{ matrix.image }}

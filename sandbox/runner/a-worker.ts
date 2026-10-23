@@ -14,6 +14,7 @@ const result = await runA(input.upload, input.request, {
   imageDigest: input.imageDigest,
   inspectors,
   skippedInspectors: skipped,
+  onExtracting: () => parentPort?.postMessage({ type: "extracting" }),
   onExtracted: () => parentPort?.postMessage({ type: "extracted" }),
 });
 parentPort?.postMessage({ type: "result", report: result.report, canonical: result.canonical });

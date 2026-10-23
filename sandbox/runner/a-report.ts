@@ -23,7 +23,13 @@ export const SandboxAReport = z.strictObject({
   canonical_bytes: z.number().int().nonnegative().nullable(),
   file_count: z.number().int().nonnegative().nullable(),
   round_trip_ok: z.boolean().nullable(),
+  /**
+   * Contract for consumers: `findings` is complete only when `findings_truncated` is false. When it
+   * is true, `findings` is a prefix (possibly empty) of `findings_total` findings, so an empty list
+   * with `findings_truncated` true is never a clean pass and must be treated as unverified.
+   */
   findings: z.array(Finding),
+  findings_total: z.number().int().nonnegative(),
   findings_truncated: z.boolean(),
   manifest: z.record(z.string(), z.unknown()).nullable(),
   urls: z.array(z.record(z.string(), z.unknown())),
@@ -54,6 +60,7 @@ export function emptyReport(base: ReportBase): SandboxAReport {
     file_count: null,
     round_trip_ok: null,
     findings: [],
+    findings_total: 0,
     findings_truncated: false,
     manifest: null,
     urls: [],
@@ -65,7 +72,7 @@ export function emptyReport(base: ReportBase): SandboxAReport {
 }
 
 export function refusedReport(base: ReportBase, reason: ArchiveReason, code: string, finding: Finding, timings: SandboxAReport["timings_ms"]): SandboxAReport {
-  return { ...emptyReport(base), outcome: "refused", refusal: { reason, code }, findings: [finding], timings_ms: timings };
+  return { ...emptyReport(base), outcome: "refused", refusal: { reason, code }, findings: [finding], findings_total: 1, timings_ms: timings };
 }
 
 export function errorReport(base: ReportBase, error: string, timings: SandboxAReport["timings_ms"], outcome: "error" | "timeout" = "error"): SandboxAReport {

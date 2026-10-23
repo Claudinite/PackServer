@@ -24,7 +24,9 @@ export interface RunHooks {
   imageDigest: string | null;
   inspectors?: Inspector[];
   skippedInspectors?: { name: string; note: string }[];
-  /** Called once extraction has finished, so the supervisor can move from the 60 s to the 5 min deadline. */
+  /** Called just before the decoder is handed the archive, so the supervisor starts the 60 s extraction deadline there. */
+  onExtracting?: () => void;
+  /** Called once extraction has finished, so the supervisor can move to the 5 min run deadline. */
   onExtracted?: () => void;
   now?: () => number;
 }
@@ -57,6 +59,7 @@ export async function runA(upload: Uint8Array, request: RunRequest, hooks: RunHo
   const make = findingFactory(loadRules(request.rules_version));
 
   let tree: Tree;
+  hooks.onExtracting?.();
   try {
     tree = await extractArchive(upload);
   } catch (e) {
@@ -103,6 +106,7 @@ export async function runA(upload: Uint8Array, request: RunRequest, hooks: RunHo
       file_count: tree.files.length,
       round_trip_ok: roundTrip,
       findings,
+      findings_total: findings.length,
       findings_truncated: false,
       manifest: statics.manifest as Record<string, unknown> | null,
       urls: statics.urls as unknown as Record<string, unknown>[],

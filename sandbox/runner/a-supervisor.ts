@@ -27,7 +27,8 @@ export function supervise(upload: Uint8Array, request: RunRequest, options: Supe
   const since = () => Date.now() - started;
 
   return new Promise((resolve) => {
-    let extracted = false;
+    // boot: the worker is loading; extracting: the decoder has the archive; extracted: static rules and re-pack.
+    let phase: "boot" | "extracting" | "extracted" = "boot";
     let settled = false;
     let timer: NodeJS.Timeout;
     const worker = new Worker(options.workerUrl, {
@@ -42,43 +43,44 @@ export function supervise(upload: Uint8Array, request: RunRequest, options: Supe
       void worker.terminate();
       resolve(result);
     };
-    const refuse = (code: string): RunResult => {
-      const refusal = new ArchiveRefusal("archive.unsafe", code);
+    const refusal = (reason: "archive.bomb" | "archive.unsafe", code: string): RunResult => {
+      const r = new ArchiveRefusal(reason, code);
       const t = since();
-      return { report: refusedReport(base, refusal.reason, code, archiveFinding(refusal, make), { extract: t, total: t }), canonical: null };
+      return { report: refusedReport(base, r.reason, r.code, archiveFinding(r, make), { extract: t, total: t }), canonical: null };
     };
-    const arm = (ms: number) => {
+    const failure = (error: string, outcome: "error" | "timeout" = "error"): RunResult => ({
+      report: errorReport(base, error, { extract: null, total: since() }, outcome),
+      canonical: null,
+    });
+    // Only a failure while the decoder held the archive says anything about the archive.
+    const crashed = (what: string): RunResult => (phase === "extracting" ? refusal("archive.unsafe", "extract-crash") : failure(what));
+
+    const arm = (deadlineAt: number) => {
       clearTimeout(timer);
       timer = setTimeout(() => {
-        if (!extracted) finish(refuse("extract-timeout"));
-        else finish({ report: errorReport(base, "run exceeded its deadline", { extract: null, total: since() }, "timeout"), canonical: null });
-      }, Math.max(0, ms - since()));
+        if (phase === "extracting") finish(refusal("archive.unsafe", "extract-timeout"));
+        else finish(failure(phase === "boot" ? "worker did not start" : "run exceeded its deadline", phase === "boot" ? "error" : "timeout"));
+      }, Math.max(0, deadlineAt - Date.now()));
     };
-    arm(extractMs);
+    arm(started + runMs);
 
     worker.on("message", (message: { type: string; report?: unknown; canonical?: Uint8Array | null }) => {
-      if (message.type === "extracted") {
-        extracted = true;
-        arm(runMs);
+      if (message.type === "extracting") {
+        phase = "extracting";
+        arm(Math.min(Date.now() + extractMs, started + runMs));
+      } else if (message.type === "extracted") {
+        phase = "extracted";
+        arm(started + runMs);
       } else if (message.type === "result") {
         const parsed = SandboxAReport.safeParse(message.report);
-        if (!parsed.success) finish({ report: errorReport(base, "worker report failed its schema", { extract: null, total: since() }), canonical: null });
+        if (!parsed.success) finish(failure("worker report failed its schema"));
         else finish({ report: parsed.data, canonical: message.canonical ?? null });
       }
     });
     worker.on("error", (e: Error & { code?: string }) => {
-      if (e.code === "ERR_WORKER_OUT_OF_MEMORY") {
-        if (!extracted) {
-          const refusal = new ArchiveRefusal("archive.bomb", "memory");
-          const t = since();
-          finish({ report: refusedReport(base, refusal.reason, refusal.code, archiveFinding(refusal, make), { extract: t, total: t }), canonical: null });
-        } else finish({ report: errorReport(base, "out of memory", { extract: null, total: since() }), canonical: null });
-      } else if (!extracted) finish(refuse("extract-crash"));
-      else finish({ report: errorReport(base, "worker crashed", { extract: null, total: since() }), canonical: null });
+      if (e.code === "ERR_WORKER_OUT_OF_MEMORY") finish(phase === "extracting" ? refusal("archive.bomb", "memory") : failure("out of memory"));
+      else finish(crashed("worker crashed"));
     });
-    worker.on("exit", () => {
-      if (!extracted) finish(refuse("extract-crash"));
-      else finish({ report: errorReport(base, "worker exited without a result", { extract: null, total: since() }), canonical: null });
-    });
+    worker.on("exit", () => finish(crashed("worker exited without a result")));
   });
 }
