@@ -1,3 +1,4 @@
+import { oidcConfig } from "@packserver/core/publishing";
 import { migratedD1 } from "@packserver/core/identity/testing";
 import { SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
 import { createFakePorts } from "@packserver/ports/fakes";
@@ -33,7 +34,7 @@ function site(mcp: Mcp = {}, d1 = migratedD1().d1) {
     worker: "web", environment: "test", version: { versionId: SHELL_VERSION, releaseId: SHELL_RELEASE }, missingBindings: [], missingSecrets: [],
     ports: { ...createFakePorts({ worker: "web" }), d1, githubLogin: { authorizeUrl: async () => "", profile: async () => { throw new Error("unused"); } } },
     services: { mcp: fetcher, publish: {} as Fetcher },
-    config: { cdnOrigin: "https://packs.test.invalid", siteOrigins: ["https://registry.test.invalid"] },
+    config: { oidc: oidcConfig({ ENVIRONMENT: "production" }), fetch, cdnOrigin: "https://packs.test.invalid", siteOrigins: ["https://registry.test.invalid"] },
   };
   const app = createApp(runtime);
   return { seen, get: async (path: string) => { const res = await app.request(path); return { status: res.status, html: await res.text() }; } };

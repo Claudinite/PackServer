@@ -3,7 +3,7 @@ import { z } from "zod";
 /** The signals catalogue: `<area>.<past-tense event>`. Append-only. */
 export const SIGNALS = {
   download: ["served", "hash_mismatch", "hash_mismatch_reported"],
-  index: ["served", "signed", "root_signed", "verify_failed", "verify_failed_reported", "key_changed", "stale", "stale_reported", "rollback_reported"],
+  index: ["served", "signed", "root_signed", "verify_failed", "verify_failed_reported", "key_changed", "stale", "stale_reported", "rollback_reported", "entry_skipped"],
   search: ["query", "degraded", "vectorize_error"],
   mcp: ["call", "auth_rejected"],
   oauth: ["flow"],

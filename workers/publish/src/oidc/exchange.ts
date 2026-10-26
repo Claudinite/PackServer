@@ -1,4 +1,4 @@
-import { chooseRegistration, type Registration } from "@packserver/core/publishing";
+import { chooseRegistration, JwksUnavailable, verifyActionsToken, type Registration } from "@packserver/core/publishing";
 import { clientIp, rateLimit, refusal } from "@packserver/http";
 import { PackName, PackVersion } from "@packserver/schema";
 import { Hono } from "hono";
@@ -6,8 +6,6 @@ import { z } from "zod";
 import type { PublishRuntime } from "../bindings";
 import { badRequest, readJson, unavailable } from "../respond";
 import { issueCredential, PublishingFrozen, TokenAlreadyUsed } from "../upload/credentials";
-import { JwksUnavailable } from "./jwks";
-import { verifyActionsToken } from "./verify";
 
 const MAX_BODY_BYTES = 16 * 1024;
 
