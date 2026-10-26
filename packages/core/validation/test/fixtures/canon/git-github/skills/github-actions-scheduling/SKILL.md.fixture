@@ -1,0 +1,8 @@
+---
+name: github-actions-scheduling
+description: What a GitHub Actions `schedule:` trigger actually guarantees. Use when adding, changing, explaining or debugging anything that runs on a cron in GitHub Actions.
+metadata:
+  body: guidelines
+  usage:
+    expect: judgment
+---

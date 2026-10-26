@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "b9279e22-8e66-43b7-8bdd-09306d168260",
+  "id": "6e44d7f2-f9db-4039-9fb3-b1261b607be2",
   "prevId": "dfb9ec22-371e-4d05-a3c3-596d1170c19b",
   "tables": {
     "credentials": {
@@ -927,84 +927,105 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "pack_search": {
-      "name": "pack_search",
+    "trusted_publishers": {
+      "name": "trusted_publishers",
       "columns": {
-        "seq": {
-          "name": "seq",
-          "type": "integer",
+        "id": {
+          "name": "id",
+          "type": "text",
           "primaryKey": true,
           "notNull": true,
-          "autoincrement": true
+          "autoincrement": false
         },
-        "pack_id": {
-          "name": "pack_id",
+        "scope_id": {
+          "name": "scope_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "name": {
-          "name": "name",
+        "pack_name": {
+          "name": "pack_name",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "pitch": {
-          "name": "pitch",
+        "repository_id": {
+          "name": "repository_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "category": {
-          "name": "category",
+        "repository_owner_id": {
+          "name": "repository_owner_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "tags": {
-          "name": "tags",
+        "repository": {
+          "name": "repository",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "skills": {
-          "name": "skills",
+        "workflow": {
+          "name": "workflow",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "parts": {
-          "name": "parts",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "has_repository": {
-          "name": "has_repository",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "card": {
-          "name": "card",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "demotion": {
-          "name": "demotion",
+        "environment": {
+          "name": "environment",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
+          "autoincrement": false
+        },
+        "path": {
+          "name": "path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "refs": {
+          "name": "refs",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "events": {
+          "name": "events",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "pending_until": {
+          "name": "pending_until",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
           "autoincrement": false
         },
         "updated_at": {
@@ -1016,28 +1037,254 @@
         }
       },
       "indexes": {
-        "pack_search_pack_unique": {
-          "name": "pack_search_pack_unique",
+        "trusted_publishers_pack_idx": {
+          "name": "trusted_publishers_pack_idx",
           "columns": [
-            "pack_id"
+            "scope_id",
+            "pack_name"
           ],
-          "isUnique": true
+          "isUnique": false
         },
-        "pack_search_category_idx": {
-          "name": "pack_search_category_idx",
+        "trusted_publishers_repository_idx": {
+          "name": "trusted_publishers_repository_idx",
           "columns": [
-            "category"
+            "repository_id"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "pack_search_pack_id_packs_id_fk": {
-          "name": "pack_search_pack_id_packs_id_fk",
-          "tableFrom": "pack_search",
-          "tableTo": "packs",
+        "trusted_publishers_scope_id_scopes_id_fk": {
+          "name": "trusted_publishers_scope_id_scopes_id_fk",
+          "tableFrom": "trusted_publishers",
+          "tableTo": "scopes",
           "columnsFrom": [
-            "pack_id"
+            "scope_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "trusted_publishers_created_by_users_id_fk": {
+          "name": "trusted_publishers_created_by_users_id_fk",
+          "tableFrom": "trusted_publishers",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "upload_credentials": {
+      "name": "upload_credentials",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "secret_hash": {
+          "name": "secret_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scope_id": {
+          "name": "scope_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "pack_name": {
+          "name": "pack_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "trusted_publisher_id": {
+          "name": "trusted_publisher_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "claims": {
+          "name": "claims",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "oidc_jti": {
+          "name": "oidc_jti",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "staging_key": {
+          "name": "staging_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "lifetime": {
+          "name": "lifetime",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "issued_at": {
+          "name": "issued_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "used_at": {
+          "name": "used_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "size_bytes": {
+          "name": "size_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "uploaded_at": {
+          "name": "uploaded_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "object_expires_at": {
+          "name": "object_expires_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "released_at": {
+          "name": "released_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "upload_credentials_secret_hash_unique": {
+          "name": "upload_credentials_secret_hash_unique",
+          "columns": [
+            "secret_hash"
+          ],
+          "isUnique": true
+        },
+        "upload_credentials_staging_key_unique": {
+          "name": "upload_credentials_staging_key_unique",
+          "columns": [
+            "staging_key"
+          ],
+          "isUnique": true
+        },
+        "upload_credentials_oidc_jti_unique": {
+          "name": "upload_credentials_oidc_jti_unique",
+          "columns": [
+            "oidc_jti"
+          ],
+          "isUnique": true
+        },
+        "upload_credentials_scope_idx": {
+          "name": "upload_credentials_scope_idx",
+          "columns": [
+            "scope_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "upload_credentials_scope_id_scopes_id_fk": {
+          "name": "upload_credentials_scope_id_scopes_id_fk",
+          "tableFrom": "upload_credentials",
+          "tableTo": "scopes",
+          "columnsFrom": [
+            "scope_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "upload_credentials_trusted_publisher_id_trusted_publishers_id_fk": {
+          "name": "upload_credentials_trusted_publisher_id_trusted_publishers_id_fk",
+          "tableFrom": "upload_credentials",
+          "tableTo": "trusted_publishers",
+          "columnsFrom": [
+            "trusted_publisher_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "upload_credentials_user_id_users_id_fk": {
+          "name": "upload_credentials_user_id_users_id_fk",
+          "tableFrom": "upload_credentials",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
           ],
           "columnsTo": [
             "id"
@@ -1049,150 +1296,19 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
-        "pack_search_demotion_check": {
-          "name": "pack_search_demotion_check",
-          "value": "\"pack_search\".\"demotion\" is null or \"pack_search\".\"demotion\" in ('advisory', 'failed_validation', 'abuse_hold')"
+        "upload_credentials_source_check": {
+          "name": "upload_credentials_source_check",
+          "value": "\"upload_credentials\".\"source\" in ('oidc', 'upload')"
+        },
+        "upload_credentials_lifetime_check": {
+          "name": "upload_credentials_lifetime_check",
+          "value": "\"upload_credentials\".\"lifetime\" in ('dry-run', 'draft')"
+        },
+        "upload_credentials_size_check": {
+          "name": "upload_credentials_size_check",
+          "value": "\"upload_credentials\".\"size_bytes\" is null or \"upload_credentials\".\"size_bytes\" >= 0"
         }
       }
-    },
-    "pack_stats": {
-      "name": "pack_stats",
-      "columns": {
-        "pack_id": {
-          "name": "pack_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "fetches_30d": {
-          "name": "fetches_30d",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "fetches_7d": {
-          "name": "fetches_7d",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "fetches_prev_28d": {
-          "name": "fetches_prev_28d",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "stars": {
-          "name": "stars",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "stars_7d": {
-          "name": "stars_7d",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "stars_prev_28d": {
-          "name": "stars_prev_28d",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "rating": {
-          "name": "rating",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "computed_at": {
-          "name": "computed_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "pack_stats_pack_id_packs_id_fk": {
-          "name": "pack_stats_pack_id_packs_id_fk",
-          "tableFrom": "pack_stats",
-          "tableTo": "packs",
-          "columnsFrom": [
-            "pack_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "recent": {
-      "name": "recent",
-      "columns": {
-        "pack_id": {
-          "name": "pack_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "promoted_at": {
-          "name": "promoted_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "recent_promoted_at_idx": {
-          "name": "recent_promoted_at_idx",
-          "columns": [
-            "promoted_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "recent_pack_id_packs_id_fk": {
-          "name": "recent_pack_id_packs_id_fk",
-          "tableFrom": "recent",
-          "tableTo": "packs",
-          "columnsFrom": [
-            "pack_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
     },
     "audit_heads": {
       "name": "audit_heads",
