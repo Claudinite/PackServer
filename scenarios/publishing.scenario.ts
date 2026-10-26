@@ -255,7 +255,6 @@ scenario("IT-VAL-002 Hash mismatch, oversize or non-zstd fail before any sandbox
   expect((await world.recorder.invocations()).filter((i) => /sandbox/i.test(i.target))).toEqual([]);
 
   const exact = await v.publish(world.archive("gcp", { padTo: 3 * MiB })).as("@v/exact@1.0.0");
-  await exact.run.finished();
   const steps = await exact.run.milestones();
   expect(steps.slice(0, 2).map((m) => `${m.step}:${m.outcome}`)).toEqual(["admission:ok", "integrity:ok"]);
 });
