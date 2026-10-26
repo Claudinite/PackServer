@@ -148,7 +148,7 @@
         "BUDGET": "budget"
       },
       "ratelimits": [],
-      "secrets": ["SELFTEST_HMAC_KEY", "IP_HASH_MASTER_KEY", "PRINCIPAL_HASH_KEY"]
+      "secrets": ["SELFTEST_HMAC_KEY", "IP_HASH_MASTER_KEY", "PRINCIPAL_HASH_KEY", "ANALYTICS_READ_TOKEN", "CF_AUDIT_READ_TOKEN", "CF_ACCOUNT_ID"]
     },
     "prober": {
       "d1": {},
