@@ -14,6 +14,10 @@ export const MAX_ATTACHMENTS_PER_REPORT = 5;
 /** Files uploaded and not yet attached to a report; the cap bounds what an abandoned form can leave behind. */
 export const MAX_PENDING_ATTACHMENTS = 10;
 export const PENDING_ATTACHMENT_TTL_HOURS = 24;
+/** What one account may upload in 24 hours, attached or not. */
+export const UPLOADER_DAILY_BYTES = 25 * 1024 * 1024;
+/** Attachment bytes the registry database holds in all; it is shared with everything else, so this stays a small part of it. */
+export const ATTACHMENT_CEILING_BYTES = 500 * 1024 * 1024;
 export const SIMILAR_LIMIT = 5;
 
 /** The data model's roles that publish and yank, which the UI calls maintainers (REQ-PUB-022); owners and admins also hold them. */

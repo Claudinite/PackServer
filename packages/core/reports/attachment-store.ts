@@ -1,6 +1,6 @@
 import { sha256Hex } from "@packserver/ports";
 import { base64ToBytes, bytesToBase64, classifyAttachment, safeFileName, type AttachmentRefusal } from "./attachments.ts";
-import { MAX_PENDING_ATTACHMENTS, PENDING_ATTACHMENT_TTL_HOURS } from "./constants.ts";
+import { ATTACHMENT_CEILING_BYTES, MAX_PENDING_ATTACHMENTS, UPLOADER_DAILY_BYTES, PENDING_ATTACHMENT_TTL_HOURS } from "./constants.ts";
 import { isoNow, type ReportPorts } from "./ports.ts";
 
 /** A raw piece must stay well under a D1 row's size once it is base64. */
@@ -17,7 +17,7 @@ export interface AttachmentMeta {
 
 export type SaveAttachment =
   | { ok: true; attachment: AttachmentMeta }
-  | { ok: false; reason: AttachmentRefusal | "too_many"; message: string };
+  | { ok: false; reason: AttachmentRefusal | "too_many" | "allowance" | "storage_full"; message: string };
 
 /** Checks the file and keeps it until the report it belongs to is filed. */
 export async function saveAttachment(ports: ReportPorts, upload: { user_id: string; name: string; bytes: Uint8Array }): Promise<SaveAttachment> {
@@ -27,6 +27,18 @@ export async function saveAttachment(ports: ReportPorts, upload: { user_id: stri
   const pending = await ports.d1.query("select count(*) as n from report_attachments where uploader_id = ? and report_id is null", [upload.user_id]);
   if (Number(pending.rows[0]?.n ?? 0) >= MAX_PENDING_ATTACHMENTS) {
     return { ok: false, reason: "too_many", message: "File or discard the reports you have started before attaching more files." };
+  }
+
+  const dayAgo = new Date(ports.clock.now() - 86_400_000).toISOString();
+  const usage = await ports.d1.query(
+    "select coalesce(sum(size_bytes), 0) as total, coalesce(sum(case when uploader_id = ? and created_at >= ? then size_bytes else 0 end), 0) as mine from report_attachments",
+    [upload.user_id, dayAgo],
+  );
+  if (Number(usage.rows[0]?.total ?? 0) + upload.bytes.length > ATTACHMENT_CEILING_BYTES) {
+    return { ok: false, reason: "storage_full", message: "Attachments are unavailable right now. File the report without one, or try again later." };
+  }
+  if (Number(usage.rows[0]?.mine ?? 0) + upload.bytes.length > UPLOADER_DAILY_BYTES) {
+    return { ok: false, reason: "allowance", message: "You have reached the daily limit for attachment uploads (25 MB). Try again tomorrow." };
   }
 
   const attachment: AttachmentMeta = {

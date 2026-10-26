@@ -106,3 +106,33 @@ describe("notice delivery", () => {
     expect(await drainNotices(f.ports, { mail, siteOrigin: "https://registry.example", securityAddress: "security@registry.test" })).toEqual({ sent: 0, skipped: 0 });
   });
 });
+
+describe("attachment storage allowance", () => {
+  const big = (n: number) => png(n);
+
+  it("limits what one account may upload in 24 hours, and frees it afterwards", async () => {
+    const f = await fixture();
+    const ann = await f.user("ann");
+    const bob = await f.user("bob");
+    const chunk = 5 * 1024 * 1024;
+    for (let i = 0; i < 5; i += 1) expect(await saveAttachment(f.ports, { user_id: ann, name: `a${i}.png`, bytes: big(chunk) })).toMatchObject({ ok: true });
+    const refused = await saveAttachment(f.ports, { user_id: ann, name: "more.png", bytes: big(chunk) });
+    expect(refused).toMatchObject({ ok: false, reason: "allowance" });
+    expect(await saveAttachment(f.ports, { user_id: bob, name: "b.png", bytes: big(1024) })).toMatchObject({ ok: true });
+    f.advance(DAY + 1000);
+    expect(await saveAttachment(f.ports, { user_id: ann, name: "later.png", bytes: big(1024) })).toMatchObject({ ok: true });
+  }, 60_000);
+
+  it("refuses every upload once the registry holds its ceiling of attachment bytes", async () => {
+    const f = await fixture();
+    const ann = await f.user("ann");
+    const other = await f.user("other");
+    // Stand in for many uploaders: the ceiling counts every stored byte, not one account's.
+    const rows = Array.from({ length: 100 }, (_, i) => ({
+      sql: `insert into report_attachments (id, report_id, uploader_id, name, content_type, disposition, size_bytes, sha256, created_at) values (?, null, '${other}', 'x.png', 'image/png', 'inline', 5242880, 'h', '2020-01-01T00:00:00.000Z')`,
+      params: [`fill-${i}`],
+    }));
+    await f.d1.batch(rows);
+    expect(await saveAttachment(f.ports, { user_id: ann, name: "a.png", bytes: png(1024) })).toMatchObject({ ok: false, reason: "storage_full" });
+  });
+});

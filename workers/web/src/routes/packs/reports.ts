@@ -110,7 +110,7 @@ routes.post("/packs/:scope/:name/reports/attachments", requireSession(), csrfGua
   const bytes = await readCapped(c.req.raw, MAX_ATTACHMENT_BYTES);
   if (bytes === null) return refusal("quota", { status: 413, message: "Attachments can be at most 5 MB." });
   const saved = await saveAttachment(portsOf(c), { user_id: userId(c), name: c.req.query("name") ?? "", bytes });
-  if (!saved.ok) return saved.reason === "too_many" ? refusal("quota", { message: saved.message }) : invalid(saved.message);
+  if (!saved.ok) return ["too_many", "allowance", "storage_full"].includes(saved.reason) ? refusal("quota", { message: saved.message }) : invalid(saved.message);
   return c.json({ attachment: saved.attachment }, 201, NO_STORE);
 });
 

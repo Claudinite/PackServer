@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advisoriesFor, fileReport, hasPublishedAdvisory, linkIssue, listInbox, listIssues, listOwn, publishAdvisory, readReport, setSecurityContact, setStatus, similarIssues, sweepReports } from "../index.ts";
+import { AdvisoryInput, advisoriesFor, fileReport, hasPublishedAdvisory, linkIssue, listInbox, listIssues, listOwn, publishAdvisory, readReport, setSecurityContact, setStatus, similarIssues, sweepReports } from "../index.ts";
 import { bug, DAY, fixture, security } from "./helpers.ts";
 
 const asUser = (id: string) => ({ kind: "user", id }) as const;
@@ -175,5 +175,31 @@ describe("the disclosure timer", () => {
     expect(String(expired[0]?.data)).toContain(second.report.id);
     expect((await readReport(f.ports, second.report.id, SECURITY))?.disclosure?.expired).toBe(true);
     expect(await hasPublishedAdvisory(f.d1, f.pack.id, "1.0.1")).toBe(true);
+  });
+});
+
+describe("limits found in review", () => {
+  it("accepts an advisory naming 90 versions and refuses 91 at the input", async () => {
+    const f = await fixture();
+    const ann = await f.user("ann");
+    const names = Array.from({ length: 91 }, (_, i) => `2.${i}.0`);
+    await f.d1.batch(names.map((v) => ({ sql: "insert into pack_versions (id, pack_id, version, state, sha256, size_bytes, verified, source_verified) values (?, 'pack-gcp', ?, 'active', ?, 10, 0, 0)", params: [`w-${v}`, v, `s-${v}`] })));
+    const { report } = await filed(f, ann, security());
+    expect(AdvisoryInput.safeParse({ summary: "x", versions: names }).success).toBe(false);
+    const result = await publishAdvisory(f.ports, report.id, AdvisoryInput.parse({ summary: "x", versions: names.slice(0, 90) }));
+    expect(result).toMatchObject({ ok: true });
+  });
+
+  it("follows an issue whatever the case of the pasted address", async () => {
+    const f = await fixture();
+    const ann = await f.user("ann");
+    const { report } = await filed(f, ann, bug(), "Acme/Packs");
+    const linked = await linkIssue(f.ports, report.id, ann, "https://github.com/ACME/packs/issues/9");
+    expect(linked).toMatchObject({ ok: true });
+    await f.d1.query(
+      "insert into github_issue_states (repository_id, issue_number, repository, html_url, state, source_updated_at, updated_at) values (1, 9, 'Acme/Packs', 'https://github.com/Acme/Packs/issues/9', 'closed', 'x', 'x')",
+    );
+    expect((await readReport(f.ports, report.id, asUser(ann)))?.status).toBe("closed");
+    expect(await linkIssue(f.ports, report.id, ann, "https://github.com/acme/PACKS/issues/9")).toMatchObject({ ok: true });
   });
 });

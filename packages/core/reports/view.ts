@@ -37,7 +37,7 @@ export const REPORT_FROM = `from reports r
   join users u on u.id = r.reporter_id
   join packs p on p.id = r.pack_id
   join scopes s on s.id = p.scope_id
-  left join github_issue_states g on g.html_url = r.issue_url
+  left join github_issue_states g on lower(g.html_url) = r.issue_url
   left join advisories a on a.report_id = r.id`;
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));

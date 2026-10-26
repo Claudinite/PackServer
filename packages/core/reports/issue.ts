@@ -54,5 +54,6 @@ export function parseIssueUrl(value: string): { repository: string; number: numb
   if (!match) return null;
   const repository = `${match[1]}/${match[2]}`;
   const number = Number(match[3]);
-  return { repository, number, url: `https://github.com/${repository}/issues/${number}` };
+  // GitHub names are case-insensitive, so the address is kept in one case to be matched against its webhooks.
+  return { repository, number, url: `https://github.com/${repository}/issues/${number}`.toLowerCase() };
 }

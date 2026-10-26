@@ -31,7 +31,8 @@ export const AdvisoryInput = z
   .object({
     summary: text(2000),
     severity: z.enum(SEVERITIES).optional(),
-    versions: z.array(PackVersion).min(1).max(200),
+    /** The version lookup binds these plus the pack, and D1 binds at most 100 values per statement. */
+    versions: z.array(PackVersion).min(1).max(90),
     fixed_in: PackVersion.optional(),
   })
   .strict();
