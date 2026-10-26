@@ -36,7 +36,6 @@ CREATE TABLE `hash_mismatch_reports` (
 	`reported_at` text NOT NULL,
 	FOREIGN KEY (`pack_id`) REFERENCES `packs`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`reporter_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action,
-	FOREIGN KEY (`token_id`) REFERENCES `read_tokens`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "hash_mismatch_reports_kind_check" CHECK("hash_mismatch_reports"."kind" in ('hash', 'signature'))
 );
 --> statement-breakpoint

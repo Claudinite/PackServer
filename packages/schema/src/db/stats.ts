@@ -2,7 +2,6 @@ import { sql } from "drizzle-orm";
 import { check, index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { inList } from "./enum-check";
 import { packs } from "./packs";
-import { read_tokens } from "./tokens";
 import { users } from "./users";
 
 export const COUNTED_FETCH_KINDS = ["public", "private"] as const;
@@ -86,9 +85,9 @@ export const hash_mismatch_reports = sqliteTable(
     version: text("version").notNull(),
     kind: text("kind", { enum: MISMATCH_KINDS }).notNull(),
     reporter_id: text("reporter_id").references(() => users.id),
-    /** Whether the credential presented covered the pack when the report was filed, and which one it was, so a private pack can re-check it when counting. */
+    /** Whether the credential presented covered the pack when the report was filed, and which token it was (no foreign key: tokens belong to another area), so a private pack can re-check it when counting. */
     covering: integer("covering", { mode: "boolean" }).notNull(),
-    token_id: text("token_id").references(() => read_tokens.id),
+    token_id: text("token_id"),
     expected: text("expected").notNull(),
     observed: text("observed").notNull(),
     reported_at: text("reported_at").notNull(),
