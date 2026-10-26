@@ -218,7 +218,7 @@ export const PORT_SPECS: { [K in Exclude<keyof SinglePorts, "durableObjects">]: 
   access: {
     kind: "http",
     target: "access",
-    methods: { verify: { effect: "read", args: ["secret"], result: { email: "personal", sub: "personal" } } },
+    methods: { verify: { effect: "read", args: ["secret"], result: { email: "personal", sub: "personal", aud: { "*": op }, exp: op } } },
   },
   stats: {
     kind: "ae",
@@ -326,6 +326,7 @@ export const BINDING_SPECS: { [K in keyof BindingPorts]: PortSpec<BindingPorts[K
     methods: {
       create: { effect: "write", args: [{ id: op, params: content }], result: { id: op } },
       status: { effect: "read", args: [op], result: { status: op } },
+      sendEvent: { effect: "write", args: [op, { type: op, payload: content }] },
     },
   },
   rateLimits: {

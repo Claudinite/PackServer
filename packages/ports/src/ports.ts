@@ -171,6 +171,10 @@ export interface Turnstile {
 export interface AccessIdentityClaims {
   email: string;
   sub: string;
+  /** The Access application audiences the assertion was issued for; absent where the verifier does not report them. */
+  aud?: string[];
+  /** Expiry as epoch seconds; absent where the verifier does not report it. */
+  exp?: number;
 }
 export interface AccessIdentity {
   /** Rejects with a `PortError` when the assertion's signature or audience does not verify. */
@@ -269,6 +273,8 @@ export interface Queue {
 export interface Workflow {
   create(request: { id?: string; params: unknown }): Promise<{ id: string }>;
   status(id: string): Promise<{ status: string }>;
+  /** Wakes the instance's `waitForEvent` of this type; rejects with `not_found` when the instance does not exist or has finished. */
+  sendEvent(id: string, event: { type: string; payload: unknown }): Promise<void>;
 }
 
 export interface RateLimit {

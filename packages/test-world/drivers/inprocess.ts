@@ -78,7 +78,7 @@ export class InProcessDriver implements Driver {
     request: async (req: ApiRequest): Promise<ApiResponse> => {
       if (!this.harness.workers.includes(req.surface)) throw new InfrastructureError(`the ${req.surface} Worker is not booted`);
       const headers = { ...req.headers };
-      const url = `http://${req.surface}.internal${req.path}`;
+      const url = `http://${req.host ?? `${req.surface}.internal`}${req.path}`;
       const body = encodeBody(req.body, headers);
       const res = await this.harness.server.getWorker(testWorkerName(req.surface)).fetch(url, { method: req.method, headers, redirect: "manual", ...(body === undefined ? {} : { body }) } as never);
       const out = await toApiResponse(res as unknown as Response);
