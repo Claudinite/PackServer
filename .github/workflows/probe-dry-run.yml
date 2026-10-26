@@ -1,0 +1,101 @@
+# TEMPLATE for the private repository Claudinite/packserver-probe, where this file is copied
+# verbatim to the same path: the registry matches the path, `main`, and the `schedule` and
+# `workflow_dispatch` events against the trusted-publisher registration of @probe/p, and nothing
+# else. In any other repository every job below is skipped by its first condition.
+#
+# Once an hour it publishes a new version of @probe/p through the same Action a customer uses,
+# then tells the gate judge whether the registry reached a verdict (POST /probe-results). The
+# version it publishes expires after 24 hours (REQ-OPS-001). This file never writes to GitHub.
+#
+# Before the first run, replace the three words in capitals below and add the repository secrets
+# PROBE_ACCESS_CLIENT_ID and PROBE_ACCESS_CLIENT_SECRET (the probe service token, which opens the
+# canary and self-test Access applications and nothing else):
+#   PUBLISH_PACK_SHA  the full commit SHA of the publish-pack release to run
+#   CN_VERSION        the cn release the Action runs `cn vendor` with
+#   CN_SHA256         the SHA-256 of that release's .tgz
+name: probe-dry-run
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: probe-dry-run
+  cancel-in-progress: false
+
+env:
+  CANARY_ORIGIN: https://registry-canary.claudinite.com
+  PROBE_PACK: "@probe/p"
+
+jobs:
+  # The only job that may ask GitHub for an OIDC token; it holds no registry credential of its own.
+  publish:
+    if: github.repository == 'Claudinite/packserver-probe'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      verdict: ${{ steps.publish.outputs.verdict }}
+      run-id: ${{ steps.publish.outputs.run-id }}
+    steps:
+      # A version later than every earlier one, which the registry requires of a second publish.
+      - id: pack
+        run: |
+          version="1.${GITHUB_RUN_NUMBER}.0"
+          mkdir -p pack/skills/probe
+          printf '{\n  "name": "%s",\n  "version": "%s",\n  "minEngineVersion": "1.61001.1"\n}\n' "$PROBE_PACK" "$version" > pack/pack.json
+          printf '# %s\n\nA synthetic pack the registry publishes to prove it can.\n' "$PROBE_PACK" > pack/README.md
+          printf -- '---\nname: probe\ndescription: A synthetic skill the registry publishes to prove it can. Use when asked about the PackServer probe.\n---\n\nThis pack exists so the registry can prove it accepts a publish. It does nothing.\n' > pack/skills/probe/SKILL.md
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      # A verdict of fail or error is a result to report, not a reason to stop before reporting it.
+      - id: publish
+        continue-on-error: true
+        uses: claudinite/publish-pack@PUBLISH_PACK_SHA
+        with:
+          pack: "@probe/p"
+          version: ${{ steps.pack.outputs.version }}
+          path: pack
+          cn-version: CN_VERSION
+          cn-sha256: CN_SHA256
+
+  # Holds the service token and no OIDC permission, so the job that publishes never sees the token.
+  report:
+    needs: publish
+    if: always() && github.repository == 'Claudinite/packserver-probe' && needs.publish.result != 'skipped'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    env:
+      CF_ACCESS_CLIENT_ID: ${{ secrets.PROBE_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.PROBE_ACCESS_CLIENT_SECRET }}
+      VERDICT: ${{ needs.publish.outputs.verdict }}
+    steps:
+      - name: Report the dry run to the gate judge
+        env:
+          RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          case "$VERDICT" in
+            pass|warn|hold|fail) reached=true; failed=false ;;
+            # Held back by the registry's own rate limit: nothing failed and nothing was decided.
+            queued) echo "::notice::the registry queued the dry run; nothing to report"; exit 0 ;;
+            *) reached=false; failed=true ;;
+          esac
+          access=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+          # The judge keys a dry run by the version of the publish Worker that took it.
+          version_id="$(curl --fail --silent --show-error --max-time 30 "${access[@]}" "$CANARY_ORIGIN/api/publish/__selftest?shallow=1" | jq -r '.version_id // empty')"
+          if ! [[ "$version_id" =~ ^[A-Za-z0-9-]{1,64}$ ]]; then
+            echo "::error::the publish Worker's self-test named no usable version"
+            exit 1
+          fi
+          jq -n --arg version_id "$version_id" --arg run_id "$RUN_ID" --argjson reached "$reached" --argjson failed "$failed" \
+            '{kind: "publish.dry_run", version_id: $version_id, run_id: $run_id, reached_verdict: $reached, publish_failed: $failed}' \
+            | curl --fail-with-body --silent --show-error --max-time 30 "${access[@]}" -H "content-type: application/json" --data @- "$CANARY_ORIGIN/probe-results"

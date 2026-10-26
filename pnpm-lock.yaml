@@ -351,6 +351,9 @@ importers:
 
   workers/prober:
     dependencies:
+      '@packserver/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@packserver/http':
         specifier: workspace:*
         version: link:../../packages/http
@@ -360,6 +363,9 @@ importers:
       '@packserver/schema':
         specifier: workspace:*
         version: link:../../packages/schema
+      '@packserver/test-world':
+        specifier: workspace:*
+        version: link:../../packages/test-world
       hono:
         specifier: 'catalog:'
         version: 4.13.13
@@ -367,6 +373,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: 'catalog:'
         version: 5.20261022.1
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
 
   workers/publish:
     dependencies:
