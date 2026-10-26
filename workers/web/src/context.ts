@@ -1,5 +1,7 @@
-import type { SessionPorts } from "@packserver/core/identity";
-import { resolveSession, type SessionVariables, type TokenVariables } from "@packserver/http";
+import { createAudit, type AuditAction, type AuditExtra } from "@packserver/core/audit";
+import { relyingPartyFor, type MfaPorts, type SessionPorts } from "@packserver/core/identity";
+import { sendNotice, type NoticeData, type NoticeKind } from "@packserver/core/mail";
+import { clientIp, resolveSession, type SessionVariables, type TokenVariables } from "@packserver/http";
 import { syncClock } from "@packserver/ports";
 import type { Context, MiddlewareHandler } from "hono";
 import type { WebRuntime } from "./bindings";
@@ -42,4 +44,34 @@ export function siteOriginOf(c: Context<WebEnv>): string {
   const origins = runtimeOf(c).config.siteOrigins;
   const requested = new URL(c.req.url).origin;
   return origins.includes(requested) ? requested : origins[0];
+}
+
+export const mfaPorts = (runtime: WebRuntime): MfaPorts => ({ d1: runtime.ports.d1, clock: runtime.ports.clock, rng: runtime.ports.rng });
+
+export const relyingPartyOf = (c: Context<WebEnv>) => relyingPartyFor(siteOriginOf(c));
+
+/** Notices link to the public host over https whatever scheme the request arrived on. */
+export const securityUrlOf = (c: Context<WebEnv>): string => `https://${new URL(runtimeOf(c).config.siteOrigins[0]).host}/account/security`;
+
+/** The one call for a sensitive action; a failed send rejects, so the caller can refuse before acting. */
+export async function recordAudit(
+  c: Context<WebEnv>, userId: string, action: AuditAction, target?: string, detail?: AuditExtra["detail"],
+): Promise<void> {
+  const runtime = runtimeOf(c);
+  const ipMaster = (await runtime.ports.telemetry.keys()).ipMaster;
+  const queue = runtime.ports.queues.AUDIT_QUEUE;
+  if (!queue) throw new Error("the audit queue is not bound");
+  const audit = createAudit({ clock: runtime.ports.clock, rng: runtime.ports.rng, queue, d1: runtime.ports.d1 }, { ipKey: ipMaster ?? "" });
+  await audit({ kind: "user", id: userId }, action, target, {
+    user_id: userId,
+    ...(ipMaster === undefined ? {} : { ip: clientIp(c) }),
+    ...(detail === undefined ? {} : { detail }),
+  });
+}
+
+/** Sends a notice to every verified address of the account. */
+export async function notifyUser<K extends NoticeKind>(c: Context<WebEnv>, userId: string, kind: K, data: NoticeData<K>): Promise<void> {
+  const runtime = runtimeOf(c);
+  const { rows } = await runtime.ports.d1.query("select address from user_emails where user_id = ? order by address", [userId]);
+  for (const row of rows) await sendNotice(runtime.ports.mail, String(row.address), kind, data);
 }

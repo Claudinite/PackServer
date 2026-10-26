@@ -1,4 +1,6 @@
-import { isRevoked, readSession, type LiveSession, type SessionPorts } from "@packserver/core/identity";
+import {
+  consumeGrant, hasPasskey, isRevoked, lockedUntil, readSession, type Grant, type LiveSession, type MfaPorts, type SessionPorts,
+} from "@packserver/core/identity";
 import type { Context, MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import { csrf, csrfToken } from "./csrf";
@@ -12,6 +14,8 @@ export type SessionEnv = { Variables: SessionVariables };
 export interface SessionVariables {
   /** The signed-in session of this request, or undefined; set by `resolveSession`. */
   session: LiveSession | undefined;
+  /** The assertion `requireAssertion` spent for this request. */
+  assertion?: Grant;
 }
 
 export function sessionCookie(live: LiveSession, now: number): string {
@@ -58,26 +62,54 @@ export function sessionCsrf<E extends SessionEnv = SessionEnv>(siteOrigin: (c: C
 /** Who owns an idempotency key: the session, or nobody for an anonymous request. */
 export const sessionCaller = (c: Context): string | undefined => (c as Context<SessionEnv>).get("session")?.sid_hash;
 
-/** Carries the action a sensitive request claims an assertion for, until the real check replaces this. */
-export const ASSERTION_STUB_HEADER = "x-assertion-stub";
+/** Carries the secret an assertion left for the one sensitive request it was made for. */
+export const ASSERTION_HEADER = "x-assertion";
 
-export interface AssertionStubOptions<E extends SessionEnv> {
-  ports: (c: Context<E>) => SessionPorts;
-  environment: (c: Context<E>) => string;
+export interface AssertionOptions<E extends SessionEnv> {
+  ports: (c: Context<E>) => MfaPorts;
+  /** What the action is done to, in the form the client named it when it asked for the assertion; none by default. */
+  target?: (c: Context<E>) => string | Promise<string>;
 }
 
 /**
- * Stand-in for the per-action assertion check, which replaces it. It accepts a request that names
- * the action and nothing more, so it proves no ceremony, and only in the test environment: anywhere
- * else every request is a `step-up` refusal. A session that was signed out or rotated away is
- * refused whatever it presents, even while a store replica still serves it.
+ * The per-action assertion check (REQ-ACC-010, REQ-ACC-022). The request must carry an assertion
+ * that this session made for this action and target; it is spent by the request and works once. A
+ * session that was signed out or rotated away is refused whatever it presents, even while a store
+ * replica still serves it, and so is an account whose step-up is locked. The verified grant is left
+ * on the context for the handler.
  */
-export function requireAssertion<E extends SessionEnv = SessionEnv>(action: string, options: AssertionStubOptions<E>): MiddlewareHandler<E> {
+export function requireAssertion<E extends SessionEnv = SessionEnv>(action: string, options: AssertionOptions<E>): MiddlewareHandler<E> {
   return async (c, next) => {
     const live = c.get("session");
     if (!live) return refusal("signed-out");
-    if (await isRevoked(options.ports(c), live.sid_hash)) return refusal("signed-out");
-    if (options.environment(c) !== "test" || c.req.header(ASSERTION_STUB_HEADER) !== action) return refusal("step-up");
+    const ports = options.ports(c);
+    if (await isRevoked(ports, live.sid_hash)) return refusal("signed-out");
+    const lock = await lockedUntil(ports, live.record.user_id);
+    if (lock !== null) return stepUpLocked(lock - ports.clock.now());
+    const token = c.req.header(ASSERTION_HEADER);
+    const grant = token ? await consumeGrant(ports, token, { sid_hash: live.sid_hash, action, target: (await options.target?.(c)) ?? "" }) : null;
+    if (!grant || grant.user_id !== live.record.user_id) {
+      return refusal("step-up", { message: "This action needs a passkey assertion made for it." });
+    }
+    c.set("assertion", grant);
+    return next();
+  };
+}
+
+export const stepUpLocked = (remainingMs: number): Response =>
+  refusal("rate-limited", { message: "Too many failed attempts. Step-up is locked for a while.", retry_after_s: Math.max(1, Math.ceil(remainingMs / 1000)) });
+
+/**
+ * Publishing and management need a passkey on the account (REQ-ACC-008). An account without one is
+ * refused with `mfa-required`, which the pages turn into the enrolment screen; nothing has happened.
+ */
+export function requireMfa<E extends SessionEnv = SessionEnv>(options: { ports: (c: Context<E>) => Pick<MfaPorts, "d1"> }): MiddlewareHandler<E> {
+  return async (c, next) => {
+    const live = c.get("session");
+    if (!live) return refusal("signed-out");
+    if (!(await hasPasskey(options.ports(c).d1, live.record.user_id))) {
+      return refusal("mfa-required", { message: "Enrol a passkey in Account > Security first." });
+    }
     return next();
   };
 }

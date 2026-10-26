@@ -7,6 +7,7 @@ const url = "https://packserver.example/x?a=1&b=2";
 const SAMPLES: { [K in NoticeKind]: NoticeData<K> } = {
   "factor-added": { factor: "passkey", securityUrl: url, lockApplies: true },
   "new-device-sign-in": { device: "Firefox on Linux", location: "Oslo", at: "2026-10-22 10:00 UTC", securityUrl: url },
+  "step-up-locked": { minutes: 15, securityUrl: url },
   "trusted-publisher-changed": { pack: "@acme/pack", change: "added", publisher: "acme/repo", actor: "ann", packUrl: url },
   "validation-verdict": { pack: "@acme/pack", version: "1.0.0", verdict: "failed", findings: [{ rule: "r1", class: "fail", file: "a.md", line: 3, quote: null, hint: "bad" }], runUrl: url },
   "version-published": { pack: "@acme/pack", version: "1.0.0", path: "CI", actor: "ann", versionUrl: url },

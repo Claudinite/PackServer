@@ -91,6 +91,14 @@
           }
         }
       ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "AUDIT_QUEUE",
+            "queue": "audit-test"
+          }
+        ]
+      },
       "version_metadata": {
         "binding": "CF_VERSION_METADATA"
       }
@@ -109,7 +117,8 @@
         "WORKER": "web",
         "ENVIRONMENT": "staging",
         "CDN_ORIGIN": "https://packs-staging.claudinite.com",
-        "SITE_ORIGINS": "https://registry-staging.claudinite.com"
+        "SITE_ORIGINS": "https://registry-staging.claudinite.com",
+        "MAIL_FROM": "noreply@claudinite.com"
       },
       "d1_databases": [
         {
@@ -209,6 +218,19 @@
           "secret_name": "principal-hash-key-staging"
         }
       ],
+      "send_email": [
+        {
+          "name": "EMAIL"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "AUDIT_QUEUE",
+            "queue": "audit-staging"
+          }
+        ]
+      },
       "version_metadata": {
         "binding": "CF_VERSION_METADATA"
       }
@@ -231,7 +253,8 @@
         "WORKER": "web",
         "ENVIRONMENT": "production",
         "CDN_ORIGIN": "https://packs.claudinite.com",
-        "SITE_ORIGINS": "https://registry.claudinite.com,https://registry-canary.claudinite.com"
+        "SITE_ORIGINS": "https://registry.claudinite.com,https://registry-canary.claudinite.com",
+        "MAIL_FROM": "noreply@claudinite.com"
       },
       "d1_databases": [
         {
@@ -331,6 +354,19 @@
           "secret_name": "principal-hash-key"
         }
       ],
+      "send_email": [
+        {
+          "name": "EMAIL"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "AUDIT_QUEUE",
+            "queue": "audit"
+          }
+        ]
+      },
       "version_metadata": {
         "binding": "CF_VERSION_METADATA"
       }

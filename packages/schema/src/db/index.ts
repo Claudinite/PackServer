@@ -10,4 +10,5 @@ export * from "./audit";
 export * from "./access";
 export * from "./community";
 export * from "./github";
+export * from "./mfa";
 export * from "../range";

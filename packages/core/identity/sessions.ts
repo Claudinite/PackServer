@@ -90,14 +90,14 @@ async function persistNew(ports: SessionPorts, record: SessionRecord): Promise<L
 }
 
 /** A new session at sign-in: a fresh id, the full absolute lifetime. */
-export function createSession(ports: SessionPorts, input: { user_id: string; device: SessionDevice }): Promise<LiveSession> {
+export function createSession(ports: SessionPorts, input: { user_id: string; device: SessionDevice; mfa_at?: number }): Promise<LiveSession> {
   const now = ports.clock.now();
   return persistNew(ports, {
     user_id: input.user_id,
     created_at: now,
     last_seen: now,
     expires_at: now + SESSION_ABSOLUTE_MS,
-    mfa_at: null,
+    mfa_at: input.mfa_at ?? null,
     device: input.device,
     csrf_key: toHex(ports.rng.bytes(SID_BYTES)),
   });

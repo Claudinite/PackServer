@@ -71,6 +71,13 @@
       "when": 1793011297793,
       "tag": "20261026104137_scopes_orgs_transfers",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1793011808114,
+      "tag": "20261026105008_mfa_passkeys_recovery",
+      "breakpoints": true
     }
   ]
 }

@@ -36,3 +36,5 @@ export function migratedD1(): { d1: D1; db: DatabaseSync } {
   };
   return { d1, db };
 }
+
+export * from "./virtual-authenticator.ts";
