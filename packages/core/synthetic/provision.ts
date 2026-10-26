@@ -1,5 +1,5 @@
 import type { D1 } from "@packserver/ports";
-import { PROBE_PACK, PROBE_SCOPE, PROBE_WORKFLOW, SYNTHETIC_KIND } from "./tenant.ts";
+import { CANARY_SCOPE, PROBE_PACK, PROBE_SCOPE, PROBE_WORKFLOW, SYNTHETIC_KIND } from "./tenant.ts";
 
 /** GitHub's immutable ids for the probe repository, as the OIDC token carries them. */
 export interface ProbeRepository {
@@ -49,4 +49,29 @@ export async function provisionProbeTenant(d1: D1, input: { repository: ProbeRep
     },
   ]);
   return { scopeId, registrationId, created: { scope: !existing, registration: !registered } };
+}
+
+export interface ProvisionedCanary {
+  scopeId: string;
+  created: boolean;
+}
+
+/**
+ * Creates the owner's `@packserver-canary` org, which the reserved-name check keeps out of the
+ * ordinary creation path, with the given account as its owner. Safe to run again. A scope of that name
+ * that this function did not create is refused rather than adopted.
+ */
+export async function provisionCanaryScope(d1: D1, input: { ownerUserId: string; nowMs: number; scope?: string }): Promise<ProvisionedCanary> {
+  const name = input.scope ?? CANARY_SCOPE;
+  const scopeId = `scope-canary-${name}`;
+  const now = new Date(input.nowMs).toISOString();
+
+  const existing = (await d1.query(`select id, kind from scopes where name = ?`, [name])).rows[0] as { id: string; kind: string } | undefined;
+  if (existing && (existing.id !== scopeId || existing.kind !== "org")) throw new Error(`@${name} exists and was not created by this provisioning; it will not be taken over`);
+
+  await d1.batch([
+    { sql: `insert or ignore into scopes (id, name, kind, state, created_at) values (?, ?, 'org', 'active', ?)`, params: [scopeId, name, now] },
+    { sql: `insert or ignore into scope_members (scope_id, user_id, role, created_at) values (?, ?, 'owner', ?)`, params: [scopeId, input.ownerUserId, now] },
+  ]);
+  return { scopeId, created: !existing };
 }

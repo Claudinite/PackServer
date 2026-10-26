@@ -18,8 +18,8 @@ is the only gate before every Worker goes to 100% (Ariel B7 2026-10-22).
 ### IT-OPS-002 A probe credential cannot act outside its scope
 - **Covers:** REQ-OPS-002
 - **Runs:** push, probe-safe (the refusals only)
-- **Action:** with the probe repository's OIDC token and with the prober Worker's service-binding principal: publish `@acme/x`, read a private pack, mint a token, list sessions, change an email, create a new pack in `@probe`, publish a new version of the existing `@probe/p`; present each as a browser session.
-- **Assert:** every call is refused except the new version of the existing `@probe` pack; neither identity is ever accepted as a session on any page.
+- **Action:** with the probe repository's OIDC token: publish `@acme/x`, read a private pack, mint a token, list sessions, change an email, create a new pack in `@probe`, publish a new version of the existing `@probe/p`; present each as a browser session.
+- **Assert:** every call is refused except the new version of the existing `@probe` pack; the token is never accepted as a session on any page.
 
 ### IT-OPS-003 Production configuration rejects test issuers and bindings
 - **Covers:** REQ-OPS-003

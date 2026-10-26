@@ -101,10 +101,11 @@ function rowKeepingRebuilds(sql) {
       const plain = STRICT_CREATE.exec(stmts[k]);
       const s = (asCopy ? asCopy[1] : plain?.[1])?.toLowerCase();
       if (!s || s === t) continue;
-      const parked = asCopy ? asCopy[2].toLowerCase() === t : at((st) => COPY_INTO.exec(st)?.[1].toLowerCase() === s && COPY_INTO.exec(st)[2].toLowerCase() === t, k + 1) !== -1;
-      if (!parked) continue;
+      const parkedAt = asCopy ? (asCopy[2].toLowerCase() === t ? k : -1) : at((st) => COPY_INTO.exec(st)?.[1].toLowerCase() === s && COPY_INTO.exec(st)[2].toLowerCase() === t, k + 1);
+      if (parkedAt === -1 || parkedAt >= i) continue;
       const refilled = at((st) => COPY_INTO.exec(st)?.[1].toLowerCase() === t && COPY_INTO.exec(st)[2].toLowerCase() === s, recreated + 1);
-      const cleared = refilled === -1 ? -1 : at((st) => STRICT_DROP.exec(st)?.[1].toLowerCase() === s, refilled + 1);
+      const disturbed = refilled !== -1 && stmts.some((st, j) => j > k && j < refilled && (STRICT_DROP.exec(st)?.[1].toLowerCase() === s || STRICT_CREATE.exec(st)?.[1].toLowerCase() === s));
+      const cleared = refilled === -1 || disturbed ? -1 : at((st) => STRICT_DROP.exec(st)?.[1].toLowerCase() === s, refilled + 1);
       if (cleared !== -1) {
         existing.add(t);
         scratch.add(s);

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { D1 } from "@packserver/ports";
 import { migratedD1 } from "../../identity/testing.ts";
 import {
-  entersHumanQueue, expireSyntheticVersions, looksLikeTestSecret, ProductionConfigError, provisionProbeTenant, publicScopeOnly, refuseTestSecret, screensProse,
+  entersHumanQueue, expireSyntheticVersions, looksLikeTestSecret, ProductionConfigError, provisionCanaryScope, provisionProbeTenant, publicScopeOnly, refuseTestSecret, screensProse,
   SYNTHETIC_VERSION_TTL_MS,
 } from "../index.ts";
 
@@ -63,6 +63,23 @@ describe("REQ-OPS-001: the synthetic tenant", () => {
     expect((await d1.query(`select count(*) as n from trusted_publishers`)).rows).toEqual([{ n: 0 }]);
     const fresh = migratedD1().d1;
     await expect(provisionProbeTenant(fresh, { repository: { ...REPO, id: "packserver-probe" }, nowMs: T0 })).rejects.toThrow(/numeric ids/);
+  });
+
+  it("creates the reserved @packserver-canary org for its owner, once, and will not take over one it did not create", async () => {
+    const { d1 } = migratedD1();
+    await d1.query(`insert into users (id, handle, created_at) values ('u1', 'ariel', 'x')`);
+    const first = await provisionCanaryScope(d1, { ownerUserId: "u1", nowMs: T0 });
+    expect(first.created).toBe(true);
+    expect((await d1.query(`select name, kind, state from scopes`)).rows).toEqual([{ name: "packserver-canary", kind: "org", state: "active" }]);
+    expect((await d1.query(`select user_id, role from scope_members`)).rows).toEqual([{ user_id: "u1", role: "owner" }]);
+
+    expect(await provisionCanaryScope(d1, { ownerUserId: "u1", nowMs: T0 + HOUR })).toEqual({ scopeId: first.scopeId, created: false });
+    expect((await d1.query(`select count(*) as n from scope_members`)).rows).toEqual([{ n: 1 }]);
+
+    const other = migratedD1().d1;
+    await other.query(`insert into users (id, handle, created_at) values ('u1', 'ariel', 'x')`);
+    await other.query(`insert into scopes (id, name, kind, state, created_at) values ('s9', 'packserver-canary', 'org', 'active', 'x')`);
+    await expect(provisionCanaryScope(other, { ownerUserId: "u1", nowMs: T0 })).rejects.toThrow(/will not be taken over/);
   });
 
   it("gives public listings a scope filter that leaves the tenant out", async () => {
