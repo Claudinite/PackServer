@@ -43,6 +43,13 @@
       "when": 1792727301359,
       "tag": "20261023034821_audit_heads",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1792728209675,
+      "tag": "20261023040329_publishing_trusted_publishers_upload_credentials",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { Refusal, type RefusalReason } from "@packserver/schema";
+import { Refusal, type ClaimDiff, type RefusalReason } from "@packserver/schema";
 
 /** One status per register word; the exhaustive record makes a new reason a compile error here. */
 export const REFUSAL_STATUS: Readonly<Record<RefusalReason, number>> = {
@@ -27,6 +27,7 @@ export const REFUSAL_STATUS: Readonly<Record<RefusalReason, number>> = {
 export interface RefusalOptions {
   message?: string;
   retry_after_s?: number;
+  claim_diff?: ClaimDiff;
   /** Overrides the reason's default status, for a refusal that is really a malformed request. */
   status?: number;
 }
@@ -37,6 +38,7 @@ export function refusal(reason: RefusalReason, options: RefusalOptions = {}): Re
     reason,
     ...(options.message === undefined ? {} : { message: options.message }),
     ...(options.retry_after_s === undefined ? {} : { retry_after_s: options.retry_after_s }),
+    ...(options.claim_diff === undefined ? {} : { claim_diff: options.claim_diff }),
   });
   const headers = new Headers({ "content-type": "application/json", "cache-control": "no-store" });
   if (body.retry_after_s !== undefined) headers.set("retry-after", String(body.retry_after_s));

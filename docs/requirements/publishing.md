@@ -284,8 +284,10 @@ workflow template makes distinguishable by job name (REQ-CN-015).
 
 An OIDC token from a fork, from any `pull_request`, `pull_request_target` or `workflow_run` event,
 from a different workflow file, from a `ref` or `event_name` outside the registration, with a
-missing registered environment, or unprotected where protection is required, is refused with a
-claim-by-claim diff and nothing is staged.
+missing registered environment, or unprotected where protection is required, is refused,
+naming the kinds of claim that mismatched (fork, workflow, environment) and never a registered
+value, and nothing is staged. A private pack gets the generic `forbidden` with no kinds, so a
+token from any repository learns nothing of a registration.
 
 ## REQ-PUB-005 A trusted publisher survives rename but not transfer or re-creation
 
