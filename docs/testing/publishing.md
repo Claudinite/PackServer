@@ -261,8 +261,8 @@ to pass unless the test says otherwise. The end-to-end paths are journeys [JT-00
 ### IT-PUB-032 Leak reports act on the full token only and reveal nothing
 - **Covers:** REQ-PUB-032
 - **Runs:** push
-- **Action:** report the token's first 12 characters; report a random string; report the full token; report twenty more random strings from one IP.
-- **Assert:** the prefix report does not revoke; the three responses (prefix, random, full) are identical in status and body; only the full token is revoked; the burst is rate-limited after the limit.
+- **Action:** report the token's first 12 characters; report a random string; report the full token; report twenty-one more random strings from one IP, more than two rate-limit windows can absorb.
+- **Assert:** the prefix report does not revoke; the three responses (prefix, random, full) are identical in status and body; only the full token is revoked; the first refusal in the burst is a rate-limit refusal.
 
 ### IT-PUB-016 Web upload goes straight to staging; an interrupted upload starts again
 - **Covers:** REQ-PUB-016
