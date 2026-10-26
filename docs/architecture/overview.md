@@ -61,7 +61,8 @@ Core D1 tables: `users`, `credentials`, `identities`, `session_revocations`, `sc
 size, state, `published_at`, verification facts, `source_verified`, `min_engine_version`,
 `requires`, `source_commit`, score), `trusted_publishers`, `grants` and `effective_access`,
 `tokens`, `stars`, `reviews`, `comments`, `comment_votes`, `reports`, `pack_stats`,
-`feature_flags`, `recent_activity`, and the FTS5 table `packs_fts`. Sessions live in KV; full
+`feature_flags`, `recent_activity`, `pack_search` and `recent` (what search matches and when a pack was
+first promoted), and the FTS5 table `packs_fts` over `pack_search`. Sessions live in KV; full
 inventory, provenance and reports live in R2 `meta.json` and `validation-reports`; exact daily
 counters live in the `Quota` Durable Object.
 

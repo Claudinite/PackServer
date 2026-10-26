@@ -28,15 +28,22 @@ export const StartValidationResponse = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(false), refusal: Refusal }),
 ]);
 
-/** web -> mcp: site search. */
+export const SEARCH_SORTS = ["score", "stars", "rating", "recent", "fetches"] as const;
+export const SearchSort = z.enum(SEARCH_SORTS);
+
+/** web -> mcp: site search and browse; a request without a query is a browse. */
 export const SearchRequest = z.object({
-  query: z.string().min(1).max(500),
+  query: z.string().min(1).max(500).optional(),
   category: z.string().optional(),
   part: z.string().optional(),
   has_repository: z.boolean().optional(),
   verified_only: z.boolean().optional(),
   verified_domains: z.array(z.string()).optional(),
+  /** The caller's engine version: a pack that needs a newer one ranks lower. */
+  engine_version: PackVersion.optional(),
+  sort: SearchSort.optional(),
   limit: z.number().int().min(1).max(50).optional(),
+  offset: z.number().int().min(0).max(1000).optional(),
 });
 export const PackCard = z.object({
   id: PackName,
@@ -49,9 +56,14 @@ export const PackCard = z.object({
   verdict: Verdict,
   repository: z.string().nullable(),
   rating: z.number().nullable(),
+  stars: z.number().int().nonnegative(),
+  fetches_30d: z.number().int().nonnegative(),
+  category: z.string(),
   score: z.number().int().min(0).max(100),
   score_parts: ScoreBreakdown.shape.parts,
-  newest_eligible: z.object({ version: PackVersion, published_at: Timestamp, min_engine_version: PackVersion }).nullable(),
+  newest_eligible: z.object({ version: PackVersion, published_at: Timestamp, min_engine_version: PackVersion.nullable() }).nullable(),
+  /** Set on a card that fills an exploration slot. */
+  exploration: z.literal(true).optional(),
 });
 export const SearchResponse = z.object({
   cards: z.array(PackCard),

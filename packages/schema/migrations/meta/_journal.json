@@ -50,6 +50,13 @@
       "when": 1792728209675,
       "tag": "20261023040329_publishing_trusted_publishers_upload_credentials",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1793010314123,
+      "tag": "20261026102514_search_index",
+      "breakpoints": true
     }
   ]
 }
