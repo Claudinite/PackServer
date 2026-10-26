@@ -30,6 +30,11 @@ export interface SessionInfo {
   readonly lastSeen: Date;
   readonly current: boolean;
 }
+export interface HistoryEntry {
+  readonly at: Date;
+  readonly action: string;
+  readonly target: string | null;
+}
 export interface AccountInfo {
   readonly id: string;
   readonly handle: string | null;
@@ -177,9 +182,33 @@ export interface User {
   };
   /** Sends the handle as given: a scenario that tests a reserved or taken name must not have it aliased. */
   chooseHandle(handle: string, o?: FormFaults): Promise<void>;
-  sessions: { list(): Promise<SessionInfo[]> };
+  sessions: {
+    list(): Promise<SessionInfo[]>;
+    /** Ends one of the person's sessions, by the id the list shows. */
+    revoke(session: { id: string }, o?: FormFaults): Promise<void>;
+  };
   tokens: UserTokens;
-  account: { show(): Promise<AccountInfo> };
+  account: {
+    show(): Promise<AccountInfo>;
+    delete(o?: Sensitive): Promise<void>;
+    /** The person's own logins, factor changes and tokens, newest first. */
+    history(): Promise<HistoryEntry[]>;
+  };
+  providers: { linkGitHub(o?: Sensitive): Promise<void> };
+  recovery: {
+    /** Asks for a recovery by an address (the person's own by default) without signing in. */
+    request(address?: string): Promise<void>;
+    /** Follows the link an approved recovery mailed, which signs the person in with no factor. */
+    signIn(address?: string, faults?: FormFaults): Promise<Session>;
+    /** Stops the recovery with the cancel link in the notice mailed to the address. */
+    cancelFromMail(address?: string): Promise<void>;
+    /** The signed-in person stops their own open recovery. */
+    cancel(): Promise<void>;
+  };
+  /** The same person from another browser or country. */
+  onDevice(device: { userAgent?: string; country?: string }): User;
+  /** Takes passkeys and linked sign-ins away as loss would, which no verb of the person's own can do. */
+  loseFactors(which: { passkeys?: boolean; providers?: boolean }): Promise<void>;
   /** The same person at another network address. */
   from(ip: string): User;
   /** The same person with a browser that cannot pass the human check. */
