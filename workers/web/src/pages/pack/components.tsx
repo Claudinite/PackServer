@@ -5,7 +5,8 @@ import { loadRules } from "@packserver/rules";
 import type { VersionView } from "@packserver/core/catalog";
 import { CONTENT_PARTS, type PackContents } from "../../routes/packs/contents";
 import type { PackData } from "./data";
-import { approximate, dayOf, plural, points, titleCase } from "./figures";
+import { fetchesLine, titleCase } from "../browse/format";
+import { dayOf, plural, points } from "./figures";
 import { fileAnchor, sectionsOf } from "./sections";
 
 export const TRUST_ID = "trust";
@@ -140,10 +141,6 @@ export function contentsSummary(version: VersionView): string {
     .filter(([, v]) => v.count > 0)
     .map(([k, v]) => plural(v.count, nouns[k]?.[0] ?? k, nouns[k]?.[1] ?? `${k}s`));
   return parts.length === 0 ? "Nothing yet" : parts.join(" · ");
-}
-
-function fetchesLine(n: number): string {
-  return n === 0 ? "No fetches yet" : `about ${approximate(n)} fetches in 30 days`;
 }
 
 export function Glance(props: { data: PackData; version: VersionView }) {
