@@ -56,11 +56,25 @@ function snapshotColumns(file) {
   return Object.fromEntries(Object.entries(tables).map(([t, v]) => [t.toLowerCase(), Object.keys(v.columns ?? {})]));
 }
 
+/**
+ * A parent table other tables reference cannot be renamed into place: with deferred foreign keys the rows must be
+ * inserted into a table of that name before the transaction ends. Such a file parks the rows in a scratch table,
+ * drops and creates the table again, refills it and drops the scratch table. `existing` are the tables so rebuilt,
+ * `scratch` the tables the file creates and drops itself.
+ */
+function recreatedInPlace(sql) {
+  const dropped = sql.split(";").map((s) => DROP_TABLE.exec(s)).filter(Boolean).map((m) => m[1].toLowerCase());
+  const made = new Set(matches(CREATED, sql));
+  const both = dropped.filter((t) => made.has(t));
+  return { existing: new Set(both.filter((t) => created.has(t))), scratch: new Set(both.filter((t) => !created.has(t))) };
+}
+
 /** Drizzle rebuilds a table (create __new_t, copy, drop t, rename) to change a column; that is safe unless a column goes. */
 function rebuildStatements(sql, files, index) {
   const stmts = sql.split(";");
   const renames = stmts.map((s) => REBUILD_RENAME.exec(s)).filter((m) => m && /^__new_/i.test(m[1]));
-  const rebuilt = new Set(renames.map((m) => m[2].toLowerCase()));
+  const inPlace = recreatedInPlace(sql);
+  const rebuilt = new Set([...renames.map((m) => m[2].toLowerCase()), ...inPlace.existing]);
   const dropped = [];
   const before = index > 0 ? snapshotColumns(files[index - 1]) : {};
   const after = snapshotColumns(files[index]);
@@ -70,7 +84,7 @@ function rebuildStatements(sql, files, index) {
   }
   const rest = stmts.filter((s) => {
     const drop = DROP_TABLE.exec(s);
-    if (drop && rebuilt.has(drop[1].toLowerCase())) return false;
+    if (drop && (rebuilt.has(drop[1].toLowerCase()) || inPlace.scratch.has(drop[1].toLowerCase()))) return false;
     const rename = REBUILD_RENAME.exec(s);
     return !(rename && /^__new_/i.test(rename[1]));
   });
@@ -79,6 +93,7 @@ function rebuildStatements(sql, files, index) {
 
 /** A `__new_x` table is a rebuild only when this file renames it onto a table that already existed. */
 function isRebuildOfExisting(table, sql) {
+  if (recreatedInPlace(sql).existing.has(table)) return true;
   const rename = sql.split(";").map((s) => REBUILD_RENAME.exec(s)).find((m) => m && m[1].toLowerCase() === table);
   return Boolean(rename) && table.startsWith("__new_") && created.has(rename[2].toLowerCase());
 }
@@ -102,7 +117,8 @@ files.forEach((file, index) => {
 
   const raw = readFileSync(join(dir, file), "utf8");
   const sql = code(raw);
-  const own = new Set(matches(CREATED, sql));
+  const inPlace = recreatedInPlace(sql);
+  const own = new Set(matches(CREATED, sql).filter((t) => !inPlace.scratch.has(t)));
 
   if (area === FOUNDATION) {
     firstFoundation ??= file;
@@ -113,7 +129,7 @@ files.forEach((file, index) => {
   const referenced = new Set();
   for (const re of REFERENCE_PATTERNS) for (const t of matches(re, sql)) referenced.add(t);
   for (const t of referenced) {
-    if (own.has(t) || INTERNAL.test(t) || SQL_WORDS.includes(t)) continue;
+    if (own.has(t) || inPlace.scratch.has(t) || INTERNAL.test(t) || SQL_WORDS.includes(t)) continue;
     const owner = created.get(t);
     if (owner === undefined) problems.push(`${file}: references table ${t}, which no earlier migration created`);
     else if (owner !== area && !(owner === FOUNDATION && CROSS_AREA_TARGETS.includes(t)))

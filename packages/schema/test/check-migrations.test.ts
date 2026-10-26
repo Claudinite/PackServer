@@ -220,6 +220,36 @@ describe("check-migrations", () => {
     });
   });
 
+  describe("a parent table dropped and created again in the same file", () => {
+    const inPlace =
+      "PRAGMA defer_foreign_keys=ON;\nCREATE TABLE packs_scratch AS SELECT * FROM packs;\nDROP TABLE packs;\nCREATE TABLE packs (id text PRIMARY KEY, name text);\n" +
+      "INSERT INTO packs (id) SELECT id FROM packs_scratch;\nDROP TABLE packs_scratch;";
+    const history = (after: string[]) => ({
+      ...base,
+      "meta/20260101000000_snapshot.json": JSON.stringify({ tables: { packs: { columns: { id: {} } } } }),
+      "20260102000000_foundation_rebuild.sql": inPlace,
+      "meta/20260102000000_snapshot.json": JSON.stringify({ tables: { packs: { columns: Object.fromEntries(after.map((c) => [c, {}])) } } }),
+    });
+
+    it("is accepted as a rebuild when it keeps every column", () => {
+      expect(run(history(["id", "name"]))).toEqual({ ok: true, out: "" });
+    });
+
+    it("needs a contract marker when it loses a column", () => {
+      expect(run(history(["name"])).out).toMatch(/DROP COLUMN packs\.id/);
+    });
+
+    it("is refused outside the foundation area when the table is the foundation's", () => {
+      const r = run({ ...base, "20260102000000_tokens_rebuild.sql": inPlace });
+      expect(r.ok).toBe(false);
+      expect(r.out).toMatch(/foundation tables are altered only by foundation migrations/);
+    });
+
+    it("still refuses a plain drop with no table to take its place", () => {
+      expect(run({ ...base, "20260102000000_foundation_drop.sql": "DROP TABLE packs;" }).out).toMatch(/DROP TABLE breaks/);
+    });
+  });
+
   it("passes on the repository's own migrations", () => {
     expect(() => execFileSync("node", [TOOL], { stdio: "pipe" })).not.toThrow();
   });

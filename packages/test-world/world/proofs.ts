@@ -1,6 +1,7 @@
 import { dohDns, wellKnownPort } from "@packserver/ports/domain-proof";
 import type { D1, D1Result, Rng } from "@packserver/ports";
 import { isPublicSuffix, recheckDomains, sweepGithubProofs, type ProofPorts } from "@packserver/core/scopes";
+import { expireSyntheticVersions } from "@packserver/core/synthetic";
 import type { Driver } from "../drivers/driver";
 import type { Aliases } from "./alias";
 import { InfrastructureError, NotImplemented } from "./errors";
@@ -129,11 +130,12 @@ export function createCron(driver: Driver): { run(job: CronJob): Promise<void> }
     async run(job) {
       if (job === "domain-rechecks") await recheckDomains(await proofPortsOf(driver));
       else if (job === "github-proof-lapse") await sweepGithubProofs(await proofPortsOf(driver));
+      else if (job === "synthetic-expiry") await expireSyntheticVersions(await registryD1(driver), await driver.fakes!.clock.call<number>("now"));
       else throw new NotImplemented(`cron.run(${job})`);
     },
   };
 }
 
 export type CronJob =
-  | "domain-rechecks" | "github-proof-lapse" | "stats-rollup" | "staging-expiry" | "rescan" | "domain-drift"
+  | "domain-rechecks" | "github-proof-lapse" | "synthetic-expiry" | "stats-rollup" | "staging-expiry" | "rescan" | "domain-drift"
   | "adoption-scan" | "audit-head" | "audit-verify" | "activity-prune";
