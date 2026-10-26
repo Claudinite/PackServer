@@ -47,7 +47,7 @@
       "d1": { "DB": "registry" },
       "kv": { "CACHE_KV": "cache", "TELEMETRY_KV": "telemetry" },
       "r2": { "PACKS_STAGING": { "bucket": "packs-staging", "access": "read-write" } },
-      "queues": { "NOTIFY_QUEUE": "notify" },
+      "queues": { "AUDIT_QUEUE": "audit", "NOTIFY_QUEUE": "notify" },
       "queue_consumers": [],
       "workflows": {},
       "durable_objects": {

@@ -173,16 +173,15 @@ scenario("IT-PUB-026 20 versions per pack a day; 5 new packs per scope a day, 20
   const verified = await world.publishers.create({ handle: "vp", verified: true });
   const racer = await world.publishers.create({ handle: "race" });
 
+  // Each scope takes its publishes in waves of five: concurrent enough to keep the run well inside the
+  // scenario timeout under load, few enough that no start waits long for its scope's publish lock.
+  const inWaves = async (count: number, publish: (n: number) => Promise<unknown>) => {
+    for (let first = 0; first < count; first += 5) await Promise.all(Array.from({ length: Math.min(5, count - first) }, (_, k) => publish(first + k)));
+  };
   const day = await Promise.all([
-    (async () => {
-      for (let n = 0; n < 20; n++) await versions.publish(world.archive("gcp", { version: `1.0.${n}` })).as(`@vers/tool@1.0.${n}`);
-    })(),
-    (async () => {
-      for (let n = 1; n <= 5; n++) await plain.publish(world.archive("gcp", { version: `1.0.${n}` })).as(`@plain/pack${n}@1.0.0`);
-    })(),
-    (async () => {
-      for (let n = 1; n <= 20; n++) await verified.publish(world.archive("gcp", { version: `1.0.${n}` })).as(`@vp/pack${n}@1.0.0`);
-    })(),
+    inWaves(20, (n) => versions.publish(world.archive("gcp", { version: `1.0.${n}` })).as(`@vers/tool@1.0.${n}`)),
+    inWaves(5, (n) => plain.publish(world.archive("gcp", { version: `1.0.${n + 1}` })).as(`@plain/pack${n + 1}@1.0.0`)),
+    inWaves(20, (n) => verified.publish(world.archive("gcp", { version: `1.0.${n + 1}` })).as(`@vp/pack${n + 1}@1.0.0`)),
   ]);
   expect(day).toHaveLength(3);
   await expect(versions.publish(world.archive("gcp", { version: "1.0.20" })).as("@vers/tool@1.0.20")).toBeRefusedSaying("a day");
@@ -204,6 +203,9 @@ scenario("IT-PUB-026 20 versions per pack a day; 5 new packs per scope a day, 20
 scenario("IT-PUB-027 Concurrent publishes of one version yield one version and one new-pack count", async (world) => {
   const z = await world.publishers.create({ handle: "z" });
   const y = await world.publishers.create({ handle: "y" });
+  // Promotion does not exist yet, so a version is "one" when exactly one publish was admitted for it;
+  // once promotion lands, tighten this to read the promoted versions from the registry and assert that
+  // the coordinator promoted the second scope's two versions one after the other.
   const outcomes = (attempts: PromiseSettledResult<unknown>[]) => ({
     won: attempts.filter((a) => a.status === "fulfilled").length,
     lost: attempts.filter((a) => a.status === "rejected") as PromiseRejectedResult[],

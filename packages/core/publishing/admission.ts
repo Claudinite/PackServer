@@ -6,6 +6,8 @@ const DAY_MS = 86_400_000;
 /** REQ-PUB-026 and REQ-ABUSE-003 (D44): new packs a scope may create in a UTC day. */
 export const NEW_PACKS_PER_SCOPE_PER_DAY = 5;
 export const NEW_PACKS_PER_VERIFIED_SCOPE_PER_DAY = 20;
+/** D44: new packs one account may create in a UTC day, across every scope it publishes to. */
+export const NEW_PACKS_PER_ACCOUNT_PER_DAY = 20;
 /** REQ-PUB-026 (D14): new versions one pack accepts in a UTC day. */
 export const VERSIONS_PER_PACK_PER_DAY = 20;
 /** REQ-VAL-021 (D28, D45): validation runs of every kind, and the dry-runs among them, one publisher starts in a UTC day. */
@@ -23,7 +25,7 @@ export const SYNTHETIC_VERSION_TTL_MS = DAY_MS;
 
 export const isSyntheticScope = (scopeName: string): boolean => SYNTHETIC_SCOPES.includes(scopeName);
 
-export type QuotaKind = "new_packs_per_scope" | "validation_runs" | "dry_runs" | "versions_per_pack";
+export type QuotaKind = "new_packs_per_scope" | "new_packs_per_account" | "validation_runs" | "dry_runs" | "versions_per_pack";
 
 /** The UTC day an instant falls in, `YYYY-MM-DD`: the `day` of a `Quota` key. */
 export const utcDay = (ms: number): string => new Date(ms).toISOString().slice(0, 10);

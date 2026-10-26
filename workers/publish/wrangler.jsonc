@@ -54,6 +54,10 @@
           {
             "binding": "NOTIFY_QUEUE",
             "queue": "notify-test"
+          },
+          {
+            "binding": "AUDIT_QUEUE",
+            "queue": "audit-test"
           }
         ]
       },
@@ -168,6 +172,10 @@
           {
             "binding": "NOTIFY_QUEUE",
             "queue": "notify-staging"
+          },
+          {
+            "binding": "AUDIT_QUEUE",
+            "queue": "audit-staging"
           }
         ]
       },
@@ -326,6 +334,10 @@
           {
             "binding": "NOTIFY_QUEUE",
             "queue": "notify"
+          },
+          {
+            "binding": "AUDIT_QUEUE",
+            "queue": "audit"
           }
         ]
       },

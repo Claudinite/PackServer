@@ -296,14 +296,61 @@ describe("REQ-VAL-017: ten failed runs queue a publisher", () => {
 });
 
 describe("REQ-OPS-001: a synthetic scope", () => {
-  it("skips the daily caps, is marked for the validator, and expires after a day", async () => {
+  it("is marked for the validator, expires after a day, and is held to the daily caps like any scope", async () => {
     const world = createWorld();
     world.seed.scope("probe");
-    for (let i = 0; i < 8; i++) expect((await world.publish({ scope: "probe", pack: `p${i}`, version: "1.0.0" })).res.status).toBe(201);
+    for (let i = 0; i < 5; i++) expect((await world.publish({ scope: "probe", pack: `p${i}`, version: "1.0.0" })).res.status).toBe(201);
+    expect((await world.publish({ scope: "probe", pack: "p5", version: "1.0.0" })).res.status).toBe(403);
     const row = world.db.prepare(`select synthetic, prose_screen, expires_at, created_at from validation_runs limit 1`).get() as { synthetic: number; prose_screen: number; expires_at: string; created_at: string };
     expect(row.synthetic).toBe(1);
     expect(row.prose_screen).toBe(0);
     expect(Date.parse(row.expires_at) - Date.parse(row.created_at)).toBe(DAY);
-    expect([...world.doStorage.keys()].some((k) => k.startsWith("Quota/"))).toBe(false);
+  });
+
+  it("lets a version be published again once its earlier synthetic run has expired, and not before", async () => {
+    const world = createWorld();
+    world.seed.scope("probe");
+    expect((await world.publish({ scope: "probe", pack: "p", version: "1.0.0" })).res.status).toBe(201);
+    world.clock.advance(DAY - 1);
+    expect(await body((await world.publish({ scope: "probe", pack: "p", version: "1.0.0" })).res)).toMatchObject({ reason: "exists" });
+    world.clock.advance(1);
+    expect((await world.publish({ scope: "probe", pack: "p", version: "1.0.0" })).res.status).toBe(201);
+  });
+});
+
+describe("D44: new packs per account across scopes", () => {
+  it("stops an account at 20 new packs a day however many scopes it spreads them over", async () => {
+    const world = createWorld();
+    const owner = world.seed.user();
+    for (let s = 1; s <= 5; s++) world.seed.scope(`s${s}`, { members: [[owner, "owner"]] });
+    for (let n = 0; n < 20; n++) {
+      const res = (await world.publish({ scope: `s${(n % 4) + 1}`, pack: `p${n}`, version: "1.0.0", userId: owner })).res;
+      expect(res.status).toBe(201);
+    }
+    const refused = await world.publish({ scope: "s5", pack: "p20", version: "1.0.0", userId: owner });
+    expect(refused.res.status).toBe(403);
+    expect(await body(refused.res)).toMatchObject({ reason: "quota", message: expect.stringContaining("new packs by this account") });
+
+    world.clock.advance(DAY);
+    expect((await world.publish({ scope: "s5", pack: "p20", version: "1.0.0", userId: owner })).res.status).toBe(201);
+  });
+});
+
+describe("REQ-AUDIT-007: refusals are audited", () => {
+  const events = (world: TestWorld) => world.fakes.queues.AUDIT_QUEUE!.messages as Array<{ action: string; detail: Record<string, unknown>; target?: string }>;
+
+  it("records a held scope and a cap hit as publish.refused", async () => {
+    const world = createWorld();
+    const owner = world.seed.user();
+    world.seed.scope("held", { state: "held", members: [[owner, "owner"]] });
+    world.seed.scope("acme", { members: [[owner, "owner"]] });
+    expect((await world.publish({ scope: "held", pack: "p", version: "1.0.0", userId: owner })).res.status).toBe(403);
+    for (let i = 0; i < 5; i++) await world.publish({ scope: "acme", pack: `p${i}`, version: "1.0.0", userId: owner });
+    expect((await world.publish({ scope: "acme", pack: "p5", version: "1.0.0", userId: owner })).res.status).toBe(403);
+
+    expect(events(world).map((e) => [e.action, e.detail.reason, e.target])).toEqual([
+      ["publish.refused", "scope-held", "@held/p@1.0.0"],
+      ["publish.refused", "quota:new_packs_per_scope", "@acme/p5@1.0.0"],
+    ]);
   });
 });

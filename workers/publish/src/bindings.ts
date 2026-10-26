@@ -18,6 +18,7 @@ export interface Env {
   DB: D1Database;
   CACHE_KV: KVNamespace;
   PACKS_STAGING: R2Bucket;
+  AUDIT_QUEUE: Queue;
   NOTIFY_QUEUE: Queue;
   SCOPE_COORDINATOR: DurableObjectNamespace;
   QUOTA: DurableObjectNamespace;
@@ -103,7 +104,7 @@ export async function createRuntime(env: Env): Promise<PublishRuntime> {
       kv: { CACHE_KV: kvPort(env.CACHE_KV), TELEMETRY_KV: telemetryKv },
       rateLimits: { RATE_LIMIT: rateLimitPort(env.RATE_LIMIT) },
       r2: { PACKS_STAGING: r2Port(env.PACKS_STAGING) },
-      queues: { NOTIFY_QUEUE: queuePort(env.NOTIFY_QUEUE) },
+      queues: { AUDIT_QUEUE: queuePort(env.AUDIT_QUEUE), NOTIFY_QUEUE: queuePort(env.NOTIFY_QUEUE) },
       durableObjects: durableObjectsPort({
         ScopeCoordinator: env.SCOPE_COORDINATOR,
         Quota: env.QUOTA,

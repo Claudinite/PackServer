@@ -1,7 +1,6 @@
 import { WizardUploadRequest } from "@packserver/schema";
 import { refusal } from "@packserver/http";
 import { Hono } from "hono";
-import { z } from "zod";
 import type { PublishRuntime } from "../bindings";
 import { milestonesOf, runById, runView } from "../runs/store";
 import { badRequest, readJson } from "../respond";
@@ -10,9 +9,6 @@ import { versionTaken } from "./admit";
 import { startRun } from "./start";
 
 const MAX_BODY_BYTES = 8 * 1024;
-
-/** The wizard's request as `web` sends it for a signed-in person, with the options the shared contract does not name: the dry-run and prose-screen choices, and the credential the upload used. */
-const WizardRequest = WizardUploadRequest.extend({ dry_run: z.boolean().optional(), prose_screen: z.boolean().optional(), credential_id: z.string().optional() });
 
 const WRITER_ROLES = ["owner", "maintainer"];
 
@@ -46,7 +42,7 @@ export function wizardRoutes(runtime: PublishRuntime): Hono {
 
   app.post("/wizard", async (c) => {
     const body = await readJson(c.req.raw, MAX_BODY_BYTES);
-    const parsed = body.ok ? WizardRequest.safeParse(body.value) : null;
+    const parsed = body.ok ? WizardUploadRequest.safeParse(body.value) : null;
     if (!parsed?.success) return badRequest("expected { pack, version, action, principal_id }");
     const request = parsed.data;
 
@@ -60,7 +56,7 @@ export function wizardRoutes(runtime: PublishRuntime): Hono {
 
     if (request.action === "upload-url") {
       if (!dryRun) {
-        if (await versionTaken(d1, where.scope, packName, request.version)) return refusal("exists", { message: `${request.pack}@${request.version} already exists` });
+        if (await versionTaken(d1, where.scope, packName, request.version, runtime.ports.clock.now())) return refusal("exists", { message: `${request.pack}@${request.version} already exists` });
       }
       const issued = await issueCredential(runtime.ports, {
         source: "upload",

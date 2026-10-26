@@ -1,6 +1,7 @@
+import { createAudit } from "@packserver/core/audit";
 import { sha256Hex } from "@packserver/core/index";
 import {
-  RUNS_PER_PUBLISHER_PER_DAY, SOFT_RATE_LIMIT_FAILED_RUNS, SYNTHETIC_VERSION_TTL_MS, VERSIONS_PER_PACK_PER_DAY, capMessage, checkIntegrity, dryRunCap,
+  NEW_PACKS_PER_ACCOUNT_PER_DAY, RUNS_PER_PUBLISHER_PER_DAY, SOFT_RATE_LIMIT_FAILED_RUNS, SYNTHETIC_VERSION_TTL_MS, VERSIONS_PER_PACK_PER_DAY, capMessage, checkIntegrity, dryRunCap,
   isSyntheticScope, isVerifiedPublisher, isYoungAccount, newPackCap, nextRunStart, nextUtcMidnight, utcDay, type QuotaKind,
 } from "@packserver/core/publishing";
 import { refusal } from "@packserver/http";
@@ -95,14 +96,15 @@ export async function admit(runtime: PublishRuntime, request: AdmissionRequest):
   }
 }
 
-/** Whether a version is a version already: published, retired, or carried by a publish run that has not failed. */
-export async function versionTaken(d1: PublishRuntime["ports"]["d1"], scope: { id: string; name: string }, packName: string, version: string): Promise<boolean> {
+/** Whether a version is a version already: published, retired, or carried by a publish run that has neither failed nor expired. */
+export async function versionTaken(d1: PublishRuntime["ports"]["d1"], scope: { id: string; name: string }, packName: string, version: string, now: number): Promise<boolean> {
   const taken = await d1.query(
     `select 1 from pack_versions v join packs p on p.id = v.pack_id where p.scope_id = ? and p.name = ? and v.version = ?
      union all select 1 from retired_names where kind = 'version' and name = ?
      union all select 1 from validation_runs where scope_id = ? and pack_name = ? and version = ? and kind = 'publish'
-       and not (status = 'finished' and verdict in ('fail', 'error'))`,
-    [scope.id, packName, version, `@${scope.name}/${packName}@${version}`, scope.id, packName, version],
+       and not (status = 'finished' and verdict in ('fail', 'error'))
+       and (expires_at is null or expires_at > ?)`,
+    [scope.id, packName, version, `@${scope.name}/${packName}@${version}`, scope.id, packName, version, new Date(now).toISOString()],
   );
   return taken.rows.length > 0;
 }
@@ -117,6 +119,7 @@ async function admitUnderLock(runtime: PublishRuntime, request: AdmissionRequest
 
   const scope = one<ScopeRow>((await d1.query(`select id, name, state, verified_domain, verified_github_org from scopes where id = ?`, [credential.scope_id])).rows);
   if (!scope || scope.state === "held") {
+    await auditRefusal(runtime, credential, kind, "scope-held", scope?.id);
     return { ok: false, response: refusal("forbidden", { message: "this scope cannot publish until an admin clears it" }) };
   }
   const synthetic = isSyntheticScope(scope.name);
@@ -126,7 +129,7 @@ async function admitUnderLock(runtime: PublishRuntime, request: AdmissionRequest
 
   let packExists = false;
   if (kind === "publish") {
-    if (await versionTaken(d1, scope, packName, version)) {
+    if (await versionTaken(d1, scope, packName, version, now)) {
       return { ok: false, response: refusal("exists", { message: `@${scope.name}/${packName}@${version} already exists` }) };
     }
     packExists = (await d1.query(`select 1 from packs where scope_id = ? and name = ?`, [scope.id, packName])).rows.length > 0;
@@ -142,20 +145,20 @@ async function admitUnderLock(runtime: PublishRuntime, request: AdmissionRequest
     countsNewPack = counted.rows.length === 0;
   }
 
-  if (!synthetic) {
-    const caps: Cap[] = [{ kind: "validation_runs", principal, cap: RUNS_PER_PUBLISHER_PER_DAY, what: "validation runs" }];
-    if (kind === "dry-run") {
-      caps.push({ kind: "dry_runs", principal, cap: dryRunCap(account ?? { ageMs: Infinity, hasPromotedPack: true }), what: "dry-runs" });
-    } else {
-      caps.push({ kind: "versions_per_pack", principal: `pack:${scope.id}/${packName}`, cap: VERSIONS_PER_PACK_PER_DAY, what: `new versions of @${scope.name}/${packName}` });
-      if (countsNewPack) caps.push({ kind: "new_packs_per_scope", principal: `scope:${scope.id}`, cap: newPackCap(isVerifiedPublisher(scope)), what: `new packs in @${scope.name}` });
-    }
-    const hit = await spendCaps(durableObjects, caps, day);
-    if (hit) {
-      stats.write({ name: "publish.quota_hit", blobs: [hit.kind, kind], doubles: [hit.cap] });
-      stats.write({ name: "abuse.daily_cap_hit", blobs: [hit.kind], doubles: [hit.cap] });
-      return { ok: false, response: refusal("quota", { message: capMessage(hit.what, hit.cap, now), retry_after_s: Math.max(1, Math.ceil((nextUtcMidnight(now) - now) / 1000)) }) };
-    }
+  const caps: Cap[] = [{ kind: "validation_runs", principal, cap: RUNS_PER_PUBLISHER_PER_DAY, what: "validation runs" }];
+  if (kind === "dry-run") {
+    caps.push({ kind: "dry_runs", principal, cap: dryRunCap(account ?? { ageMs: Infinity, hasPromotedPack: true }), what: "dry-runs" });
+  } else {
+    caps.push({ kind: "versions_per_pack", principal: `pack:${scope.id}/${packName}`, cap: VERSIONS_PER_PACK_PER_DAY, what: `new versions of @${scope.name}/${packName}` });
+    if (countsNewPack) caps.push({ kind: "new_packs_per_scope", principal: `scope:${scope.id}`, cap: newPackCap(isVerifiedPublisher(scope)), what: `new packs in @${scope.name}` });
+    if (countsNewPack && credential.user_id) caps.push({ kind: "new_packs_per_account", principal, cap: NEW_PACKS_PER_ACCOUNT_PER_DAY, what: "new packs by this account" });
+  }
+  const hit = await spendCaps(durableObjects, caps, day);
+  if (hit) {
+    stats.write({ name: "publish.quota_hit", blobs: [hit.kind, kind], doubles: [hit.cap] });
+    stats.write({ name: "abuse.daily_cap_hit", blobs: [hit.kind], doubles: [hit.cap] });
+    await auditRefusal(runtime, credential, kind, `quota:${hit.kind}`, scope.id);
+    return { ok: false, response: refusal("quota", { message: capMessage(hit.what, hit.cap, now), retry_after_s: Math.max(1, Math.ceil((nextUtcMidnight(now) - now) / 1000)) }) };
   }
 
   const staging = r2.PACKS_STAGING;
@@ -168,7 +171,7 @@ async function admitUnderLock(runtime: PublishRuntime, request: AdmissionRequest
 
   let startAfter = now;
   let queuedReason: RunRow["queued_reason"] = null;
-  if (integrity.ok && !synthetic) {
+  if (integrity.ok) {
     const failed = Number(one<{ n: number }>((await d1.query(`select count(*) as n from validation_runs where principal = ? and verdict = 'fail' and created_at >= ?`, [principal, dayStartIso])).rows)?.n ?? 0);
     if (failed >= SOFT_RATE_LIMIT_FAILED_RUNS) {
       const latest = one<{ latest: string | null }>((await d1.query(`select max(start_after) as latest from validation_runs where principal = ? and created_at >= ?`, [principal, dayStartIso])).rows)?.latest ?? null;
@@ -211,6 +214,24 @@ async function admitUnderLock(runtime: PublishRuntime, request: AdmissionRequest
   const created = await runByCredential(d1, credential.id);
   if (!created) throw new Error("the run just inserted cannot be read back");
   return { ok: true, run: created, created: true };
+}
+
+/** The refusal is the record: a failed audit send is logged, and the publisher still gets the refusal. */
+async function auditRefusal(runtime: PublishRuntime, credential: CredentialRow, kind: RunKind, reason: string, scopeId?: string): Promise<void> {
+  const { queues, clock, rng, d1, telemetry } = runtime.ports;
+  const queue = queues.AUDIT_QUEUE;
+  if (!queue) throw new Error("the AUDIT_QUEUE binding is missing");
+  try {
+    const audit = createAudit({ clock, rng, queue, d1 }, { ipKey: (await telemetry.keys()).ipMaster ?? "" });
+    await audit(
+      credential.user_id ? { kind: "user", id: credential.user_id } : { kind: "system" },
+      "publish.refused",
+      `@${credential.scope}/${credential.pack_name}@${credential.version}`,
+      { ...(credential.user_id ? { user_id: credential.user_id } : {}), ...(scopeId ? { scope_id: scopeId } : {}), detail: { reason, kind } },
+    );
+  } catch (error) {
+    console.error(JSON.stringify({ event: "publish.audit_failed", detail: String(error) }));
+  }
 }
 
 /** Peeks every cap before consuming any, so a refusal burns nothing; each consume is then the exact check-and-increment. */
