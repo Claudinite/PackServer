@@ -400,6 +400,26 @@ describe("a suspended App starts the same grace (REQ-SCOPE-009)", () => {
   });
 });
 
+describe("the grace runs from when the App stopped counting (REQ-SCOPE-009)", () => {
+  it("is not extended by a later write to the installation row", async () => {
+    const w = world();
+    await w.person("u1", "ann");
+    w.db.exec(`insert into identities (id, user_id, provider, provider_user_id, login, created_at) values ('i1', 'u1', 'github', 'gh1', 'ann-gh', '${new Date(T0).toISOString()}')`);
+    w.db.exec(`insert into github_org_admins (user_id, github_org_id, github_org_login, observed_at) values ('u1', '106', 'susp', '${new Date(T0).toISOString()}')`);
+    w.db.exec(`insert into github_installations (installation_id, account_id, account_login, account_type, sender_login, repository_selection, status, installed_at, updated_at) values (7, 106, 'susp', 'Organization', 'ann-gh', 'all', 'active', '${new Date(T0).toISOString()}', '${new Date(T0).toISOString()}')`);
+    const org = await w.org("u1", "suspended");
+    await proveGithubOrg(w.ports, org, "u1", { org: "susp", method: "app" });
+    w.advance(DAY);
+    const since = new Date(w.at()).toISOString();
+    w.db.exec(`update github_installations set status = 'suspended', inactive_since = '${since}', updated_at = '${since}'`);
+    expect(await sweepGithubProofs(w.ports)).toMatchObject({ alerted: 1 });
+    w.advance(3 * DAY);
+    w.db.exec(`update github_installations set status = 'deleted', uninstalled_at = '${new Date(w.at()).toISOString()}', updated_at = '${new Date(w.at()).toISOString()}'`);
+    w.advance(4 * DAY);
+    expect(await sweepGithubProofs(w.ports)).toMatchObject({ revoked: 1 });
+  });
+});
+
 describe("Verified Publisher application (REQ-SCOPE-010, REQ-SCOPE-018)", () => {
   const policy = (w: ReturnType<typeof world>, scopeId: string, mfa: string) =>
     w.db.exec(`insert into scope_policies (scope_id, mfa, updated_at) values ('${scopeId}', '${mfa}', '${new Date(T0).toISOString()}')`);

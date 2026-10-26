@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "13fc354c-4540-42d2-bc3a-3941b3473446",
-  "prevId": "a479355a-9dc6-41a6-bd81-6413cd6e7f99",
+  "id": "45cda779-68ac-40cf-a22c-29616a89e929",
+  "prevId": "030bec3c-e6c4-4cbd-94e7-dfb945e85d3c",
   "tables": {
     "credentials": {
       "name": "credentials",
@@ -3027,6 +3027,13 @@
         },
         "uninstalled_at": {
           "name": "uninstalled_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "inactive_since": {
+          "name": "inactive_since",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

@@ -71,12 +71,12 @@ scenario(
       await world.github.installApp(acmeGh, { by: world.alias("g"), accountId: 7001 });
       await world.github.installApp(gammaGh, { by: world.alias("n"), accountId: 7003 });
 
-      await expect(beta.verifyGitHub(acmeGh, "app")).toBeRefusedSaying("owner of");
+      await expect(beta.verifyGitHub(acmeGh, "app")).toBeRefusedSaying("Only an owner of");
       await expect(acme.verifyGitHub(acmeGh, "app")).resolves.toMatchObject({ org: "acmegh", method: "app" });
       await expect(beta.verifyGitHub(betaGh, "admin")).resolves.toMatchObject({ org: "betagh", method: "admin" });
       await expect(gamma.verifyGitHub(gammaGh, "app")).toBeRefusedSaying("not an owner");
       await expect(gamma.verifyGitHub(gammaGh, "admin")).toBeRefusedSaying("owner");
-      await expect(beta.verifyGitHub(acmeGh, "app")).toBeRefusedSaying("owner of");
+      await expect(beta.verifyGitHub(acmeGh, "app")).toBeRefusedSaying("Only an owner of");
 
       await expect(world.profiles.profile(acme)).resolves.toMatchObject({ verifiedGithubOrg: "acmegh", mark: { kind: "github", text: `● github.com/acmegh` } });
       await expect(world.profiles.profile(beta)).resolves.toMatchObject({ verifiedGithubOrg: "betagh" });
@@ -158,7 +158,7 @@ scenario(
 
       await world.github.suspendApp(installation);
       await world.cron.run("github-proof-lapse");
-      expect(world.mail.inbox(t).all().filter((m) => m.subject.startsWith("GitHub App removed"))).toHaveLength(1);
+      expect(world.mail.inbox(t).all().filter((m) => m.subject.startsWith("GitHub App suspended"))).toHaveLength(1);
       await world.clock.advance("7d1h");
       await world.cron.run("github-proof-lapse");
       await expect(world.profiles.profile(third)).resolves.toMatchObject({ verifiedGithubOrg: null });

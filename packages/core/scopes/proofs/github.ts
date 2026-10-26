@@ -30,7 +30,7 @@ async function isAdminOf(ports: ProofPorts, userId: string, orgId: string): Prom
 interface InstallationNow {
   installation_id: number;
   status: "active" | "suspended" | "deleted";
-  /** When the App stopped working for the organisation: the uninstall, or the suspension. */
+  /** When the App first stopped counting for the organisation: the suspension or the uninstall, whichever came first. */
   gone_at: string | null;
 }
 
@@ -38,7 +38,7 @@ interface InstallationNow {
 async function installationOf(d1: ProofPorts["d1"], orgId: string): Promise<InstallationNow | null> {
   const row = (
     await d1.query(
-      `select installation_id, status, uninstalled_at, updated_at from github_installations where account_id = ?
+      `select installation_id, status, inactive_since, uninstalled_at, updated_at from github_installations where account_id = ?
        order by (status = 'active') desc, installed_at desc, installation_id desc limit 1`,
       [Number(orgId)],
     )
@@ -48,7 +48,7 @@ async function installationOf(d1: ProofPorts["d1"], orgId: string): Promise<Inst
   return {
     installation_id: Number(row.installation_id),
     status,
-    gone_at: status === "deleted" ? ((row.uninstalled_at as string | null) ?? null) : status === "suspended" ? String(row.updated_at) : null,
+    gone_at: status === "active" ? null : String(row.inactive_since ?? row.uninstalled_at ?? row.updated_at),
   };
 }
 
@@ -162,7 +162,7 @@ export async function sweepGithubProofs(ports: ProofPorts): Promise<SweepSummary
     if (row.alerted_at === null) {
       await ports.d1.query("update github_org_proofs set alerted_at = ? where scope_id = ?", [now, row.scope_id]);
       await notifyOwners(ports, row.scope_id, "github-org-proof-alert", {
-        scope: row.scope_name, org: row.org_login, removalDate: dateOf(endsMs), scopeUrl: settingsUrl(ports, row.scope_name),
+        scope: row.scope_name, org: row.org_login, cause: install.status === "suspended" ? "suspended" : "removed", removalDate: dateOf(endsMs), scopeUrl: settingsUrl(ports, row.scope_name),
       });
       summary.alerted++;
     }
