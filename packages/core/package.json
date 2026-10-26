@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./access": "./access/index.ts",
+    "./admin": "./admin/index.ts",
     "./audit": "./audit/index.ts",
     "./audit/testing": "./audit/testing.ts",
     "./canonical": "./canonical/index.ts",
@@ -23,6 +24,7 @@
     "./tokens": "./tokens/index.ts",
     "./search": "./search/index.ts",
     "./stats": "./stats/index.ts",
+    "./synthetic": "./synthetic/index.ts",
     "./selftest": "./selftest/index.ts",
     "./mail": "./mail/index.ts",
     "./publishing": "./publishing/index.ts",

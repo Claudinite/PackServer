@@ -3,6 +3,8 @@ import type { MiddlewareHandler } from "hono";
 declare module "hono" {
   interface ContextVariableMap {
     cspNonce: string;
+    /** Set by a page that renders the Turnstile widget; only such a page's policy names Cloudflare's challenge host. */
+    turnstilePage?: boolean;
   }
 }
 
@@ -10,11 +12,15 @@ export function makeNonce(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/** The one third-party origin any page may name, and only the pages that render the human check. */
+export const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
+
 /** No `unsafe-inline` for script or style: an inline block runs only under the per-response nonce. */
-export function contentSecurityPolicy(nonce: string): string {
+export function contentSecurityPolicy(nonce: string, options: { turnstile?: boolean } = {}): string {
   return [
     "default-src 'none'",
-    `script-src 'nonce-${nonce}'`,
+    `script-src 'nonce-${nonce}'${options.turnstile ? ` ${TURNSTILE_ORIGIN}` : ""}`,
+    ...(options.turnstile ? [`frame-src ${TURNSTILE_ORIGIN}`] : []),
     `style-src 'self' 'nonce-${nonce}'`,
     "img-src 'self' data:",
     "font-src 'self'",
@@ -55,7 +61,7 @@ export function securityHeaders(): MiddlewareHandler {
     const html = (c.res.headers.get("content-type") ?? "").toLowerCase().startsWith("text/html");
     const apply = (headers: Headers): void => {
       for (const [name, value] of Object.entries(baseSecurityHeaders)) headers.set(name, value);
-      headers.set("content-security-policy", html ? contentSecurityPolicy(nonce) : NON_HTML_CSP);
+      headers.set("content-security-policy", html ? contentSecurityPolicy(nonce, { turnstile: c.get("turnstilePage") === true }) : NON_HTML_CSP);
       headers.delete("access-control-allow-credentials");
       const origin = headers.get("access-control-allow-origin");
       if (origin !== null && origin !== "*") headers.delete("access-control-allow-origin");

@@ -18,4 +18,5 @@ export * from "./device-codes";
 export * from "./adoption";
 export * from "./stats";
 export * from "./promotion";
+export * from "./review";
 export * from "../range";

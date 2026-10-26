@@ -92,14 +92,24 @@ describe("ScopeCoordinator", () => {
   });
 
   it("rebuilds a scope's index and hands the root its hash and serial", async () => {
-    const { logic, built, notified } = setup();
+    const { logic, built, notified, db } = setup();
+    db.exec(`insert into scopes (id, name, kind, state, created_at) values ('s', 'acme', 'org', 'active', 'x')`);
     expect(await logic.rebuildIndex({ scope: "acme" })).toMatchObject({ sha256: sha("1"), serial: 1 });
     expect(built).toEqual(["acme"]);
     expect(notified).toEqual([{ scope: "acme", sha256: sha("1"), serial: 1 }]);
   });
 
+  it("signs the synthetic tenant's index but keeps it out of the root", async () => {
+    const { logic, built, notified, db } = setup();
+    db.exec(`insert into scopes (id, name, kind, state, created_at) values ('s', 'probe', 'synthetic', 'active', 'x')`);
+    expect(await logic.rebuildIndex({ scope: "probe" })).toMatchObject({ serial: 1 });
+    expect(built).toEqual(["probe"]);
+    expect(notified).toEqual([]);
+  });
+
   it("delays a rebuild asked for inside the debounce window to the alarm instead of skipping it", async () => {
-    const { logic, clock, storage, built } = setup();
+    const { logic, clock, storage, built, db } = setup();
+    db.exec(`insert into scopes (id, name, kind, state, created_at) values ('s', 'acme', 'org', 'active', 'x')`);
     await logic.rebuildIndex({ scope: "acme" });
     clock.advance(1000);
     expect(await logic.rebuildIndex({ scope: "acme" })).toMatchObject({ sha256: sha("1"), serial: 1 });
@@ -113,7 +123,8 @@ describe("ScopeCoordinator", () => {
 
   it("runs one rebuild at a time and, for requests arriving meanwhile, exactly one more", async () => {
     const clock = clockAt();
-    const { d1 } = migratedD1();
+    const { d1, db } = migratedD1();
+    db.exec(`insert into scopes (id, name, kind, state, created_at) values ('s', 'acme', 'org', 'active', 'x')`);
     let active = 0;
     let peak = 0;
     const gates: Array<() => void> = [];

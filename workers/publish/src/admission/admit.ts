@@ -1,10 +1,11 @@
 import { createAudit } from "@packserver/core/audit";
 import { sha256Hex } from "@packserver/core/index";
 import {
-  NEW_PACKS_PER_ACCOUNT_PER_DAY, RUNS_PER_PUBLISHER_PER_DAY, SOFT_RATE_LIMIT_FAILED_RUNS, SYNTHETIC_VERSION_TTL_MS, VERSIONS_PER_PACK_PER_DAY, capMessage, checkIntegrity, dryRunCap,
-  isSyntheticScope, isVerifiedPublisher, isYoungAccount, newPackCap, nextRunStart, nextUtcMidnight, utcDay, type QuotaKind,
+  NEW_PACKS_PER_ACCOUNT_PER_DAY, RUNS_PER_PUBLISHER_PER_DAY, SOFT_RATE_LIMIT_FAILED_RUNS, VERSIONS_PER_PACK_PER_DAY, capMessage, checkIntegrity, dryRunCap,
+  isVerifiedPublisher, isYoungAccount, newPackCap, nextRunStart, nextUtcMidnight, utcDay, type QuotaKind,
 } from "@packserver/core/publishing";
 import { refusal } from "@packserver/http";
+import { SYNTHETIC_KIND, SYNTHETIC_VERSION_TTL_MS } from "@packserver/core/synthetic";
 import type { PublishRuntime } from "../bindings";
 import { quotaName } from "../quota";
 import { runByCredential, type RunRow } from "../runs/store";
@@ -33,6 +34,7 @@ export const SANDBOX_BUDGET_FLAG = "sandbox_daily_minutes";
 interface ScopeRow {
   id: string;
   name: string;
+  kind: string;
   state: "active" | "held";
   verified_domain: string | null;
   verified_github_org: string | null;
@@ -117,12 +119,12 @@ async function admitUnderLock(runtime: PublishRuntime, request: AdmissionRequest
   const day = utcDay(now);
   const dayStartIso = `${day}T00:00:00.000Z`;
 
-  const scope = one<ScopeRow>((await d1.query(`select id, name, state, verified_domain, verified_github_org from scopes where id = ?`, [credential.scope_id])).rows);
+  const scope = one<ScopeRow>((await d1.query(`select id, name, kind, state, verified_domain, verified_github_org from scopes where id = ?`, [credential.scope_id])).rows);
   if (!scope || scope.state === "held") {
     await auditRefusal(runtime, credential, kind, "scope-held", scope?.id);
     return { ok: false, response: refusal("forbidden", { message: "this scope cannot publish until an admin clears it" }) };
   }
-  const synthetic = isSyntheticScope(scope.name);
+  const synthetic = scope.kind === SYNTHETIC_KIND;
   const principal = credential.user_id ? `user:${credential.user_id}` : `scope:${scope.id}`;
   const packName = credential.pack_name;
   const version = credential.version;

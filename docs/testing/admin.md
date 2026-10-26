@@ -82,7 +82,7 @@ local R2 bucket behind the `AuditSink` port, chained exactly as in production; R
 
 ### IT-AUDIT-002 People see their own security history for 90 days
 - **Covers:** REQ-AUDIT-002
-- **Runs:** push
+- **Runs:** push, nightly (browser for the history list)
 - **Action:** a person logs in, adds a factor and mints a token at day 0; reads the page at day 89 and day 91 after the prune.
 - **Faked:** clock.
 - **Assert:** all three events are listed at day 89; the page still lists them at day 91 (the requirement is "at least 90 days"; the test asserts the lower bound only).

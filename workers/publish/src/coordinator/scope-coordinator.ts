@@ -1,3 +1,4 @@
+import { publicScopeOnly } from "@packserver/core/synthetic";
 import { DO_RPC_SCHEMA_VERSION, type ScopeCoordinatorRpc } from "@packserver/schema";
 import type { D1 } from "@packserver/ports";
 import type { DoStorage } from "../do-storage";
@@ -111,6 +112,11 @@ export class ScopeCoordinatorLogic implements ScopeCoordinatorRpc {
    * One rebuild at a time: a request that arrives while one runs asks for exactly one more
    * after it, and is answered with that one's result, so the newest change is always signed last.
    */
+  /** The synthetic tenant keeps its own signed index but stays out of the root's list of scopes. */
+  private async isPublic(scope: string): Promise<boolean> {
+    return (await this.deps.d1.query(`select 1 from scopes s where s.name = ? and ${publicScopeOnly("s")}`, [scope])).rows.length > 0;
+  }
+
   private rebuild(scope: string): Promise<{ sha256: string; serial: number }> {
     if (this.running) {
       this.again = scope;
@@ -125,7 +131,7 @@ export class ScopeCoordinatorLogic implements ScopeCoordinatorRpc {
           written = await this.deps.indexes.rebuild(next);
           await this.storage.put("rebuilt", { at: this.now(), ...written } satisfies Rebuilt);
           await this.storage.delete("pending");
-          await this.deps.root.scopeChanged({ scope: next, ...written });
+          if (await this.isPublic(next)) await this.deps.root.scopeChanged({ scope: next, ...written });
           next = this.again;
         }
       } finally {

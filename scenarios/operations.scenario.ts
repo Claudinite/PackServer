@@ -74,3 +74,18 @@ scenario(
   },
   SCAN,
 );
+
+scenario("IT-OPS-002 A probe credential cannot act outside its scope", async (world) => {
+  const outsideTheScope = ["publish-other-pack", "read-private-pack", "mint-token", "list-sessions", "change-email", "create-pack-in-probe"] as const;
+  const browserOnly = ["read-private-pack", "mint-token", "list-sessions", "change-email"] as const;
+  const probe = await world.probe.publisher();
+  await (await probe.publish(world.archive("gcp", { version: "1.0.0" }), "1.0.0")).finished();
+
+  // The one thing the probe repository's token may do: a new version of the pack it is registered for.
+  expect(await world.probe.attempt("publish-new-version-of-probe-pack")).toBe(true);
+  await (await probe.publish(world.archive("gcp", { version: "1.1.0" }), "1.1.0")).finished();
+
+  for (const action of outsideTheScope) expect(await world.probe.attempt(action), action).toBe(false);
+  // Presented where a browser session belongs, the token is not one.
+  for (const action of browserOnly) expect(await world.probe.attempt(action, { asSession: true }), `${action} as a session`).toBe(false);
+}, SCAN);

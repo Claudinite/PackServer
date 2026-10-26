@@ -144,6 +144,13 @@ export function workflowPort(workflow: CfWorkflow): Workflow {
       const { status } = await (await workflow.get(id)).status();
       return { status };
     },
+    async sendEvent(id, event) {
+      try {
+        await (await workflow.get(id)).sendEvent(event);
+      } catch (error) {
+        throw new PortError("not_found", `workflow instance ${id} did not take the event: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    },
   };
 }
 

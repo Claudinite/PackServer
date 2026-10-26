@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "4e3a09e3-5a92-4dbf-9dee-fa456c485899",
-  "prevId": "5038807a-cea2-4a24-a279-f50b975d5123",
+  "id": "ba32606f-3e53-4e69-92a2-8b52bc08006f",
+  "prevId": "ab4960b1-384f-4901-b2bd-01ccf6fad7a9",
   "tables": {
     "credentials": {
       "name": "credentials",
@@ -653,34 +653,6 @@
         },
         "report_key": {
           "name": "report_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "preinstall": {
-          "name": "preinstall",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "status_reason": {
-          "name": "status_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "status_security": {
-          "name": "status_security",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "status_changed_at": {
-          "name": "status_changed_at",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -6051,74 +6023,153 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "notice_deliveries": {
-      "name": "notice_deliveries",
+    "review_appeals": {
+      "name": "review_appeals",
       "columns": {
-        "dedupe_key": {
-          "name": "dedupe_key",
+        "run_id": {
+          "name": "run_id",
           "type": "text",
           "primaryKey": true,
           "notNull": true,
           "autoincrement": false
         },
-        "sent_at": {
-          "name": "sent_at",
+        "note": {
+          "name": "note",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "submitted_by": {
+          "name": "submitted_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "submitted_at": {
+          "name": "submitted_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'open'"
+        },
+        "decided_by": {
+          "name": "decided_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "event_sent_at": {
+          "name": "event_sent_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
-      "indexes": {
-        "notice_deliveries_sent_idx": {
-          "name": "notice_deliveries_sent_idx",
-          "columns": [
-            "sent_at"
+      "indexes": {},
+      "foreignKeys": {
+        "review_appeals_submitted_by_users_id_fk": {
+          "name": "review_appeals_submitted_by_users_id_fk",
+          "tableFrom": "review_appeals",
+          "tableTo": "users",
+          "columnsFrom": [
+            "submitted_by"
           ],
-          "isUnique": false
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
-      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "review_appeals_state_check": {
+          "name": "review_appeals_state_check",
+          "value": "\"review_appeals\".\"state\" in ('open', 'upheld', 'denied')"
+        },
+        "review_appeals_note_check": {
+          "name": "review_appeals_note_check",
+          "value": "length(\"review_appeals\".\"note\") between 1 and 2000"
+        }
+      }
     },
-    "signed_documents": {
-      "name": "signed_documents",
+    "review_decisions": {
+      "name": "review_decisions",
       "columns": {
-        "doc_key": {
-          "name": "doc_key",
+        "run_id": {
+          "name": "run_id",
           "type": "text",
           "primaryKey": true,
           "notNull": true,
           "autoincrement": false
         },
-        "serial": {
-          "name": "serial",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "sha256": {
-          "name": "sha256",
+        "decision": {
+          "name": "decision",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "content_hash": {
-          "name": "content_hash",
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "decided_by": {
+          "name": "decided_by",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "signed_at": {
-          "name": "signed_at",
+        "decided_at": {
+          "name": "decided_at",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "event_sent_at": {
+          "name": "event_sent_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "audited_at": {
+          "name": "audited_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "notified_at": {
+          "name": "notified_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         }
       },
@@ -6126,7 +6177,12 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "review_decisions_decision_check": {
+          "name": "review_decisions_decision_check",
+          "value": "\"review_decisions\".\"decision\" in ('approve', 'reject', 'quarantine_publisher')"
+        }
+      }
     }
   },
   "views": {},

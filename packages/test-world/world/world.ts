@@ -8,7 +8,7 @@ import { createCommunity } from "./areas/community";
 import { createGitHub } from "./areas/github";
 import { createMember } from "./areas/member";
 import { createModeration } from "./areas/moderation";
-import { createOperator } from "./areas/operator";
+import { createOperator, createProbe } from "./areas/operator";
 import { createReportsModule } from "./areas/reports";
 import { createRollups } from "./areas/rollups";
 import { createPublishing } from "./areas/publishing";
@@ -42,6 +42,7 @@ export function createWorld(driver: Driver, title: string) {
   const scopes = createScopes(driver, aliases, people);
   const ci = createCi(driver, (name) => aliases.alias(name));
   const validation = createValidation(driver);
+  const publishFlow = createPublishFlow(driver, aliases, scopes, ci, validation.ensureEngines);
   const undo: Array<() => Promise<void>> = [];
   return {
     driver,
@@ -49,12 +50,13 @@ export function createWorld(driver: Driver, title: string) {
     ...scopes,
     ...createPublishing(),
     ...validation.module,
-    ...createPublishFlow(driver, aliases, scopes, ci, validation.ensureEngines),
+    ...publishFlow,
+    ...createProbe(driver, ci, (name) => aliases.alias(name), publishFlow.publishFromCi),
     ...createAccess(driver),
     ...createCommunity(),
     ...createModeration(),
     ...createReportsModule(driver, aliases),
-    ...createAdmin(driver, (restore) => void undo.push(restore)),
+    ...createAdmin(driver, (restore) => void undo.push(restore), aliases),
     ...createRecoveries(driver),
     ...createMember(driver),
     ...createAgents(driver, aliases),

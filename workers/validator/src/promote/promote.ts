@@ -4,6 +4,7 @@ import { objectKey, publicObjectHttpMetadata, type ObjectKind } from "@packserve
 import { compareVersions, sha256Hex, signAttestation, utf8 } from "@packserver/core/index";
 import { applyIndex, isCategory, SEARCH_PARTS, type Listing } from "@packserver/core/search";
 import { indexOf, scorePack, treeOfScoreInputs } from "@packserver/core/score";
+import { SYNTHETIC_KIND } from "@packserver/core/synthetic";
 import { verificationFacts } from "@packserver/core/scopes";
 import {
   attestationOf, buildContents, buildMeta, CONTENTS_HEADERS, contentsKey, diffSummary, inventoryOf, SandboxAReport, warningCounts,
@@ -248,7 +249,7 @@ export async function search(ctx: Context): Promise<{ indexed: boolean }> {
   const { rt, runId } = ctx;
   const run = await loadPromotion(rt.ports.d1, runId);
   const row = await versionRow(rt.ports.d1, run);
-  if (!row || row.visibility !== "public") return { indexed: false };
+  if (!row || row.visibility !== "public" || run.scope_kind === SYNTHETIC_KIND) return { indexed: false };
   const m = await materialOf(rt, run);
   const index = indexOf(m.tree);
   const manifest = (m.a.manifest ?? {}) as { pitch?: unknown; tags?: unknown; category?: unknown };

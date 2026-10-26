@@ -29,10 +29,10 @@ expires after 24 hours and its name may be reused.
 - source: SEC (security review, 2026-10-22); release plan §5.2, §10; PD-REV cut 1; Ariel B3 2026-10-22
 - coverage: scenario
 
-The probe publishes through two identities only: the probe repository's trusted-publisher
-registration (OIDC, REQ-PUB-003) for the synthetic scope, and the prober Worker's service-binding
-principal. Neither can create packs elsewhere, read private packs, mint tokens or perform any
-account or session action, and neither is ever a human session.
+The probe publishes through one identity only: the probe repository's OIDC token, accepted by its
+trusted-publisher registration (REQ-PUB-003) for the synthetic scope. It cannot create packs
+elsewhere, read private packs, mint tokens or perform any account or session action, and it is
+never a human session.
 
 ## REQ-OPS-003 The production configuration rejects test issuers and test bindings
 

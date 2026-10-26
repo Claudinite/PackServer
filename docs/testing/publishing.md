@@ -233,7 +233,7 @@ to pass unless the test says otherwise. The end-to-end paths are journeys [JT-00
 
 ### IT-PUB-012 Mint scoped, restricted, time-limited read tokens shown once; no publish tokens exist
 - **Covers:** REQ-PUB-012
-- **Runs:** push
+- **Runs:** push, nightly (browser for the mint form and the one-time token)
 - **Action:** mint a `psr_` token restricted to a pack with default lifetime and `assertion: 'none'`, then with the verb's assertion; mint one restricted to a scope with a CIDR; mint a `psr_` for 366 days; mint one for 365 days; try minting with a `psr_` token instead of a session; request a token of any publish kind.
 - **Assert:** the unasserted mint is refused; the default expires in 7 days; the token value appears once and never again in any listing; the 366-day request is refused and the 365-day one minted; minting with a token is refused (browser session only); the publish-kind request is refused and no such kind is listed anywhere in the UI or API.
 
@@ -295,7 +295,7 @@ to pass unless the test says otherwise. The end-to-end paths are journeys [JT-00
 - **Covers:** REQ-PUB-018
 - **Runs:** push
 - **Setup:** verified org with domain `acme.com`.
-- **Action:** publisher Z tries `@z/acme`, `@z/fleet`, `@z/local`, `@z/global`, `@z/canon`, `@z/claudinite`, `@z/cn`, `@z/temp`, then `@z/acme-tools`.
+- **Action:** publisher Z tries `@z/acme`, `@z/fleet`, `@z/local`, `@z/global`, `@z/canon`, `@z/claudinite`, `@z/cn`, `@z/temp`, `@z/probe`, `@z/packserver-canary`, then `@z/acme-tools`.
 - **Assert:** all but the last are refused with a suggested alternative; `@z/acme-tools` is accepted.
 
 ### IT-PUB-034 Near-miss names on a popular pack or verified scope are refused or held

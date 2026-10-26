@@ -11,7 +11,7 @@ with the WebAuthn helper and need no browser except where a page is the thing un
 
 ### IT-ACC-001 Sign up by GitHub or passkey; no other provider route exists
 - **Covers:** REQ-ACC-001
-- **Runs:** push
+- **Runs:** push, nightly (browser for the passkey ceremonies and the no-WebAuthn branch)
 - **Setup:** two visitors.
 - **Action:** one signs up with the fake GitHub login, one with a passkey; sign-in requests naming `google`, `apple` and `email` as the provider are sent.
 - **Faked:** GitHub login, Turnstile (passes).
@@ -21,7 +21,7 @@ with the WebAuthn helper and need no browser except where a page is the thing un
 - **Covers:** REQ-ACC-002
 - **Runs:** push
 - **Setup:** an existing person with handle `taken`; a verified org `acme` with proven domain `acme.com`; a handle `acmee` created before `acme` became verified.
-- **Action:** a new person signs in for the first time and tries `taken`, `admin`, `claude`, `anthropic`, `claudinite`, `cn`, `fleet`, `local`, `global`, `canon`, `temp`, `acme`, `acrne` (confusable with `acme`), then `fresh`; the holder of `acmee` tries to publish a new pack; the admin clears the hold.
+- **Action:** a new person signs in for the first time and tries `taken`, `admin`, `claude`, `anthropic`, `claudinite`, `cn`, `fleet`, `local`, `global`, `canon`, `temp`, `probe`, `packserver-canary`, `acme`, `acrne` (confusable with `acme`), then `fresh`; the holder of `acmee` tries to publish a new pack; the admin clears the hold.
 - **Assert:** every attempt but `fresh` is refused with an inline error naming the reason; `fresh` is accepted and the account is usable; `acmee` is held from publishing new packs until the admin clears it (IT-ADMIN-007), then publishes.
 
 ### IT-ACC-003 Email codes and magic links expire in 15 minutes and are single-use
@@ -43,7 +43,7 @@ with the WebAuthn helper and need no browser except where a page is the thing un
 
 ### IT-ACC-020 Providers link only explicitly, as a sensitive action
 - **Covers:** REQ-ACC-020
-- **Runs:** push
+- **Runs:** push, nightly (browser for the dialog and the redirect to GitHub)
 - **Setup:** person A signed in with a passkey; person B created by GitHub identity G1.
 - **Action:** A links GitHub from Account > Security with `assertion: 'none'`, then with the verb's assertion; B signs in with a passkey that was never enrolled on B, whose ceremony carries B's email; separately, a visitor signs in with a GitHub identity whose email matches B's without linking first.
 - **Assert:** the unasserted link is refused; after the asserted link A has two sign-in methods and both sign in to A; neither of B's implicit attempts links anything (the GitHub one follows IT-ACC-004).
@@ -89,7 +89,7 @@ with the WebAuthn helper and need no browser except where a page is the thing un
 
 ### IT-ACC-006 Ten recovery codes shown once, with a reminder until saved
 - **Covers:** REQ-ACC-006
-- **Runs:** push
+- **Runs:** push, nightly (browser for the code panel and the reminder)
 - **Action:** a person enrols a passkey; reads the account page; confirms the codes are saved; reads it again.
 - **Assert:** exactly 10 distinct codes are returned once and never again by any page or API; the reminder is present before confirmation and absent after.
 
@@ -116,7 +116,7 @@ with the WebAuthn helper and need no browser except where a page is the thing un
 
 ### IT-ACC-010 Sensitive actions take a passkey assertion bound to the action; there is no window
 - **Covers:** REQ-ACC-010
-- **Runs:** push
+- **Runs:** push, nightly (browser for the per-action dialog)
 - **Setup:** publisher P with a passkey; a pack with a staged version and a capability-widening version; a pending transfer offer to P's org.
 - **Action:** P mints a read token with the verb's own assertion; P mints again with `assertion: 'none'`; P mints with an assertion made for `yank` of some version; P changes their email; P approves the staged version, approves the widening, adds a scope owner, changes an allowlist and accepts the transfer, each with the verb's assertion and once with `none`; the clock advances 6 hours and P retries one `none`.
 - **Faked:** mail, clock.

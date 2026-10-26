@@ -15,6 +15,8 @@ export interface ApiRequest {
   path: string;
   headers?: Record<string, string>;
   body?: unknown;
+  /** The hostname the request is addressed to, for a Worker that answers by host; in-process only, where it defaults to the Worker's own test host. */
+  host?: string;
   /** Sent as an outsider would send it: a driver that signs its requests leaves this one unsigned. */
   unsigned?: boolean;
   /** The key id a signing driver signs this request as, so the call spends that principal's self-test budget. */

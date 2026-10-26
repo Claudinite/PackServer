@@ -1,5 +1,6 @@
 import { analyticsStats, createIsolateTelemetry } from "@packserver/http";
 import { clockFrom, cryptoRng, d1Port, kvPort, readSecret, workerRuntime, type WorkerRuntime } from "@packserver/ports/cloudflare";
+import { refuseTestSecret } from "@packserver/core/synthetic";
 import type { Ports } from "@packserver/ports";
 
 export interface Env {
@@ -34,6 +35,8 @@ export type GithubRuntime = WorkerRuntime<GithubPorts, GithubServices>;
 const isolateTelemetry = createIsolateTelemetry();
 
 export function createRuntime(env: Env): GithubRuntime {
+  // A secret bound as plain text is judged now; one in the Secrets Store, when it is first read.
+  if (typeof env.GITHUB_WEBHOOK_SECRET === "string") refuseTestSecret(env.ENVIRONMENT, "GITHUB_WEBHOOK_SECRET", env.GITHUB_WEBHOOK_SECRET);
   const telemetryKv = kvPort(env.TELEMETRY_KV);
   const clock = clockFrom(env.ENVIRONMENT, env.CLOCK);
   return workerRuntime(
@@ -52,7 +55,7 @@ export function createRuntime(env: Env): GithubRuntime {
     },
     {
       secrets: {
-        webhook: () => readSecret(env.GITHUB_WEBHOOK_SECRET),
+        webhook: async () => refuseTestSecret(env.ENVIRONMENT, "GITHUB_WEBHOOK_SECRET", await readSecret(env.GITHUB_WEBHOOK_SECRET)),
         appId: () => readSecret(env.GITHUB_APP_ID),
         privateKey: () => readSecret(env.GITHUB_APP_PRIVATE_KEY),
         codeSearchToken: () => readSecret(env.GITHUB_CODE_SEARCH_TOKEN),

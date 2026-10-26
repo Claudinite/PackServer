@@ -1,3 +1,4 @@
+import { publicScopeOnly } from "@packserver/core/synthetic";
 import { acceptQueueMessage, queueMessage } from "@packserver/schema";
 import { z } from "zod";
 import type { ValidatorRuntime } from "../bindings";
@@ -38,7 +39,7 @@ export async function consumeReindex(batch: MessageBatch, rt: ValidatorRuntime):
 /** Every scope with something published, so a document about to expire is renewed and a lapsed proof is picked up. */
 export async function refreshAllScopes(rt: ValidatorRuntime): Promise<{ refreshed: number; failed: number }> {
   const { rows } = await rt.ports.d1.query(
-    `select distinct s.name from scopes s join packs p on p.scope_id = s.id join pack_versions v on v.pack_id = p.id where v.published_at is not null`,
+    `select distinct s.name from scopes s join packs p on p.scope_id = s.id join pack_versions v on v.pack_id = p.id where v.published_at is not null and ${publicScopeOnly("s")}`,
   );
   let failed = 0;
   for (const row of rows) {
