@@ -1,4 +1,4 @@
-import { test as base, expect, type Page } from "@playwright/test";
+import { test as base, expect, type CDPSession, type Page } from "@playwright/test";
 import { createWorld, type World } from "../world/world";
 import type { Capability, UiActions } from "./driver";
 import { assertNoUnfaked } from "./unfaked";
@@ -9,7 +9,18 @@ import { InProcessDriver } from "./inprocess";
  * transport; only the step a scenario is about goes through the page, so `ui` is a capability
  * on top of everything the in-process driver already has.
  */
+/**
+ * The origin the browser sees. A browser only keeps a `__Host-` cookie and only runs WebAuthn on a
+ * secure origin, and `http://localhost` is the one plain-http origin that is; the Worker accepts it
+ * as a site origin for this driver alone, and the browser reaches the harness through it.
+ */
+export const BROWSER_ORIGIN = "http://localhost";
+
 export class BrowserDriver extends InProcessDriver {
+  constructor() {
+    super({ vars: { web: { SITE_ORIGINS: `http://web.internal,${BROWSER_ORIGIN}` } } });
+  }
+
   override readonly capabilities: ReadonlySet<Capability> = new Set<Capability>([...InProcessDriver.CAPABILITIES, "ui"]);
   private page: Page | undefined;
 
@@ -29,9 +40,31 @@ export class BrowserDriver extends InProcessDriver {
   }
 }
 
+/** A software authenticator inside the page's browser: discoverable credentials, user verification on and passing. */
+export class PageAuthenticator {
+  private constructor(
+    private readonly session: CDPSession,
+    private readonly id: string,
+  ) {}
+
+  static async attach(page: Page): Promise<PageAuthenticator> {
+    const session = await page.context().newCDPSession(page);
+    await session.send("WebAuthn.enable");
+    const { authenticatorId } = await session.send("WebAuthn.addVirtualAuthenticator", {
+      options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true },
+    });
+    return new PageAuthenticator(session, authenticatorId);
+  }
+
+  async credentials(): Promise<Array<{ credentialId: string; signCount: number }>> {
+    return (await this.session.send("WebAuthn.getCredentials", { authenticatorId: this.id })).credentials;
+  }
+}
+
 interface Fixtures {
   world: World;
   driver: BrowserDriver;
+  authenticator: PageAuthenticator;
 }
 interface WorkerFixtures {
   harness: BrowserDriver;
@@ -50,13 +83,21 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
     },
     { scope: "worker", timeout: 120_000 },
   ],
-  baseURL: async ({ harness }, use) => {
-    await use(harness.baseUrl?.origin);
-  },
+  launchOptions: [
+    async ({ harness, launchOptions }, use) => {
+      const port = harness.baseUrl?.port;
+      await use({ ...launchOptions, args: [...(launchOptions.args ?? []), `--host-resolver-rules=MAP localhost 127.0.0.1:${port}`] });
+    },
+    { scope: "worker" },
+  ],
+  baseURL: BROWSER_ORIGIN,
   driver: async ({ harness, page }, use) => {
     await harness.beginScenario();
     harness.attach(page);
     await use(harness);
+  },
+  authenticator: async ({ page }, use) => {
+    await use(await PageAuthenticator.attach(page));
   },
   world: async ({ driver }, use, testInfo) => {
     const world = createWorld(driver, testInfo.title);

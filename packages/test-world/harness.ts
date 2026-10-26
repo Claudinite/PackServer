@@ -18,6 +18,8 @@ export interface HarnessOptions {
   root?: string;
   /** Overrides the discovered set, for a test of the harness itself. */
   workers?: string[];
+  /** Test-only vars per Worker, laid over its `env.test` block. */
+  vars?: Record<string, Record<string, string>>;
 }
 
 export interface WorldHarness {
@@ -53,7 +55,12 @@ export function createWorldHarness(options: HarnessOptions = {}): WorldHarness {
   const server = createTestHarness({
     root,
     workers: [
-      ...workers.map((w) => ({ configPath: `workers/${w}/wrangler.jsonc`, env: "test", bindingOverrides: { CLOCK: CLOCK_WORKER } })),
+      ...workers.map((w) => ({
+        configPath: `workers/${w}/wrangler.jsonc`,
+        env: "test",
+        bindingOverrides: { CLOCK: CLOCK_WORKER },
+        ...(options.vars?.[w] ? { vars: options.vars[w] } : {}),
+      })),
       ...fakes.map((name) => ({ config: fakeWorkerConfig(FAKE_WORKERS[name]!) as never })),
     ],
   });
