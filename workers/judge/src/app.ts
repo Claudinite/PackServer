@@ -1,5 +1,6 @@
 import { createShell, selfTestAccess, type WorkerShellOptions } from "@packserver/http";
 import type { Hono } from "hono";
+import { apiRoutes } from "./api/routes";
 import type { JudgeRuntime } from "./bindings";
 import { selfTestChecks } from "./selftest";
 
@@ -8,15 +9,20 @@ export interface AppOptions {
 }
 
 export function createApp(runtime: JudgeRuntime, options: AppOptions = {}): Hono {
-  return createShell({
+  const { ports } = runtime;
+  const app = createShell({
     worker: "judge",
     releaseId: runtime.version.releaseId,
     versionId: runtime.version.versionId,
-    clock: runtime.ports.clock,
-    stats: runtime.ports.stats,
-    telemetry: runtime.ports.telemetry,
+    clock: ports.clock,
+    stats: ports.stats,
+    telemetry: ports.telemetry,
     checks: () => selfTestChecks(runtime),
     selfTestAllowed: options.selfTestAllowed,
     selfTest: selfTestAccess(runtime),
   });
+  const gatesKv = ports.kv["GATES_KV"];
+  if (!gatesKv) throw new Error("the judge's KV namespaces are not bound");
+  app.route("/", apiRoutes({ clock: ports.clock, access: ports.access, gatesKv }));
+  return app;
 }

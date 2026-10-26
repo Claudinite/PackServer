@@ -18,7 +18,13 @@
         "ENVIRONMENT": "test",
         "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
         "IP_HASH_MASTER_KEY": "test-ip-hash-master-key",
-        "PRINCIPAL_HASH_KEY": "test-principal-hash-key"
+        "PRINCIPAL_HASH_KEY": "test-principal-hash-key",
+        "ANALYTICS_READ_TOKEN": "test-analytics-read-token",
+        "CF_AUDIT_READ_TOKEN": "test-cf-audit-read-token",
+        "CF_ACCOUNT_ID": "test-account-id",
+        "DATASET_SUFFIX": "_test",
+        "DAILY_LOG_ALLOWANCE": "200000",
+        "CI_TOKEN_IDS": ""
       },
       "kv_namespaces": [
         {
@@ -94,12 +100,15 @@
       ],
       "triggers": {
         "crons": [
-          "*/5 * * * *"
+          "* * * * *"
         ]
       },
       "vars": {
         "WORKER": "judge",
-        "ENVIRONMENT": "staging"
+        "ENVIRONMENT": "staging",
+        "DATASET_SUFFIX": "_staging",
+        "DAILY_LOG_ALLOWANCE": "200000",
+        "CI_TOKEN_IDS": ""
       },
       "kv_namespaces": [
         {
@@ -150,6 +159,21 @@
           "binding": "PRINCIPAL_HASH_KEY",
           "store_id": "00000000000000000000190000000004",
           "secret_name": "principal-hash-key-staging"
+        },
+        {
+          "binding": "ANALYTICS_READ_TOKEN",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "analytics-read-token-staging"
+        },
+        {
+          "binding": "CF_AUDIT_READ_TOKEN",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "cf-audit-read-token-staging"
+        },
+        {
+          "binding": "CF_ACCOUNT_ID",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "cf-account-id-staging"
         }
       ],
       "version_metadata": {
@@ -188,12 +212,15 @@
       ],
       "triggers": {
         "crons": [
-          "*/5 * * * *"
+          "* * * * *"
         ]
       },
       "vars": {
         "WORKER": "judge",
-        "ENVIRONMENT": "production"
+        "ENVIRONMENT": "production",
+        "DATASET_SUFFIX": "",
+        "DAILY_LOG_ALLOWANCE": "200000",
+        "CI_TOKEN_IDS": ""
       },
       "kv_namespaces": [
         {
@@ -244,6 +271,21 @@
           "binding": "PRINCIPAL_HASH_KEY",
           "store_id": "00000000000000000000290000000004",
           "secret_name": "principal-hash-key"
+        },
+        {
+          "binding": "ANALYTICS_READ_TOKEN",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "analytics-read-token"
+        },
+        {
+          "binding": "CF_AUDIT_READ_TOKEN",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "cf-audit-read-token"
+        },
+        {
+          "binding": "CF_ACCOUNT_ID",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "cf-account-id"
         }
       ],
       "version_metadata": {
