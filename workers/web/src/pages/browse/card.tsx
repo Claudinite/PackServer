@@ -20,7 +20,7 @@ export function PackCardRow(props: { card: Card }) {
     <li class="card">
       <div class="top">
         <a class="pk mono" href={`/packs/${card.id}`}>{card.id}</a>
-        <PublisherMark proof={proofs[0]} proofs={proofs} />
+        <a class="plain" href={`/@${card.id.slice(1).split("/")[0]}`}><PublisherMark proof={proofs[0]} proofs={proofs} focusable={false} /></a>
       </div>
       <p class="pitch">{card.pitch}</p>
       <div class="meta">

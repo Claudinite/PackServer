@@ -72,7 +72,7 @@ routes.get("/browse", async (c) => {
           <>
             {loaded.value.degraded ? <p class="muted small mt2">Keyword matches only for now.</p> : null}
             <PackCardList cards={loaded.value.cards} />
-            {loaded.value.cards.length === PAGE_SIZE ? <p class="foot"><a href={`/browse?${next}`}>More</a></p> : null}
+            {loaded.value.cards.length === PAGE_SIZE ? <p class="foot"><a href={`/browse?${next}`}>Next 20</a></p> : null}
           </>
         )}
       </>

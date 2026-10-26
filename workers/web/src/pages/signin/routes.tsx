@@ -13,10 +13,7 @@ routes.get("/signin", (c) =>
         <p class="lede">Browsing and searching need no account.</p>
         <div class="stack mt3">
           <button class="btn" type="button" disabled>Sign in with a passkey</button>
-          <form method="post" action="/api/auth/github">
-            <input type="hidden" name="next" value={c.req.query("next") ?? "/"} />
-            <button class="btn" type="submit">Continue with GitHub</button>
-          </form>
+          <button class="btn" type="button" disabled>Continue with GitHub</button>
         </div>
       </>
     ),

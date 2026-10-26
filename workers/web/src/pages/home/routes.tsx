@@ -12,6 +12,7 @@ const RAIL = 5;
 routes.get("/", async (c) => {
   const [categories, recent, trending] = await Promise.all([categoryCounts(c), searchCards(c, { sort: "recent", limit: RAIL }), trendingCards(c)]);
   const failed = !categories.ok || !recent.ok;
+  if (!trending.ok) console.warn(JSON.stringify({ page: "home", trending: "unavailable", status: trending.status }));
   c.status(failed ? 503 : 200);
   return renderPage(c, {
     title: "Claudinite Packs",

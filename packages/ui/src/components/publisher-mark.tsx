@@ -15,6 +15,8 @@ export interface PublisherMarkProps {
   proofs?: readonly PublisherProof[];
   verifiedPublisher?: boolean;
   packCount?: number;
+  /** False when the mark sits inside a link, so it is one tab stop. */
+  focusable?: boolean;
 }
 
 /** `● acme.com`, `● github.com/acme` or `○ Unproven`. "Verified Publisher" only ever appears in the hover. */
@@ -24,6 +26,7 @@ export function PublisherMark(props: PublisherMarkProps) {
   const proofs = props.proofs ?? (props.proof ? [props.proof] : []);
   return (
     <HoverCard
+      focusable={props.focusable}
       label={
         <span class={proven ? "mark pub" : "mark pub unproven"}>
           <span class="dot" aria-hidden="true" />

@@ -36,7 +36,7 @@ const shell = `
 .logo { display: inline-flex; align-items: center; gap: ${g(1)}; font-weight: 600; font-size: ${typeScale.lead}px; color: var(--ink); letter-spacing: -0.01em; }
 .logo:hover { text-decoration: none; }
 .logo svg { width: 20px; height: 20px; }
-.nav { display: flex; gap: ${g(2)}; margin-left: auto; }
+.nav { display: flex; flex-wrap: wrap; gap: ${g(1)} ${g(2)}; margin-left: auto; }
 .nav a { color: var(--grey-2); }
 .nav a[aria-current="page"] { color: var(--ink); }
 .wrap { max-width: ${layout.column}px; margin: 0 auto; padding: ${g(4)} 16px ${g(12)}; }

@@ -67,6 +67,8 @@ describe("browse (REQ-SEARCH-013, REQ-SEARCH-021, REQ-SCORE-005, REQ-TELEM-003)"
     const t = site({ search: [card("@acme/a", { verified_domain: "acme.test", fetches_30d: 10 }), card("@kite/b", { repository: null })] });
     const { html } = await t.get("/browse");
     expect(html).toContain('href="/packs/@acme/a"');
+    expect(html).toContain('<a class="plain" href="/@acme">');
+    expect(html).toContain('<a class="plain" href="/@kite">');
     expect(html).toContain(">acme.test<");
     expect(html).toContain(">Unproven<");
     expect(html).toContain("about 10 fetches in 30 days");
@@ -165,7 +167,10 @@ describe("pricing (REQ-PAY-017)", () => {
   it("strikes every goal price and says free through 2026, with no way to pay", async () => {
     const { html } = await site().get("/pricing");
     for (const price of ["$1 per new pack", "$99 a year", "$7 per seat per month"]) expect(html).toContain(`<s>${price}</s><span class="free">free through 2026</span>`);
+    for (const tier of ["New pack", "Verified Publisher", "Team"]) expect(html).toContain(`<h2>${tier}</h2>`);
     expect(html).toContain("Apply for Verified Publisher");
+    expect(html).not.toContain('<a class="btn"');
+    expect(html).not.toMatch(/[Ww]aived/);
     expect(html).not.toMatch(/checkout|card number|Buy/i);
   });
 });
@@ -199,10 +204,10 @@ describe("claude-code and sign-in", () => {
     expect(html).toContain("600 a minute");
   });
 
-  it("offers GitHub sign-in and carries the return target", async () => {
+  it("shows both sign-in buttons disabled until the human check lands", async () => {
     const { html } = await site().get("/signin?next=/dashboard");
-    expect(html).toContain('action="/api/auth/github"');
-    expect(html).toContain('name="next" value="/dashboard"');
+    expect(html).toMatch(/<button class="btn" type="button" disabled="">Continue with GitHub/);
+    expect(html).not.toContain("<form");
   });
 });
 
