@@ -317,3 +317,153 @@ scenario("IT-PAY-018 A grant on a private pack asks for no payment", async (worl
   const hosts = (await world.recorder.invocations({ raw: true })).map((i) => JSON.stringify(i));
   expect(hosts.filter((h) => /polar|stripe|paddle|paypal|payment/i.test(h))).toEqual([]);
 }, storage);
+
+/** `@acme/secret`, private, in an org its owner `ann` created, with alice's repository outside any allowlist yet. */
+async function owned(world: World) {
+  const ann = await world.publishers.create({ handle: "ann" });
+  const acme = await ann.orgs.create("acme");
+  const secret = await world.packs.public("@acme/secret", { visibility: "private", versions: ["1.0.0", "1.1.0"] });
+  const bob = world.access.account("bob");
+  return { ann, acme, secret, bob, bobRepo: world.access.repository(bob, "app"), manage: world.access.manage(secret, ann) };
+}
+
+scenario("IT-PRIV-019 Changing the allowlist needs a passkey and is audited", async (world) => {
+  const { ann, secret, bob, bobRepo, manage } = await owned(world);
+  const reads = world.member().inActionsOf(bobRepo);
+
+  await expect(manage.allow(bob, { assertion: "none" })).toBeRefused("step-up");
+  await expect(reads.index({ pack: secret.systemName })).toBeNotFound();
+  expect((await manage.view())).toMatchObject({ grants: [] });
+
+  await manage.allow(bob);
+  expect(await reads.index({ pack: secret.systemName })).toMatchObject({ entries: [{ pack: secret.systemName }] });
+
+  await world.clock.advance("1m");
+  await expect(manage.remove(bob, { assertion: "none" })).toBeRefused("step-up");
+  expect(await reads.index({ pack: secret.systemName })).toMatchObject({ entries: [{ pack: secret.systemName }] });
+  await manage.remove(bob);
+  await expect(reads.index({ pack: secret.systemName })).toBeNotFound();
+
+  const trail = (await ann.account.history()).filter((e) => e.action === "grant.changed");
+  expect(trail.map((e) => e.target).sort()).toEqual([`${secret.systemName}#${bob.id}`, `${secret.systemName}#${bob.id}`]);
+  expect(await manage.view()).toMatchObject({ changes: [{ change: "removed", accountId: String(bob.id), actor: ann.handle }, { change: "added", accountId: String(bob.id), actor: ann.handle }] });
+}, storage);
+
+scenario("IT-PRIV-012 Grant changes are audited and shown on the access page", async (world) => {
+  const { ann, acme, secret, bob, bobRepo, manage } = await owned(world);
+  const carol = world.access.account("carol");
+  const rival = await world.publishers.create({ handle: "rival" });
+  await rival.orgs.create("elsewhere");
+  const visitor = await world.users.create({ handle: "visitor" });
+
+  await manage.allow(bob);
+  await world.clock.advance("1m");
+  await manage.allow(carol);
+  await world.clock.advance("1m");
+  await manage.remove(carol);
+  const reads = world.member().inActionsOf(bobRepo);
+  await reads.index({ pack: secret.systemName });
+  await reads.download(await idOf(secret));
+
+  const view = await manage.view();
+  if (view instanceof NotFound) throw new Error("the owner was not shown the access page");
+  expect(view.you).toBe("owner");
+  expect(view.grants).toMatchObject([{ accountId: String(bob.id), addedBy: ann.handle }]);
+  expect(view.grants[0]?.lastFetchAt).not.toBeNull();
+  expect(view.changes.map((c) => `${c.change}:${c.accountId}`)).toEqual([`removed:${carol.id}`, `added:${carol.id}`, `added:${bob.id}`]);
+  expect(view.fetches.map((f) => [f.kind, f.outcome, f.accountId, f.repository]).sort()).toEqual([
+    ["download", "served", String(bob.id), "bob/app"],
+    ["index", "served", String(bob.id), "bob/app"],
+  ]);
+
+  const visit = await manage.page();
+  if (visit instanceof NotFound || visit.kind !== "page") throw new Error("the owner was not shown the access page");
+  for (const wanted of [String(bob.id), String(carol.id), "bob/app", `by @${ann.handle}`, "Denied attempts"]) expect(visit.text).toContain(wanted);
+
+  await expect(world.access.manage(secret, rival).view()).toBeNotFound();
+  await expect(world.access.manage(secret, rival).page()).toBeNotFound();
+  await expect(world.access.manage(secret, visitor).view()).toBeRefused("signed-out");
+  expect(await world.access.manage(secret, visitor).page()).toEqual({ kind: "sign-in", next: expect.stringContaining("/access") });
+  await visitor.signIn();
+  await expect(world.access.manage(secret, visitor).page()).toBeNotFound();
+
+  const agent = world.agents.anonymous();
+  expect(JSON.stringify((await agent.pack(secret)).body)).not.toContain("bob");
+  expect(JSON.stringify((await agent.search("secret")).body)).not.toContain("bob/app");
+  expect(await acme.people()).toMatchObject({ you: "owner" });
+  expect(ann.handle).toBe("ann");
+}, storage);
+
+scenario("IT-PRIV-014 Maintainers manage grants; a person with no role in the org cannot", async (world) => {
+  const { acme, secret, bob, bobRepo } = await owned(world);
+  const maintainer = await world.publishers.create({ handle: "mia" });
+  const outsider = await world.publishers.create({ handle: "xavier" });
+  await acme.invite(maintainer).as("maintainer");
+  const [offered] = await world.invitations.pending(maintainer);
+  await world.invitations.accept(maintainer, { id: offered!.id });
+
+  await expect(world.access.manage(secret, outsider).allow(bob)).toBeNotFound();
+  await expect(world.member().inActionsOf(bobRepo).index({ pack: secret.systemName })).toBeNotFound();
+
+  await world.access.manage(secret, maintainer).allow(bob);
+  expect(await world.member().inActionsOf(bobRepo).index({ pack: secret.systemName })).toMatchObject({ entries: [{ pack: secret.systemName }] });
+  expect(await world.access.manage(secret, maintainer).view()).toMatchObject({ you: "maintainer", grants: [{ accountId: String(bob.id), addedBy: maintainer.handle }] });
+}, storage);
+
+scenario("IT-PRIV-010 Making a pack public needs an assertion and a confirmation, and is permanent", async (world) => {
+  const { ann, secret, manage } = await owned(world);
+  const agent = world.agents.anonymous();
+  await expect(secret.read()).toBeNotFound();
+
+  await expect(manage.setVisibility("public", { assertion: "none", confirmed: true })).toBeRefused("step-up");
+  await expect(manage.setVisibility("public")).toBeRefused("forbidden");
+  expect(await manage.view()).toMatchObject({ visibility: "private" });
+  await expect(secret.read()).toBeNotFound();
+
+  await manage.setVisibility("public", { confirmed: true });
+  expect(await manage.view()).toMatchObject({ visibility: "public" });
+  await expect(agent.pack(secret)).resolves.not.toBeInstanceOf(NotFound);
+
+  await manage.setVisibility("private");
+  expect(await manage.view()).toMatchObject({ visibility: "private" });
+  const trail = (await ann.account.history()).filter((e) => e.action === "visibility.changed");
+  expect(trail.map((e) => e.target)).toEqual([secret.systemName, secret.systemName]);
+}, storage);
+
+scenario("IT-PUB-022 Only owners change a pack's visibility or offer it to another scope", async (world) => {
+  const { ann, acme, secret, manage } = await owned(world);
+  const maintainer = await world.publishers.create({ handle: "mia" });
+  await acme.invite(maintainer).as("maintainer");
+  const [offered] = await world.invitations.pending(maintainer);
+  await world.invitations.accept(maintainer, { id: offered!.id });
+  const target = await (await world.publishers.create({ handle: "w" })).orgs.create("target");
+
+  const asMaintainer = world.access.manage(secret, maintainer);
+  await expect(asMaintainer.setVisibility("public", { confirmed: true })).toBeRefused("forbidden");
+  expect(await manage.view()).toMatchObject({ visibility: "private" });
+
+  await manage.setVisibility("public", { confirmed: true });
+  await expect(asMaintainer.setVisibility("private")).toBeRefused("forbidden");
+  await expect(world.transfers.offer(secret, { to: target, by: maintainer })).toBeRefused("forbidden");
+  expect(await manage.view()).toMatchObject({ visibility: "public" });
+  await world.transfers.offer(secret, { to: target, by: ann });
+}, storage);
+
+scenario("IT-PRIV-011 Making a pack private leaves the versions already public where they are", async (world) => {
+  const ann = await world.publishers.create({ handle: "ann" });
+  await ann.orgs.create("acme");
+  const open = await world.packs.public("@acme/open", { versions: ["1.0.0"] });
+  const manage = world.access.manage(open, ann);
+  const before = await open.stored("1.0.0");
+  expect(before.objects.length).toBeGreaterThan(0);
+  expect(await world.packs.verify(before.canonicalSha256)).toMatchObject({ result: "canonical" });
+
+  await manage.setVisibility("private");
+
+  await expect(open.read()).toBeNotFound();
+  const after = await open.stored("1.0.0");
+  expect(after.objects).toEqual(before.objects);
+  expect(after.canonicalSha256).toBe(before.canonicalSha256);
+  expect(await world.packs.verify(before.canonicalSha256)).toEqual({ result: "unknown" });
+  expect(await manage.view()).toMatchObject({ visibility: "private", changes: [{ action: "visibility.changed", change: "public to private" }] });
+}, storage);
