@@ -1,5 +1,5 @@
 import { expect, scenario, type ScenarioOpts } from "@packserver/test-world";
-import { Refusal } from "@packserver/test-world";
+import { NotFound, Refusal } from "@packserver/test-world";
 import type { PackBody } from "@packserver/test-world";
 
 const storage: ScenarioOpts = { needs: ["storage"] };
@@ -225,4 +225,19 @@ scenario("IT-PAGE-002 The public view shows verification facts, capabilities, so
   const u = await upload.version("1.0.0").detail();
   expect(u.provenance).toEqual({ source: "upload", source_verified: false });
   expect(u.verification.source_verified).toBe(false);
+
+  // The page shows the same facts: source, tree verification, both hashes, the new mark, and warnings by category with the full report linked.
+  await world.search.list(trusted, { pitch: "Trusted", category: "cloud", parts: ["guards"] });
+  await world.search.list(upload, { pitch: "Uploaded", category: "other", parts: ["skills"] });
+  await trusted.seedWarnings("1.1.0", { byCategory: { license: 1, text: 2 }, validationRun: "run-trusted" });
+  const seen = await trusted.page();
+  const plain = await upload.page();
+  if (seen instanceof NotFound || plain instanceof NotFound) throw new Error("a pack page was not found");
+  for (const shown of ["Repository acme/packs", "b".repeat(40), "Published with trusted publishing", "The source tree was verified", stored.canonicalSha256, stored.uploadSha256, "rules 2026.10.1", "License 1", "Text 2", "New: guard:no-secrets"]) {
+    expect(seen.trust).toContain(shown);
+  }
+  expect(seen.manifest).toContain("new in 1.1.0");
+  expect(seen.links.some((l) => l.text === "Full report")).toBe(true);
+  expect(plain.trust).toContain("Published by upload; no source was verified");
+  expect(plain.trust).toContain("Warnings are unavailable right now");
 }, storage);

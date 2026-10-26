@@ -1,6 +1,8 @@
 import { expect, hostileReadme, NotFound, scenario, type PackPageView, type ScenarioOpts, type World } from "@packserver/test-world";
 
 const storage: ScenarioOpts = { needs: ["storage", "fakes"] };
+// A scan reads the whole catalogue, so it starts from an empty one.
+const scanning: ScenarioOpts = { needs: ["storage", "fakes", "clock", "reset"] };
 
 async function read(page: Promise<PackPageView | NotFound>): Promise<PackPageView> {
   const view = await page;
@@ -26,13 +28,16 @@ async function gcp(world: World) {
 }
 
 scenario("IT-PAGE-001 The pack page leads with four things and keeps the rest one gesture away", async (world) => {
-  // Not asserted here: the approximate declaring count waits on the weekly scan, the private page on private reads, and the advisory link on advisories.
+  // Not asserted here: the private page, which waits on private reads.
   const pack = await gcp(world);
   const upload = await world.packs.public("@kite/upload");
   await world.search.list(upload, { pitch: "Uploaded by hand", category: "other", parts: ["skills"] });
   const held = await world.packs.public("@acme/held", { versions: ["1.0.0", "1.1.0"] });
   await world.search.list(held, { pitch: "Held for review", category: "other", parts: ["skills"], repository: "github.com/acme/held" });
-  await held.version("1.1.0").seed({ status: "quarantined", reason: "downloads held for review" });
+  for (let i = 1; i <= 7; i++) world.github.publicRepo(`org${i}/app`, { declares: [pack] });
+  expect((await world.github.scan.run()).outcome).toBe("completed");
+  const reporter = await world.users.create();
+  await reporter.signIn();
 
   await world.agents.setAdoptVersion(null);
   const preview = await read(pack.page());
@@ -56,14 +61,25 @@ scenario("IT-PAGE-001 The pack page leads with four things and keeps the rest on
   expect(live.statusLines).toEqual([]);
   expect(live.text).not.toMatch(/visibility/i);
 
+  expect(live.text).toContain("7 repositories (approximate, weekly)");
+  expect(live.trust).toContain(await pack.version("1.1.0").uploadSha256());
+
   const noRepo = await read(upload.page());
   expect(noRepo.text).toContain("No public repo");
   expect(noRepo.links.some((l) => l.text.startsWith("github.com"))).toBe(false);
 
+  const before = await read(held.page());
+  await held.version("1.1.0").seed({ status: "quarantined", reason: "downloads held for review" });
+  const report = await world.reports.file(reporter, held, { kind: "security", version: "1.1.0", title: "Token leaks to logs" });
+  await world.reports.registrySecurity.publishAdvisory(report, { summary: "A token could reach logs.", versions: ["1.1.0"] });
   const quarantined = await read(held.page());
-  expect(quarantined.statusLines).toEqual(["1.1.0 is quarantined, under review: downloads held for review"]);
-  expect(quarantined.text).toContain("Held for review");
-}, storage);
+  expect(quarantined.statusLines).toEqual(["Quarantined: downloads held for review Advisory ›"]);
+  expect(quarantined.links.find((l) => l.text === "Advisory ›")?.href).toMatch(/\/versions#advisory-/);
+  // Nothing else changes: the page describes the newest version that can still be adopted.
+  expect(quarantined.manifest).not.toBeNull();
+  expect(quarantined.adopt).toEqual(before.adopt);
+  expect(quarantined.text).toContain("1.0.0 · published");
+}, scanning);
 
 scenario("IT-PAGE-003 Every file of a public pack is readable on the site", async (world) => {
   const pack = await world.packs.public("@acme/gcp");
@@ -146,7 +162,7 @@ scenario("IT-VAL-015 Warnings do not block; the full report is public once publi
   // The report's own page and the unpublished run's access wait on the validation page; this is the pack page's half.
   const pack = await world.packs.public("@acme/gcp");
   await world.search.list(pack, { pitch: "Warned", category: "cloud", parts: ["rules"] });
-  await pack.seedReport("1.0.0", { runId: "run-warned", warnings: ["license.missing", "docs.readme-missing"] });
+  await pack.seedWarnings("1.0.0", { byCategory: { license: 1, docs: 1 }, validationRun: "run-warned" });
 
   const view = await read(pack.page());
   expect(view.trust).toContain("License 1");

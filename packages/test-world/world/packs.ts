@@ -85,8 +85,8 @@ export interface PackHandle extends Pack {
   page(tab?: "overview" | "contents" | "versions", o?: ReadOptions): Promise<PackPageView | NotFound>;
   /** The README and files the validator will publish beside `meta.json` for the Contents tab. */
   seedContents(version: string, contents: { readme?: string | null; files?: Array<{ path: string; text: string }> }): Promise<void>;
-  /** The published report of a version, with one warning finding per rule id given. */
-  seedReport(version: string, report: { runId: string; warnings?: string[] }): Promise<void>;
+  /** The warning counts by category the validator writes into the version's `meta.json`, and the run that counted them. */
+  seedWarnings(version: string, warnings: { byCategory: Record<string, number>; validationRun?: string }): Promise<void>;
   /** Gives the pack's scope a proof: every version's verification facts change, no object does. */
   seedProof(facts: { verified: boolean; verifiedDomain?: string; verifiedGithubOrg?: string }): Promise<void>;
   /** Moves every seeded version to `removed`, as a deleted pack looks to the registry. */
@@ -122,6 +122,7 @@ interface SeededVersion {
   canonicalSha256: string;
   uploadSha256: string;
   size: number;
+  warnings?: { byCategory: Record<string, number>; run?: string };
 }
 interface SeededPack {
   name: string;
@@ -210,7 +211,7 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
       : { source: "upload", source_verified: false };
     const inventory = Object.fromEntries(INVENTORY_PARTS.map((p) => [p, { count: pack.options.inventory?.[p] ?? 0, names: [], tokens: null }])) as unknown as Meta["inventory"];
     const preinstall: PreInstallManifest = { ...EMPTY_PREINSTALL, ...pack.options.preinstall };
-    const meta: Meta = {
+    const meta: Meta & { warnings?: Record<string, number>; validation_run?: string } = {
       pack: pack.systemName,
       version: v.version,
       inventory,
@@ -222,6 +223,7 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
       verification: facts,
       provenance,
       diff_summary: { previous_version: null, files_added: 0, files_removed: 0, files_changed: 0, new_capabilities: [] },
+      ...(v.warnings ? { warnings: v.warnings.byCategory, ...(v.warnings.run ? { validation_run: v.warnings.run } : {}) } : {}),
     };
     const attestation: Attestation & { signature: string } = {
       pack: pack.systemName,
@@ -429,16 +431,11 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
         const { packsPublic } = await storage();
         await packsPublic.put(`${pack.systemName}/${version}/contents.json`, JSON.stringify({ readme: contents.readme ?? null, files: contents.files ?? [] }));
       },
-      async seedReport(version, report) {
+      async seedWarnings(version, seed) {
         const v = pack.versions.get(version);
         if (!v) throw new InfrastructureError(`${pack.name}@${version} was not seeded`);
-        const { packsPublic } = await storage();
-        const findings = (report.warnings ?? []).map((rule) => ({ rule, class: "warn", file: null, line: null, quote: null, hint: "see the rule" }));
-        const body = {
-          run_id: report.runId, pack: pack.systemName, version, rules_version: RULES_VERSION, started_at: v.publishedAt, finished_at: v.publishedAt,
-          verdict: findings.length > 0 ? "warn" : "pass", steps: [], findings, tree_hash: null, canonical_sha256: v.canonicalSha256, source_verified: false, prose_screen: null, score: 80,
-        };
-        await packsPublic.put(`reports/${v.id}.json`, JSON.stringify(body));
+        v.warnings = { byCategory: seed.byCategory, ...(seed.validationRun ? { run: seed.validationRun } : {}) };
+        await writeObjects(pack, v);
       },
       async seedProof(facts) {
         pack.options = { ...pack.options, verification: { ...pack.options.verification, ...facts } };

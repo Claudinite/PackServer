@@ -3,9 +3,9 @@ import { objectKey, type PackListing, type VersionView } from "@packserver/core/
 import { advisoriesFor, type Advisory } from "@packserver/core/reports";
 import { loadProfile, type Profile } from "@packserver/core/scopes";
 import { StoredCard } from "@packserver/core/search";
-import { loadRules } from "@packserver/rules";
-import { Attestation, PackName, PackVersion, ValidationReport, VersionsDocument } from "@packserver/schema";
+import { Attestation, PackName, PackVersion, VersionsDocument } from "@packserver/schema";
 import { Hono, type Context } from "hono";
+import { z } from "zod";
 import { runtimeOf, type WebEnv } from "../../context";
 import { routes as viewRoutes } from "../../routes/packs/view";
 
@@ -17,21 +17,19 @@ export interface Signals {
   fetchesPrev28d: number | null;
 }
 
-/** What the published report says, or why it cannot be said: unknown is never a count of zero. */
-export type ReportFacts =
-  | { kind: "none" }
-  | { kind: "unavailable" }
-  | { kind: "found"; runId: string; warnings: Record<string, number> };
+/** Warning counts by category from `meta.json`, or why they cannot be said: unknown is never a count of zero. */
+export type ReportFacts = { kind: "unavailable" } | { kind: "found"; runId: string | null; warnings: Record<string, number> };
 
 export interface VersionExtras {
   score: number | null;
-  reportKey: string | null;
 }
 
 export interface PackData {
   name: string;
   scope: string;
   visibility: "public" | "private";
+  /** The version the URL asked for, when it named one. */
+  requested: string | undefined;
   listing: PackListing;
   /** The version the page describes; null when none can be shown, as when every version is held. */
   version: VersionView | null;
@@ -41,7 +39,8 @@ export interface PackData {
   signals: Signals;
   profile: Profile;
   advisories: Advisory[];
-  reported: boolean;
+  /** Null while no abuse-report source exists: a private security report must change nothing public. */
+  reported: boolean | null;
   /** The engine release `cn_min_adopt_version` names; null while the flag is unset. */
   adoptVersion: string | null;
   kid: string | null;
@@ -71,7 +70,6 @@ async function askView(c: Context<WebEnv>, path: string): Promise<Response> {
   return inner.request(path);
 }
 
-const text = (v: unknown): string | null => (typeof v === "string" ? v : null);
 const count = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
 
 function parseCard(raw: string): StoredCard | undefined {
@@ -104,24 +102,17 @@ async function readPublic(c: Context<WebEnv>, key: string): Promise<unknown | un
   }
 }
 
-/** Warning findings counted under the static rule's category; a rule the version's rules do not know counts as `other`. */
-async function readReport(c: Context<WebEnv>, key: string | null): Promise<ReportFacts> {
-  if (key === null) return { kind: "none" };
-  const parsed = ValidationReport.safeParse(await readPublic(c, key));
+const MetaWarnings = z.object({
+  warnings: z.record(z.string(), z.number().int().nonnegative()),
+  validation_run: z.string().min(1).optional(),
+});
+
+/** The validator counts warnings by category into the version's `meta.json`. */
+async function readWarnings(c: Context<WebEnv>, name: string, version: string | undefined): Promise<ReportFacts> {
+  if (version === undefined) return { kind: "unavailable" };
+  const parsed = MetaWarnings.safeParse(await readPublic(c, objectKey(name, "meta", version)));
   if (!parsed.success) return { kind: "unavailable" };
-  const categories = new Map<string, string>();
-  try {
-    for (const rule of loadRules(parsed.data.rules_version).staticRules.rules) categories.set(rule.id, rule.category);
-  } catch {
-    // Rules this registry no longer ships: every warning falls under `other`.
-  }
-  const warnings: Record<string, number> = {};
-  for (const f of parsed.data.findings) {
-    if (f.class !== "warn") continue;
-    const category = categories.get(f.rule) ?? "other";
-    warnings[category] = (warnings[category] ?? 0) + 1;
-  }
-  return { kind: "found", runId: parsed.data.run_id, warnings };
+  return { kind: "found", runId: parsed.data.validation_run ?? null, warnings: parsed.data.warnings };
 }
 
 /** Everything the pack page and its tabs show, or the reason there is nothing to show. */
@@ -162,20 +153,16 @@ async function load(c: Context<WebEnv>, name: string, scope: string, packName: s
   const packId = String(pack.id);
   const version = held ? null : view.version;
 
-  const [listed, versions, profile, advisories, reportedRows, adoptVersion, attestation, adoption] = await Promise.all([
+  const [listed, versions, profile, advisories, adoptVersion, attestation, adoption] = await Promise.all([
     d1.query(
       `SELECT ps.pitch AS pitch, ps.category AS category, ps.card AS card, st.stars AS stars, st.rating AS rating, st.fetches_30d AS fetches_30d,
         st.fetches_7d AS fetches_7d, st.fetches_prev_28d AS fetches_prev_28d
 FROM pack_search ps LEFT JOIN pack_stats st ON st.pack_id = ps.pack_id WHERE ps.pack_id = ?`,
       [packId],
     ),
-    d1.query("SELECT version, score, report_key FROM pack_versions WHERE pack_id = ?", [packId]),
+    d1.query("SELECT version, score FROM pack_versions WHERE pack_id = ?", [packId]),
     loadProfile(d1, scope.slice(1)),
     advisoriesFor(d1, packId),
-    d1.query(
-      "SELECT 1 AS found FROM reports WHERE pack_id = ? AND kind = 'security' AND severity IN ('high', 'critical') AND status IN ('open', 'acknowledged') LIMIT 1",
-      [packId],
-    ),
     adoptFlag(c),
     version ? readPublic(c, objectKey(name, "attestation", version.version)) : Promise.resolve(undefined),
     adoptionOf(d1, name),
@@ -187,10 +174,10 @@ FROM pack_search ps LEFT JOIN pack_stats st ON st.pack_id = ps.pack_id WHERE ps.
   if (!card) return { kind: "unavailable" };
 
   const versionExtras = new Map<string, VersionExtras>(
-    versions.rows.map((r) => [String(r.version), { score: count(r.score), reportKey: text(r.report_key) }]),
+    versions.rows.map((r) => [String(r.version), { score: count(r.score) }]),
   );
   const parsedAttestation = Attestation.safeParse(attestation);
-  const shownReport = await readReport(c, version ? (versionExtras.get(version.version)?.reportKey ?? null) : null);
+  const shownReport = await readWarnings(c, name, version?.version);
 
   return {
     kind: "ok",
@@ -198,6 +185,7 @@ FROM pack_search ps LEFT JOIN pack_stats st ON st.pack_id = ps.pack_id WHERE ps.
       name,
       scope,
       visibility: pack.visibility === "private" ? "private" : "public",
+      requested,
       listing: view,
       version,
       pitch: row.pitch,
@@ -212,7 +200,7 @@ FROM pack_search ps LEFT JOIN pack_stats st ON st.pack_id = ps.pack_id WHERE ps.
       },
       profile,
       advisories,
-      reported: reportedRows.rows.length > 0,
+      reported: null,
       adoptVersion,
       kid: parsedAttestation.success ? parsedAttestation.data.kid : null,
       report: shownReport,

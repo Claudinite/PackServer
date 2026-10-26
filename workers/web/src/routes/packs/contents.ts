@@ -55,8 +55,10 @@ export async function readContents(c: Context<WebEnv>, pack: string, version: st
   }
 }
 
-/** Versions whose prose may be read: the ones whose bytes a resolver hands out. */
 const READABLE: readonly string[] = ["active", "deprecated", "yanked"];
+
+/** The one gate for a version's files and README, on the page and in the API: only the states whose bytes a resolver hands out. */
+export const isReadable = (state: string): boolean => READABLE.includes(state);
 
 const notFound = () => Response.json({ error: "not_found" }, { status: 404, headers: { "cache-control": CACHE_PRIVATE } });
 
@@ -81,7 +83,7 @@ routes.get("/packs/:scope/:name/contents", async (c) => {
   const rows: VersionRow[] = result.rows.map(parseVersionRow).filter((r) => isPublishedState(r.state));
   const version = asked ?? buildListing(name, rows, new Map()).latest_eligible;
   const row = rows.find((r) => r.version === version);
-  if (!row || !READABLE.includes(row.state)) return notFound();
+  if (!row || !isReadable(row.state)) return notFound();
 
   const read = await readContents(c, name, row.version);
   if (read.kind === "unavailable") return Response.json({ error: "unavailable" }, { status: 503, headers: { "cache-control": CACHE_PRIVATE } });

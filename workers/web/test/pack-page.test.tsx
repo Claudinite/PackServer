@@ -38,15 +38,15 @@ const record = (version: string, status: string, over: Record<string, unknown> =
 });
 
 interface Seed {
-  versions?: Array<{ version: string; state?: string; newEntries?: string[]; reportKey?: string | null }>;
+  versions?: Array<{ version: string; state?: string; newEntries?: string[] }>;
   repository?: string | null;
   flag?: string;
   advisoryFor?: string;
-  reported?: boolean;
   contents?: Record<string, { readme: string | null; files: Array<{ path: string; text: string }> } | null>;
   skipListing?: boolean;
   skipHistory?: boolean;
-  report?: unknown;
+  warnings?: Record<string, number>;
+  validationRun?: string;
   rating?: number | null;
   oidc?: boolean;
   declaredBy?: number;
@@ -60,8 +60,8 @@ async function site(seed: Seed = {}) {
   await d1.query("INSERT INTO packs (id, scope_id, name, visibility, created_at) VALUES ('p1', 's1', 'gcp', 'public', ?)", [PUBLISHED]);
   for (const v of versions) {
     await d1.query(
-      `INSERT INTO pack_versions (id, pack_id, version, state, sha256, upload_sha256, size_bytes, published_at, verified, verified_domain, source_verified, min_engine_version, requires, score, report_key) VALUES (?, 'p1', ?, ?, ?, ?, 5, ?, 1, 'acme.com', ${seed.oidc ? 1 : 0}, '1.0.0', '[]', 72, ?)`,
-      [`v-${v.version}`, v.version, v.state ?? "active", SHA, UPLOAD, PUBLISHED, v.reportKey ?? null],
+      `INSERT INTO pack_versions (id, pack_id, version, state, sha256, upload_sha256, size_bytes, published_at, verified, verified_domain, source_verified, min_engine_version, requires, score) VALUES (?, 'p1', ?, ?, ?, ?, 5, ?, 1, 'acme.com', ${seed.oidc ? 1 : 0}, '1.0.0', '[]', 72)`,
+      [`v-${v.version}`, v.version, v.state ?? "active", SHA, UPLOAD, PUBLISHED],
     );
   }
   if (!seed.skipListing) {
@@ -76,10 +76,6 @@ async function site(seed: Seed = {}) {
     await d1.query("INSERT INTO advisories (id, pack_id, report_id, summary, severity, fixed_in, published_at) VALUES ('adv1', 'p1', 'r1', 'Leaks tokens', 'high', NULL, ?)", [PUBLISHED]);
     await d1.query("INSERT INTO advisory_versions (advisory_id, pack_id, version) VALUES ('adv1', 'p1', ?)", [seed.advisoryFor]);
   }
-  if (seed.reported) {
-    await d1.query("INSERT OR IGNORE INTO users (id, handle, created_at) VALUES ('u1', 'rep', ?)", [PUBLISHED]);
-    await d1.query("INSERT INTO reports (id, pack_id, reporter_id, kind, version, severity, title, repro, environment, route, disclosure_deadline, created_at, updated_at) VALUES ('r2', 'p1', 'u1', 'security', '1.0.0', 'critical', 't', 'r', 'e', 'registry_security', ?, ?, ?)", [PUBLISHED, PUBLISHED, PUBLISHED]);
-  }
   if (seed.declaredBy !== undefined) {
     await d1.query("INSERT INTO adoption_scans (id, started_at, updated_at, completed_at, truncated) VALUES ('scan1', '2026-10-23T00:00:00.000Z', '2026-10-24T00:00:00.000Z', '2026-10-24T00:00:00.000Z', 0)");
     for (let i = 0; i < seed.declaredBy; i++) {
@@ -88,7 +84,7 @@ async function site(seed: Seed = {}) {
   }
   const put = (key: string, value: unknown) => void fakes.r2.PACKS_PUBLIC?.put(key, text(value));
   for (const v of versions) {
-    put(`${NAME}/${v.version}/meta.json`, meta(v.version, { ...(v.newEntries ? { preinstall: preinstall({ guards: [{ name: "no-secrets", tool_calls: [] }], new: v.newEntries }) } : {}), ...(seed.oidc ? { provenance: OIDC } : {}) }));
+    put(`${NAME}/${v.version}/meta.json`, meta(v.version, { ...(v.newEntries ? { preinstall: preinstall({ guards: [{ name: "no-secrets", tool_calls: [] }], new: v.newEntries }) } : {}), ...(seed.oidc ? { provenance: OIDC } : {}), ...(seed.warnings ? { warnings: seed.warnings, ...(seed.validationRun ? { validation_run: seed.validationRun } : {}) } : {}) }));
     put(`${NAME}/${v.version}/.attestation.json`, attestation(v.version));
     const contents = seed.contents?.[v.version];
     if (contents !== null) {
@@ -101,7 +97,6 @@ async function site(seed: Seed = {}) {
       versions: versions.map((v) => record(v.version, v.state ?? "active", v.newEntries ? { preinstall: preinstall({ new: v.newEntries }) } : {})),
     });
   }
-  if (seed.report !== undefined) put("reports/v-1.0.0.json", seed.report);
 
   const runtime: WebRuntime = {
     worker: "web", environment: "test", version: { versionId: SHELL_VERSION, releaseId: SHELL_RELEASE }, missingBindings: [], missingSecrets: [],
@@ -184,7 +179,7 @@ describe("pack page overview (REQ-SEARCH-014)", () => {
     const versions = [{ version: "1.0.0" }, { version: "1.1.0", state: "quarantined" }];
     const { html } = await (await site({ versions, advisoryFor: "1.1.0" })).get(`/packs/${NAME}`);
     expect(html.match(/class="status-line/g)).toHaveLength(1);
-    expect(html).toContain("1.1.0 is quarantined, under review: because");
+    expect(html).toContain("Quarantined: because");
     expect(html).toContain('href="/packs/@acme/gcp/versions#advisory-adv1"');
     expect(html.indexOf('class="status-line')).toBeLessThan(html.indexOf('class="pk-head'));
   });
@@ -192,14 +187,37 @@ describe("pack page overview (REQ-SEARCH-014)", () => {
   it("leads with the revoked line, and still shows the page when no version is eligible", async () => {
     const { status, html } = await (await site({ versions: [{ version: "1.0.0", state: "revoked" }] })).get(`/packs/${NAME}`);
     expect(status).toBe(200);
-    expect(html).toContain("1.0.0 is revoked: because");
+    expect(html).toContain("Revoked: because");
     expect(html).not.toContain("Adds ");
   });
 
-  it("labels a pack with a high-severity open report", async () => {
-    const { html } = await (await site({ reported: true })).get(`/packs/${NAME}`);
-    expect(html).toContain("Reported, under review");
-    expect(html.match(/class="status-line/g)).toHaveLength(1);
+  it("labels a pack only from a known report source, and a private security report changes nothing public", async () => {
+    const data = { name: NAME, visibility: "public", pitch: "p", listing: { versions: [] }, advisories: [], reported: true, profile: { verified_domain: null, verified_github_org: null, verified_publisher: false } } as unknown as PackData;
+    expect(String(<Head data={data} />)).toContain("Reported, under review");
+    expect(String(<Head data={{ ...data, reported: null }} />)).not.toContain("status-line");
+    const t = await site();
+    await t.d1.query("INSERT INTO users (id, handle, created_at) VALUES ('u1', 'rep', ?)", [PUBLISHED]);
+    await t.d1.query("INSERT INTO reports (id, pack_id, reporter_id, kind, version, severity, title, repro, environment, route, disclosure_deadline, created_at, updated_at) VALUES ('r2', 'p1', 'u1', 'security', '1.0.0', 'critical', 't', 'r', 'e', 'registry_security', ?, ?, ?)", [PUBLISHED, PUBLISHED, PUBLISHED]);
+    expect((await t.get(`/packs/${NAME}`)).html).not.toContain("Reported");
+  });
+
+  it("serves a revoked version's files on neither surface, and an active one on both", async () => {
+    const t = await site({ versions: [{ version: "1.0.0", state: "revoked" }, { version: "1.1.0" }] });
+    expect((await t.get(`/api/packs/${NAME}/contents?version=1.0.0`)).status).toBe(404);
+    const page = await t.get(`/packs/${NAME}/contents?version=1.0.0`);
+    expect(page.status).toBe(404);
+    expect(page.html).not.toContain("skills/deploy/SKILL.md");
+    const overview = await t.get(`/packs/${NAME}?version=1.0.0`);
+    expect(overview.html).not.toContain('class="readme"');
+    expect(overview.html).not.toContain("could not be loaded");
+    expect((await t.get(`/api/packs/${NAME}/contents?version=1.1.0`)).status).toBe(200);
+    expect((await t.get(`/packs/${NAME}/contents?version=1.1.0`)).status).toBe(200);
+  });
+
+  it("keeps ?version= on the Overview and Contents tabs", async () => {
+    const t = await site({ versions: [{ version: "1.0.0" }, { version: "1.1.0" }] });
+    const { html } = await t.get(`/packs/${NAME}?version=1.0.0`);
+    expect(html).toContain('href="/packs/@acme/gcp/contents?version=1.0.0"');
   });
 
   it("shows no status line for a healthy pack", async () => {
@@ -209,17 +227,7 @@ describe("pack page overview (REQ-SEARCH-014)", () => {
 
 describe("trust drawer (REQ-VAL-042, REQ-VAL-015)", () => {
   it("holds hashes, attestation, key id, proofs and the source, with warnings counted by category", async () => {
-    const report = {
-      run_id: "run-9", pack: NAME, version: "1.0.0", rules_version: "2026.10.1", started_at: PUBLISHED, finished_at: PUBLISHED, verdict: "warn", steps: [],
-      findings: [
-        { rule: "license.missing", class: "warn", file: null, line: null, quote: null, hint: "h" },
-        { rule: "docs.readme-missing", class: "warn", file: null, line: null, quote: null, hint: "h" },
-        { rule: "text.mixed-script", class: "warn", file: "a", line: 1, quote: null, hint: "h" },
-        { rule: "text.mixed-script", class: "warn", file: "b", line: 1, quote: null, hint: "h" },
-      ],
-      tree_hash: null, canonical_sha256: SHA, source_verified: false, prose_screen: null, score: 72,
-    };
-    const { html } = await (await site({ versions: [{ version: "1.0.0", reportKey: "reports/v-1.0.0.json" }], report })).get(`/packs/${NAME}`);
+    const { html } = await (await site({ warnings: { license: 1, docs: 1, text: 2 }, validationRun: "run-9" })).get(`/packs/${NAME}`);
     const drawer = /<aside class="drawer"[\s\S]*<\/aside>/.exec(html)?.[0] ?? "";
     expect(drawer).toContain(SHA);
     expect(drawer).toContain(UPLOAD);
@@ -243,8 +251,8 @@ describe("trust drawer (REQ-VAL-042, REQ-VAL-015)", () => {
     expect(drawer).toContain("The source tree was verified against the archive");
   });
 
-  it("says warnings are unavailable instead of zero when the report cannot be read", async () => {
-    const { html } = await (await site({ versions: [{ version: "1.0.0", reportKey: "reports/missing.json" }] })).get(`/packs/${NAME}`);
+  it("says warnings are unavailable instead of zero when meta.json carries no counts", async () => {
+    const { html } = await (await site()).get(`/packs/${NAME}`);
     expect(html).toContain("Warnings are unavailable right now");
     expect(html).not.toContain("No warnings");
   });

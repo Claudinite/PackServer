@@ -2,7 +2,7 @@ import { viewCacheControl } from "@packserver/core/catalog";
 import { Hono, type Context } from "hono";
 import { cdnOriginOf, type WebEnv } from "../../context";
 import { renderPage } from "../../layout";
-import { readContents } from "../../routes/packs/contents";
+import { isReadable, readContents } from "../../routes/packs/contents";
 import { Adopt, ContentsView, Facts, Glance, Head, Manifest, ReadmeView, Tabs, TrustDrawer, VersionsView, type Tab } from "./components";
 import { loadHistory, loadPack, type PackData, type PackLoad } from "./data";
 import { PACK_CSS } from "./styles";
@@ -11,12 +11,13 @@ const page = new Hono<WebEnv>();
 
 const NO_STORE = "private, no-store";
 
-function Shell(props: { data: PackData; tab: Tab; nonce: string; children?: unknown }) {
+function Shell(props: { data: PackData; tab: Tab; nonce: string; lead?: unknown; children?: unknown }) {
   return (
     <>
       <style nonce={props.nonce} dangerouslySetInnerHTML={{ __html: PACK_CSS }} />
       <Head data={props.data} />
-      <Tabs name={props.data.name} current={props.tab} />
+      {props.lead as never}
+      <Tabs name={props.data.name} current={props.tab} version={props.data.requested} />
       {props.children as never}
     </>
   );
@@ -62,17 +63,26 @@ page.get("/packs/:scope/:name", async (c) => {
   if ("response" in got) return got.response;
   const { data } = got;
   const version = data.version;
-  const read = version ? await readContents(c, data.name, version.version) : undefined;
+  const readable = version !== null && isReadable(version.status);
+  const read = version && readable ? await readContents(c, data.name, version.version) : undefined;
   cacheable(c);
   return renderPage(c, {
     title: `${data.name} · Claudinite Packs`,
     children: (
-      <Shell data={data} tab="overview" nonce={c.get("cspNonce")}>
+      <Shell
+        data={data}
+        tab="overview"
+        nonce={c.get("cspNonce")}
+        lead={
+          <>
+            {version ? <Manifest version={version} /> : null}
+            <Adopt data={data} version={version} />
+          </>
+        }
+      >
         {version ? <Glance data={data} version={version} /> : null}
-        {version ? <Manifest version={version} /> : null}
-        <Adopt data={data} version={version} />
         {version ? <Facts data={data} version={version} /> : null}
-        {version ? <ReadmeView markdown={read?.kind === "found" ? read.contents.readme : undefined} /> : null}
+        {version && readable ? <ReadmeView markdown={read?.kind === "found" ? read.contents.readme : undefined} /> : null}
         <TrustDrawer data={data} version={version} />
       </Shell>
     ),
@@ -84,6 +94,7 @@ page.get("/packs/:scope/:name/contents", async (c) => {
   if ("response" in got) return got.response;
   const { data } = got;
   if (!data.version) return c.redirect(`/packs/${data.name}`);
+  if (!isReadable(data.version.status)) return c.notFound();
   const read = await readContents(c, data.name, data.version.version);
   if (read.kind === "unavailable") return failure(c, 503, "Contents are unavailable", "The files of this version could not be loaded right now.", new URL(c.req.url).pathname);
   cacheable(c);

@@ -34,15 +34,15 @@ export function leadOf(data: PackData): Lead | null {
   const newest = data.listing.versions.find((v) => v.status !== "removed");
   if (newest && (newest.status === "revoked" || newest.status === "quarantined")) {
     const advisory = data.advisories.find((a) => a.affected_versions.includes(newest.version));
-    const what = newest.status === "revoked" ? `${newest.version} is revoked` : `${newest.version} is quarantined, under review`;
-    const why = newest.reason !== undefined && newest.reason !== newest.status ? `: ${newest.reason}` : "";
+    const what = newest.status === "revoked" ? "Revoked" : "Quarantined";
+    const why = newest.reason !== undefined && newest.reason !== newest.status ? `: ${newest.reason}` : ` ${newest.version}`;
     return {
       tone: newest.status === "revoked" ? "fail" : "warn",
       text: `${what}${why}`,
       ...(advisory ? { advisory: { href: `/packs/${data.name}/versions#advisory-${advisory.id}` } } : {}),
     };
   }
-  if (data.reported) return { tone: "warn", text: "Reported, under review" };
+  if (data.reported === true) return { tone: "warn", text: "Reported, under review" };
   return null;
 }
 
@@ -78,10 +78,11 @@ const TABS = [
 ] as const;
 export type Tab = (typeof TABS)[number]["key"];
 
-export function Tabs(props: { name: string; current: Tab }) {
+export function Tabs(props: { name: string; current: Tab; version?: string | undefined }) {
+  const query = props.version === undefined ? "" : `?version=${encodeURIComponent(props.version)}`;
   return (
     <nav class="tabs" aria-label="Pack sections">
-      {TABS.map((t) => <a href={`/packs/${props.name}${t.path}`} aria-current={t.key === props.current ? "page" : undefined}>{t.label}</a>)}
+      {TABS.map((t) => <a href={`/packs/${props.name}${t.path}${t.key === "versions" ? "" : query}`} aria-current={t.key === props.current ? "page" : undefined}>{t.label}</a>)}
     </nav>
   );
 }
@@ -97,7 +98,7 @@ export function Head(props: { data: PackData }) {
       <div class="pk-head">
         <h1 class="mono">{data.name}</h1>
         {data.visibility === "private" ? <Lock /> : null}
-        <PublisherMark proof={proofs[0]} proofs={proofs} verifiedPublisher={data.profile.verified_publisher} />
+        <a href={`#${TRUST_ID}`} class="plain"><PublisherMark proof={proofs[0]} proofs={proofs} verifiedPublisher={data.profile.verified_publisher} /></a>
       </div>
       <p class="pk-pitch">{data.pitch}</p>
     </>
@@ -157,7 +158,7 @@ export function Glance(props: { data: PackData; version: VersionView }) {
         {...(version.score.cap ? { capReason: version.score.cap.reason } : {})}
       />
       <ShapeGlyph counts={counts} />
-      {s.rating === null ? <span class="rating muted">—</span> : <span class="rating"><b>{s.rating.toFixed(1)}</b></span>}
+      {s.rating === null ? <span class="rating muted">—</span> : <span class="rating" title="Rating"><b>{s.rating.toFixed(1)}</b> <span class="muted">rating</span></span>}
       {s.fetches30d === null ? null : (
         <HoverCard label={<span class="pulse">{fetchesLine(s.fetches30d)}</span>}>
           <ul>
@@ -167,7 +168,6 @@ export function Glance(props: { data: PackData; version: VersionView }) {
         </HoverCard>
       )}
       {data.repository === null ? <span class="muted">No public repo</span> : <a href={`https://${data.repository}`} rel="nofollow ugc">{data.repository}</a>}
-      <a href={`#${TRUST_ID}`}>Trust ›</a>
     </div>
   );
 }
@@ -233,7 +233,6 @@ export function Facts(props: { data: PackData; version: VersionView }) {
 
 function warningLine(data: PackData): string {
   if (data.report.kind === "unavailable") return "Warnings are unavailable right now";
-  if (data.report.kind === "none") return "No report is published for this version";
   const entries = Object.entries(data.report.warnings);
   return entries.length === 0 ? "No warnings" : entries.map(([category, n]) => `${titleCase(category)} ${n}`).join(" · ");
 }
@@ -277,7 +276,7 @@ export function TrustDrawer(props: { data: PackData; version: VersionView | null
       <ul>
         <li>Validated {dayOf(version.validated_at)}, rules {version.rules_version}</li>
         <li>{warningLine(data)}</li>
-        {data.report.kind === "found" ? <li><a href={`/validation/${data.report.runId}`}>Full report</a></li> : null}
+        {data.report.kind === "found" && data.report.runId !== null ? <li><a href={`/validation/${data.report.runId}`}>Full report</a></li> : null}
       </ul>
       <h3>What adopting adds</h3>
       <ul>
