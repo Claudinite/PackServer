@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { HttpDriver, type Fetch } from "../drivers/http";
+import { verifySelfTestSignature } from "@packserver/core/selftest";
 import { HttpEnvError, readHttpEnv } from "../drivers/http-env";
 import { createWorldHarness, type WorldHarness } from "../harness";
 import { InfrastructureError } from "../world/errors";
@@ -59,6 +60,24 @@ describe("the http driver's requests", () => {
     );
     await canary.driver.http.request({ surface: "web", method: "GET", path: "/x" });
     expect(canary.sent[0]!.headers["CF-Access-Client-Id"]).toBe("id");
+  });
+
+  it("signs every request when it holds the self-test key, so a candidate that answers only signed ones answers it", async () => {
+    const { driver, sent } = driverWith({ SELFTEST_HMAC_KEY: "k", SELFTEST_KEY_ID: "7" }, () => respond());
+    await driver.http.request({ surface: "web", method: "GET", path: "/mcp?q=1" });
+    await driver.http.request({ surface: "web", method: "POST", path: "/api/x", body: { a: 1 } });
+    const [first, second] = sent.map((r) => r.headers["X-Selftest-Signature"]!);
+    expect(first).toMatch(/^t=\d+, n=[0-9a-f-]{36}, k=7, v1=[0-9a-f]{64}$/);
+    expect(first).not.toEqual(second);
+    expect(await verifySelfTestSignature({ header: first, key: "k", method: "GET", path: "/mcp", nowMs: Date.now() })).toMatchObject({ ok: true, keyId: "7" });
+    expect(await verifySelfTestSignature({ header: second, key: "k", method: "POST", path: "/api/x", nowMs: Date.now() })).toMatchObject({ ok: true });
+    expect((await driverWith({}, () => respond()).driver.http.request({ surface: "web", method: "GET", path: "/" })).status).toBe(404);
+  });
+
+  it("sends no signature without the key", async () => {
+    const { driver, sent } = driverWith({}, () => respond());
+    await driver.http.request({ surface: "web", method: "GET", path: "/x" });
+    expect(sent[0]!.headers).not.toHaveProperty("X-Selftest-Signature");
   });
 
   it("does not follow a redirect, so the Access token never travels to another host", async () => {

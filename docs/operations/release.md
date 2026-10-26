@@ -187,7 +187,11 @@ environment, and a fresh passkey sign-in.
 
 - **Schema**: expand → code reading both shapes → backfill in ≤ 1,000-row batches → code reading the
   new shape → contract after a quiet week, each its own release; `SCHEMA_MIN..SCHEMA_MAX` compiled
-  in and checked by the self-test. Data a release writes stays readable by the previous release.
+  in and checked by the self-test. A database ahead of a build (an expand applied before its code,
+  or left behind by a rollback) passes while every migration past `SCHEMA_MAX` is an expand; a
+  build knows a later migration only by its name, so a contract migration is named for it
+  (`<stamp>_<area>_contract_<what>.sql`, checked beside its `-- contract-of:` marker). Data a
+  release writes stays readable by the previous release.
 - **Workflows**: never rename, remove or reorder a released step; restructure as a new class and let
   the old drain. A decision an admin makes while no instance is waiting is applied by the resumer
   from the D1 milestone ([../architecture/validation-pipeline.md](../architecture/validation-pipeline.md)).

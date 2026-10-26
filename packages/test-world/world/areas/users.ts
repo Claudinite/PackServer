@@ -1,3 +1,4 @@
+import type { WorkerName } from "@packserver/ports";
 import { VirtualAuthenticator } from "@packserver/core/identity/virtual-authenticator";
 import { TURNSTILE_PASS_TOKEN } from "@packserver/ports/fakes";
 import type { ApiResponse, Driver } from "../../drivers/driver";
@@ -6,7 +7,8 @@ import type { Aliases } from "../alias";
 import { InfrastructureError, NotImplemented, stubModule } from "../errors";
 import { createMail } from "../mail";
 import { createUserTokens, type UserTokens } from "../tokens";
-import { Refusal, type Observation, type RefusalReason } from "../outcomes";
+import { NotFound, Refusal, type Observation, type RefusalReason } from "../outcomes";
+import { SELFTEST_PATHS } from "./operator";
 import type {
   AccountInfo, Assertion, AssertionChoice, FormFaults, Notification, Passkey, PasskeyInfo, Publisher, PublisherOpts, RecoveryInfo, Sensitive,
   SensitiveAction, Session, SessionCookie, SessionInfo, User, UserOpts, Visitor,
@@ -577,6 +579,12 @@ export const createUsers = (driver: Driver, aliases: Aliases): UsersModule => {
         },
         get: (path) => send("GET", path),
         signInWith: (provider) => send("POST", `/api/auth/${encodeURIComponent(provider)}`, { "cf-turnstile-response": TURNSTILE_PASS_TOKEN }),
+        async selfTest(o = {}) {
+          const worker = (o.worker ?? "web") as WorkerName;
+          const ask = (path: string) => driver.http.request({ surface: worker, method: "GET", path, headers: { "cf-connecting-ip": client.ip } }).then(observe);
+          const [answered, unknown] = [await ask(SELFTEST_PATHS[worker]), await ask("/no/such/path")];
+          return JSON.stringify(answered) === JSON.stringify(unknown) ? new NotFound() : answered;
+        },
       };
     },
   };

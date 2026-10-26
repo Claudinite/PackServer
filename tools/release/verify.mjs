@@ -78,13 +78,16 @@ export function probeSafe(run, manifest, override, env, root = REPO) {
       PACKSERVER_PROBE_TENANT: env.PACKSERVER_PROBE_TENANT ?? "@probe",
       CF_ACCESS_CLIENT_ID: env.CF_ACCESS_CLIENT_ID,
       CF_ACCESS_CLIENT_SECRET: env.CF_ACCESS_CLIENT_SECRET,
+      // A candidate in verification answers only signed requests, so every probe-safe request is signed.
+      SELFTEST_HMAC_KEY: env.SELFTEST_HMAC_KEY,
+      SELFTEST_KEY_ID: env.SELFTEST_KEY_ID,
     },
   });
 }
 
 /**
- * Callees first, fail fast. `runSelftest` is off until the self-test endpoint exists (T-110): the
- * probe-safe run below still asserts the release header on every response meanwhile.
+ * Callees first, fail fast. `runSelftest` turns the self-test stage on; the probe-safe run below
+ * asserts the release header on every response either way.
  */
 export async function verifyCandidate({ run, store, id, env, fetchFn, runSelftest, root = REPO, log = console.log }) {
   const manifest = readManifest(store, id);

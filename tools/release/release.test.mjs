@@ -212,12 +212,14 @@ describe("verify", () => {
   it("self-tests callees first with the override, then runs probe-safe pinned to the candidate, and records both", async () => {
     const store = verifyingRelease();
     const probes = [];
-    const ok = await verifyCandidate({ run: (c, a, o) => (probes.push(o.env), { status: 0, stdout: "", stderr: "" }), store, id, env: { CF_ACCESS_CLIENT_ID: "i", CF_ACCESS_CLIENT_SECRET: "s" }, fetchFn: answer(), runSelftest: true, log: quiet });
+    const ok = await verifyCandidate({ run: (c, a, o) => (probes.push(o.env), { status: 0, stdout: "", stderr: "" }), store, id, env: { CF_ACCESS_CLIENT_ID: "i", CF_ACCESS_CLIENT_SECRET: "s", SELFTEST_HMAC_KEY: "hmac", SELFTEST_KEY_ID: "3" }, fetchFn: answer(), runSelftest: true, log: quiet });
     expect(ok).toBe(true);
     expect(answer.seen.map((s) => new URL(s.url).host)).toEqual(WORKERS.map((w) => w.host ?? "registry-canary.claudinite.com"));
     expect(answer.seen[0].init.headers["Cloudflare-Workers-Version-Overrides"]).toContain('validator="new-validator"');
     expect(probes[0]).toMatchObject({ PACKSERVER_EXPECTED_RELEASE: id, TEST_DRIVER: "http", PACKSERVER_BASE_URL: "https://registry-canary.claudinite.com" });
     expect(probes[0].PACKSERVER_VERSION_OVERRIDE).toContain('web="new-web"');
+    expect(probes[0]).toMatchObject({ SELFTEST_HMAC_KEY: "hmac", SELFTEST_KEY_ID: "3" });
+    expect(answer.seen.every((s) => /^t=\d+, n=[0-9a-f-]+, k=3, v1=[0-9a-f]{64}$/.test(s.init.headers["X-Selftest-Signature"]))).toBe(true);
     const stages = readManifest(store, id).stages;
     expect(stages.map((s) => s.name)).toEqual([...NAMES.map((n) => `selftest:${n}`), "probe-safe", "verify"]);
     expect(stages.every((s) => s.ok)).toBe(true);

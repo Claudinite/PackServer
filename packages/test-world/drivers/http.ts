@@ -1,3 +1,4 @@
+import { SELFTEST_SIGNATURE_HEADER, signSelfTest } from "@packserver/core/selftest";
 import type { WorkerName } from "@packserver/ports";
 import { InfrastructureError } from "../world/errors";
 import type { ApiRequest, ApiResponse, Capability, Driver, McpCredentials } from "./driver";
@@ -39,6 +40,15 @@ export class HttpDriver implements Driver {
       if (this.env.access && url.host === this.env.access.host) {
         headers["CF-Access-Client-Id"] = this.env.access.clientId;
         headers["CF-Access-Client-Secret"] = this.env.access.clientSecret;
+      }
+      if (this.env.selfTest) {
+        headers[SELFTEST_SIGNATURE_HEADER] = await signSelfTest({
+          ...this.env.selfTest,
+          method: req.method,
+          path: url.pathname,
+          nowMs: Date.now(),
+          nonce: crypto.randomUUID(),
+        });
       }
       const body = encodeBody(req.body, headers);
       const res = await this.doFetch(url.toString(), { method: req.method, headers, redirect: "manual", ...(body === undefined ? {} : { body }) });

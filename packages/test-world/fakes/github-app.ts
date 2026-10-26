@@ -51,6 +51,8 @@ export class FakeGithubApp {
   tokensMinted = 0;
   /** A status to answer every API call with, to make GitHub fail. */
   failWith: number | undefined;
+  /** How long to hold every API call before answering it, to make GitHub slow. */
+  stallMs: number | undefined;
   private tokens = new Set<string>();
 
   reset(): void {
@@ -60,6 +62,7 @@ export class FakeGithubApp {
     this.installations = [{ id: 5, account: { login: "acme" }, suspended_at: null }];
     this.tokensMinted = 0;
     this.failWith = undefined;
+    this.stallMs = undefined;
     this.tokens.clear();
   }
 
@@ -105,6 +108,8 @@ export class FakeGithubApp {
         return Response.json({ message: "read-only" }, { status: 403 });
       }
       if (this.failWith) return Response.json({ message: "unavailable" }, { status: this.failWith, headers: { "retry-after": "7" } });
+      const stall = this.stallMs;
+      if (stall) return new Promise<void>((resolve) => setTimeout(resolve, stall)).then(() => this.serve(request, url, mint));
       return this.serve(request, url, mint);
     };
   }

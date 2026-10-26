@@ -247,13 +247,15 @@ export interface WorkerRuntime<P, S = Record<string, never>> {
   version: { versionId: string; releaseId: string };
   missingBindings: string[];
   missingSecrets: string[];
+  /** Reads `SELFTEST_HMAC_KEY` when the Worker is given one; absent leaves the signed self-test path closed. */
+  selfTestKey?: () => Promise<string>;
   ports: P;
   services: S;
 }
 
 export function workerRuntime<P, S = Record<string, never>>(
   worker: WorkerName,
-  env: { ENVIRONMENT: string; CF_VERSION_METADATA?: { id: string; tag?: string } },
+  env: { ENVIRONMENT: string; CF_VERSION_METADATA?: { id: string; tag?: string }; SELFTEST_HMAC_KEY?: string | SecretsStoreSecret },
   ports: P,
   services?: S,
 ): WorkerRuntime<P, S> {
@@ -265,6 +267,7 @@ export function workerRuntime<P, S = Record<string, never>>(
     version: versionInfo(env.CF_VERSION_METADATA),
     missingBindings: absent.filter((n) => !secrets.has(n)),
     missingSecrets: absent.filter((n) => secrets.has(n)),
+    ...(env.SELFTEST_HMAC_KEY === undefined ? {} : { selfTestKey: () => readSecret(env.SELFTEST_HMAC_KEY) }),
     ports,
     services: services ?? ({} as S),
   };

@@ -26,8 +26,8 @@ defaults:
 
 env:
   WRANGLER_SEND_METRICS: "false"
-  # Flipped to "true" by T-110 when the self-test endpoint exists; until then verify runs probe-safe only.
-  VERIFY_SELFTEST: "false"
+  # The self-test stage of verify; it runs once the staging and production steps do (the skip rule is `steps.configured`).
+  VERIFY_SELFTEST: "true"
 
 # One deploy at a time; a newer merge waits instead of cancelling a deploy that is mid-flight.
 concurrency:
