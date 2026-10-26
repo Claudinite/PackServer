@@ -1,5 +1,5 @@
 import { analyticsStats, createIsolateTelemetry } from "@packserver/http";
-import { cryptoRng, d1Port, kvPort, readSecret, systemClock, workerRuntime, type WorkerRuntime } from "@packserver/ports/cloudflare";
+import { clockFrom, cryptoRng, d1Port, kvPort, readSecret, workerRuntime, type WorkerRuntime } from "@packserver/ports/cloudflare";
 import type { Ports } from "@packserver/ports";
 
 export interface Env {
@@ -17,13 +17,15 @@ export interface Env {
   REQUEST_OUTCOMES: AnalyticsEngineDataset;
   DOMAIN_EVENTS: AnalyticsEngineDataset;
   CF_VERSION_METADATA: WorkerVersionMetadata;
+  /** The fake clock Worker, bound only under `env.test`. */
+  CLOCK?: Fetcher;
 }
 
 export type GithubPorts = Pick<Ports, "clock" | "rng" | "d1" | "stats" | "telemetry" | "kv">;
 
-/** What the webhook and tree routes need beyond the shared ports; secrets are read when a request needs them. */
+/** What the webhook, tree and scan routes need beyond the shared ports; secrets are read when a request needs them. */
 export interface GithubServices {
-  secrets: { webhook(): Promise<string>; appId(): Promise<string>; privateKey(): Promise<string> };
+  secrets: { webhook(): Promise<string>; appId(): Promise<string>; privateKey(): Promise<string>; codeSearchToken(): Promise<string> };
   /** GitHub's REST API; the only outside host this Worker calls. */
   fetch: typeof fetch;
 }
@@ -33,18 +35,19 @@ const isolateTelemetry = createIsolateTelemetry();
 
 export function createRuntime(env: Env): GithubRuntime {
   const telemetryKv = kvPort(env.TELEMETRY_KV);
+  const clock = clockFrom(env.ENVIRONMENT, env.CLOCK);
   return workerRuntime(
     "github",
     env,
     {
-      clock: systemClock,
+      clock,
       rng: cryptoRng,
       d1: d1Port(env.DB),
       kv: { TELEMETRY_KV: telemetryKv },
       stats: analyticsStats({ request_outcomes: env.REQUEST_OUTCOMES, domain_events: env.DOMAIN_EVENTS }),
       telemetry: isolateTelemetry.config(
         { ipMaster: () => readSecret(env.IP_HASH_MASTER_KEY), principalKey: () => readSecret(env.PRINCIPAL_HASH_KEY), kv: telemetryKv },
-        systemClock,
+        clock,
       ),
     },
     {
@@ -52,6 +55,7 @@ export function createRuntime(env: Env): GithubRuntime {
         webhook: () => readSecret(env.GITHUB_WEBHOOK_SECRET),
         appId: () => readSecret(env.GITHUB_APP_ID),
         privateKey: () => readSecret(env.GITHUB_APP_PRIVATE_KEY),
+        codeSearchToken: () => readSecret(env.GITHUB_CODE_SEARCH_TOKEN),
       },
       fetch: (input, init) => fetch(input, init),
     },

@@ -12,7 +12,7 @@ const runtime = (missingBindings: string[] = []): GithubRuntime => ({
   missingBindings,
   missingSecrets: [],
   ports: fakes,
-  services: { secrets: { webhook: async () => "", appId: async () => "", privateKey: async () => "" }, fetch },
+  services: { secrets: { webhook: async () => "", appId: async () => "", privateKey: async () => "", codeSearchToken: async () => "" }, fetch },
 });
 
 describeWorkerShell({
