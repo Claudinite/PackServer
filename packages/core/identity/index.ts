@@ -10,3 +10,4 @@ export * from "./mfa-policy.ts";
 export * from "./recovery.ts";
 export * from "./deletion.ts";
 export * from "./providers.ts";
+export * from "./device-code.ts";

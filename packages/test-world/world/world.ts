@@ -50,7 +50,7 @@ export function createWorld(driver: Driver, title: string) {
     ...createReportsModule(driver, aliases),
     ...createAdmin(),
     ...createRecoveries(driver),
-    ...createMember(),
+    ...createMember(driver),
     ...createAgents(driver, aliases),
     ...createGitHub(driver),
     ...createAuditModule(driver),
