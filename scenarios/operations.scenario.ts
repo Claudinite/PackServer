@@ -75,22 +75,19 @@ scenario(
   SCAN,
 );
 
-const SYNTHETIC: ScenarioOpts = { needs: ["fakes", "storage", "clock", "reset"] };
-
-const OUTSIDE_THE_SCOPE = ["publish-other-pack", "read-private-pack", "mint-token", "list-sessions", "change-email", "create-pack-in-probe"] as const;
-const BROWSER_ONLY = ["read-private-pack", "mint-token", "list-sessions", "change-email"] as const;
-
 scenario("IT-OPS-002 A probe credential cannot act outside its scope", async (world) => {
+  const outsideTheScope = ["publish-other-pack", "read-private-pack", "mint-token", "list-sessions", "change-email", "create-pack-in-probe"] as const;
+  const browserOnly = ["read-private-pack", "mint-token", "list-sessions", "change-email"] as const;
   const probe = await world.probe.publisher();
   await (await probe.publish(world.archive("gcp", { version: "1.0.0" }), "1.0.0")).finished();
 
   for (const identity of ["repository", "prober"] as const) {
-    for (const action of OUTSIDE_THE_SCOPE) expect(await world.probe.attempt(identity, action), `${identity} ${action}`).toBe(false);
+    for (const action of outsideTheScope) expect(await world.probe.attempt(identity, action), `${identity} ${action}`).toBe(false);
     // Presented where a browser session belongs, neither is one.
-    for (const action of BROWSER_ONLY) expect(await world.probe.attempt(identity, action, { asSession: true }), `${identity} ${action} as a session`).toBe(false);
+    for (const action of browserOnly) expect(await world.probe.attempt(identity, action, { asSession: true }), `${identity} ${action} as a session`).toBe(false);
   }
 
   // The one thing the probe repository may do: a new version of the pack it is registered for.
   expect(await world.probe.attempt("repository", "publish-new-version-of-probe-pack")).toBe(true);
   expect(await world.probe.attempt("prober", "publish-new-version-of-probe-pack")).toBe(false);
-}, SYNTHETIC);
+}, SCAN);
