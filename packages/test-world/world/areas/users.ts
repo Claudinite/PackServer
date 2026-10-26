@@ -4,6 +4,7 @@ import type { FakeGitHubAccount } from "../../fakes/github-login";
 import type { Aliases } from "../alias";
 import { InfrastructureError, NotImplemented, stubModule } from "../errors";
 import { createMail } from "../mail";
+import { createUserTokens, type UserTokens } from "../tokens";
 import { Refusal, type Observation, type RefusalReason } from "../outcomes";
 import type {
   AccountInfo, Assertion, FormFaults, Notification, Publisher, PublisherOpts, Session, SessionCookie, SessionInfo, User, UserOpts, Visitor,
@@ -170,12 +171,22 @@ class Person implements User {
     },
   };
 
+  readonly tokens: UserTokens;
+
   constructor(
     private readonly ctx: Context,
     private readonly who: Account,
     private readonly client: Client,
     private readonly bound?: Session,
-  ) {}
+  ) {
+    this.tokens = createUserTokens({
+      send: (req) => this.send(req),
+      formHeaders: (session) => this.formHeaders(session),
+      session: () => this.view,
+      refused: refusal,
+      aliases: ctx.aliases,
+    });
+  }
 
   get handle(): string {
     return this.who.handle ?? "";

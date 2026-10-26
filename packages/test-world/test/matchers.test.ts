@@ -25,9 +25,9 @@ describe("refusals", () => {
     await expect(new Refusal("rate-limited")).toBeRateLimited();
     await expect(new Refusal("human-check")).toRequireHumanCheck();
     await expect(new Refusal("signature")).toBeRefusedForVerification();
-    await expect(new Refusal("oidc.fork", { claimDiff: { repository: { expected: "a/b", actual: "c/d" } } })).toBeRefusedWithClaimDiff({ repository: "a/b" });
-    await expect(new Refusal("oidc.fork")).not.toBeRefusedWithClaimDiff({ repository: "a/b" });
-    await expect(new Refusal("oidc.fork", { claimDiff: { repository: { expected: "x/y", actual: "c/d" } } })).not.toBeRefusedWithClaimDiff({ repository: "a/b" });
+    await expect(new Refusal("oidc.fork", { claimDiff: ["fork"] })).toBeRefusedWithClaimDiff("fork");
+    await expect(new Refusal("oidc.fork")).not.toBeRefusedWithClaimDiff("fork");
+    await expect(new Refusal("oidc.fork", { claimDiff: ["workflow"] })).not.toBeRefusedWithClaimDiff("fork");
   });
 });
 

@@ -11,7 +11,7 @@ describe("deadlines (IT-VAL-045)", () => {
     const { report, canonical } = await supervise(upload, REQUEST, { workerUrl: await realWorker(), imageDigest: null });
     expect(report.outcome).toBe("ok");
     expect(canonical).not.toBeNull();
-    expect(report.inspectors.map((i) => i.status)).toEqual(["skipped"]);
+    expect(report.inspectors.map((i) => i.status)).toEqual(["ran"]);
   });
 
   it("an extraction overrun is a final archive.unsafe verdict", async () => {

@@ -1,0 +1,14 @@
+---
+name: fetching-from-the-web
+description: Reading a page or file from the web: exact bytes over a summary, and what a 403 or egress block means. Use before any WebFetch or curl.
+metadata:
+  body: guidelines
+  usage:
+    expect: triggered
+  force-load-on-tool-calls:
+    - 'WebFetch'
+    - 'Bash.command /(^|[;&|]\s*|\n\s*)(curl|wget)\b/'
+  force-load-on-tool-results-matching:
+    - 'WebFetch /EGRESS_BLOCKED|\b403\b/'
+    - 'Bash /EGRESS_BLOCKED|HTTP\/[\d.]+ 403\b|\b403 Forbidden\b|status(?: code)?:? 403\b/'
+---

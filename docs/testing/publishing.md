@@ -169,14 +169,14 @@ to pass unless the test says otherwise. The end-to-end paths are journeys [JT-00
 - **Setup:** trusted publisher registered for `acme/packs`, `.github/workflows/publish.yml`, environment `release`, path `packs/gcp`, the default ref pattern (the pack's tag pattern plus the default branch) and event set (`push`, `release`, `workflow_dispatch`); a second registration with no environment.
 - **Action:** a workflow run with exactly those claims (job `publish`, `event_name: push`, `ref: refs/tags/gcp/1.0.0`) exchanges its token; it uses the credential at +14 min and at +15 min 1 s, and against `@acme/other`; a run on `refs/heads/feature`, one with `event_name: schedule`, and one whose job name is the template's task job exchange; against the environment-less registration, runs with `ref_protected: false` and `true` exchange.
 - **Faked:** GitHub OIDC issuer (fake JWKS), clock.
-- **Assert:** the first exchange returns a credential; the +14 min use is accepted; the +15 min use and the other-pack use are refused; the feature-branch, `schedule` and task-job runs are refused naming the claim; without an environment the unprotected ref is refused and the protected one accepted.
+- **Assert:** the first exchange returns a credential; the +14 min use is accepted; the +15 min use and the other-pack use are refused; the feature-branch, `schedule` and task-job runs are refused naming the workflow kind; without an environment the unprotected ref is refused and the protected one accepted.
 
-### IT-PUB-004 Fork, pull_request*, workflow_run, off-pattern or mismatched tokens are refused with a claim diff
+### IT-PUB-004 Fork, pull_request*, workflow_run, off-pattern or mismatched tokens are refused, naming the mismatched kinds of claim
 - **Covers:** REQ-PUB-004
 - **Runs:** push
 - **Setup:** the registration of IT-PUB-003.
 - **Action:** nine exchanges: from a fork, from `pull_request`, from `pull_request_target`, from `workflow_run`, from `other.yml`, with no environment, from a `ref` outside the pattern, with an `event_name` outside the set, and with the registered claims.
-- **Assert:** the first eight are refused, each refusal listing the claim that differed and the registered value; nothing lands in staging; the ninth succeeds. The eight refusals are audited (IT-AUDIT-007).
+- **Assert:** the first eight are refused, each refusal naming the kind of claim that differed (fork, workflow or environment) and no registered value; nothing lands in staging; the ninth succeeds. The eight refusals are audited (IT-AUDIT-007).
 
 ### IT-PUB-029 An invalid OIDC token is refused regardless of its claims; JWKS rotation is followed
 - **Covers:** REQ-PUB-029

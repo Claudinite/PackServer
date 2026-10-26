@@ -33,6 +33,17 @@ export interface UiActions {
   open(path: string): Promise<{ title: string; status: number }>;
 }
 
+/** Direct reach into the in-process stores, for seeding what another area's verbs will one day create and for reading what a bucket holds. */
+export interface StorageAccess {
+  /** Runs one statement against the registry database. */
+  sql(statement: string, params?: unknown[]): Promise<Array<Record<string, unknown>>>;
+  staging: {
+    list(prefix: string): Promise<Array<{ key: string; size: number }>>;
+    get(key: string): Promise<Uint8Array | null>;
+    delete(key: string): Promise<void>;
+  };
+}
+
 export interface SeedObjectMetadata {
   contentType?: string;
   contentDisposition?: string;
@@ -65,6 +76,7 @@ export interface Driver {
   storage?(): Promise<SeedStorage>;
   mcp?: { client(credentials?: McpCredentials): Promise<McpClient> };
   fakes?: WorldFakes;
+  publishStorage?: StorageAccess;
   recorder?: { invocations(filter?: InvocationFilter): InvocationView[]; clear(): void };
   /** Every release id seen on a response (REQ-OPS-006). */
   observedVersions(): ReadonlySet<string>;

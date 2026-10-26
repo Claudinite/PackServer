@@ -247,7 +247,9 @@ export function scanScenarios(path, source) {
     const close = matching(code, open);
     if (close === -1) break;
     re.lastIndex = close + 1;
-    ranges.push([m.index, close + 1]);
+    let end = close + 1;
+    while (code[end] === " " || code[end] === "\t") end++;
+    ranges.push([m.index, code[end] === ";" ? end + 1 : close + 1]);
     const args = splitArgs(code, open, close);
     const first = args[0] ? source.slice(args[0][0], args[0][1]).trim() : "";
     const quote = first[0];

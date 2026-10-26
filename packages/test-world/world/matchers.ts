@@ -38,11 +38,11 @@ expect.extend({
     const pass = value instanceof Refusal && message.toLowerCase().includes(text.toLowerCase());
     return { pass, message: () => `expected a refusal saying "${text}", got ${show(value)}` };
   },
-  async toBeRefusedWithClaimDiff(received: unknown, claims: Record<string, unknown>): Promise<Pass> {
+  async toBeRefusedWithClaimDiff(received: unknown, ...categories: string[]): Promise<Pass> {
     const value = await settle(received);
     const diff = value instanceof Refusal ? value.detail.claimDiff : undefined;
-    const pass = diff !== undefined && Object.entries(claims).every(([k, v]) => k in diff && this.equals(diff[k]?.expected, v));
-    return { pass, message: () => `expected a refusal naming the mismatched claims ${Object.keys(claims).join(", ")}, got ${show(value)}` };
+    const pass = diff !== undefined && categories.every((c) => diff.includes(c));
+    return { pass, message: () => `expected a refusal naming the mismatched kinds of claim ${categories.join(", ")}, got ${show(value)}` };
   },
   async toBeIgnored(received: unknown): Promise<Pass> {
     const value = await settle(received);
@@ -145,7 +145,7 @@ type Matchers<R> = {
   toBeNotFound(): R;
   toBeRefused(reason?: RefusalReason): R;
   toBeRefusedSaying(text: string): R;
-  toBeRefusedWithClaimDiff(claims: Record<string, unknown>): R;
+  toBeRefusedWithClaimDiff(...categories: Array<"fork" | "workflow" | "environment">): R;
   toBeIgnored(): R;
   toBeHeld(reason?: string): R;
   toBeRateLimited(): R;

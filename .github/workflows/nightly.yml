@@ -1,0 +1,214 @@
+# The nightly suites (docs/testing/README.md §4, §9): browser, cn-driven, see-it-fail, mutation,
+# slow and fixture drift, each its own job under 15 minutes. The repo permits no cron but the
+# Claudinite scheduler, so this is a dispatch that scheduler fires; the first job ends the run
+# when main has not changed since the last successful nightly. Nothing here runs on a pull request.
+name: nightly
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Run even though main has not changed since the last successful nightly
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  changed:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+      previous: ${{ steps.decide.outputs.previous }}
+    steps:
+      - id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          previous=$(gh api "repos/$REPO/actions/workflows/nightly.yml/runs?status=success&per_page=1" --jq '.workflow_runs[0].head_sha // ""')
+          echo "previous=$previous" >> "$GITHUB_OUTPUT"
+          if [ "$FORCE" = true ] || [ -z "$previous" ] || [ "$previous" != "$SHA" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::main is unchanged since the last successful nightly ($SHA); nothing to run"
+          fi
+
+  slow:
+    needs: changed
+    if: needs.changed.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: slow scenarios (gating)
+        run: pnpm exec vitest run --project scenarios --tagsFilter slow --passWithNoTests --reporter=default --reporter=junit --outputFile.junit=reports/slow.xml
+      # Quarantined scenarios run and are reported; they never fail the night.
+      - name: quarantined scenarios (reported, not gating)
+        continue-on-error: true
+        run: pnpm exec vitest run --project scenarios --tagsFilter quarantined --passWithNoTests --reporter=default --reporter=junit --outputFile.junit=reports/quarantined.xml
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: nightly-slow-junit
+          path: reports/
+          if-no-files-found: ignore
+
+  browser:
+    needs: changed
+    if: needs.changed.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - run: pnpm --filter @packserver/test-world exec playwright install --with-deps chromium
+      - run: pnpm --filter @packserver/test-world test:browser
+
+  # The scenarios that drive the pinned cn as the Member actor. They need the engine artifact,
+  # which is why they are nightly; the tag that selects them arrives with the first such scenario.
+  cn:
+    needs: changed
+    if: needs.changed.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - id: tag
+        run: |
+          if pnpm exec vitest run --project scenarios --listTags 2>/dev/null | grep -q '^  cn:'; then echo "defined=true" >> "$GITHUB_OUTPUT"; else echo "::notice::no scenario tag 'cn' is defined yet; nothing to run"; fi
+      - if: steps.tag.outputs.defined == 'true'
+        run: npx --yes --prefer-offline @claudinite/setup@1.0.1
+      - if: steps.tag.outputs.defined == 'true'
+        env:
+          PACKSERVER_CN_BIN: ${{ github.workspace }}/.claudinite/bin/cn
+        run: pnpm exec vitest run --project scenarios --tagsFilter cn --reporter=default --reporter=junit --outputFile.junit=reports/cn.xml
+
+  # Every scenario added since the last successful nightly must fail against the product as it was
+  # then: the base build with the head's scenarios and test world laid over it.
+  see-it-fail:
+    needs: changed
+    if: needs.changed.outputs.run == 'true' && needs.changed.outputs.previous != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: lay the head's scenarios over the base build
+        env:
+          PREVIOUS: ${{ needs.changed.outputs.previous }}
+        run: |
+          git cat-file -e "$PREVIOUS^{commit}"
+          git worktree add ../base "$PREVIOUS"
+          rm -rf ../base/scenarios ../base/packages/test-world
+          rsync -a --exclude node_modules scenarios/ ../base/scenarios/
+          rsync -a --exclude node_modules packages/test-world/ ../base/packages/test-world/
+          (cd ../base && pnpm install --frozen-lockfile)
+      - name: merged pull request bodies since the last nightly
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS: ${{ needs.changed.outputs.previous }}
+        run: |
+          : > exempt.txt
+          for pr in $(git log --first-parent --format=%s "$PREVIOUS..HEAD" | grep -o '(#[0-9]*)' | tr -d '(#)'); do
+            gh pr view "$pr" --json body --jq .body >> exempt.txt 2>/dev/null || true
+          done
+      - env:
+          PREVIOUS: ${{ needs.changed.outputs.previous }}
+        run: node tools/see-it-fail.mjs --since "$PREVIOUS" --exempt exempt.txt --command 'cd ../base && pnpm exec vitest run --project scenarios -t "{id}"'
+
+  mutation:
+    needs: changed
+    if: needs.changed.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: config
+        run: |
+          if [ -f stryker.config.mjs ] || [ -f stryker.config.json ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "::notice::no Stryker configuration in the repository yet; nothing to mutate"; fi
+      - if: steps.config.outputs.present == 'true'
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - if: steps.config.outputs.present == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - if: steps.config.outputs.present == 'true'
+        run: pnpm install --frozen-lockfile
+      - if: steps.config.outputs.present == 'true'
+        run: pnpm exec stryker run
+
+  # The fixture corpora are built in code; drift is a corpus that no longer satisfies the runner
+  # that consumes it, or a generator that now writes into the tree.
+  fixture-drift:
+    needs: changed
+    if: needs.changed.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @packserver/sandbox-runner test
+      - name: fixtures left the tree as they found it
+        run: git diff --exit-code -- sandbox/fixtures
