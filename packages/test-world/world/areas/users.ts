@@ -506,6 +506,18 @@ class Person implements User {
       return texts.join("\n");
     },
   };
+  readonly deviceSignIn = {
+    open: async (): Promise<Observation> => observe(await this.send({ method: "GET", path: "/api/auth/device/verify", session: this.view })),
+    enter: (userCode: string) => this.deviceStep("/api/auth/device/verify", { user_code: userCode }),
+    allow: (userCode: string) => this.deviceStep("/api/auth/device/decision", { user_code: userCode, decision: "approve" }),
+    deny: (userCode: string) => this.deviceStep("/api/auth/device/decision", { user_code: userCode, decision: "deny" }),
+  };
+
+  private async deviceStep(path: string, form: Record<string, string>): Promise<Observation> {
+    const session = this.view;
+    return observe(await this.send({ method: "POST", path, session, form, headers: await this.formHeaders(session) }));
+  }
+
   star(): Promise<void> {
     throw new NotImplemented("users.star");
   }
