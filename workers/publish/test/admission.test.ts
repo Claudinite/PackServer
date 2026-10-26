@@ -318,6 +318,18 @@ describe("REQ-OPS-001: a synthetic scope", () => {
   });
 });
 
+describe("REQ-OPS-001: kind, not name, makes a scope synthetic", () => {
+  it("leaves an org scope named probe screened, unexpiring and published once", async () => {
+    const world = createWorld();
+    world.seed.scope("probe");
+    expect((await world.publish({ scope: "probe", pack: "p", version: "1.0.0" })).res.status).toBe(201);
+    const row = world.db.prepare(`select synthetic, expires_at from validation_runs limit 1`).get() as { synthetic: number; expires_at: string | null };
+    expect(row).toEqual({ synthetic: 0, expires_at: null });
+    world.clock.advance(DAY);
+    expect(await body((await world.publish({ scope: "probe", pack: "p", version: "1.0.0" })).res)).toMatchObject({ reason: "exists" });
+  });
+});
+
 describe("D44: new packs per account across scopes", () => {
   it("stops an account at 20 new packs a day however many scopes it spreads them over", async () => {
     const world = createWorld();

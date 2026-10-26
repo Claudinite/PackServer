@@ -245,6 +245,26 @@ describe("check-migrations", () => {
       expect(r.out).toMatch(/foundation tables are altered only by foundation migrations/);
     });
 
+    const refused = (name: string, sql: string) =>
+      it(`refuses ${name}`, () => {
+        const r = run({ ...base, "20260102000000_foundation_wipe.sql": sql });
+        expect(r.ok).toBe(false);
+        expect(r.out).toMatch(/DROP TABLE|only the first foundation/);
+      });
+    refused("a bare drop and create", "DROP TABLE packs;\nCREATE TABLE packs (id text PRIMARY KEY);");
+    refused("a scratch table that never refills the table", "CREATE TABLE s AS SELECT * FROM packs;\nDROP TABLE packs;\nCREATE TABLE packs (id text PRIMARY KEY);\nDROP TABLE s;");
+    refused("a refill with no scratch copy first", "DROP TABLE packs;\nCREATE TABLE packs (id text PRIMARY KEY);\nCREATE TABLE s (id text);\nINSERT INTO packs SELECT id FROM s;\nDROP TABLE s;");
+    refused("a scratch table left behind", "CREATE TABLE s AS SELECT * FROM packs;\nDROP TABLE packs;\nCREATE TABLE packs (id text PRIMARY KEY);\nINSERT INTO packs SELECT id FROM s;");
+    refused("the IF EXISTS variants", "DROP TABLE IF EXISTS users;\nCREATE TABLE IF NOT EXISTS users (id text PRIMARY KEY);");
+    refused("the IF EXISTS variants around a full sequence", "CREATE TABLE s AS SELECT * FROM packs;\nDROP TABLE IF EXISTS packs;\nCREATE TABLE IF NOT EXISTS packs (id text PRIMARY KEY);\nINSERT INTO packs SELECT id FROM s;\nDROP TABLE s;");
+    refused("the steps out of order", "DROP TABLE packs;\nCREATE TABLE s AS SELECT * FROM packs;\nCREATE TABLE packs (id text PRIMARY KEY);\nINSERT INTO packs SELECT id FROM s;\nDROP TABLE s;");
+    refused("a Drizzle-style rebuild that never copies the rows", "CREATE TABLE `__new_packs` (`id` text);\nDROP TABLE `packs`;\nALTER TABLE `__new_packs` RENAME TO `packs`;");
+
+    it("accepts the create-then-insert way of parking the rows", () => {
+      const sql = "CREATE TABLE s (id text);\nINSERT INTO s SELECT id FROM packs;\nDROP TABLE packs;\nCREATE TABLE packs (id text PRIMARY KEY, name text);\nINSERT INTO packs (id) SELECT id FROM s;\nDROP TABLE s;";
+      expect(run({ ...history(["id", "name"]), "20260102000000_foundation_rebuild.sql": sql }).ok).toBe(true);
+    });
+
     it("still refuses a plain drop with no table to take its place", () => {
       expect(run({ ...base, "20260102000000_foundation_drop.sql": "DROP TABLE packs;" }).out).toMatch(/DROP TABLE breaks/);
     });

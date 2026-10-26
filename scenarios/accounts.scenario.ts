@@ -1,6 +1,6 @@
 import { expect, Refusal, scenario, type User, type World } from "@packserver/test-world";
 
-const RESERVED = ["admin", "claude", "anthropic", "claudinite", "cn", "fleet", "local", "global", "canon", "temp"];
+const RESERVED = ["admin", "claude", "anthropic", "claudinite", "cn", "fleet", "local", "global", "canon", "temp", "probe", "packserver-canary"];
 
 type Attempt = "ok" | "rate-limited";
 

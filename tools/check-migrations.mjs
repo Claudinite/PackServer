@@ -56,25 +56,71 @@ function snapshotColumns(file) {
   return Object.fromEntries(Object.entries(tables).map(([t, v]) => [t.toLowerCase(), Object.keys(v.columns ?? {})]));
 }
 
+const bare = (stmt) => stmt.replace(/[`"[\]]/g, "").trim();
+const NAME_RE = "(\\w+)";
+const STRICT_DROP = new RegExp(`^drop\\s+table\\s+${NAME_RE}$`, "i");
+const STRICT_CREATE = new RegExp(`^create\\s+table\\s+${NAME_RE}\\b`, "i");
+const COPY_INTO = new RegExp(`^insert\\s+(?:or\\s+\\w+\\s+)?into\\s+${NAME_RE}\\b[\\s\\S]*?\\bfrom\\s+${NAME_RE}\\b`, "i");
+const CREATE_AS_COPY = new RegExp(`^create\\s+table\\s+${NAME_RE}\\s+as\\s+select\\b[\\s\\S]*?\\bfrom\\s+${NAME_RE}\\b`, "i");
+const STRICT_RENAME = new RegExp(`^alter\\s+table\\s+${NAME_RE}\\s+rename\\s+to\\s+${NAME_RE}$`, "i");
+
 /**
- * A parent table other tables reference cannot be renamed into place: with deferred foreign keys the rows must be
- * inserted into a table of that name before the transaction ends. Such a file parks the rows in a scratch table,
- * drops and creates the table again, refills it and drops the scratch table. `existing` are the tables so rebuilt,
- * `scratch` the tables the file creates and drops itself.
+ * The rebuilds of an existing table that keep its rows, which are the only drops of one a migration may make.
+ * Three shapes, each only when the whole sequence is there, in order:
+ *  - Drizzle's: create __new_t, copy t into it, drop t, rename __new_t to t.
+ *  - In place, for a parent other tables reference (deferred foreign keys need the rows inserted into a table
+ *    of that name before the transaction ends): park t in a scratch table s (create ... as select from t, or
+ *    create then insert ... from t), drop t, create t, insert into t from s, drop s.
+ * `existing` are the tables so rebuilt, `scratch` the tables a rebuild creates and drops itself. `IF EXISTS`
+ * variants are never part of a rebuild.
  */
-function recreatedInPlace(sql) {
-  const dropped = sql.split(";").map((s) => DROP_TABLE.exec(s)).filter(Boolean).map((m) => m[1].toLowerCase());
-  const made = new Set(matches(CREATED, sql));
-  const both = dropped.filter((t) => made.has(t));
-  return { existing: new Set(both.filter((t) => created.has(t))), scratch: new Set(both.filter((t) => !created.has(t))) };
+function rowKeepingRebuilds(sql) {
+  const stmts = sql.split(";").map(bare).filter(Boolean);
+  const at = (test, from = 0) => stmts.findIndex((st, i) => i >= from && test(st));
+  const existing = new Set();
+  const scratch = new Set();
+  stmts.forEach((stmt, i) => {
+    const drop = STRICT_DROP.exec(stmt);
+    if (!drop) return;
+    const t = drop[1].toLowerCase();
+    if (!created.has(t) || t.startsWith("__new_")) return;
+
+    const renamed = at((st) => STRICT_RENAME.exec(st)?.[2].toLowerCase() === t, i + 1);
+    if (renamed !== -1) {
+      const from = STRICT_RENAME.exec(stmts[renamed])[1].toLowerCase();
+      const made = at((st) => STRICT_CREATE.exec(st)?.[1].toLowerCase() === from);
+      const copied = at((st) => COPY_INTO.exec(st)?.[1].toLowerCase() === from && COPY_INTO.exec(st)[2].toLowerCase() === t, made + 1);
+      if (from.startsWith("__new_") && made !== -1 && made < i && copied !== -1 && copied < i) existing.add(t);
+      return;
+    }
+
+    const recreated = at((st) => STRICT_CREATE.exec(st)?.[1].toLowerCase() === t && !/\bas\s+select\b/i.test(st), i + 1);
+    if (recreated === -1) return;
+    for (let k = 0; k < i; k++) {
+      const asCopy = CREATE_AS_COPY.exec(stmts[k]);
+      const plain = STRICT_CREATE.exec(stmts[k]);
+      const s = (asCopy ? asCopy[1] : plain?.[1])?.toLowerCase();
+      if (!s || s === t) continue;
+      const parked = asCopy ? asCopy[2].toLowerCase() === t : at((st) => COPY_INTO.exec(st)?.[1].toLowerCase() === s && COPY_INTO.exec(st)[2].toLowerCase() === t, k + 1) !== -1;
+      if (!parked) continue;
+      const refilled = at((st) => COPY_INTO.exec(st)?.[1].toLowerCase() === t && COPY_INTO.exec(st)[2].toLowerCase() === s, recreated + 1);
+      const cleared = refilled === -1 ? -1 : at((st) => STRICT_DROP.exec(st)?.[1].toLowerCase() === s, refilled + 1);
+      if (cleared !== -1) {
+        existing.add(t);
+        scratch.add(s);
+        return;
+      }
+    }
+  });
+  return { existing, scratch };
 }
 
 /** Drizzle rebuilds a table (create __new_t, copy, drop t, rename) to change a column; that is safe unless a column goes. */
 function rebuildStatements(sql, files, index) {
   const stmts = sql.split(";");
-  const renames = stmts.map((s) => REBUILD_RENAME.exec(s)).filter((m) => m && /^__new_/i.test(m[1]));
-  const inPlace = recreatedInPlace(sql);
-  const rebuilt = new Set([...renames.map((m) => m[2].toLowerCase()), ...inPlace.existing]);
+  const kept = rowKeepingRebuilds(sql);
+  const renames = stmts.map((s) => REBUILD_RENAME.exec(s)).filter((m) => m && /^__new_/i.test(m[1]) && kept.existing.has(m[2].toLowerCase()));
+  const rebuilt = new Set([...renames.map((m) => m[2].toLowerCase()), ...kept.existing]);
   const dropped = [];
   const before = index > 0 ? snapshotColumns(files[index - 1]) : {};
   const after = snapshotColumns(files[index]);
@@ -84,18 +130,19 @@ function rebuildStatements(sql, files, index) {
   }
   const rest = stmts.filter((s) => {
     const drop = DROP_TABLE.exec(s);
-    if (drop && (rebuilt.has(drop[1].toLowerCase()) || inPlace.scratch.has(drop[1].toLowerCase()))) return false;
+    if (drop && STRICT_DROP.test(bare(s)) && (rebuilt.has(drop[1].toLowerCase()) || kept.scratch.has(drop[1].toLowerCase()))) return false;
     const rename = REBUILD_RENAME.exec(s);
-    return !(rename && /^__new_/i.test(rename[1]));
+    return !(rename && /^__new_/i.test(rename[1]) && rebuilt.has(rename[2].toLowerCase()));
   });
   return { rest, dropped, rebuilt };
 }
 
-/** A `__new_x` table is a rebuild only when this file renames it onto a table that already existed. */
+/** A table this file rebuilds with its rows kept; only that is a rebuild of an existing table. */
 function isRebuildOfExisting(table, sql) {
-  if (recreatedInPlace(sql).existing.has(table)) return true;
+  const kept = rowKeepingRebuilds(sql);
+  if (kept.existing.has(table)) return true;
   const rename = sql.split(";").map((s) => REBUILD_RENAME.exec(s)).find((m) => m && m[1].toLowerCase() === table);
-  return Boolean(rename) && table.startsWith("__new_") && created.has(rename[2].toLowerCase());
+  return Boolean(rename) && table.startsWith("__new_") && kept.existing.has(rename[2].toLowerCase());
 }
 
 const files = migrationFiles(dir);
@@ -117,7 +164,7 @@ files.forEach((file, index) => {
 
   const raw = readFileSync(join(dir, file), "utf8");
   const sql = code(raw);
-  const inPlace = recreatedInPlace(sql);
+  const inPlace = rowKeepingRebuilds(sql);
   const own = new Set(matches(CREATED, sql).filter((t) => !inPlace.scratch.has(t)));
 
   if (area === FOUNDATION) {

@@ -295,7 +295,7 @@ to pass unless the test says otherwise. The end-to-end paths are journeys [JT-00
 - **Covers:** REQ-PUB-018
 - **Runs:** push
 - **Setup:** verified org with domain `acme.com`.
-- **Action:** publisher Z tries `@z/acme`, `@z/fleet`, `@z/local`, `@z/global`, `@z/canon`, `@z/claudinite`, `@z/cn`, `@z/temp`, then `@z/acme-tools`.
+- **Action:** publisher Z tries `@z/acme`, `@z/fleet`, `@z/local`, `@z/global`, `@z/canon`, `@z/claudinite`, `@z/cn`, `@z/temp`, `@z/probe`, `@z/packserver-canary`, then `@z/acme-tools`.
 - **Assert:** all but the last are refused with a suggested alternative; `@z/acme-tools` is accepted.
 
 ### IT-PUB-034 Near-miss names on a popular pack or verified scope are refused or held

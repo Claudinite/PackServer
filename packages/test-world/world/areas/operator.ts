@@ -118,9 +118,6 @@ export function createOperator(driver: Driver): Operator {
   return operator;
 }
 
-/** The two ways the probe reaches the registry (REQ-OPS-002). */
-export type ProbeIdentity = "repository" | "prober";
-
 /** What a stolen probe credential might be used for, in the registry's terms. */
 export type ProbeAction =
   | "publish-other-pack"
@@ -144,10 +141,10 @@ export interface Probe {
   /** Makes `@probe` a synthetic scope and registers the probe repository as the trusted publisher of `@probe/p`. */
   publisher(): Promise<ProbePublisher>;
   /**
-   * Tries the action with the identity's credential. `asSession` presents that credential where a browser session
+   * Tries the action with the probe repository's OIDC token. `asSession` presents that token where a browser session
    * belongs instead. True when the registry did it.
    */
-  attempt(identity: ProbeIdentity, action: ProbeAction, o?: { asSession?: boolean }): Promise<boolean>;
+  attempt(action: ProbeAction, o?: { asSession?: boolean }): Promise<boolean>;
 }
 
 const PROBE_REPOSITORY = { slug: `Claudinite/${PROBE_REPOSITORY_NAME}`, id: 7_100_001, ownerId: 7_100_002 } as const;
@@ -158,7 +155,7 @@ interface Call {
   path: string;
   body?: unknown;
 }
-/** Each action as a request to the surface that serves it. The two that publish are, for the repository, the exchange itself. */
+/** Each action as a request to the surface that serves it; the ones that publish go through the exchange instead. */
 const callsFor = (probeScope: string): Record<ProbeAction, Call> => ({
   "publish-other-pack": { surface: "publish", method: "POST", path: "/api/publish/@acme/x/1.0.0/upload-url", body: { content_length: 1 } },
   "read-private-pack": { surface: "web", method: "GET", path: "/api/private/index?pack=@acme/secret" },
@@ -174,7 +171,7 @@ const EXCHANGES: Partial<Record<ProbeAction, [pack: string, version: string]>> =
   "publish-new-version-of-probe-pack": [`@${PROBE_SCOPE}/${PROBE_PACK}`, "1.1.0"],
 };
 
-/** The probe as the registry sees it: a repository running a workflow, and the prober Worker; both confined to `@probe`. */
+/** The probe as the registry sees it: a repository running a workflow, confined to `@probe/p`. */
 export function createProbe(driver: Driver, ci: CiModule, alias: (name: string) => string, publishFromCi: (credential: UploadCredential, archive: ArchiveHandle) => Promise<Run>): { probe: Probe } {
   const storage = () => {
     if (!driver.publishStorage) throw new InfrastructureError(`the ${driver.kind} driver has no storage access: the synthetic tenant cannot be provisioned from here`);
@@ -213,22 +210,12 @@ export function createProbe(driver: Driver, ci: CiModule, alias: (name: string) 
       return publisher;
     },
 
-    async attempt(identity, action, o = {}) {
+    async attempt(action, o = {}) {
       const workflow = (await probe.publisher()).workflow;
       const exchange = EXCHANGES[action];
-      if (identity === "repository" && exchange && !o.asSession) return !((await workflow.exchange(...exchange)) instanceof Refusal);
-      const headers: Record<string, string> = {};
-      if (identity === "repository") {
-        const value = await workflow.oidcToken();
-        if (o.asSession) headers.cookie = `${SESSION_COOKIE}=${value}`;
-        else headers.authorization = `Bearer ${value}`;
-      } else if (o.asSession) {
-        headers.cookie = `${SESSION_COOKIE}=prober`;
-      } else {
-        headers["cf-access-client-id"] = "prober.access";
-        headers["cf-access-client-secret"] = "prober-service-token";
-        headers["x-packserver-caller"] = "prober";
-      }
+      if (exchange && !o.asSession) return !((await workflow.exchange(...exchange)) instanceof Refusal);
+      const value = await workflow.oidcToken();
+      const headers: Record<string, string> = o.asSession ? { cookie: `${SESSION_COOKIE}=${value}` } : { authorization: `Bearer ${value}` };
       const call = callsFor(alias(PROBE_SCOPE))[action];
       const res = await driver.http.request({ surface: call.surface, method: call.method, path: call.path, headers, ...(call.body === undefined ? {} : { body: call.body }) });
       return res.status >= 200 && res.status < 300;

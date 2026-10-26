@@ -81,13 +81,11 @@ scenario("IT-OPS-002 A probe credential cannot act outside its scope", async (wo
   const probe = await world.probe.publisher();
   await (await probe.publish(world.archive("gcp", { version: "1.0.0" }), "1.0.0")).finished();
 
-  for (const identity of ["repository", "prober"] as const) {
-    for (const action of outsideTheScope) expect(await world.probe.attempt(identity, action), `${identity} ${action}`).toBe(false);
-    // Presented where a browser session belongs, neither is one.
-    for (const action of browserOnly) expect(await world.probe.attempt(identity, action, { asSession: true }), `${identity} ${action} as a session`).toBe(false);
-  }
+  // The one thing the probe repository's token may do: a new version of the pack it is registered for.
+  expect(await world.probe.attempt("publish-new-version-of-probe-pack")).toBe(true);
+  await (await probe.publish(world.archive("gcp", { version: "1.1.0" }), "1.1.0")).finished();
 
-  // The one thing the probe repository may do: a new version of the pack it is registered for.
-  expect(await world.probe.attempt("repository", "publish-new-version-of-probe-pack")).toBe(true);
-  expect(await world.probe.attempt("prober", "publish-new-version-of-probe-pack")).toBe(false);
+  for (const action of outsideTheScope) expect(await world.probe.attempt(action), action).toBe(false);
+  // Presented where a browser session belongs, the token is not one.
+  for (const action of browserOnly) expect(await world.probe.attempt(action, { asSession: true }), `${action} as a session`).toBe(false);
 }, SCAN);

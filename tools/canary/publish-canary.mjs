@@ -11,8 +11,9 @@ import { pathToFileURL } from "node:url";
 import { TextEncoder } from "node:util";
 import { buildTree, canonicalise } from "../../packages/core/canonical/index.ts";
 import { OIDC_AUDIENCE } from "../../packages/core/publishing/oidc.ts";
+import { CANARY_SCOPE } from "../../packages/core/synthetic/tenant.ts";
 
-export const CANARY_SCOPE = "packserver-canary";
+export { CANARY_SCOPE };
 export const DEFAULT_REGISTRY = "https://registry.claudinite.com";
 
 const SKILL = "---\nname: canary\ndescription: A fixture the registry's monitoring reads. Use when asked about the PackServer canary.\n---\n\nThis pack exists so the registry can prove it serves a known archive. It does nothing.\n";
