@@ -15,7 +15,11 @@ export interface RecoveryPorts {
   rng: Rng;
 }
 
-/** Runs after a request is judged and before anything is written, so an audit entry never describes an action that did not happen. */
+/**
+ * Runs after a request is judged and before anything is written. Approval and completion run theirs
+ * (`afterWrite`) only once their conditional update changed a row, so an audit entry never describes
+ * an action that lost a race.
+ */
 export type BeforeWrite = (userId: string) => Promise<void>;
 
 const hashOf = (kind: string, token: string): Promise<string> => sha256Hex(`recovery-${kind}:${token}`);
@@ -132,7 +136,7 @@ export type Approval =
  * again to be sent a one-time sign-in link; nothing is sent from here.
  */
 export async function approveRecovery(
-  ports: Pick<RecoveryPorts, "d1" | "clock">, id: string, adminId: string, beforeWrite: BeforeWrite = async () => {},
+  ports: Pick<RecoveryPorts, "d1" | "clock">, id: string, adminId: string, afterWrite: BeforeWrite = async () => {},
 ): Promise<Approval> {
   const { rows } = await ports.d1.query("select user_id, state, ready_at from recovery_requests where id = ?", [id]);
   const row = rows[0];
@@ -150,12 +154,13 @@ export async function approveRecovery(
     await cancelRecoveries(ports, userId);
     return { ok: false, reason: "no_longer_eligible" };
   }
-  await beforeWrite(userId);
-  await ports.d1.query(
+  const { meta } = await ports.d1.query(
     `update recovery_requests as r set state = 'approved', approved_by = ?, approved_at = ?
      where r.id = ? and r.state = 'pending' and ${NO_FACTOR_LEFT}`,
     [adminId, isoAt(ports.clock), id],
   );
+  if (meta.changes !== 1) return { ok: false, reason: "no_longer_eligible" };
+  await afterWrite(userId);
   return { ok: true, user_id: userId };
 }
 
@@ -164,7 +169,7 @@ export async function approveRecovery(
  * only while the account still has nothing to sign in with.
  */
 export async function completeRecovery(
-  ports: Pick<RecoveryPorts, "d1" | "clock">, token: string, beforeWrite: BeforeWrite = async () => {},
+  ports: Pick<RecoveryPorts, "d1" | "clock">, token: string, afterWrite: BeforeWrite = async () => {},
 ): Promise<{ user_id: string } | null> {
   const hash = await hashOf("link", token);
   const nowIso = isoAt(ports.clock);
@@ -176,13 +181,14 @@ export async function completeRecovery(
   );
   const userId = found.rows[0]?.user_id;
   if (typeof userId !== "string") return null;
-  await beforeWrite(userId);
   const { rows } = await ports.d1.query(
     `update recovery_requests as r set state = 'completed', completed_at = ?, link_hash = null, cancel_hash = null
      where r.link_hash = ? and r.state = 'approved' and r.link_expires_at > ? and r.approved_at > ? and ${NO_FACTOR_LEFT} returning user_id`,
     [nowIso, hash, nowIso, cutoff],
   );
-  return rows.length === 1 ? { user_id: userId } : null;
+  if (rows.length !== 1) return null;
+  await afterWrite(userId);
+  return { user_id: userId };
 }
 
 /** Whether publishing for this scope is frozen because an owner's recovery is waiting, or approved and not yet lapsed. */

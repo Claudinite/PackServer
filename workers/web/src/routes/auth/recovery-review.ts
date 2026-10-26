@@ -60,8 +60,8 @@ routes.post("/auth/recovery/cancel-link", authRateLimit("recovery-ip"), sameSite
 routes.post("/auth/recovery/cancel", signedInPost(), async (c) => {
   const runtime = c.get("runtime");
   const userId = c.get("session")!.record.user_id;
-  await recordAudit(c, userId, "recovery.cancelled");
   const cancelled = await cancelRecoveries({ d1: runtime.ports.d1, clock: runtime.ports.clock }, userId);
+  if (cancelled > 0) await recordAudit(c, userId, "recovery.cancelled");
   return c.json({ cancelled }, 200, NO_STORE);
 });
 

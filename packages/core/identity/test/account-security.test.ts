@@ -154,15 +154,51 @@ describe("recovery that can be stopped and re-checked", () => {
     expect(await requestRecovery(t.ports, "a@example.test")).toMatchObject({ kind: "opened" });
   });
 
-  it("writes its audit entry before anything changes", async () => {
+  it("audits the opening before it is written and the approval only once it has taken effect", async () => {
     const t = setup();
     const seen: number[] = [];
     const count = () => Number((t.db.prepare("select count(*) as n from recovery_requests").get() as { n: number }).n);
     const opened = (await requestRecovery(t.ports, "a@example.test", async () => void seen.push(count()))) as { id: string };
     t.fakes.clock.advance(RECOVERY_DELAY_MS);
     const state = () => (t.db.prepare("select state from recovery_requests").get() as { state: string }).state;
-    await approveRecovery(t.ports, opened.id, "admin", async () => void seen.push(state() === "pending" ? -1 : -2));
+    await approveRecovery(t.ports, opened.id, "admin", async () => void seen.push(state() === "approved" ? -1 : -2));
     expect(seen).toEqual([0, -1]);
+  });
+
+  /** Lets a passkey land between the check and the conditional update, as a second request could. */
+  const racing = (t: ReturnType<typeof setup>, update: RegExp) => ({
+    ...t.ports,
+    d1: {
+      ...t.ports.d1,
+      query: (sql: string, params?: unknown[]) => {
+        if (update.test(sql)) passkey(t);
+        return t.ports.d1.query(sql, params);
+      },
+      batch: (statements: Parameters<typeof t.ports.d1.batch>[0]) => t.ports.d1.batch(statements),
+    } as typeof t.ports.d1,
+  });
+
+  it("refuses an approval that loses the race to a new passkey, and audits nothing", async () => {
+    const t = setup();
+    const { id } = await open(t);
+    t.fakes.clock.advance(RECOVERY_DELAY_MS);
+    const audited: string[] = [];
+    const result = await approveRecovery(racing(t, /set state = 'approved'/), id, "admin", async (u) => void audited.push(u));
+    expect(result).toEqual({ ok: false, reason: "no_longer_eligible" });
+    expect(audited).toEqual([]);
+    expect((t.db.prepare("select state from recovery_requests").get() as { state: string }).state).toBe("pending");
+  });
+
+  it("refuses a completion that loses the race to a new passkey, and audits nothing", async () => {
+    const t = setup();
+    const { id } = await open(t);
+    t.fakes.clock.advance(RECOVERY_DELAY_MS);
+    await approveRecovery(t.ports, id, "admin");
+    const link = (await requestRecovery(t.ports, "a@example.test")) as { token: string };
+    const audited: string[] = [];
+    expect(await completeRecovery(racing(t, /set state = 'completed'/), link.token, async (u) => void audited.push(u))).toBeNull();
+    expect(audited).toEqual([]);
+    expect((t.db.prepare("select state from recovery_requests").get() as { state: string }).state).toBe("approved");
   });
 });
 
@@ -208,12 +244,17 @@ describe("deletion", () => {
     db.exec(`insert into credentials (id, user_id, credential_id, public_key, created_at) values ('c1', 'u2', 'cid', 'pk', '${NOW}')`);
     db.exec("insert into credential_flags (credential_id, hold_until) values ('c1', null)");
     db.exec(`insert into identities (id, user_id, provider, provider_user_id, created_at) values ('i1', 'u2', 'github', '9', '${NOW}')`);
+    db.exec(`insert into device_codes (device_hash, user_code_hash, state, country, created_at, expires_at, interval_s, user_id)
+             values ('d1', 'uc1', 'approved', 'IL', 1, 2, 5, 'u2'), ('d2', 'uc2', 'pending', 'IL', 1, 2, 5, null), ('d3', 'uc3', 'approved', 'IL', 1, 2, 5, 'u1')`);
+    db.exec(`insert into device_tokens (token_hash, user_id, sid_hash, created_at, expires_at) values ('t1', 'u2', 's', 1, 2), ('t2', 'u1', 's', 1, 2)`);
 
     expect(await deleteAccount(ports, "u1")).toEqual({ ok: false, reason: "sole_owner", orgs: ["acme"] });
     expect(await deleteAccount(ports, "u2")).toEqual({ ok: true });
-    for (const table of ["credentials", "credential_flags", "identities"]) {
+    for (const table of ["credentials", "credential_flags", "identities", "device_codes", "device_tokens"]) {
       expect(db.prepare(`select count(*) as n from ${table} where ${table === "credential_flags" ? "credential_id" : "user_id"} in ('c1', 'u2')`).get()).toEqual({ n: 0 });
     }
+    expect(db.prepare("select device_hash from device_codes order by device_hash").all()).toEqual([{ device_hash: "d2" }, { device_hash: "d3" }]);
+    expect(db.prepare("select token_hash from device_tokens").all()).toEqual([{ token_hash: "t2" }]);
     expect(db.prepare("select handle from users where id = 'u2'").get()).toEqual({ handle: "bob" });
     expect(db.prepare("select name from retired_names where kind = 'scope'").all()).toEqual([{ name: "bob" }]);
     expect(db.prepare("select count(*) as n from user_emails where user_id = 'u2'").get()).toEqual({ n: 0 });
