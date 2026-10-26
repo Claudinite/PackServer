@@ -4,6 +4,13 @@ import type { NetHandler } from "./net";
 /** Matches `GITHUB_WEBHOOK_SECRET` and `GITHUB_APP_ID` in the GitHub Worker's `env.test`; a test holds the two together. */
 export const GITHUB_TEST_WEBHOOK_SECRET = "whsec_test_00000000000000000000000000000000";
 export const GITHUB_TEST_APP_ID = "424242";
+/** Matches `GITHUB_CODE_SEARCH_TOKEN` in the GitHub Worker's `env.test`: the read-only token the weekly scan searches with. */
+export const GITHUB_TEST_CODE_SEARCH_TOKEN = "test-github-code-search-token";
+/** The code search allowance a window of the fake starts with; each search spends one. */
+export const CODE_SEARCH_ALLOWANCE = 30;
+/** GitHub answers at most this many results per query. */
+const CODE_SEARCH_REACHABLE = 1000;
+const SETTINGS_FILE = /(^|\/)\.claudinite\/settings\.yaml$/;
 
 /** The public half of the key in the Worker's `env.test`; the fake verifies the App JWT with it. */
 const APP_PUBLIC_JWK = {
@@ -26,11 +33,17 @@ export interface FakeRepo {
   slug: string;
   private: boolean;
   commits: Map<string, Map<string, FakeFile>>;
+  /** When the repository was created; code search can be restricted by it. */
+  createdAt: string;
+  /** The commit the default branch points at, which code search indexes. */
+  head?: string;
 }
 
 export interface RecordedRequest {
   method: string;
   path: string;
+  /** Which credential the request carried. */
+  credential?: "code-search" | "app" | "installation" | "none";
 }
 
 export interface Delivery {
@@ -51,6 +64,13 @@ export class FakeGithubApp {
   tokensMinted = 0;
   /** A status to answer every API call with, to make GitHub fail. */
   failWith: number | undefined;
+  /** Runs before each code search answers; a scenario uses it to make GitHub slow by moving the clock. */
+  beforeSearch: (() => Promise<void>) | undefined;
+  /** Code search returns private repositories too, as a token that could see them would. */
+  leakPrivate = false;
+  /** Code searches since the allowance was last restored. */
+  searches = 0;
+  allowance = CODE_SEARCH_ALLOWANCE;
   private tokens = new Set<string>();
 
   reset(): void {
@@ -60,13 +80,17 @@ export class FakeGithubApp {
     this.installations = [{ id: 5, account: { login: "acme" }, suspended_at: null }];
     this.tokensMinted = 0;
     this.failWith = undefined;
+    this.beforeSearch = undefined;
+    this.leakPrivate = false;
+    this.searches = 0;
+    this.allowance = CODE_SEARCH_ALLOWANCE;
     this.tokens.clear();
   }
 
   repo(slug: string, options: { id?: number; private?: boolean } = {}): FakeRepo {
     const existing = [...this.repos.values()].find((r) => r.slug === slug);
     if (existing) return existing;
-    const repo: FakeRepo = { id: options.id ?? 500 + this.repos.size + 1, slug, private: options.private ?? false, commits: new Map() };
+    const repo: FakeRepo = { id: options.id ?? 500 + this.repos.size + 1, slug, private: options.private ?? false, commits: new Map(), createdAt: "2025-06-01T00:00:00Z" };
     this.repos.set(repo.id, repo);
     return repo;
   }
@@ -76,6 +100,7 @@ export class FakeGithubApp {
     const tree = new Map(Object.entries(files).map(([path, f]) => [path, typeof f === "string" ? { content: f } : f]));
     const sha = sha1(`${repo.slug}:${repo.commits.size}:${[...tree.keys()].join("\n")}`);
     repo.commits.set(sha, tree);
+    repo.head = sha;
     return sha;
   }
 
@@ -98,7 +123,9 @@ export class FakeGithubApp {
       const url = new URL(request.url);
       if (url.host !== "api.github.com") return undefined;
       const path = `${url.pathname}${url.search}`;
-      this.requests.push({ method: request.method, path });
+      const bearer = /^Bearer (.+)$/.exec(request.headers.get("authorization") ?? "")?.[1] ?? "";
+      const credential = bearer === GITHUB_TEST_CODE_SEARCH_TOKEN ? "code-search" : bearer.startsWith("ghs_fake_") ? "installation" : bearer ? "app" : "none";
+      this.requests.push({ method: request.method, path, credential });
       const mint = request.method === "POST" && /^\/app\/installations\/\d+\/access_tokens$/.test(url.pathname);
       if (request.method !== "GET" && !mint) {
         this.writes.push({ method: request.method, path });
@@ -124,6 +151,7 @@ export class FakeGithubApp {
       }
       return json(this.installations);
     }
+    if (bearer === GITHUB_TEST_CODE_SEARCH_TOKEN) return this.servePublic(url);
     if (!this.tokens.has(bearer)) return json({ message: "Bad credentials" }, 401);
 
     const byId = /^\/repositories\/(\d+)$/.exec(url.pathname);
@@ -150,6 +178,44 @@ export class FakeGithubApp {
       return file ? new Response(Buffer.from(this.bytes(file))) : json({ message: "Not Found" }, 404);
     }
     return json({ message: "Not Found" }, 404);
+  }
+
+  /** What the read-only public token can reach: code search and the files of public repositories. */
+  private async servePublic(url: URL): Promise<Response> {
+    const json = (body: unknown, status = 200, headers: Record<string, string> = {}) => Response.json(body, { status, headers });
+    if (url.pathname === "/search/code") {
+      await this.beforeSearch?.();
+      this.searches++;
+      const remaining = Math.max(0, this.allowance - this.searches);
+      const limits = { "x-ratelimit-remaining": String(remaining), "x-ratelimit-reset": String(Math.floor(Date.now() / 1000) + 60) };
+      if (this.searches > this.allowance) return json({ message: "rate limit" }, 403, { ...limits, "retry-after": "60" });
+      const q = url.searchParams.get("q") ?? "";
+      const term = /^"([^"]+)"/.exec(q)?.[1];
+      const window = /created:(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})/.exec(q);
+      const page = Number(url.searchParams.get("page") ?? 1);
+      const perPage = Number(url.searchParams.get("per_page") ?? 30);
+      if (!term || (page - 1) * perPage >= CODE_SEARCH_REACHABLE) return json({ message: "Validation Failed" }, 422, limits);
+      const found = [...this.repos.values()]
+        .filter((r) => (this.leakPrivate || !r.private) && r.head !== undefined)
+        .filter((r) => !window || (r.createdAt.slice(0, 10) >= window[1]! && r.createdAt.slice(0, 10) <= window[2]!))
+        .flatMap((r) => [...(r.commits.get(r.head!) ?? [])].filter(([path, f]) => SETTINGS_FILE.test(path) && Buffer.from(this.bytes(f)).toString().includes(term)).map(([path]) => ({ r, path })))
+        .sort((a, b) => a.r.slug.localeCompare(b.r.slug));
+      const items = found.slice((page - 1) * perPage, page * perPage).map(({ r, path }) => ({ path, repository: { full_name: r.slug, id: r.id, private: r.private } }));
+      return json({ total_count: found.length, incomplete_results: false, items }, 200, limits);
+    }
+    const contents = /^\/repos\/([^/]+\/[^/]+)\/contents\/(.+)$/.exec(url.pathname);
+    if (contents) {
+      const repo = this.bySlug(contents[1]!);
+      const file = repo && !repo.private && repo.head ? repo.commits.get(repo.head)?.get(decodeURIComponent(contents[2]!)) : undefined;
+      return file ? new Response(Buffer.from(this.bytes(file))) : json({ message: "Not Found" }, 404);
+    }
+    return json({ message: "Not Found" }, 404);
+  }
+
+  /** Requests that named a private repository, by slug or id: a read-only public token has no business there. */
+  privateRepositoryRequests(): RecordedRequest[] {
+    const privates = [...this.repos.values()].filter((r) => r.private);
+    return this.requests.filter((req) => privates.some((r) => req.path.startsWith(`/repos/${r.slug}`) || req.path.startsWith(`/repositories/${r.id}`)));
   }
 
   private describe(repo: FakeRepo) {

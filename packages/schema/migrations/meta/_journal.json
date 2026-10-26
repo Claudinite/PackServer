@@ -92,6 +92,13 @@
       "when": 1793018369418,
       "tag": "20261026123929_reports_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1793019796291,
+      "tag": "20261026130316_github_adoption_scans",
+      "breakpoints": true
     }
   ]
 }

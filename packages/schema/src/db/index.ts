@@ -13,4 +13,5 @@ export * from "./github";
 export * from "./reports";
 export * from "./mfa";
 export * from "./validation";
+export * from "./adoption";
 export * from "../range";
