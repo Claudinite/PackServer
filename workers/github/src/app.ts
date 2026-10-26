@@ -2,6 +2,7 @@ import { createShell, type WorkerShellOptions } from "@packserver/http";
 import type { Hono } from "hono";
 import type { GithubRuntime } from "./bindings";
 import { selfTestChecks } from "./selftest";
+import { scanRoute } from "./scan/route";
 import { treeRoute } from "./tree/route";
 import { webhookRoute } from "./webhooks/route";
 
@@ -22,5 +23,6 @@ export function createApp(runtime: GithubRuntime, options: AppOptions = {}): Hon
   });
   app.post("/hooks/github", webhookRoute(runtime));
   app.post("/internal/tree", treeRoute(runtime));
+  app.post("/internal/scan", scanRoute(runtime));
   return app;
 }
