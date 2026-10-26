@@ -214,9 +214,6 @@ scenario("IT-ABUSE-007 Forms carry CSRF tokens and idempotency keys", async (wor
   await expect(ann.account.show()).resolves.toMatchObject({ handle });
 });
 
-const subjectOf = async (user: User) => (await user.account.show()).id;
-const mintFor = (target: string) => ({ action: "token.mint", target });
-
 scenario("IT-ACC-005 A first passkey enrols freely; every further factor is a sensitive action with a 24-hour hold on publishing", async (world) => {
   const u = world.users.newcomer();
   await u.signIn();
@@ -233,7 +230,7 @@ scenario("IT-ACC-005 A first passkey enrols freely; every further factor is a se
   const addresses = [`${world.alias("p")}-two@example.test`];
   const p = await world.users.create({ mfa: "passkey", seedScope: "pscope", moreEmails: addresses });
   await p.signIn();
-  const id = await subjectOf(p);
+  const id = (await p.account.show()).id;
   const bySession = await p.assertionFor({ action: "factor.add", target: id }, { recoveryCode: p.mfa.codes()[0]! });
   const k2 = await p.mfa.enrol({ assertion: bySession });
   const held = (await p.mfa.passkeys()).find((k) => k.id === k2.id)!;
@@ -284,20 +281,20 @@ scenario("IT-ACC-007 A recovery code is single-use", async (world) => {
   const codes = person.mfa.codes();
   expect(codes).toHaveLength(10);
 
-  const first = await person.assertionFor(mintFor("a"), { recoveryCode: codes[0]! });
+  const first = await person.assertionFor({ action: "token.mint", target: "a" }, { recoveryCode: codes[0]! });
   expect(first.notice).toEqual({ warning: "recovery-code-used", remaining: 9, offer: "regenerate" });
-  await expect(person.assertionFor(mintFor("a"), { recoveryCode: codes[0]! })).toBeRefused("step-up");
-  await expect(person.assertionFor(mintFor("a"), { recoveryCode: codes[1]! })).resolves.toMatchObject({ method: "recovery" });
+  await expect(person.assertionFor({ action: "token.mint", target: "a" }, { recoveryCode: codes[0]! })).toBeRefused("step-up");
+  await expect(person.assertionFor({ action: "token.mint", target: "a" }, { recoveryCode: codes[1]! })).resolves.toMatchObject({ method: "recovery" });
 
   await person.mfa.regenerateCodes();
-  await expect(person.assertionFor(mintFor("a"), { recoveryCode: codes[2]! })).toBeRefused("step-up");
-  await expect(person.assertionFor(mintFor("a"), { recoveryCode: person.mfa.codes()[0]! })).resolves.toMatchObject({ method: "recovery" });
+  await expect(person.assertionFor({ action: "token.mint", target: "a" }, { recoveryCode: codes[2]! })).toBeRefused("step-up");
+  await expect(person.assertionFor({ action: "token.mint", target: "a" }, { recoveryCode: person.mfa.codes()[0]! })).resolves.toMatchObject({ method: "recovery" });
 });
 
 scenario("IT-ACC-010 Sensitive actions take a passkey assertion bound to the action; there is no window", async (world) => {
   const p = await world.users.create({ mfa: "passkey" });
   await p.signIn();
-  const id = await subjectOf(p);
+  const id = (await p.account.show()).id;
   const before = p.mfa.codes();
 
   await expect(p.mfa.regenerateCodes({ assertion: "none" })).toBeRefused("step-up");
@@ -317,15 +314,15 @@ scenario("IT-ACC-011 Five failed assertions lock step-up for 15 minutes with an 
   await p.signIn();
   const alerts = () => world.mail.inbox(p).all().filter((m) => /locked|too many/i.test(m.subject)).length;
 
-  for (let i = 0; i < 5; i++) await p.failAssertion(mintFor("a"));
-  await expect(p.assertionFor(mintFor("a"))).toBeRefused("rate-limited");
+  for (let i = 0; i < 5; i++) await p.failAssertion({ action: "token.mint", target: "a" });
+  await expect(p.assertionFor({ action: "token.mint", target: "a" })).toBeRefused("rate-limited");
   expect(alerts()).toBe(1);
   await expect(p.account.show()).resolves.toMatchObject({ id: expect.any(String) });
 
   await world.clock.advance("14m");
-  await expect(p.assertionFor(mintFor("a"))).toBeRefused("rate-limited");
+  await expect(p.assertionFor({ action: "token.mint", target: "a" })).toBeRefused("rate-limited");
   await world.clock.advance("1m1s");
-  await expect(p.assertionFor(mintFor("a"))).resolves.toMatchObject({ method: "passkey" });
+  await expect(p.assertionFor({ action: "token.mint", target: "a" })).resolves.toMatchObject({ method: "passkey" });
   expect(alerts()).toBe(1);
 });
 
@@ -344,7 +341,7 @@ scenario("IT-ACC-022 An assertion is bound to its session and target and cannot 
   const p = await world.users.create({ mfa: "passkey" });
   const laptop = p.as(await p.signIn());
   await p.as({ id: "no-cookie" }).signIn();
-  const id = await subjectOf(p);
+  const id = (await p.account.show()).id;
   const regenerate = { action: "recovery.regenerate", target: id };
 
   const forOther = await p.assertionFor({ action: "recovery.regenerate", target: "someone-else" });
