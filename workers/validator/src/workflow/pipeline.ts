@@ -1,5 +1,6 @@
 import { syncClock } from "@packserver/ports";
 import type { ValidatorRuntime } from "../bindings";
+import * as promote from "../promote/promote";
 import * as steps from "./steps";
 
 export interface StepConfig {
@@ -34,6 +35,7 @@ export async function runPipeline(rt: ValidatorRuntime, step: StepRunner, params
   const INFRASTRUCTURE = infrastructure(config.retryDelay);
   const runId = params.run_id;
   const ctx: steps.Context = { rt, runId, rules: steps.pinnedRules() };
+  let verdicted: steps.Verdicted;
 
   try {
     const begun = await step.do("start", INFRASTRUCTURE, () => steps.start(rt, runId));
@@ -66,7 +68,7 @@ export async function runPipeline(rt: ValidatorRuntime, step: StepRunner, params
     const sourced = await step.do("source", INFRASTRUCTURE, () => steps.source(ctx, blocked));
     const prose = await step.do("prose-screen", INFRASTRUCTURE, () => steps.proseScreen(ctx, blocked));
     await step.do("thresholds", INFRASTRUCTURE, () => steps.thresholds(ctx));
-    await step.do("verdict", INFRASTRUCTURE, () => steps.verdict(ctx, { sourceVerified: sourced.sourceVerified === true, prose: prose.record, startedAt }));
+    verdicted = await step.do("verdict", INFRASTRUCTURE, () => steps.verdict(ctx, { sourceVerified: sourced.sourceVerified === true, prose: prose.record, startedAt }));
   } catch (e) {
     const reason = steps.reasonOf(e);
     await step.do("finish-error", INFRASTRUCTURE, () => steps.fail(ctx, reason));
@@ -76,4 +78,26 @@ export async function runPipeline(rt: ValidatorRuntime, step: StepRunner, params
   // Steps 13 and 14 wait on people; their names are declared now so the class never renames one.
   await step.do("human-review", INFRASTRUCTURE, async () => ({ waiting: false }));
   await step.do("staged-approval", INFRASTRUCTURE, async () => ({ waiting: false }));
+
+  if (verdicted.verdict === "pass" || verdicted.verdict === "warn") await promoteVersion(rt, step, runId, INFRASTRUCTURE);
+}
+
+/**
+ * Step 15. Each sub-step is its own durable step and idempotent on the version, so a crash at any
+ * point resumes at the next one: the version counts as promoted from the commit, and everything
+ * after it converges (validation-pipeline.md). No promotion step writes a milestone; the run is
+ * finished at its verdict.
+ */
+async function promoteVersion(rt: ValidatorRuntime, step: StepRunner, runId: string, config: StepConfig): Promise<void> {
+  const pctx: promote.Context = { rt, runId };
+  const prepared = await step.do("promote-prepare", config, () => promote.prepare(pctx));
+  if (!prepared.promote) return;
+  await step.do("promote-objects", config, () => promote.writeObjects(pctx, prepared.versionId));
+  await step.do("promote-commit", config, () => promote.commit(pctx));
+  await step.do("promote-index", config, () => promote.reindex(pctx));
+  await step.do("promote-search", config, () => promote.search(pctx));
+  await step.do("promote-notify", config, async () => {
+    await promote.notify(pctx, prepared.versionId);
+    return { queued: true };
+  });
 }

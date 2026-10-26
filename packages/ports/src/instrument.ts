@@ -297,7 +297,8 @@ export const BINDING_SPECS: { [K in keyof BindingPorts]: PortSpec<BindingPorts[K
     methods: {
       get: { effect: "read", args: [op], result: content },
       head: { effect: "read", args: [op], result: { size: op } },
-      put: { effect: "write", args: [op, content, { content_type: op }] },
+      put: { effect: "write", args: [op, content, { content_type: op, content_disposition: op, cache_control: op }] },
+      putIfAbsent: { effect: "write", args: [op, content, { content_type: op, content_disposition: op, cache_control: op }], result: op },
       delete: { effect: "write", args: [op] },
       list: { effect: "read", args: [op], result: { "*": op } },
     },

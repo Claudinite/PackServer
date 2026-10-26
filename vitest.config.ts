@@ -17,7 +17,7 @@ export default defineConfig({
           name: "scenarios",
           include: ["scenarios/**/*.scenario.ts"],
           pool: "forks",
-          testTimeout: 30_000,
+          testTimeout: 150_000,
           hookTimeout: 90_000,
         },
       },

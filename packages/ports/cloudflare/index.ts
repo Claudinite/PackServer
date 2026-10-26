@@ -12,6 +12,7 @@ import {
   type KV,
   type Queue,
   type R2,
+  type R2PutOptions,
   type R2Read,
   type RateLimit,
   type Rng,
@@ -72,11 +73,27 @@ export function r2ReadPort(bucket: R2Bucket): R2Read {
   };
 }
 
+function httpMetadataOf(options: R2PutOptions | undefined): R2HTTPMetadata | undefined {
+  if (!options) return undefined;
+  const metadata: R2HTTPMetadata = {};
+  if (options.content_type) metadata.contentType = options.content_type;
+  if (options.content_disposition) metadata.contentDisposition = options.content_disposition;
+  if (options.cache_control) metadata.cacheControl = options.cache_control;
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
 export function r2Port(bucket: R2Bucket): R2 {
   return {
     ...r2ReadPort(bucket),
     async put(key, body, options) {
-      await bucket.put(key, body, options?.content_type ? { httpMetadata: { contentType: options.content_type } } : undefined);
+      const httpMetadata = httpMetadataOf(options);
+      await bucket.put(key, body, httpMetadata ? { httpMetadata } : undefined);
+    },
+    async putIfAbsent(key, body, options) {
+      const httpMetadata = httpMetadataOf(options);
+      // A put whose precondition fails resolves to null rather than throwing.
+      const written = await bucket.put(key, body, { onlyIf: { etagDoesNotMatch: "*" }, ...(httpMetadata ? { httpMetadata } : {}) });
+      return written !== null;
     },
     async delete(key) {
       await bucket.delete(key);

@@ -54,6 +54,13 @@ export const pack_versions = sqliteTable(
     score: integer("score"),
     score_rules_version: text("score_rules_version"),
     report_key: text("report_key"),
+    /** The pre-install manifest (JSON) the signed index entry carries; set at promotion. */
+    preinstall: text("preinstall"),
+    /** Why the version is not `active`, and for a revocation its security note; written by whatever changes the status. */
+    status_reason: text("status_reason"),
+    status_security: text("status_security"),
+    /** When the status last left `active`; the scope index lists such a version for 180 days. */
+    status_changed_at: text("status_changed_at"),
   },
   (t) => [
     uniqueIndex("pack_versions_pack_version_unique").on(t.pack_id, t.version),

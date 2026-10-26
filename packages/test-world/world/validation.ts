@@ -8,6 +8,7 @@ import type { Driver } from "../drivers/driver";
 import { InfrastructureError } from "./errors";
 import { AdmittedVersion, type ArchiveHandle, type Run } from "./publishing";
 import { stubModule } from "./errors";
+import { seededRegistryKey } from "./packs";
 import type { Archive, Version } from "./types";
 
 /** The engine releases the world's mirror holds and pins; fixture archives declare `1.61001.1` as their minimum. */
@@ -81,6 +82,10 @@ export function createValidation(driver: Driver) {
     await sql(
       "insert into feature_flags (key, value, security, updated_at) values ('cn_engine_pin', ?, 0, ?) on conflict (key) do update set value = excluded.value",
       [JSON.stringify({ newest: ENGINES.newest, digests }), new Date().toISOString()],
+    );
+    await sql(
+      "insert into feature_flags (key, value, security, updated_at) values ('registry_keys', ?, 0, ?) on conflict (key) do update set value = excluded.value",
+      [JSON.stringify([await seededRegistryKey()]), new Date().toISOString()],
     );
     seeded = true;
   }

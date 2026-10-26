@@ -17,7 +17,8 @@
         "WORKER": "validator",
         "ENVIRONMENT": "test",
         "STEP_RETRY_DELAY": "10 milliseconds",
-        "SIGNING_KEY_ACTIVE": "test-signing-key-active",
+        "SITE_ORIGINS": "http://web.internal",
+        "SIGNING_KEY_ACTIVE": "BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU",
         "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
         "IP_HASH_MASTER_KEY": "test-ip-hash-master-key",
         "PRINCIPAL_HASH_KEY": "test-principal-hash-key"
@@ -63,6 +64,20 @@
           {
             "binding": "NOTIFY_QUEUE",
             "queue": "notify-test"
+          }
+        ],
+        "consumers": [
+          {
+            "queue": "notify-test",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 5
+          },
+          {
+            "queue": "reindex-test",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 5
           }
         ]
       },
@@ -160,7 +175,9 @@
       "vars": {
         "WORKER": "validator",
         "ENVIRONMENT": "staging",
-        "STEP_RETRY_DELAY": "30 seconds"
+        "STEP_RETRY_DELAY": "30 seconds",
+        "SITE_ORIGINS": "https://registry-staging.claudinite.com",
+        "MAIL_FROM": "noreply@claudinite.com"
       },
       "d1_databases": [
         {
@@ -203,6 +220,20 @@
           {
             "binding": "NOTIFY_QUEUE",
             "queue": "notify-staging"
+          }
+        ],
+        "consumers": [
+          {
+            "queue": "notify-staging",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 5
+          },
+          {
+            "queue": "reindex-staging",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 5
           }
         ]
       },
@@ -314,6 +345,11 @@
           "secret_name": "principal-hash-key-staging"
         }
       ],
+      "send_email": [
+        {
+          "name": "EMAIL"
+        }
+      ],
       "version_metadata": {
         "binding": "CF_VERSION_METADATA"
       }
@@ -337,7 +373,9 @@
       "vars": {
         "WORKER": "validator",
         "ENVIRONMENT": "production",
-        "STEP_RETRY_DELAY": "30 seconds"
+        "STEP_RETRY_DELAY": "30 seconds",
+        "SITE_ORIGINS": "https://registry.claudinite.com",
+        "MAIL_FROM": "noreply@claudinite.com"
       },
       "d1_databases": [
         {
@@ -380,6 +418,20 @@
           {
             "binding": "NOTIFY_QUEUE",
             "queue": "notify"
+          }
+        ],
+        "consumers": [
+          {
+            "queue": "notify",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 5
+          },
+          {
+            "queue": "reindex",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 5
           }
         ]
       },
@@ -489,6 +541,11 @@
           "binding": "PRINCIPAL_HASH_KEY",
           "store_id": "00000000000000000000290000000004",
           "secret_name": "principal-hash-key"
+        }
+      ],
+      "send_email": [
+        {
+          "name": "EMAIL"
         }
       ],
       "version_metadata": {

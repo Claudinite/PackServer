@@ -1,12 +1,16 @@
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
+import { objectKey, type ObjectKind } from "@packserver/core/catalog";
+import { verifyAttestation } from "@packserver/core/index";
+import { contentsKey } from "@packserver/core/validation";
 import { fixtureArchive, type FixtureName } from "@packserver/core/canonical/fixtures";
-import type { Driver } from "../drivers/driver";
+import type { Driver, StorageAccess } from "../drivers/driver";
 import type { Aliases } from "./alias";
 import type { CiModule, Presigned, UploadCredential } from "./ci-workflow";
 import { InfrastructureError, NotImplemented } from "./errors";
 import type { Finding, ValidationReport } from "@packserver/schema";
 import { Refusal, type RefusalReason } from "./outcomes";
+import { seededRegistryKey } from "./packs";
 import type { ScopeOwner, ScopesModule } from "./areas/scopes";
 import type { Archive, Pack, PublisherOpts, UserOpts, ValidationRun, Version, VersionStatus, Verification } from "./types";
 
@@ -105,6 +109,16 @@ export class Run implements ValidationRun {
   }
 }
 
+export interface PublishedVersion {
+  objects: Array<{ kind: ObjectKind; key: string; size: number; contentType?: string; contentDisposition?: string; cacheControl?: string }>;
+  archive: Uint8Array;
+  canonicalSha256: string;
+  shaFile: string;
+  attestation: { document: Record<string, unknown>; verifies: boolean; failure?: string };
+  meta: Record<string, unknown>;
+  contents: { readme: string | null; files: Array<{ path: string; text: string }> };
+}
+
 /** What a publish returns before promotion exists: the version as admitted, with the run that validates it. */
 export class AdmittedVersion implements Version {
   constructor(
@@ -112,7 +126,73 @@ export class AdmittedVersion implements Version {
     readonly version: string,
     readonly run: Run,
     private readonly declaredSha256: () => Promise<string>,
+    private readonly storage: () => StorageAccess,
   ) {}
+  private sql(statement: string, params: unknown[] = []) {
+    return this.storage().sql(statement, params);
+  }
+  private async row(): Promise<Record<string, unknown> | undefined> {
+    return (
+      await this.sql(
+        `select v.id, v.state, v.verified, v.verified_domain, v.verified_github_org from pack_versions v join packs p on p.id = v.pack_id join scopes s on s.id = p.scope_id
+          where s.name || '/' || p.name = ? and v.version = ?`,
+        [this.pack.systemName.slice(1), this.version],
+      )
+    )[0];
+  }
+  /** The row id promotion gave the version, which keys a private archive. */
+  async versionId(): Promise<string> {
+    const row = await this.row();
+    if (!row) throw new InfrastructureError(`${this.pack.systemName}@${this.version} has no version row: it was not promoted`);
+    return String(row.id);
+  }
+  /**
+   * What promotion put in the public bucket for the version, read back as a cn would: the four write-once
+   * objects with their headers, the attestation checked against the registry's key, and the contents document.
+   */
+  async published(): Promise<PublishedVersion> {
+    const { packs } = this.storage();
+    const name = this.pack.systemName;
+    const kinds: ObjectKind[] = ["archive", "sha256", "attestation", "meta"];
+    const objects: PublishedVersion["objects"] = [];
+    for (const kind of kinds) {
+      const key = objectKey(name, kind, this.version);
+      const head = await packs.public.head(key);
+      if (head) objects.push({ kind, key, size: head.size, ...head.httpMetadata });
+    }
+    const bytes = async (kind: ObjectKind | "contents") => {
+      const key = kind === "contents" ? contentsKey(name, this.version) : objectKey(name, kind, this.version);
+      const body = await packs.public.get(key);
+      if (!body) throw new InfrastructureError(`${key} was not written`);
+      return body;
+    };
+    const json = async (kind: ObjectKind | "contents") => JSON.parse(new TextDecoder().decode(await bytes(kind))) as Record<string, unknown>;
+    const archive = await bytes("archive");
+    const canonicalSha256 = createHash("sha256").update(archive).digest("hex");
+    const attestation = await json("attestation");
+    const verdict = await verifyAttestation(attestation, {
+      keys: [await seededRegistryKey()],
+      expect: { pack: name, version: this.version, canonical_sha256: canonicalSha256 },
+    });
+    return {
+      objects,
+      archive,
+      canonicalSha256,
+      shaFile: new TextDecoder().decode(await bytes("sha256")).trim(),
+      attestation: { document: attestation, verifies: verdict.ok, ...(verdict.ok ? {} : { failure: verdict.code }) },
+      meta: await json("meta"),
+      contents: (await json("contents")) as unknown as PublishedVersion["contents"],
+    };
+  }
+  /** Polls until promotion has made the version active; real time, because the Workflow runs in real time. */
+  async promoted(timeoutMs = 90_000): Promise<this> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      if ((await this.row())?.state === "active") return this;
+      if (Date.now() > deadline) throw new InfrastructureError(`${this.pack.systemName}@${this.version} was not promoted within ${timeoutMs} ms`);
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
   /** The hash the registry holds for this version: the one its admitted run declared. */
   sha256(): Promise<string> {
     return this.declaredSha256();
@@ -120,8 +200,10 @@ export class AdmittedVersion implements Version {
   private missing(verb: string): never {
     throw new NotImplemented(`version.${verb}`);
   }
-  status(): Promise<VersionStatus> {
-    return this.missing("status");
+  async status(): Promise<VersionStatus> {
+    const row = await this.row();
+    if (!row) throw new InfrastructureError(`${this.pack.systemName}@${this.version} has no version row`);
+    return String(row.state) as VersionStatus;
   }
   approve(): Promise<void> {
     return this.missing("approve");
@@ -138,8 +220,14 @@ export class AdmittedVersion implements Version {
   delete(): Promise<void> {
     return this.missing("delete");
   }
-  verification(): Promise<Verification> {
-    return this.missing("verification");
+  async verification(): Promise<Verification> {
+    const row = await this.row();
+    if (!row) throw new InfrastructureError(`${this.pack.systemName}@${this.version} has no version row`);
+    return {
+      verified: Boolean(row.verified),
+      ...(row.verified_domain ? { verifiedDomain: String(row.verified_domain) } : {}),
+      ...(row.verified_github_org ? { verifiedGithubOrg: String(row.verified_github_org) } : {}),
+    };
   }
 }
 
@@ -332,7 +420,7 @@ export function createPublishFlow(driver: Driver, aliases: Aliases, scopes: Pick
           return new AdmittedVersion(packOf(target), target.version, run, async () => {
             const rows = await sql("select declared_sha256 from validation_runs where id = ?", [run.id]);
             return String(rows[0]?.declared_sha256);
-          });
+          }, storage);
         },
       };
     }

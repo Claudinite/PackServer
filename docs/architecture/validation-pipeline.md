@@ -63,14 +63,20 @@ Workflow's `limits.cpu_ms` and `default_retention`.
 
 **Promotion (step 15).** Five idempotent sub-steps with D1 as the commit point (ARCH-REV M3):
 
-- 15a. R2 puts of the archive, `.sha256`, attestation and `meta.json` at the immutable key,
-  conditional on absence; a retry that finds them is a no-op.
+- 15a. R2 puts of the archive, `.sha256`, attestation, `meta.json` and `contents.json` (the README
+  and text files for the Contents tab) at the immutable key, conditional on absence; a retry that
+  finds them is a no-op. A private version's archive, attestation and `meta.json` go to
+  `packs-private` instead.
 - 15b. One D1 `batch()` through `ScopeCoordinator` that flips `pack_versions.state` to `active` only
-  if it is still `approved`, writes `published_at`, and records the private entry's serial when the
-  pack is private. **The version is promoted when this batch commits**; everything after converges.
-- 15c. Index rebuild: the coordinator recomputes the scope index from D1, writes it at
-  `index/v1/<scope>/<sha256>.json`, signs the private entries that changed, and hands the hash and
-  serial to `RootCoordinator`, which re-signs the root on its next alarm.
+  if it is still `approved` and writes `published_at`. **The version is promoted when this batch
+  commits**; everything after converges. Each signed document's last serial and content hash are
+  recorded by the validator in `signed_documents` when it signs.
+- 15c. Index rebuild: the coordinator recomputes the scope index from D1 (refreshing the scope's
+  verification facts onto its versions first), has the validator sign and write it at
+  `index/v1/<scope>/<sha256>.json` and the alias `index/v1/<scope>.json`, has it sign the private
+  entries whose content changed or whose signature is a day old, and hands the hash and serial to
+  `RootCoordinator`, which re-signs the root on its next alarm. The same rebuild runs when a scope's
+  proof changes (the `reindex` queue) and daily for every scope with a published version.
 - 15d. FTS and Vectorize upsert keyed by version.
 - 15e. Notification enqueue keyed by `(version_id, "promoted")`; the consumer dedupes, so every owner
   receives exactly one email (REQ-PUB-035).

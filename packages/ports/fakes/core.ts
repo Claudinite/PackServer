@@ -17,6 +17,7 @@ import {
   type Queue,
   type RateLimit,
   type R2,
+  type R2PutOptions,
   type Rng,
   type Stats,
   type TelemetryConfig,
@@ -66,7 +67,7 @@ export class FakeRng implements Rng {
 }
 
 export class FakeR2 implements R2 {
-  readonly objects = new Map<string, { body: Uint8Array; content_type?: string }>();
+  readonly objects = new Map<string, { body: Uint8Array; content_type?: string; content_disposition?: string; cache_control?: string }>();
   async get(key: string) {
     return this.objects.get(key)?.body ?? null;
   }
@@ -74,8 +75,18 @@ export class FakeR2 implements R2 {
     const o = this.objects.get(key);
     return o ? { size: o.body.length } : null;
   }
-  async put(key: string, body: Uint8Array, options?: { content_type?: string }) {
-    this.objects.set(key, { body, ...(options?.content_type ? { content_type: options.content_type } : {}) });
+  async put(key: string, body: Uint8Array, options?: R2PutOptions) {
+    this.objects.set(key, {
+      body,
+      ...(options?.content_type ? { content_type: options.content_type } : {}),
+      ...(options?.content_disposition ? { content_disposition: options.content_disposition } : {}),
+      ...(options?.cache_control ? { cache_control: options.cache_control } : {}),
+    });
+  }
+  async putIfAbsent(key: string, body: Uint8Array, options?: R2PutOptions) {
+    if (this.objects.has(key)) return false;
+    await this.put(key, body, options);
+    return true;
   }
   async delete(key: string) {
     this.objects.delete(key);

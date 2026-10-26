@@ -21,10 +21,30 @@ scenario(
     await expect(world.profiles.profile(verified)).resolves.toMatchObject({ verifiedPublisher: true, verifiedDomain: "verified.example", verifiedGithubOrg: null });
     await expect(world.profiles.profile(plain)).resolves.toMatchObject({ verifiedPublisher: false, verifiedDomain: null, verifiedGithubOrg: null, held: false });
 
+    // Versions the registry promotes carry the facts, and the signed index follows the status.
+    const verifiedVersion = await p.publish(world.archive("gcp", { version: "1.0.0" })).as("@verified/gcp@1.0.0");
+    const plainVersion = await q.publish(world.archive("gcp", { version: "1.0.0" })).as("@plain/gcp@1.0.0");
+    for (const admitted of [verifiedVersion, plainVersion]) {
+      await world.validation.completes(admitted);
+      await admitted.promoted();
+    }
+    const first = (await world.registry.indexes(verifiedVersion.pack)).scope.document.packs[0]?.versions[0];
+    expect(first).toMatchObject({ verified: true, verified_github_org: null });
+    expect(world.unalias(String(first?.verified_domain))).toBe("verified.example");
+    expect((await world.registry.indexes(plainVersion.pack)).scope.document.packs[0]?.versions[0]).toMatchObject({
+      verified: false,
+      verified_domain: null,
+      verified_github_org: null,
+    });
+    expect(await plainVersion.verification()).toEqual({ verified: false });
+
     await world.verifiedPublishers.revoke(verified, "impersonation");
     await expect(world.profiles.profile(verified)).resolves.toMatchObject({ verifiedPublisher: false, verifiedDomain: "verified.example", mark: { text: "● verified.example", hoverLabel: null } });
     await expect(world.verifiedPublishers.reindexed(verified)).resolves.toContain("verified_publisher_changed");
     expect(world.mail.inbox(p).latest().text).toContain("revoked");
+    const revoked = (await world.registry.proofChanged(verifiedVersion.pack)).scope.document.packs[0]?.versions[0];
+    expect(revoked).toMatchObject({ verified: false, verified_github_org: null });
+    expect(world.unalias(String(revoked?.verified_domain))).toBe("verified.example");
   },
   NEEDS,
 );

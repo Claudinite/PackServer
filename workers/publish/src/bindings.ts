@@ -5,8 +5,8 @@ import {
 } from "@packserver/ports/cloudflare";
 import { oidcConfig, type OidcConfig } from "@packserver/core/publishing";
 import { PortError, type Clock, type D1, type Ports } from "@packserver/ports";
-import { SignAndWriteRootResponse } from "@packserver/schema";
-import type { IndexRebuilder, RootNotifier } from "./coordinator";
+import { SignAndWriteRootResponse, SignPrivateEntriesResponse, SignScopeIndexResponse } from "@packserver/schema";
+import { createIndexRebuilder, type IndexSigner, type RootNotifier, type IndexRebuilder } from "./coordinator";
 import { ROOT_COORDINATOR_NAME, type RootSigner } from "./root-coordinator";
 import { awsPresigner, type Presigner } from "./upload/presign";
 
@@ -123,33 +123,39 @@ export interface CoordinatorDeps {
 
 type Rpc = Record<string, ((request: unknown) => Promise<unknown>) | undefined>;
 
-/**
- * The validator signs and writes; a coordinator only orchestrates. Until the validator's
- * `signAndWriteRoot` lands the call is rejected by the receiver, and the root coordinator keeps
- * its work and retries.
- */
-function validatorSigner(binding: Fetcher): RootSigner {
-  const rpc = binding as unknown as Rpc;
+function entrypoint(binding: Fetcher, name: string): (request: unknown) => Promise<unknown> {
+  return async (request) => {
+    const rpc = binding as unknown as Rpc;
+    if (!rpc[name]) throw new PortError("not_wired", `the validator has no ${name} entrypoint`);
+    return rpc[name](request);
+  };
+}
+
+/** The validator signs and writes; a coordinator only orchestrates, and a rejected call leaves its work to be retried. */
+function validatorSigner(binding: Fetcher): RootSigner & IndexSigner {
   return {
     async signAndWriteRoot(request) {
-      const call = rpc.signAndWriteRoot;
-      if (!call) throw new PortError("not_wired", "the validator has no signAndWriteRoot entrypoint yet");
-      const ack = SignAndWriteRootResponse.parse(await call.call(binding, request));
+      const ack = SignAndWriteRootResponse.parse(await entrypoint(binding, "signAndWriteRoot")(request));
       return { sha256: ack.sha256, serial: ack.serial };
+    },
+    async signScopeIndex(request) {
+      const ack = SignScopeIndexResponse.parse(await entrypoint(binding, "signScopeIndex")(request));
+      return { sha256: ack.sha256, serial: ack.serial };
+    },
+    async signPrivateEntries(request) {
+      return SignPrivateEntriesResponse.parse(await entrypoint(binding, "signPrivateEntries")(request));
     },
   };
 }
 
 export function createCoordinatorDeps(env: Env): CoordinatorDeps {
   const durableObjects = durableObjectsPort({ RootCoordinator: env.ROOT_COORDINATOR });
+  const d1 = d1Port(env.DB);
+  const signer = validatorSigner(env.VALIDATOR);
   return {
-    d1: d1Port(env.DB),
-    signer: validatorSigner(env.VALIDATOR),
-    indexes: {
-      async rebuild() {
-        throw new PortError("not_wired", "building and signing a scope index lands with promotion");
-      },
-    },
+    d1,
+    signer,
+    indexes: createIndexRebuilder({ d1, signer, now: () => Date.now() }),
     root: {
       async scopeChanged(change) {
         await durableObjects.call("RootCoordinator", ROOT_COORDINATOR_NAME, "notifyScopeChange", [change]);

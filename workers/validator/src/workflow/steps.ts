@@ -44,18 +44,18 @@ export interface Outcome {
   refused?: string;
 }
 
-const nowIso = async (rt: ValidatorRuntime): Promise<string> => {
+export const nowIso = async (rt: ValidatorRuntime): Promise<string> => {
   await syncClock(rt.ports.clock);
   return new Date(rt.ports.clock.now()).toISOString();
 };
 
-const reports = (rt: ValidatorRuntime): R2 => {
+export const reports = (rt: ValidatorRuntime): R2 => {
   const bucket = rt.ports.r2.VALIDATION_REPORTS;
   if (!bucket) throw new Error("the VALIDATION_REPORTS binding is missing");
   return bucket;
 };
 
-function stat(rt: ValidatorRuntime, name: SignalName, blobs: string[], doubles: number[] = []): void {
+export function stat(rt: ValidatorRuntime, name: SignalName, blobs: string[], doubles: number[] = []): void {
   rt.ports.stats.write({ name, blobs, doubles });
 }
 
@@ -277,7 +277,8 @@ export async function load(ctx: Context, blocked: boolean): Promise<Outcome> {
   return { stop: false };
 }
 
-interface Claims {
+export interface Claims {
+  job_workflow_ref?: string;
   repository_id: number | string;
   sha: string;
   repository: string;
@@ -286,7 +287,7 @@ interface Claims {
   run_id: string | number;
 }
 
-async function claimsOf(rt: ValidatorRuntime, run: RunInput): Promise<{ claims: Claims; path: string } | null> {
+export async function claimsOf(rt: ValidatorRuntime, run: Pick<RunInput, "source" | "credential_id">): Promise<{ claims: Claims; path: string } | null> {
   if (run.source !== "oidc") return null;
   const row = (
     await rt.ports.d1.query(
@@ -296,6 +297,23 @@ async function claimsOf(rt: ValidatorRuntime, run: RunInput): Promise<{ claims: 
   ).rows[0];
   if (!row?.claims) return null;
   return { claims: JSON.parse(String(row.claims)) as Claims, path: String(row.path ?? ".") };
+}
+
+/** What the attestation and the score say of where the archive came from. */
+export function provenanceOf(claimed: { claims: Claims; path: string } | null, sourceVerified: boolean): Provenance {
+  return claimed
+    ? {
+        source: "oidc",
+        repository: claimed.claims.repository,
+        repository_id: Number(claimed.claims.repository_id),
+        commit: claimed.claims.sha,
+        ref: claimed.claims.ref,
+        event: claimed.claims.event_name,
+        workflow_run: String(claimed.claims.run_id),
+        path: claimed.path,
+        source_verified: sourceVerified,
+      }
+    : { source: "upload", source_verified: false };
 }
 
 /** Step 9: for an OIDC publish, the repository's tree at the claimed commit against the validated one. */
@@ -419,19 +437,7 @@ export async function verdict(ctx: Context, facts: { sourceVerified: boolean; pr
     if (!a.score_inputs) console.warn(JSON.stringify({ event: "validation.score_unavailable", reason: "sandbox A shed the score inputs to fit its report", run_id: runId }));
     if (a.score_inputs) {
       const claimed = await claimsOf(rt, run);
-      const provenance: Provenance = claimed
-        ? {
-            source: "oidc",
-            repository: claimed.claims.repository,
-            repository_id: Number(claimed.claims.repository_id),
-            commit: claimed.claims.sha,
-            ref: claimed.claims.ref,
-            event: claimed.claims.event_name,
-            workflow_run: String(claimed.claims.run_id),
-            path: claimed.path,
-            source_verified: facts.sourceVerified,
-          }
-        : { source: "upload", source_verified: false };
+      const provenance = provenanceOf(claimed, facts.sourceVerified);
       score = scorePack({ tree: treeOfScoreInputs(a.score_inputs), capabilities: caps.capabilities, provenance, linkedPublicRepository: claimed !== null, publishedAdvisory: false, rulesVersion: ctx.rules }).total;
     }
   }

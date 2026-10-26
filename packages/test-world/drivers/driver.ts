@@ -38,6 +38,12 @@ export interface UiActions {
 }
 
 /** Direct reach into the in-process stores, for seeding what another area's verbs will one day create and for reading what a bucket holds. */
+export interface PackBucket {
+  get(key: string): Promise<Uint8Array | null>;
+  head(key: string): Promise<{ size: number; httpMetadata?: SeedObjectMetadata } | null>;
+  list(prefix: string): Promise<string[]>;
+}
+
 export interface StorageAccess {
   /** Runs one statement against the registry database. */
   sql(statement: string, params?: unknown[]): Promise<Array<Record<string, unknown>>>;
@@ -51,6 +57,10 @@ export interface StorageAccess {
     list(prefix: string): Promise<string[]>;
     get(key: string): Promise<Uint8Array | null>;
   };
+  /** Puts a message on the registry's reindex queue, as the Worker that noticed a proof change does. */
+  reindex: { send(message: unknown): Promise<void> };
+  /** What promotion wrote to the public and private pack buckets. */
+  packs: { public: PackBucket; private: PackBucket };
   /** The engine release mirror in R2 `ops`, which a release workflow fills in production. */
   ops: {
     put(key: string, value: Uint8Array | string): Promise<void>;
