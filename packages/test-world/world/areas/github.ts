@@ -82,8 +82,6 @@ export interface PublicRepoOptions {
   settings?: string;
   /** Where the settings file sits; the repository root by default. */
   directory?: string;
-  /** When the repository was created, e.g. `2024-03-01`. */
-  createdAt?: string;
   id?: number;
   private?: boolean;
 }
@@ -245,7 +243,6 @@ export function createGitHub(driver: Driver): GitHubModule {
       repo: (slug, o) => repoHandle(app().repo(slug, o)),
       publicRepo(slug, o = {}) {
         const repo = app().repo(slug, { ...(o.id === undefined ? {} : { id: o.id }), private: o.private ?? false });
-        if (o.createdAt) repo.createdAt = `${o.createdAt}T00:00:00Z`;
         const path = `${o.directory ? `${o.directory}/` : ""}.claudinite/settings.yaml`;
         app().commit(repo, { [path]: settingsOf(o) });
         return repoHandle(repo);

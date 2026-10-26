@@ -8,7 +8,10 @@ export default {
   fetch: (request, env, ctx) => createApp(createRuntime(env)).fetch(request, undefined, ctx),
   scheduled: async (_controller, env, ctx) => {
     const response = await createApp(createRuntime(env)).fetch(new Request(SCAN_REQUEST, { method: "POST" }), undefined, ctx);
-    await response.body?.cancel();
-    if (!response.ok) throw new Error(`the weekly scan answered ${response.status}`);
+    const body = (await response.json().catch(() => null)) as { outcome?: string } | null;
+    // A run that could not reach GitHub, or ran out of allowance, fails loudly; it resumes on the next fire.
+    if (!response.ok || body?.outcome === "unreachable" || body?.outcome === "rate_limited") {
+      throw new Error(`the weekly scan ended ${body?.outcome ?? response.status}`);
+    }
   },
 } satisfies ExportedHandler<Env>;

@@ -12,7 +12,7 @@ scenario(
 
     // Last week: five public repositories declare gcp, two of them pinned to 1.0.0.
     for (let i = 1; i <= 5; i++) {
-      g.publicRepo(`org${i}/app`, { declares: [i <= 2 ? { pack: gcp, version: "1.0.0" } : gcp], createdAt: `202${i % 5}-03-01` });
+      g.publicRepo(`org${i}/app`, { declares: [i <= 2 ? { pack: gcp, version: "1.0.0" } : gcp] });
     }
     g.publicRepo("org10/hidden", { declares: [gcp], private: true });
     g.codeSearch.leakPrivateRepositories();
@@ -22,12 +22,16 @@ scenario(
     expect(await g.scan.adoption(gcp)).toMatchObject({ declaringRepositories: 5, pinnedVersions: { "1.0.0": 2 }, unpinned: 3, dropped: 0, label: "approximate, weekly" });
     expect(await g.scan.adoption(aws)).toMatchObject({ declaringRepositories: 0 });
 
-    // The queries were split by pack id and by repository creation date, and every one used the read-only public token.
+    // The queries were split by pack id (and by file size where one pack matches too many files), and every one used the read-only public token.
     const queries = g.codeSearch.queries().map((q) => world.unalias(q));
     for (const pack of ["@acme/gcp", "@acme/aws"]) expect(queries.some((q) => q.startsWith(`"${pack}"`))).toBe(true);
-    expect(queries.every((q) => /created:\d{4}-\d{2}-\d{2}\.\.\d{4}-\d{2}-\d{2}/.test(q))).toBe(true);
     expect(g.codeSearch.credentials()).toEqual(["code-search"]);
     expect(g.codeSearch.privateRepositoryRequests()).toEqual([]);
+
+    // A pack published after the scan began was never searched for: its count is unknown, not zero.
+    await world.clock.advance("1m");
+    const late = await world.packs.public("@acme/late");
+    expect((await g.scan.adoption(late)).declaringRepositories).toBeNull();
 
     // The scan is weekly: asked again at once it does nothing, and it never created a scan to resume.
     expect((await g.scan.run()).outcome).toBe("idle");
@@ -36,6 +40,7 @@ scenario(
     // This week one fewer repository declares gcp. GitHub answers slowly, past the run's 10 minutes.
     await world.clock.advance("7d");
     g.publicRepo("org5/app", { declares: [] });
+    const weekOne = g.codeSearch.queries().length;
     g.codeSearch.slowBy("11m");
     const slow = await g.scan.run();
     expect(slow.outcome).toBe("deadline");
@@ -43,12 +48,14 @@ scenario(
     expect(saved).not.toBeNull();
     expect(await g.scan.adoption(gcp)).toMatchObject({ declaringRepositories: 5 });
     const searched = g.codeSearch.queries().length;
+    expect(searched - weekOne).toBe(1);
 
     // The next run resumes from the cursor: it searches only what is left, and completes.
     g.codeSearch.slowBy(null);
     const resumed = await g.scan.run();
     expect(resumed.outcome).toBe("completed");
-    expect(g.codeSearch.queries().slice(searched).every((q) => !g.codeSearch.queries().slice(0, searched).includes(q))).toBe(true);
+    const thisWeek = g.codeSearch.queries().slice(weekOne);
+    expect(new Set(thisWeek).size).toBe(thisWeek.length);
     expect(await g.scan.cursor()).toBeNull();
     expect(await g.scan.completed()).toBe(2);
 

@@ -10,6 +10,7 @@ export const GITHUB_TEST_CODE_SEARCH_TOKEN = "test-github-code-search-token";
 export const CODE_SEARCH_ALLOWANCE = 30;
 /** GitHub answers at most this many results per query. */
 const CODE_SEARCH_REACHABLE = 1000;
+const DOCUMENTED_QUALIFIERS = new Set(["path", "filename", "extension", "size", "language", "repo", "org", "user", "in"]);
 const SETTINGS_FILE = /(^|\/)\.claudinite\/settings\.yaml$/;
 
 /** The public half of the key in the Worker's `env.test`; the fake verifies the App JWT with it. */
@@ -33,8 +34,6 @@ export interface FakeRepo {
   slug: string;
   private: boolean;
   commits: Map<string, Map<string, FakeFile>>;
-  /** When the repository was created; code search can be restricted by it. */
-  createdAt: string;
   /** The commit the default branch points at, which code search indexes. */
   head?: string;
 }
@@ -90,7 +89,7 @@ export class FakeGithubApp {
   repo(slug: string, options: { id?: number; private?: boolean } = {}): FakeRepo {
     const existing = [...this.repos.values()].find((r) => r.slug === slug);
     if (existing) return existing;
-    const repo: FakeRepo = { id: options.id ?? 500 + this.repos.size + 1, slug, private: options.private ?? false, commits: new Map(), createdAt: "2025-06-01T00:00:00Z" };
+    const repo: FakeRepo = { id: options.id ?? 500 + this.repos.size + 1, slug, private: options.private ?? false, commits: new Map() };
     this.repos.set(repo.id, repo);
     return repo;
   }
@@ -191,14 +190,16 @@ export class FakeGithubApp {
       if (this.searches > this.allowance) return json({ message: "rate limit" }, 403, { ...limits, "retry-after": "60" });
       const q = url.searchParams.get("q") ?? "";
       const term = /^"([^"]+)"/.exec(q)?.[1];
-      const window = /created:(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})/.exec(q);
+      const size = /\bsize:(\d+)\.\.(\d+)/.exec(q);
       const page = Number(url.searchParams.get("page") ?? 1);
       const perPage = Number(url.searchParams.get("per_page") ?? 30);
+      // Only the qualifiers GitHub documents for code search; any other is a validation error there too.
+      const unknown = [...q.replace(/"[^"]*"/g, "").matchAll(/(?:^|\s)(\w+):/g)].map((m) => m[1]!).filter((k) => !DOCUMENTED_QUALIFIERS.has(k));
+      if (unknown.length > 0) return json({ message: "Validation Failed", errors: unknown }, 422, limits);
       if (!term || (page - 1) * perPage >= CODE_SEARCH_REACHABLE) return json({ message: "Validation Failed" }, 422, limits);
       const found = [...this.repos.values()]
         .filter((r) => (this.leakPrivate || !r.private) && r.head !== undefined)
-        .filter((r) => !window || (r.createdAt.slice(0, 10) >= window[1]! && r.createdAt.slice(0, 10) <= window[2]!))
-        .flatMap((r) => [...(r.commits.get(r.head!) ?? [])].filter(([path, f]) => SETTINGS_FILE.test(path) && Buffer.from(this.bytes(f)).toString().includes(term)).map(([path]) => ({ r, path })))
+        .flatMap((r) => [...(r.commits.get(r.head!) ?? [])].filter(([path, f]) => SETTINGS_FILE.test(path) && Buffer.from(this.bytes(f)).toString().includes(term) && (!size || (this.bytes(f).length >= Number(size[1]) && this.bytes(f).length <= Number(size[2])))).map(([path]) => ({ r, path })))
         .sort((a, b) => a.r.slug.localeCompare(b.r.slug));
       const items = found.slice((page - 1) * perPage, page * perPage).map(({ r, path }) => ({ path, repository: { full_name: r.slug, id: r.id, private: r.private } }));
       return json({ total_count: found.length, incomplete_results: false, items }, 200, limits);

@@ -33,8 +33,9 @@ export function scanRoute(runtime: GithubRuntime) {
     if (result === "unconfigured") return c.json({ outcome: "unconfigured" }, 503);
     const telemetry = requestTelemetry(c);
     if (result.rateRemaining !== null) telemetry.emit("github.rate_limit_remaining", { remaining: result.rateRemaining });
-    if (result.outcome === "completed") {
+    if (result.outcome !== "idle") {
       telemetry.emit("github.scan_completed", {
+        outcome: result.outcome,
         repositories: result.summary?.repositories ?? 0,
         packs: result.summary?.packs ?? 0,
         pages: result.pages,

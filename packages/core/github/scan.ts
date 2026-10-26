@@ -9,7 +9,7 @@ export const SCAN_LIMITS = {
   /** GitHub answers at most 1,000 results per query, in pages of 100. */
   resultsPerQuery: 1000,
   perPage: 100,
-  /** Stays under the subrequests one invocation may make. */
+  /** The GitHub requests one run makes before it yields, so a single invocation stays within the Worker's subrequest allowance; the next run carries on. */
   requestsPerRun: 900,
   /** A scan finished more recently than this is not started again by the cron. */
   freshMs: 6 * 86_400_000,
@@ -18,11 +18,14 @@ export const SCAN_LIMITS = {
 export const SETTINGS_FILENAME = "settings.yaml";
 export const SETTINGS_DIRECTORY = ".claudinite";
 const CANON_SCOPE = "@claudinite";
-const EARLIEST_REPOSITORY = "2008-01-01";
+/** Code search indexes files only up to this size. */
+const LARGEST_INDEXED_FILE = 384 * 1024;
 
 export interface Declared {
   id: string;
   version: string | null;
+  /** Where the pack comes from when the entry says; only the registry's packs are counted. */
+  source: string | null;
 }
 
 const unquote = (value: string): string => {
@@ -32,37 +35,56 @@ const unquote = (value: string): string => {
 };
 const indentOf = (line: string): number => line.length - line.trimStart().length;
 const KEY = /^(["']?)([\w.-]+)\1\s*:\s*(.*)$/;
+const BLOCK_SCALAR = /:\s*[|>][+-]?\d*\s*(#.*)?$/;
+
+/** Drops comments-only and blank lines and the contents of block scalars, which are text and not structure. */
+function structuralLines(text: string): string[] {
+  const out: string[] = [];
+  let scalarIndent: number | null = null;
+  for (const line of text.split(/\r?\n/)) {
+    if (line.trim() === "") continue;
+    if (scalarIndent !== null) {
+      if (indentOf(line) > scalarIndent) continue;
+      scalarIndent = null;
+    }
+    if (line.trimStart().startsWith("#")) continue;
+    out.push(line);
+    if (BLOCK_SCALAR.test(line.trimEnd())) scalarIndent = indentOf(line.trimStart().startsWith("- ") ? line.replace("- ", "  ") : line);
+  }
+  return out;
+}
 
 /**
  * The `packs.declared` entries of a Claudinite settings file. An entry is a bare id, an
- * `id@version` string, or a mapping with `id`, `name` or `pack` and an optional `version`.
- * Only the `packs:` block is read, so no YAML parser is needed for the rest of the file.
+ * `id@version` string, or a mapping with `id`, `name` or `pack` and an optional `version` and
+ * `source`. Only `declared:` directly under the top-level `packs:` is read, so no YAML parser is
+ * needed for the rest of the file; a flow list must sit on one line.
  */
 export function parseDeclared(text: string): Declared[] {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "" && !l.trimStart().startsWith("#"));
-  const packsAt = lines.findIndex((l) => indentOf(l) === 0 && /^packs\s*:\s*$/.test(l.trimEnd()));
+  const lines = structuralLines(text);
+  const packsAt = lines.findIndex((l) => indentOf(l) === 0 && /^["']?packs["']?\s*:\s*(#.*)?$/.test(l.trimEnd()));
   if (packsAt < 0) return [];
   const block: string[] = [];
   for (const line of lines.slice(packsAt + 1)) {
     if (indentOf(line) === 0) break;
     block.push(line);
   }
-  const declaredAt = block.findIndex((l) => /^\s*declared\s*:/.test(l));
+  const childIndent = block.length > 0 ? indentOf(block[0]!) : 0;
+  const declaredAt = block.findIndex((l) => indentOf(l) === childIndent && /^["']?declared["']?\s*:/.test(l.trimStart()));
   if (declaredAt < 0) return [];
   const header = block[declaredAt]!;
-  const declaredIndent = indentOf(header);
-  const inline = header.slice(header.indexOf(":") + 1).trim();
+  const inline = header.slice(header.indexOf(":") + 1).replace(/\s+#.*$/, "").trim();
   if (inline.startsWith("[")) {
     return inline
-      .replace(/^\[|\]\s*(#.*)?$/g, "")
+      .replace(/^\[|\]$/g, "")
       .split(",")
       .map((s) => entry(unquote(s)))
       .filter((d): d is Declared => d !== null);
   }
   const items: string[][] = [];
   for (const line of block.slice(declaredAt + 1)) {
-    if (indentOf(line) <= declaredIndent && !line.trimStart().startsWith("- ")) break;
-    if (indentOf(line) < declaredIndent) break;
+    if (indentOf(line) <= childIndent && !line.trimStart().startsWith("- ")) break;
+    if (indentOf(line) < childIndent) break;
     if (line.trimStart().startsWith("- ")) items.push([line.trimStart().slice(2)]);
     else items.at(-1)?.push(line.trim());
   }
@@ -78,18 +100,21 @@ function fromItem(parts: string[]): Declared | null {
     if (m) fields.set(m[2]!, unquote(m[3]!));
   }
   const id = fields.get("id") ?? fields.get("name") ?? fields.get("pack");
-  const version = fields.get("version");
-  return id ? entry(id, version) : null;
+  return id ? entry(id, fields.get("version"), fields.get("source")) : null;
 }
 
-function entry(text: string, version?: string): Declared | null {
+function entry(text: string, version?: string, source?: string): Declared | null {
   if (text === "") return null;
   const at = text.lastIndexOf("@");
   const pinned = at > 0 ? text.slice(at + 1) : "";
   const id = at > 0 ? text.slice(0, at) : text;
   const frozen = version ?? (pinned !== "" ? pinned : null);
-  return { id, version: frozen === "" ? null : frozen };
+  return { id, version: frozen === "" ? null : frozen, source: source === undefined || source === "" ? null : source };
 }
+
+/** Packs whose entry names no source, or names the registry, are the registry's. */
+const fromRegistry = (d: Declared): boolean => d.source === null || d.source === REGISTRY_SOURCE;
+export const REGISTRY_SOURCE = "registry";
 
 /** A scoped id as written; an unscoped one predates the cutover and means the canon pack of that name. */
 export function canonicalPackId(id: string): string | null {
@@ -101,28 +126,26 @@ export function canonicalPackId(id: string): string | null {
 /** The text a settings file would hold for this pack: canon packs may still be written unscoped. */
 const searchTerm = (pack: string): string => (pack.startsWith(`${CANON_SCOPE}/`) ? pack.slice(CANON_SCOPE.length + 1) : pack);
 
-export interface DateWindow {
-  from: string;
-  to: string;
+/** A file-size range in bytes; absent means every size. */
+export interface SizeWindow {
+  from: number;
+  to: number;
+}
+export type Window = SizeWindow | null;
+
+export function searchQuery(pack: string, window: Window): string {
+  const base = `"${searchTerm(pack)}" path:${SETTINGS_DIRECTORY} filename:${SETTINGS_FILENAME}`;
+  return window === null ? base : `${base} size:${window.from}..${window.to}`;
 }
 
-export function searchQuery(pack: string, window: DateWindow): string {
-  return `"${searchTerm(pack)}" path:${SETTINGS_DIRECTORY} filename:${SETTINGS_FILENAME} created:${window.from}..${window.to}`;
-}
-
-const DAY_MS = 86_400_000;
-const dayOf = (iso: string): number => Date.parse(`${iso}T00:00:00Z`) / DAY_MS;
-const isoOf = (day: number): string => new Date(day * DAY_MS).toISOString().slice(0, 10);
-
-/** Two windows that together cover this one, or null when it is a single day. */
-export function bisect(window: DateWindow): [DateWindow, DateWindow] | null {
-  const from = dayOf(window.from);
-  const to = dayOf(window.to);
+/** Two windows that together cover this one, or null when it is a single byte size. */
+export function bisect(window: Window): [SizeWindow, SizeWindow] | null {
+  const { from, to } = window ?? { from: 0, to: LARGEST_INDEXED_FILE };
   if (to <= from) return null;
   const mid = Math.floor((from + to) / 2);
   return [
-    { from: window.from, to: isoOf(mid) },
-    { from: isoOf(mid + 1), to: window.to },
+    { from, to: mid },
+    { from: mid + 1, to },
   ];
 }
 
@@ -131,8 +154,8 @@ export interface Cursor {
   after: string | null;
   /** The pack being searched; absent between packs. */
   pack?: string;
-  /** Creation-date windows still to search for `pack`, the one being read first. */
-  windows: DateWindow[];
+  /** File-size windows still to search for `pack`, the one being read first. */
+  windows: Window[];
   page: number;
 }
 
@@ -241,7 +264,6 @@ export async function runScan(deps: ScanDeps): Promise<ScanResult> {
   let truncated = state.truncated;
   let requests = 0;
   const files = new Map<string, Declared[] | null>();
-  const today = iso(started).slice(0, 10);
 
   const save = (): Promise<void> => store.save(state.id, { cursor, rateRemaining: result.rateRemaining, truncated, now: iso() });
 
@@ -259,10 +281,10 @@ export async function runScan(deps: ScanDeps): Promise<ScanResult> {
         result.outcome = "completed";
         return result;
       }
-      cursor = { after: cursor.after, pack: next, windows: [{ from: EARLIEST_REPOSITORY, to: today }], page: 1 };
+      cursor = { after: cursor.after, pack: next, windows: [null], page: 1 };
     }
     const pack = cursor.pack!;
-    const window = cursor.windows[0]!;
+    const window = cursor.windows[0] ?? null;
 
     let answer: SearchAnswer;
     try {
@@ -317,7 +339,7 @@ export async function runScan(deps: ScanDeps): Promise<ScanResult> {
         if (files.size >= MAX_CACHED_FILES) files.clear();
         files.set(cacheKey, declared);
       }
-      const found = declared?.find((d) => canonicalPackId(d.id) === pack);
+      const found = declared?.find((d) => fromRegistry(d) && canonicalPackId(d.id) === pack);
       if (found) {
         rows.push({ pack, repository: hit.repository, owner: hit.repository.split("/")[0]!.toLowerCase(), pinnedVersion: found.version, settingsPath: hit.path });
       }
@@ -370,9 +392,17 @@ export interface PackAdoption {
 
 /** What the latest completed scan found for one pack, against the one before it. */
 export async function adoptionOf(d1: D1, pack: string): Promise<PackAdoption> {
-  const { rows: scans } = await d1.query("select id, completed_at from adoption_scans where completed_at is not null order by completed_at desc, id desc limit 2");
-  const latest = scans[0] as { id: string; completed_at: string } | undefined;
-  if (!latest) return { declaringRepositories: null, pinnedVersions: {}, unpinned: 0, dropped: 0, scannedAt: null, label: ADOPTION_LABEL };
+  const { rows: scans } = await d1.query("select id, started_at, completed_at from adoption_scans where completed_at is not null order by completed_at desc, id desc limit 2");
+  const latest = scans[0] as { id: string; started_at: string; completed_at: string } | undefined;
+  const unknown: PackAdoption = { declaringRepositories: null, pinnedVersions: {}, unpinned: 0, dropped: 0, scannedAt: latest?.completed_at ?? null, label: ADOPTION_LABEL };
+  if (!latest) return unknown;
+  const { rows: published } = await d1.query(
+    "select p.created_at from packs p join scopes s on s.id = p.scope_id where '@' || s.name || '/' || p.name = ?",
+    [pack],
+  );
+  const createdAt = (published[0] as { created_at: string } | undefined)?.created_at;
+  // A pack that did not exist when the scan began was never searched for: unknown, not zero.
+  if (createdAt !== undefined && createdAt > latest.started_at) return unknown;
   const { rows } = await d1.query("select pinned_version from pack_declarations where scan_id = ? and pack = ?", [latest.id, pack]);
   const pinnedVersions: Record<string, number> = {};
   let unpinned = 0;

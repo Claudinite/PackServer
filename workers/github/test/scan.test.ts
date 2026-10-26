@@ -28,14 +28,14 @@ describe("the scan's GitHub source", () => {
         : new Response("packs:\n"),
     );
     const source = githubScanSource({ fetch: fetchFn, token: "tok" });
-    const page = await source.search('"@a/b" created:2020-01-01..2020-12-31', 2);
+    const page = await source.search('"@a/b" size:0..99', 2);
     expect(page).toMatchObject({ totalCount: 1, hits: [{ repository: "a/b", private: false, path: "conf/settings.yaml" }], rateRemaining: 7 });
     expect("limited" in page ? 0 : page.rateResetInS).toBeGreaterThan(0);
     expect(await source.readFile("a/b", "conf/settings.yaml")).toBe("packs:\n");
     expect(calls.map((c) => c.method)).toEqual(["GET", "GET"]);
     expect(calls.every((c) => c.authorization === "Bearer tok")).toBe(true);
     expect(calls[0]!.url).toContain("page=2");
-    expect(decodeURIComponent(calls[0]!.url)).toContain('q="@a/b" created:2020-01-01..2020-12-31');
+    expect(decodeURIComponent(calls[0]!.url)).toContain('q="@a/b" size:0..99');
   });
 
   it("reports a spent allowance as such, treats a missing or hidden file as absent, and a failure as unreachable", async () => {

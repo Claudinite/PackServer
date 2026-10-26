@@ -1,6 +1,7 @@
 import { GithubUnreachable, SCAN_LIMITS, type ScanSource, type SearchAnswer } from "@packserver/core/github";
 
 const API = "https://api.github.com";
+const REQUEST_TIMEOUT_MS = 30_000;
 
 interface CodeSearchBody {
   total_count: number;
@@ -11,7 +12,7 @@ interface CodeSearchBody {
  * GitHub through the read-only public-repository token, with GET requests only. A private
  * repository answers 404 to this token, so a file of one is never readable through it.
  */
-export function githubScanSource(options: { fetch: typeof fetch; token: string }): ScanSource {
+export function githubScanSource(options: { fetch: typeof fetch; token: string; timeoutMs?: number }): ScanSource {
   const send = (path: string, accept: string): Promise<Response> =>
     options
       .fetch(`${API}${path}`, {
@@ -22,6 +23,8 @@ export function githubScanSource(options: { fetch: typeof fetch; token: string }
           "x-github-api-version": "2022-11-28",
           "user-agent": "packserver-github-worker",
         },
+        // A hung request must not carry the run past its own stop.
+        signal: AbortSignal.timeout(options.timeoutMs ?? REQUEST_TIMEOUT_MS),
       })
       .catch((error: unknown) => {
         throw new GithubUnreachable(error instanceof Error ? error.message : "request failed");

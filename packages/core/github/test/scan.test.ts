@@ -21,14 +21,40 @@ describe("parseDeclared", () => {
       "    - nope",
     ].join("\n");
     expect(parseDeclared(text)).toEqual([
-      { id: "basics", version: null },
-      { id: "@acme/gcp", version: "1.0.0" },
-      { id: "@acme/aws", version: "2.1.0" },
-      { id: "@acme/azure", version: null },
+      { id: "basics", version: null, source: null },
+      { id: "@acme/gcp", version: "1.0.0", source: null },
+      { id: "@acme/aws", version: "2.1.0", source: null },
+      { id: "@acme/azure", version: null, source: null },
     ]);
     expect(parseDeclared("packs:\n  declared: [basics, \"@acme/gcp\"]\n")).toEqual([
-      { id: "basics", version: null },
-      { id: "@acme/gcp", version: null },
+      { id: "basics", version: null, source: null },
+      { id: "@acme/gcp", version: null, source: null },
+    ]);
+  });
+
+  it("reads a commented packs key, a quoted declared key, and only declared directly under packs, past block scalars", () => {
+    const text = [
+      "notes: |",
+      "  packs:",
+      "    declared:",
+      "      - trap",
+      "packs: # the packs",
+      "  other:",
+      "    declared:",
+      "      - nested",
+      '  "declared":',
+      "    - one",
+      "    - id: two",
+      "      source: local",
+      "    - id: three",
+      "      note: >",
+      "        - not an entry",
+      "      source: registry",
+    ].join("\n");
+    expect(parseDeclared(text)).toEqual([
+      { id: "one", version: null, source: null },
+      { id: "two", version: null, source: "local" },
+      { id: "three", version: null, source: "registry" },
     ]);
     expect(parseDeclared("engine: {}\n")).toEqual([]);
     expect(parseDeclared("packs:\n  channel: canary\n")).toEqual([]);
@@ -42,29 +68,30 @@ describe("pack ids", () => {
     expect(canonicalPackId("not a pack")).toBeNull();
   });
 
-  it("searches canon packs by the unscoped text and others by the scoped id", () => {
-    const window = { from: "2008-01-01", to: "2026-01-15" };
-    expect(searchQuery("@claudinite/basics", window)).toContain('"basics"');
-    expect(searchQuery("@acme/gcp", window)).toContain('"@acme/gcp"');
-    expect(searchQuery("@acme/gcp", window)).toContain("created:2008-01-01..2026-01-15");
+  it("searches canon packs by the unscoped text and others by the scoped id, with a size range only when given one", () => {
+    expect(searchQuery("@claudinite/basics", null)).toContain('"basics"');
+    expect(searchQuery("@acme/gcp", null)).toContain('"@acme/gcp"');
+    expect(searchQuery("@acme/gcp", null)).not.toContain("size:");
+    expect(searchQuery("@acme/gcp", { from: 0, to: 99 })).toContain("size:0..99");
   });
 });
 
 describe("bisect", () => {
-  it("covers a window exactly once and stops at a single day", () => {
-    const [a, b] = bisect({ from: "2026-01-01", to: "2026-01-04" })!;
-    expect([a, b]).toEqual([
-      { from: "2026-01-01", to: "2026-01-02" },
-      { from: "2026-01-03", to: "2026-01-04" },
+  it("splits the unbounded window over the indexed sizes, covers a range exactly once and stops at one byte", () => {
+    const [a, b] = bisect(null)!;
+    expect(a.from).toBe(0);
+    expect(b.from).toBe(a.to + 1);
+    expect(bisect({ from: 10, to: 13 })).toEqual([
+      { from: 10, to: 11 },
+      { from: 12, to: 13 },
     ]);
-    expect(bisect({ from: "2026-01-01", to: "2026-01-01" })).toBeNull();
+    expect(bisect({ from: 7, to: 7 })).toBeNull();
   });
 });
 
 interface Repo {
   private?: boolean;
   file: string;
-  createdAt?: string;
 }
 
 function memoryStore(packs: string[]) {
@@ -160,6 +187,22 @@ describe("runScan", () => {
     expect(h.rows.every((r) => r.owner === r.repository.split("/")[0])).toBe(true);
   });
 
+  it("does not count a repo-local pack toward the registry pack of the same name", async () => {
+    const h = harness(
+      {
+        "a/local": { file: "packs:\n  declared:\n    - id: gcp\n      source: local\n    - id: '@acme/gcp'\n      source: local\n" },
+        "b/real": { file: "packs:\n  declared:\n    - id: '@acme/gcp'\n      source: registry\n" },
+        "c/bare": { file: "packs:\n  declared:\n    - '@acme/gcp'\n" },
+      },
+      ["@acme/gcp", "@claudinite/gcp"],
+    );
+    await runScan(h.deps);
+    expect(h.rows.map((r) => [r.pack, r.repository])).toEqual([
+      ["@acme/gcp", "b/real"],
+      ["@acme/gcp", "c/bare"],
+    ]);
+  });
+
   it("stops at its time limit, saves where it was, and the next run resumes there without repeating work", async () => {
     const repos = Object.fromEntries(Array.from({ length: 3 }, (_, i) => [`o/r${i}`, { file: settings("'@acme/a'", "'@acme/b'", "'@acme/c'") }]));
     const h = harness(repos, ["@acme/a", "@acme/b", "@acme/c"], { perCall: () => h.advance(6 * 60_000) });
@@ -177,19 +220,19 @@ describe("runScan", () => {
     expect(h.scans.size).toBe(1);
   });
 
-  it("splits a query that matches more than the search can return by creation date", async () => {
+  it("splits a query that matches more than the search can return by file size", async () => {
     const h = harness({ "a/one": { file: settings("'@acme/gcp'") } }, ["@acme/gcp"], {
-      totalFor: (q) => (q.includes("created:2008-01-01..2026-01-15") ? 1500 : undefined),
+      totalFor: (q) => (q.includes("size:") ? undefined : 1500),
     });
     const result = await runScan(h.deps);
     expect(result.outcome).toBe("completed");
-    const windows = h.queries.map((q) => /created:(\S+)/.exec(q)![1]);
-    expect(windows[0]).toBe("2008-01-01..2026-01-15");
+    const windows = h.queries.map((q) => /size:(\S+)/.exec(q)?.[1]);
+    expect(windows[0]).toBeUndefined();
     expect(windows.length).toBeGreaterThan(2);
     expect(h.scans.get("scan-1")!.truncated).toBe(false);
   });
 
-  it("marks a scan truncated when one day alone still overflows", async () => {
+  it("marks a scan truncated when one byte size alone still overflows", async () => {
     const h = harness({ "a/one": { file: settings("'@acme/gcp'") } }, ["@acme/gcp"], { totalFor: () => 5000 });
     await runScan(h.deps);
     expect(h.scans.get("scan-1")!.truncated).toBe(true);

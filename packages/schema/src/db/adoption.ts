@@ -13,7 +13,7 @@ export const adoption_scans = sqliteTable("adoption_scans", {
   cursor: text("cursor"),
   /** GitHub's code-search allowance as the last response reported it; absent until one did. */
   rate_limit_remaining: integer("rate_limit_remaining"),
-  /** Set when a query still matched more than the search can return after the creation-date window could split no further. */
+  /** Set when a query still matched more than the search can return after the file-size window could split no further. */
   truncated: integer("truncated", { mode: "boolean" }).notNull().default(false),
 });
 
