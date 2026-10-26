@@ -69,9 +69,17 @@ describe("the http driver's requests", () => {
     const [first, second] = sent.map((r) => r.headers["X-Selftest-Signature"]!);
     expect(first).toMatch(/^t=\d+, n=[0-9a-f-]{36}, k=7, v1=[0-9a-f]{64}$/);
     expect(first).not.toEqual(second);
-    expect(await verifySelfTestSignature({ header: first, key: "k", method: "GET", path: "/mcp", nowMs: Date.now() })).toMatchObject({ ok: true, keyId: "7" });
-    expect(await verifySelfTestSignature({ header: second, key: "k", method: "POST", path: "/api/x", nowMs: Date.now() })).toMatchObject({ ok: true });
+    expect(await verifySelfTestSignature({ header: first, key: "k", method: "GET", host: "registry-staging.claudinite.com", path: "/mcp", nowMs: Date.now() })).toMatchObject({ ok: true, keyId: "7" });
+    expect(await verifySelfTestSignature({ header: second, key: "k", method: "POST", host: "registry-staging.claudinite.com", path: "/api/x", nowMs: Date.now() })).toMatchObject({ ok: true });
     expect((await driverWith({}, () => respond()).driver.http.request({ surface: "web", method: "GET", path: "/" })).status).toBe(404);
+  });
+
+  it("leaves an unsigned request unsigned, and signs as the key id a request names", async () => {
+    const { driver, sent } = driverWith({ SELFTEST_HMAC_KEY: "k", SELFTEST_KEY_ID: "7" }, () => respond());
+    await driver.http.request({ surface: "web", method: "GET", path: "/__selftest", unsigned: true });
+    await driver.http.request({ surface: "web", method: "GET", path: "/__selftest", signAs: "drain-1" });
+    expect(sent[0]!.headers).not.toHaveProperty("X-Selftest-Signature");
+    expect(sent[1]!.headers["X-Selftest-Signature"]).toMatch(/, k=drain-1, /);
   });
 
   it("sends no signature without the key", async () => {

@@ -1,5 +1,6 @@
 import { SqliteD1 } from "@packserver/core/audit/testing";
 import { describeWorkerShell, dummyEnv, expectTelemetryWired, expectPortsMatchTrustTable, SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
+import { CANDIDATE_MIRROR_KEY } from "@packserver/ports";
 import { createFakePorts } from "@packserver/ports/fakes";
 import { describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
@@ -20,6 +21,31 @@ const runtime = (missingBindings: string[] = []): WebRuntime => ({
 describeWorkerShell({
   worker: "web",
   build: ({ allowSelfTest, missingBindings }) => createApp(runtime(missingBindings), { selfTestAllowed: () => allowSelfTest }),
+});
+
+const headersOf = (response: Response) => Object.fromEntries([...response.headers].sort());
+
+describe("web as a 0% candidate in verification", () => {
+  const candidateRecord = (versionId: string, state = "verifying") => JSON.stringify({ release_id: SHELL_RELEASE, state, workers: { web: { version_id: versionId, changed: true } } });
+
+  it("answers the public 404 to an unsigned request, and serves again once the release moves on", async () => {
+    const ports = createFakePorts({ worker: "web" });
+    const app = createApp({ ...runtime(), ports: { ...runtime().ports, ...ports, d1: new SqliteD1() } });
+    const home = () => app.fetch(new Request("https://registry.test.invalid/.well-known/audit-heads"));
+    const unknown = await app.fetch(new Request("https://registry.test.invalid/no-such-page"));
+    expect(unknown.status).toBe(404);
+    expect((await home()).status).toBe(200);
+
+    await ports.kv.TELEMETRY_KV!.put(CANDIDATE_MIRROR_KEY, candidateRecord(SHELL_VERSION));
+    ports.clock.advance(11_000);
+    const gated = await home();
+    expect([gated.status, await gated.text()]).toEqual([404, await unknown.clone().text()]);
+    expect(headersOf(gated)).toEqual(headersOf(unknown));
+
+    await ports.kv.TELEMETRY_KV!.put(CANDIDATE_MIRROR_KEY, candidateRecord(SHELL_VERSION, "rolling"));
+    ports.clock.advance(11_000);
+    expect((await home()).status).toBe(200);
+  });
 });
 
 const create = (env: object) => createRuntime({ SITE_ORIGINS: "https://registry.test.invalid", ...env } as unknown as Env);

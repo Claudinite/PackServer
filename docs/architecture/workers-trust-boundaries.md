@@ -14,6 +14,12 @@ are the only seam where Cloudflare products are touched (`src/bindings.ts` in ea
 | `validator` | Internal: `ValidatePackWorkflow`, two Containers, rescans, index and fragment signing | R2 staging (read), R2 public and private (write), `validation-reports`, R2 ops (read: `cn-releases`), D1, Vectorize, Workers AI (model screen, when one ships), Containers, Durable Objects `ScopeCoordinator` and `RootCoordinator` (`script_name: publish`), service binding to `github` (public tree fetch), Queue notify (producer and consumer), Queue reindex (consumer), the active Ed25519 signing key (Secrets Store) | A public route; the standby key |
 | `admin` | `registry-admin.claudinite.com`, internal API over service bindings (REQ-ADMIN-010), crons ([overview.md](overview.md) §Scheduled work) | D1, R2, Workflows, Queue audit (producer and consumer), the audit bucket's object-only S3 token (Secrets Store; no R2 binding), Queue reindex (producer: `regenerate_index`), Access certificate check | A `workers.dev` route |
 
+Candidate gating (release.md §Candidate gating) gives no Worker a new binding. Whether a version is the
+release's candidate in `verifying` is read from a record the release tooling mirrors into
+`TELEMETRY_KV`, which every Worker already holds, so `web`, `mcp` and `publish` gain no read on the `ops`
+bucket and the table above stays as it is. The record carries release id, state and per-Worker version ids
+only.
+
 Three cross-cutting rules:
 
 - **Only the validator writes to `packs-public` and `packs-private`, and only the validator signs.**

@@ -24,7 +24,7 @@ export function createApp(runtime: AdminRuntime, options: AppOptions = {}): Hono
     telemetry: runtime.ports.telemetry,
     checks: () => selfTestChecks(runtime),
     selfTestAllowed: options.selfTestAllowed,
-    selfTest: selfTestAccess(runtime, { readManifest: (releaseId) => runtime.ports.r2.OPS_BUCKET.get(`releases/${releaseId}.json`) }),
+    selfTest: selfTestAccess(runtime),
   });
   for (const page of [access, queue, applications, reports, moderation]) app.route("/", page);
   app.route("/internal", internal);

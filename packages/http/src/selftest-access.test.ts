@@ -1,6 +1,7 @@
 import { signSelfTest } from "@packserver/core/selftest";
+import { CANDIDATE_MIRROR_KEY, PortError } from "@packserver/ports";
 import { FakeAccessIdentity, FakeClock } from "@packserver/ports/fakes";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createShell, SelfTestMemory, selfTestAccess, type SelfTestRuntime } from "./index";
 
 const KEY = "shared-key";
@@ -23,7 +24,7 @@ function worldOf(overrides: Partial<SelfTestRuntime["ports"]> = {}, key: SelfTes
 let counter = 0;
 const signed = async (path = "/__selftest", over: { keyId?: string; nonce?: string; key?: string; nowMs?: number } = {}) =>
   new Request(`https://registry.test${path}`, {
-    headers: { "X-Selftest-Signature": await signSelfTest({ key: over.key ?? KEY, keyId: over.keyId ?? "1", method: "GET", path, nowMs: over.nowMs ?? NOW, nonce: over.nonce ?? `nonce-${++counter}` }) },
+    headers: { "X-Selftest-Signature": await signSelfTest({ key: over.key ?? KEY, keyId: over.keyId ?? "1", method: "GET", host: "registry.test", path, nowMs: over.nowMs ?? NOW, nonce: over.nonce ?? `nonce-${++counter}` }) },
   });
 const statusOf = async (app: { fetch(r: Request): Response | Promise<Response> }, request: Request) => (await app.fetch(request)).status;
 
@@ -44,6 +45,18 @@ describe("IT-OPS-004 who reaches the self-test", () => {
         const res = await app.fetch(request);
         expect([res.status, await res.text()]).toEqual([unknown.status, "Not Found"]);
       }
+  });
+
+  it("logs why an Access assertion is refused when no production verifier is wired", async () => {
+    const unwired = { verify: async () => { throw new PortError("not_wired", "access.verify has no production adapter yet"); } };
+    const { app } = worldOf({ access: unwired as never });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(await statusOf(app, new Request("https://registry.test/__selftest", { headers: { "cf-access-jwt-assertion": "anything" } }))).toBe(404);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("no production Access verifier is wired"));
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("is closed when the Worker holds no key and no Access port", async () => {
@@ -113,8 +126,19 @@ describe("candidate gating", () => {
       const unknown = await app.fetch(new Request("https://registry.test/nowhere"));
       const unsigned = await app.fetch(new Request("https://registry.test/page"));
       expect([unsigned.status, await unsigned.text()]).toEqual([404, "Not Found"]);
-      expect(unsigned.headers.get("content-type")).toBe(unknown.headers.get("content-type"));
+      expect(Object.fromEntries([...unsigned.headers].sort())).toEqual(Object.fromEntries([...unknown.headers].sort()));
       expect(await statusOf(app, await signed("/page"))).toBe(200);
+  });
+
+  it("reads the mirror in TELEMETRY_KV when the Worker has no manifest reader of its own", async () => {
+    const clock = new FakeClock(NOW);
+    const store = new Map<string, string>([[CANDIDATE_MIRROR_KEY, JSON.stringify({ state: "verifying", workers: { web: { changed: true, version_id: "v1" } } })]]);
+    const kv = { get: async (k: string) => store.get(k) ?? null, put: async () => {}, delete: async () => {}, list: async () => [] };
+    const runtime: SelfTestRuntime = { worker: "web", version: { versionId: "v1", releaseId: `r-${++counter}` }, selfTestKey: async () => KEY, ports: { clock, kv: { TELEMETRY_KV: kv } } };
+    const app = createShell({ worker: "web", releaseId: runtime.version.releaseId, versionId: "v1", clock, checks: () => [], selfTest: selfTestAccess(runtime, { memory: new SelfTestMemory(), wallClock }) });
+    app.get("/page", (c) => c.text("hello"));
+    expect((await app.fetch(new Request("https://registry.test/page"))).status).toBe(404);
+    expect(await statusOf(app, await signed("/page"))).toBe(200);
   });
 
   it("serves everyone once the release has moved past verifying, or when the version is not the candidate", async () => {

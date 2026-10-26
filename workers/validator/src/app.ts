@@ -17,6 +17,6 @@ export function createApp(runtime: ValidatorRuntime, options: AppOptions = {}): 
     telemetry: runtime.ports.telemetry,
     checks: () => selfTestChecks(runtime),
     selfTestAllowed: options.selfTestAllowed,
-    selfTest: selfTestAccess(runtime, { readManifest: (releaseId) => runtime.ports.r2.OPS_BUCKET.get(`releases/${releaseId}.json`) }),
+    selfTest: selfTestAccess(runtime),
   });
 }

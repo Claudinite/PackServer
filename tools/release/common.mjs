@@ -106,6 +106,17 @@ export function opsStore(run, { bucket = OPS_BUCKET, root = REPO } = {}) {
         rmSync(dir, { recursive: true, force: true });
       }
     },
+    /** The self-test's candidate record in production's `TELEMETRY_KV`, which Workers that cannot read `ops` consult. */
+    mirror(body) {
+      const dir = mkdtempSync(join(tmpdir(), "ops-"));
+      try {
+        const file = join(dir, "candidate.json");
+        writeFileSync(file, body);
+        must(run("pnpm", ["exec", "wrangler", "kv", "key", "put", CANDIDATE_MIRROR_KEY, "--path", file, "--binding", "TELEMETRY_KV", "--env", "production", "--remote"], { cwd }), `kv put ${CANDIDATE_MIRROR_KEY}`);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
     /** Never overwrites: an existing identical object is fine, a different one is a hard error. */
     putOnce(key, body, contentType = "application/octet-stream") {
       const existing = this.get(key);
@@ -119,6 +130,8 @@ export function opsStore(run, { bucket = OPS_BUCKET, root = REPO } = {}) {
   };
 }
 
+const RELEASE_KEYS = JSON.parse(readFileSync(join(REPO, "packages", "ports", "release-keys.json"), "utf8"));
+export const CANDIDATE_MIRROR_KEY = RELEASE_KEYS.candidateMirror;
 export const manifestKey = (id) => `${MANIFEST_PREFIX}/${id}.json`;
 export const bundleKey = (id, worker) => `${MANIFEST_PREFIX}/bundles/${id}/${worker}.js`;
 export const LIVE_POINTER = `${MANIFEST_PREFIX}/live.json`;

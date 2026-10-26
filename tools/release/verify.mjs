@@ -38,8 +38,8 @@ export function overrideHeader(manifest, root = REPO) {
 }
 
 /** X-Selftest-Signature as release.md §Candidate gating defines it. */
-export function signSelftest({ key, keyId, method, path, now, nonce }) {
-  const v1 = createHmac("sha256", key).update(`${method}|${path}|${now}|${nonce}`).digest("hex");
+export function signSelftest({ key, keyId, method, host, path, now, nonce }) {
+  const v1 = createHmac("sha256", key).update(`${method.toUpperCase()}|${host.toLowerCase()}|${path}|${now}|${nonce}|${keyId}`).digest("hex");
   return `t=${now}, n=${nonce}, k=${keyId}, v1=${v1}`;
 }
 
@@ -52,7 +52,7 @@ export async function selftest({ fetchFn = fetch, worker, manifest, override, ac
     headers["CF-Access-Client-Id"] = access.id;
     headers["CF-Access-Client-Secret"] = access.secret;
   }
-  if (hmac) headers["X-Selftest-Signature"] = signSelftest({ key: hmac.key, keyId: hmac.keyId, method: "GET", path: spec.selftest, now, nonce: randomUUID() });
+  if (hmac) headers["X-Selftest-Signature"] = signSelftest({ key: hmac.key, keyId: hmac.keyId, method: "GET", host, path: spec.selftest, now, nonce: randomUUID() });
   const res = await fetchFn(`https://${host}${spec.selftest}`, { headers, redirect: "manual" });
   if (res.status !== 200) return { ok: false, detail: `${worker} self-test answered ${res.status}` };
   const body = await res.json();
@@ -117,6 +117,13 @@ export async function verifyCandidate({ run, store, id, env, fetchFn, runSelftes
   return true;
 }
 
+/** Whether the self-test stage runs, and when it does not, why: a skipped stage says so in the log. */
+export function selftestPlan(env) {
+  if (env.VERIFY_SELFTEST !== "true") return { run: false, reason: "VERIFY_SELFTEST is not \"true\"" };
+  if (!env.SELFTEST_HMAC_KEY) return { run: false, reason: "SELFTEST_HMAC_KEY is not configured for this environment (#158)" };
+  return { run: true };
+}
+
 async function main(argv) {
   const [cmd] = argv;
   if (cmd === "build") {
@@ -128,7 +135,9 @@ async function main(argv) {
     console.log(hits.length ? `${hits.length} hit(s)` : "no test string in any production bundle");
     process.exitCode = hits.length ? 1 : 0;
   } else if (cmd === "candidate") {
-    const ok = await verifyCandidate({ run: spawnRunner, store: opsStore(spawnRunner), id: argOf(argv, "--release"), env: process.env, runSelftest: process.env.VERIFY_SELFTEST === "true" });
+    const plan = selftestPlan(process.env);
+    if (!plan.run) console.log(`self-test stage skipped: ${plan.reason}`);
+    const ok = await verifyCandidate({ run: spawnRunner, store: opsStore(spawnRunner), id: argOf(argv, "--release"), env: process.env, runSelftest: plan.run });
     process.exitCode = ok ? 0 : 1;
   } else {
     throw new Error("usage: verify.mjs build | grep | candidate");

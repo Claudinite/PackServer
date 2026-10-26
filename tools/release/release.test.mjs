@@ -5,11 +5,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readConfigs } from "../../infra/lib/plan.mjs";
 import { TEST_STRINGS } from "../test-strings.mjs";
 import { layOutIncumbent } from "../build-n-minus-1.mjs";
-import { REPO, WORKERS, bundleKey, manifestKey, opsStore, sha256 } from "./common.mjs";
+import { isCandidate } from "../../packages/http/src/candidate-gating";
+import { CANDIDATE_MIRROR_KEY as TS_MIRROR_KEY } from "../../packages/ports/src/release-keys";
+import { CANDIDATE_MIRROR_KEY, REPO, WORKERS, bundleKey, manifestKey, opsStore, sha256 } from "./common.mjs";
 import { changedWorkers, classifyMigrations, containerChanges, cut, liveRecord, liveRelease, newManifest, readManifest, releaseId, update, withStage, withState, writeLive, writeManifest } from "./manifest.mjs";
 import { promote } from "./promote.mjs";
 import { defaultTarget, rollbackRelease } from "./rollback.mjs";
-import { grepBundles, signSelftest, verifyCandidate } from "./verify.mjs";
+import { grepBundles, selftestPlan, signSelftest, verifyCandidate } from "./verify.mjs";
 
 const NAMES = WORKERS.map((w) => w.name);
 const quiet = () => {};
@@ -18,6 +20,10 @@ function memoryStore() {
   const objects = new Map();
   return {
     objects,
+    mirrored: [],
+    mirror(body) {
+      this.mirrored.push(JSON.parse(body));
+    },
     get: (k) => (objects.has(k) ? Buffer.from(objects.get(k)) : null),
     put: (k, b) => void objects.set(k, Buffer.from(b)),
     putOnce(k, b) {
@@ -124,6 +130,26 @@ describe("cut", () => {
     expect(readManifest(store, "1.0.0+aaaaaaa").state).toBe("verifying");
   });
 
+  it("mirrors the candidate record where Workers without a read on ops look, and the record names exactly the changed versions", () => {
+    const store = memoryStore();
+    const { run } = fakeWrangler();
+    cut({ run, store, digests: digestsOf(defaultBundle), bundlesDir: tracked(bundlesDir()), id: "1.0.0+aaaaaaa", commit: "a".repeat(40), now: "t" });
+    const record = store.mirrored.at(-1);
+    expect(record).toMatchObject({ release_id: "1.0.0+aaaaaaa", state: "verifying" });
+    expect(isCandidate(record, "web", "new-web")).toBe(true);
+    expect(isCandidate(record, "web", "old-web")).toBe(false);
+    expect(Object.keys(record.workers.web).sort()).toEqual(["changed", "version_id"]);
+    expect(TS_MIRROR_KEY).toBe(CANDIDATE_MIRROR_KEY);
+  });
+
+  it("stops gating the moment the release leaves verifying", () => {
+    const store = memoryStore();
+    const { run } = fakeWrangler();
+    const m = cut({ run, store, digests: digestsOf(defaultBundle), bundlesDir: tracked(bundlesDir()), id: "1.0.0+aaaaaaa", commit: "a".repeat(40), now: "t" });
+    update(store, m.release_id, (x) => withState(x, "rolling", "t2"));
+    expect(isCandidate(store.mirrored.at(-1), "web", "new-web")).toBe(false);
+  });
+
   it("uploads only Workers whose bundle digest moved", () => {
     const store = memoryStore();
     const first = cut({ run: fakeWrangler().run, store, digests: digestsOf(defaultBundle), bundlesDir: tracked(bundlesDir()), id: "1.0.0+aaaaaaa", commit: "a".repeat(40), now: "t" });
@@ -209,6 +235,12 @@ describe("verify", () => {
 
   beforeEach(() => void (answer.seen.length = 0));
 
+  it("skips the self-test stage with a reason unless it is switched on and the key is configured", () => {
+    expect(selftestPlan({ SELFTEST_HMAC_KEY: "k" })).toEqual({ run: false, reason: expect.stringContaining("VERIFY_SELFTEST") });
+    expect(selftestPlan({ VERIFY_SELFTEST: "true" })).toEqual({ run: false, reason: expect.stringContaining("SELFTEST_HMAC_KEY") });
+    expect(selftestPlan({ VERIFY_SELFTEST: "true", SELFTEST_HMAC_KEY: "k" })).toEqual({ run: true });
+  });
+
   it("self-tests callees first with the override, then runs probe-safe pinned to the candidate, and records both", async () => {
     const store = verifyingRelease();
     const probes = [];
@@ -243,7 +275,7 @@ describe("verify", () => {
   });
 
   it("signs the way the candidate gate expects", () => {
-    expect(signSelftest({ key: "k", keyId: "1", method: "GET", path: "/__selftest", now: 100, nonce: "n" })).toMatch(/^t=100, n=n, k=1, v1=[0-9a-f]{64}$/);
+    expect(signSelftest({ key: "k", keyId: "1", method: "GET", host: "registry.test", path: "/__selftest", now: 100, nonce: "n" })).toMatch(/^t=100, n=n, k=1, v1=[0-9a-f]{64}$/);
   });
 });
 
@@ -455,6 +487,12 @@ describe("ops store", () => {
     if (args.includes("get") && result.status === 0) writeFileSync(args[args.indexOf("--file") + 1], "body");
     return result;
   };
+
+  it("mirrors the candidate record into production's TELEMETRY_KV through wrangler", () => {
+    const calls = [];
+    opsStore((c, args) => (calls.push(args), { status: 0, stdout: "", stderr: "" })).mirror("{}");
+    expect(calls[0]).toEqual(expect.arrayContaining(["kv", "key", "put", CANDIDATE_MIRROR_KEY, "--binding", "TELEMETRY_KV", "--env", "production", "--remote"]));
+  });
 
   it("reads a missing object as absent but any other failure as could-not-ask", () => {
     expect(opsStore(runner({ status: 1, stdout: "", stderr: "The specified key does not exist. [code: 10007]" })).get(manifestKey("x"))).toBeNull();

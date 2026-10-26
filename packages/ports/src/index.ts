@@ -6,3 +6,4 @@ export * from "./classification";
 export * from "./recorder";
 export * from "./instrument";
 export * from "./trust-table";
+export * from "./release-keys";

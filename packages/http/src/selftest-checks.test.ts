@@ -60,7 +60,7 @@ describe("IT-OPS-010 the service checks", () => {
     expect([url.pathname, url.search]).toEqual(["/mcp/__selftest", "?shallow=1"]);
     const headers = seen.map((r) => r.headers.get("x-selftest-signature")!);
     expect(headers[0]).not.toEqual(headers[1]);
-    expect(await verifySelfTestSignature({ header: headers[0], key: "k", method: "GET", path: "/mcp/__selftest", nowMs: Date.now() })).toMatchObject({ ok: true });
+    expect(await verifySelfTestSignature({ header: headers[0], key: "k", method: "GET", host: "mcp.internal", path: "/mcp/__selftest", nowMs: Date.now() })).toMatchObject({ ok: true });
     expect(headers[0]).toMatch(/k=svc-/);
   });
 

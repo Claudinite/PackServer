@@ -39,7 +39,8 @@ export function parseSelfTestSignature(header: string | null | undefined): SelfT
 }
 
 const encoder = new TextEncoder();
-const signingInput = (method: string, path: string, t: number, n: string) => encoder.encode(`${method.toUpperCase()}|${path}|${t}|${n}`);
+const signingInput = (method: string, host: string, path: string, t: number, n: string, k: string) =>
+  encoder.encode(`${method.toUpperCase()}|${host.toLowerCase()}|${path}|${t}|${n}|${k}`);
 const hmacKey = (secret: string, usage: "sign" | "verify") => crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, [usage]);
 const toHex = (bytes: ArrayBuffer) => [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
 const fromHex = (hex: string) => Uint8Array.from(hex.match(/../g) ?? [], (h) => Number.parseInt(h, 16));
@@ -48,6 +49,8 @@ export interface SignRequest {
   key: string;
   keyId: string;
   method: string;
+  /** The URL host, so a signature cannot move between Workers or hosts that share a path. */
+  host: string;
   /** The URL path without its query: the query is not covered by the signature. */
   path: string;
   nowMs: number;
@@ -56,7 +59,7 @@ export interface SignRequest {
 
 export async function signSelfTest(request: SignRequest): Promise<string> {
   const t = Math.floor(request.nowMs / 1000);
-  const mac = await crypto.subtle.sign("HMAC", await hmacKey(request.key, "sign"), signingInput(request.method, request.path, t, request.nonce));
+  const mac = await crypto.subtle.sign("HMAC", await hmacKey(request.key, "sign"), signingInput(request.method, request.host, request.path, t, request.nonce, request.keyId));
   return `t=${t}, n=${request.nonce}, k=${request.keyId}, v1=${toHex(mac)}`;
 }
 
@@ -64,6 +67,7 @@ export interface VerifyRequest {
   header: string | null | undefined;
   key: string;
   method: string;
+  host: string;
   path: string;
   nowMs: number;
 }
@@ -74,6 +78,6 @@ export async function verifySelfTestSignature(request: VerifyRequest): Promise<S
   const parsed = parseSelfTestSignature(request.header);
   if (!parsed) return { ok: false, reason: "malformed" };
   if (Math.abs(request.nowMs - parsed.t * 1000) > SIGNATURE_WINDOW_S * 1000) return { ok: false, reason: "stale" };
-  const matches = await crypto.subtle.verify("HMAC", await hmacKey(request.key, "verify"), fromHex(parsed.v1), signingInput(request.method, request.path, parsed.t, parsed.n));
+  const matches = await crypto.subtle.verify("HMAC", await hmacKey(request.key, "verify"), fromHex(parsed.v1), signingInput(request.method, request.host, request.path, parsed.t, parsed.n, parsed.k));
   return matches ? { ok: true, keyId: parsed.k, nonce: parsed.n } : { ok: false, reason: "mismatch" };
 }

@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { isContractMigration, judgeSchemaHead, parseSelfTestSignature, schemaCheckName, signSelfTest, verifySelfTestSignature } from "./index";
 
 const NOW = 1_800_000_000_000;
-const base = { key: "k-secret", keyId: "1", method: "GET", path: "/__selftest", nowMs: NOW, nonce: "nonce-0001" };
+const base = { key: "k-secret", keyId: "1", method: "GET", host: "registry.test", path: "/__selftest", nowMs: NOW, nonce: "nonce-0001" };
 const verify = (header: string, over: Partial<Parameters<typeof verifySelfTestSignature>[0]> = {}) =>
-  verifySelfTestSignature({ header, key: base.key, method: base.method, path: base.path, nowMs: NOW, ...over });
+  verifySelfTestSignature({ header, key: base.key, method: base.method, host: base.host, path: base.path, nowMs: NOW, ...over });
 
 describe("X-Selftest-Signature (release.md candidate gating)", () => {
   it("round-trips and names the key id and nonce", async () => {
@@ -13,10 +13,12 @@ describe("X-Selftest-Signature (release.md candidate gating)", () => {
     expect(await verify(header)).toEqual({ ok: true, keyId: "1", nonce: "nonce-0001" });
   });
 
-  it("covers the method, the path and the nonce but not the query", async () => {
+  it("covers the method, host, path, nonce and key id but not the query", async () => {
     const header = await signSelfTest(base);
     expect(await verify(header, { method: "POST" })).toEqual({ ok: false, reason: "mismatch" });
     expect(await verify(header, { path: "/other" })).toEqual({ ok: false, reason: "mismatch" });
+    expect(await verify(header, { host: "other.test" })).toEqual({ ok: false, reason: "mismatch" });
+    expect(await verify(header.replace("k=1", "k=2"))).toEqual({ ok: false, reason: "mismatch" });
     expect(await verify(header.replace("nonce-0001", "nonce-0002"))).toEqual({ ok: false, reason: "mismatch" });
     expect(await verify(header, { key: "another" })).toEqual({ ok: false, reason: "mismatch" });
   });

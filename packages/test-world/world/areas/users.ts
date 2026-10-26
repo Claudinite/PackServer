@@ -593,7 +593,7 @@ export const createUsers = (driver: Driver, aliases: Aliases): UsersModule => {
         signInWith: (provider) => send("POST", `/api/auth/${encodeURIComponent(provider)}`, { "cf-turnstile-response": TURNSTILE_PASS_TOKEN }),
         async selfTest(o = {}) {
           const worker = (o.worker ?? "web") as WorkerName;
-          const ask = (path: string) => driver.http.request({ surface: worker, method: "GET", path, headers: { "cf-connecting-ip": client.ip } }).then(observe);
+          const ask = (path: string) => driver.http.request({ surface: worker, method: "GET", path, headers: { "cf-connecting-ip": client.ip }, unsigned: true }).then(observe);
           const [answered, unknown] = [await ask(SELFTEST_PATHS[worker]), await ask("/no/such/path")];
           return JSON.stringify(answered) === JSON.stringify(unknown) ? new NotFound() : answered;
         },

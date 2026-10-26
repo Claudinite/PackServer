@@ -97,6 +97,26 @@ describe("secrets.mjs", () => {
     expect(cf.calls).toEqual([]);
   });
 
+  it("copies the new self-test key to the GitHub environment when asked, without printing it", async () => {
+    const cf = fakeCloudflare();
+    const sent = [];
+    const r = await run(["--env", "staging", "--set-github-secret"], ENV, { fetch: cf.fetch, setGithubSecret: (x) => sent.push(x) });
+    expect(r.code).toBe(0);
+    const stored = cf.created.find((c) => c.name === "STAGING_SELFTEST_HMAC_KEY");
+    expect(sent).toEqual([{ environment: "staging", name: "SELFTEST_HMAC_KEY", value: stored.value }]);
+    expect(r.out + r.err).not.toContain(stored.value);
+    expect(r.out).toContain("set GitHub environment secret SELFTEST_HMAC_KEY in staging");
+  });
+
+  it("says so when the self-test key has no GitHub copy, and does not claim one for a key it cannot read back", async () => {
+    const without = await run(["--env", "production"], ENV, { fetch: fakeCloudflare().fetch });
+    expect(without.out).toContain("--set-github-secret");
+    const sent = [];
+    const kept = await run(["--env", "production", "--set-github-secret", "--skip-existing"], ENV, { fetch: fakeCloudflare({ existing: ["SELFTEST_HMAC_KEY"] }).fetch, setGithubSecret: (x) => sent.push(x) });
+    expect(sent).toEqual([]);
+    expect(kept.err).toContain("cannot be read back");
+  });
+
   it("dry-run lists names and needs neither env nor network", async () => {
     const cf = fakeCloudflare();
     const r = await run(["--env", "staging", "--dry-run"], {}, { fetch: cf.fetch });

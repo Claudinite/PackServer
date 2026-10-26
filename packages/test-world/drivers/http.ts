@@ -16,7 +16,8 @@ const OVERRIDE_HEADER = "Cloudflare-Workers-Version-Overrides";
  */
 export class HttpDriver implements Driver {
   readonly kind = "http" as const;
-  readonly capabilities: ReadonlySet<Capability> = new Set(["mcp"]);
+  /** The self-test answers a caller only with a credential the driver signs with. */
+  readonly capabilities: ReadonlySet<Capability>;
   readonly surfaces: readonly WorkerName[] = ["web"];
   readonly aliasSalt = crypto.randomUUID().slice(0, 8);
   private readonly versions: VersionObserver;
@@ -26,6 +27,7 @@ export class HttpDriver implements Driver {
     private readonly doFetch: Fetch = fetch,
   ) {
     this.versions = new VersionObserver(env.expectedReleases);
+    this.capabilities = new Set<Capability>(env.selfTest ? ["mcp", "selftest"] : ["mcp"]);
   }
 
   get probeTenant(): string {
@@ -41,10 +43,12 @@ export class HttpDriver implements Driver {
         headers["CF-Access-Client-Id"] = this.env.access.clientId;
         headers["CF-Access-Client-Secret"] = this.env.access.clientSecret;
       }
-      if (this.env.selfTest) {
+      if (this.env.selfTest && !req.unsigned) {
         headers[SELFTEST_SIGNATURE_HEADER] = await signSelfTest({
-          ...this.env.selfTest,
+          key: this.env.selfTest.key,
+          keyId: req.signAs ?? this.env.selfTest.keyId,
           method: req.method,
+          host: url.host,
           path: url.pathname,
           nowMs: Date.now(),
           nonce: crypto.randomUUID(),

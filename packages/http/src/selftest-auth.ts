@@ -1,5 +1,5 @@
 import { SELFTEST_SIGNATURE_HEADER, verifySelfTestSignature } from "@packserver/core/selftest";
-import { syncClock, type AccessIdentity, type Clock } from "@packserver/ports";
+import { CANDIDATE_MIRROR_KEY, PortError, syncClock, type AccessIdentity, type Clock, type KV } from "@packserver/ports";
 import { candidateGating, type CandidateGatingOptions } from "./candidate-gating";
 
 export const SELFTEST_RATE_LIMIT = 10;
@@ -57,6 +57,8 @@ export interface SelfTestAccessOptions {
   /** Signature freshness and nonce lifetime are wall time, which no test clock stands in for. */
   wallClock?: Clock;
   memory?: SelfTestMemory;
+  /** Named in the log line that explains an Access refusal. */
+  worker?: string;
 }
 
 export interface SelfTestPrincipal {
@@ -77,7 +79,10 @@ export function createSelfTestAuth(options: SelfTestAccessOptions) {
     if (!assertion || !options.access) return null;
     try {
       return { id: `access:${(await options.access.verify(assertion)).sub}` };
-    } catch {
+    } catch (error) {
+      if (error instanceof PortError && error.code === "not_wired") {
+        console.warn(JSON.stringify({ event: "selftest.access", worker: options.worker, refused: "no production Access verifier is wired" }));
+      }
       return null;
     }
   }
@@ -92,7 +97,8 @@ export function createSelfTestAuth(options: SelfTestAccessOptions) {
       return null;
     }
     const nowMs = wallClock.now();
-    const verdict = await verifySelfTestSignature({ header, key, method: request.method, path: new URL(request.url).pathname, nowMs });
+    const url = new URL(request.url);
+    const verdict = await verifySelfTestSignature({ header, key, method: request.method, host: url.host, path: url.pathname, nowMs });
     if (!verdict.ok || !memory.claimNonce(verdict.nonce, nowMs)) return null;
     return { id: `key:${verdict.keyId}` };
   }
@@ -123,25 +129,33 @@ export interface SelfTestRuntime {
   version: { versionId: string; releaseId: string };
   /** Absent where the Worker has no `SELFTEST_HMAC_KEY`; the signed path is then closed. */
   selfTestKey?: () => Promise<string>;
-  ports: { clock: Clock; access?: AccessIdentity };
+  ports: { clock: Clock; access?: AccessIdentity; kv?: Partial<Record<string, KV>> };
 }
 
 export interface SelfTestAccessExtras {
-  /** The release manifest, for a Worker that can read `ops`. */
+  /** Overrides where the candidate record is read from; by default the mirror in `TELEMETRY_KV`. */
   readManifest?: CandidateGatingOptions["readManifest"];
   memory?: SelfTestMemory;
   wallClock?: Clock;
 }
 
+function mirrorReader(kv: KV | undefined): CandidateGatingOptions["readManifest"] {
+  if (!kv) return undefined;
+  return async () => {
+    const raw = await kv.get(CANDIDATE_MIRROR_KEY);
+    return raw === null ? null : new TextEncoder().encode(raw);
+  };
+}
+
 /** Who may read the self-test, and whether a candidate in verification answers anyone else. */
 export function selfTestAccess(runtime: SelfTestRuntime, extras: SelfTestAccessExtras = {}): SelfTestAccess {
-  const auth = createSelfTestAuth({ key: runtime.selfTestKey, access: runtime.ports.access, clock: runtime.ports.clock, memory: extras.memory, wallClock: extras.wallClock });
+  const auth = createSelfTestAuth({ worker: runtime.worker, key: runtime.selfTestKey, access: runtime.ports.access, clock: runtime.ports.clock, memory: extras.memory, wallClock: extras.wallClock });
   const gated = candidateGating({
     worker: runtime.worker,
     versionId: runtime.version.versionId,
     releaseId: runtime.version.releaseId,
     clock: runtime.ports.clock,
-    readManifest: extras.readManifest,
+    readManifest: extras.readManifest ?? mirrorReader(runtime.ports.kv?.TELEMETRY_KV),
     onState: (state) => console.log(JSON.stringify({ event: "selftest.gating", worker: runtime.worker, state })),
   });
   return {

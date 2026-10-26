@@ -48,6 +48,7 @@ const STALLABLE: Readonly<Record<string, (driver: Driver) => void>> = {
 };
 
 const DRAIN_LIMIT = 12;
+const DRAIN_LIMIT_DEPLOYED = 120;
 const OK = 200;
 const RATE_LIMITED = 429;
 
@@ -64,7 +65,9 @@ export function createOperator(driver: Driver): Operator {
     reachable: () => (driver.kind === "inprocess" ? driver.surfaces : (Object.keys(SELFTEST_PATHS) as WorkerName[]).filter((w) => w !== "admin")),
     async drainSelfTestBudget(o = {}) {
       const principal = o.principal ?? `op-${crypto.randomUUID().slice(0, 8)}`;
-      for (let answered = 0; answered <= DRAIN_LIMIT; answered++) {
+      // Over http the budget is each isolate's own, so a refusal may take many calls to arrive.
+      const limit = driver.kind === "inprocess" ? DRAIN_LIMIT : DRAIN_LIMIT_DEPLOYED;
+      for (let answered = 0; answered <= limit; answered++) {
         try {
           await operator.selfTest({ ...o, principal, shallow: true });
         } catch (error) {
@@ -72,25 +75,27 @@ export function createOperator(driver: Driver): Operator {
           throw error;
         }
       }
-      return { answered: DRAIN_LIMIT + 1, refusal: undefined };
+      return { answered: limit + 1, refusal: undefined };
     },
     async selfTest(o = {}) {
       const worker = (o.worker ?? "web") as WorkerName;
       const path = SELFTEST_PATHS[worker];
       if (!path) throw new InfrastructureError(`no self-test path is known for the ${worker} Worker`);
+      const principal = o.principal ?? `op-${crypto.randomUUID().slice(0, 8)}`;
       const headers: Record<string, string> = {};
       // The http driver signs for itself with the key it was given; in-process the key is the one every Worker's env.test holds.
       if (driver.kind === "inprocess") {
         headers[SELFTEST_SIGNATURE_HEADER] = await signSelfTest({
           key: SELFTEST_TEST_KEY,
-          keyId: o.principal ?? `op-${crypto.randomUUID().slice(0, 8)}`,
+          keyId: principal,
           method: "GET",
+          host: `${worker}.internal`,
           path,
           nowMs: Date.now(),
           nonce: crypto.randomUUID(),
         });
       }
-      const res = await driver.http.request({ surface: worker, method: "GET", path: o.shallow ? `${path}?shallow=1` : path, headers });
+      const res = await driver.http.request({ surface: worker, method: "GET", path: o.shallow ? `${path}?shallow=1` : path, headers, signAs: principal });
       if (res.status === RATE_LIMITED) throw new Refusal("rate-limited", { retryAfterS: Number(res.headers.get("retry-after")) });
       if (res.status !== OK) throw new InfrastructureError(`the self-test did not accept the probe credential (it answered ${res.status})`);
       const wire = res.json() as Wire;

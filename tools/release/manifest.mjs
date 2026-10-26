@@ -65,7 +65,16 @@ export const readManifest = (store, id) => {
   if (!raw) throw new Error(`no manifest for release ${id}`);
   return JSON.parse(raw.toString("utf8"));
 };
-export const writeManifest = (store, manifest) => store.put(manifestKey(manifest.release_id), `${JSON.stringify(manifest, null, 2)}\n`);
+/** The narrowest record a Worker needs to know whether it is the candidate: no digests, no stages. */
+export const candidateRecord = (manifest) => ({
+  release_id: manifest.release_id,
+  state: manifest.state,
+  workers: Object.fromEntries(Object.entries(manifest.workers).map(([name, w]) => [name, { version_id: w.version_id, changed: w.changed === true }])),
+});
+export function writeManifest(store, manifest) {
+  store.put(manifestKey(manifest.release_id), `${JSON.stringify(manifest, null, 2)}\n`);
+  store.mirror?.(`${JSON.stringify(candidateRecord(manifest))}\n`);
+}
 export const liveRecord = (store) => {
   const raw = store.get(LIVE_POINTER);
   return raw ? JSON.parse(raw.toString("utf8")) : { release_id: null };

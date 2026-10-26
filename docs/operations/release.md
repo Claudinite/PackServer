@@ -80,8 +80,13 @@ Common to both modes, on merge to `main`:
 **Candidate gating.** While a version's own id is the manifest's candidate and the release state is
 `verifying`, the version answers only requests that carry a valid `X-Selftest-Signature:
 t=<unix>, n=<nonce>, k=<key id>, v1=<hex>` where `v1 = HMAC-SHA256(SELFTEST_HMAC_KEY,
-method|path|t|n)`, `t` within ±5 minutes and `n` unseen; everything else gets the same 404 the public
-host gives an unknown path. The check fails open when the manifest read fails, so a verified
+METHOD|host|path|t|n|k)`, `t` within ±5 minutes and `n` unseen; everything else gets the same 404 the public
+host gives an unknown path. The candidate record is a mirror of the manifest (release id, state, and
+each Worker's version id and `changed` flag) that the release tooling writes to production's
+`TELEMETRY_KV` under `selftest/candidate` whenever it writes the manifest; every Worker holds that
+namespace, so none needs a read on `ops`, and each isolate reads it at most once in ten seconds.
+Visitor-style (unsigned) requests are what the gate refuses; the probe-safe run therefore needs
+`SELFTEST_HMAC_KEY`, and verification skips the self-test with a logged reason when it is absent. The check fails open when the read fails, so a verified
 version that becomes the incumbent can never lock itself out. The prober and the controller sign
 their verification requests; the Access boundary of the canary host is the first layer and this the
 second.

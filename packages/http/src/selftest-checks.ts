@@ -56,10 +56,11 @@ export function serviceCheck(input: ServiceCheckInput): SelfTestCheck {
     name: `service.${input.callee}`,
     run: async () => {
       if (!input.key) return false;
+      const host = `${input.callee}.internal`;
       const path = `/${input.callee}/__selftest`;
       const nonce = input.uuid();
-      const signature = await signSelfTest({ key: await input.key(), keyId: `svc-${nonce.slice(0, 8)}`, method: "GET", path, nowMs: Date.now(), nonce });
-      const response = await input.binding.fetch(new Request(`https://${input.callee}.internal${path}?shallow=1`, { headers: { [SELFTEST_SIGNATURE_HEADER]: signature } }));
+      const signature = await signSelfTest({ key: await input.key(), keyId: `svc-${nonce.slice(0, 8)}`, method: "GET", host, path, nowMs: Date.now(), nonce });
+      const response = await input.binding.fetch(new Request(`https://${host}${path}?shallow=1`, { headers: { [SELFTEST_SIGNATURE_HEADER]: signature } }));
       return response.status === 200 && ((await response.json()) as { ok?: unknown }).ok === true;
     },
   };
