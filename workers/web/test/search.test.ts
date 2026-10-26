@@ -1,3 +1,4 @@
+import { oidcConfig } from "@packserver/core/publishing";
 import { createFakePorts } from "@packserver/ports/fakes";
 import { SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
 import { describe, expect, it } from "vitest";
@@ -19,7 +20,7 @@ function app(answer: (url: string, init?: RequestInit) => Response | Promise<Res
   } as unknown as Fetcher;
   const runtime: WebRuntime = {
     worker: "web", environment: "test", version: { versionId: SHELL_VERSION, releaseId: SHELL_RELEASE }, missingBindings: [], missingSecrets: [],
-    ports: { ...createFakePorts({ worker: "web" }), githubLogin: { authorizeUrl: async () => "", profile: async () => { throw new Error("unused"); } } }, services: { mcp, publish: {} as Fetcher }, config: { cdnOrigin: "https://packs.test.invalid", siteOrigins: ["https://registry.test.invalid"] },
+    ports: { ...createFakePorts({ worker: "web" }), githubLogin: { authorizeUrl: async () => "", profile: async () => { throw new Error("unused"); } } }, services: { mcp, publish: {} as Fetcher }, config: { oidc: oidcConfig({ ENVIRONMENT: "production" }), fetch, cdnOrigin: "https://packs.test.invalid", siteOrigins: ["https://registry.test.invalid"] },
   };
   return { app: createApp(runtime), seen };
 }

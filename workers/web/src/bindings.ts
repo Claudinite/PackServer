@@ -1,4 +1,5 @@
 import { githubLogin, type GitHubLogin } from "@packserver/core/identity";
+import { oidcConfig, type OidcConfig } from "@packserver/core/publishing";
 import { analyticsStats, createIsolateTelemetry } from "@packserver/http";
 import {
   clockFrom, cryptoRng, d1Port, dohDns, kvPort, mailPort, queuePort, r2ReadPort, rateLimitPort, readSecret, systemClock, turnstilePort, wellKnownPort, workerRuntime,
@@ -38,6 +39,9 @@ export interface Env {
   PRINCIPAL_HASH_KEY: string | SecretsStoreSecret;
   TELEMETRY_KV: KVNamespace;
   CF_VERSION_METADATA: WorkerVersionMetadata;
+  /** Read only under `env.test`, where the issuer is the test world's. */
+  OIDC_ISSUER?: string;
+  OIDC_JWKS_URL?: string;
   /** The fake clock Worker, bound only under `env.test`. */
   CLOCK?: Fetcher;
 }
@@ -51,7 +55,14 @@ export interface WebServices {
   mcp: Fetcher;
   publish: Fetcher;
 }
-export type WebRuntime = WorkerRuntime<WebPorts, WebServices> & { config: { cdnOrigin: string | undefined; siteOrigins: readonly [string, ...string[]] } };
+export interface WebConfig {
+  cdnOrigin: string | undefined;
+  siteOrigins: readonly [string, ...string[]];
+  /** Whose Actions tokens private reads accept. */
+  oidc: OidcConfig;
+  fetch: typeof fetch;
+}
+export type WebRuntime = WorkerRuntime<WebPorts, WebServices> & { config: WebConfig };
 
 /** Signals and tickets leave as log lines, the same channel every Worker's other events take. */
 const logTelemetry = {
@@ -95,7 +106,7 @@ export function createRuntime(env: Env): WebRuntime {
     },
     { mcp: env.MCP, publish: env.PUBLISH },
   );
-  return { ...base, config: { cdnOrigin: env.CDN_ORIGIN, siteOrigins: siteOriginsOf(env.SITE_ORIGINS) } };
+  return { ...base, config: { cdnOrigin: env.CDN_ORIGIN, siteOrigins: siteOriginsOf(env.SITE_ORIGINS), oidc: oidcConfig(env), fetch: (input, init) => fetch(input, init) } };
 }
 
 /** The credentials come from the Secrets Store, so they are read on first use rather than when the Worker starts. */
