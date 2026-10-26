@@ -42,8 +42,41 @@ export interface FormFaults {
   origin?: "foreign";
   idempotencyKey?: string;
 }
+/** What a passkey ceremony or a recovery code left for the one request it was made for. */
 export interface Assertion {
   readonly action: string;
+  readonly target: string;
+  readonly method: "passkey" | "recovery";
+  /** The secret the one sensitive request carries in `x-assertion`. */
+  readonly token: string;
+  /** The session the assertion was made on, which the site replaced; the request must use this one. */
+  readonly session: Session;
+  /** The id that session had before the site replaced it. */
+  readonly madeOn: string;
+  /** Set when a recovery code made the assertion: the warning and the offer the site gave. */
+  readonly notice?: { readonly warning: string; readonly remaining: number; readonly offer: string };
+}
+/** A passkey the person enrolled, by the site's id and the authenticator's. */
+export interface Passkey {
+  readonly id: string;
+  readonly credentialId: string;
+}
+export interface PasskeyInfo {
+  readonly id: string;
+  readonly label: string | null;
+  readonly lastUsedAt: string | null;
+  /** When the passkey stops being on hold for publish approvals and the like; absent when it is not. */
+  readonly heldUntil: string | null;
+}
+export interface RecoveryInfo {
+  readonly hasCodes: boolean;
+  readonly saved: boolean;
+  readonly remaining: number;
+}
+/** How an assertion is made: with a particular passkey, or with a recovery code instead. */
+export interface AssertionChoice {
+  passkey?: Passkey;
+  recoveryCode?: string;
 }
 export type SensitiveAction = string | Record<string, unknown>;
 export interface Sensitive {
@@ -104,6 +137,10 @@ export interface UserOpts {
   /** Whether GitHub vouches for the address; default true. */
   emailVerified?: boolean;
   githubOrgs?: Array<{ id: number; login: string; role: "admin" | "member" }>;
+  /** Further verified addresses GitHub reports for the person. */
+  moreEmails?: string[];
+  /** Makes the person a member of a scope created before MFA was required, as the seed does. */
+  seedScope?: string;
 }
 export interface PublisherOpts {
   credits?: number;
@@ -120,7 +157,23 @@ export interface User {
   as(session: Session): User;
   signIn(opts?: { via?: "github" | "passkey" | "email"; next?: string }): Promise<Session>;
   signOut(o?: FormFaults): Promise<void>;
-  assertionFor(action: SensitiveAction): Promise<Assertion>;
+  assertionFor(action: SensitiveAction, how?: AssertionChoice): Promise<Assertion>;
+  /** Attempts an assertion that does not verify; resolves once the site has refused it, and rejects if it did not. */
+  failAssertion(action: SensitiveAction, how?: { recoveryCode?: string }): Promise<void>;
+  mfa: {
+    /** The first passkey needs nothing; later ones need an assertion for adding a factor, made for the person by default. */
+    enrol(o?: Sensitive & { label?: string; faults?: FormFaults }): Promise<Passkey & { recoveryCodes: string[] }>;
+    passkeys(): Promise<PasskeyInfo[]>;
+    /** The recovery codes the person was last shown, as the person's own note of them. */
+    codes(): string[];
+    remove(passkey: Passkey, o?: Sensitive): Promise<void>;
+    recovery(): Promise<RecoveryInfo>;
+    confirmCodesSaved(): Promise<void>;
+    /** Replaces the set and returns the new codes; the stand-in for a sensitive verb whose target is the person. */
+    regenerateCodes(o?: Sensitive): Promise<string[]>;
+    /** Everything the account and security APIs say, as one text, to look for what must never appear there. */
+    pages(): Promise<string>;
+  };
   /** Sends the handle as given: a scenario that tests a reserved or taken name must not have it aliased. */
   chooseHandle(handle: string, o?: FormFaults): Promise<void>;
   sessions: { list(): Promise<SessionInfo[]> };

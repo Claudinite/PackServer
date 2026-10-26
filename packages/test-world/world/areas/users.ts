@@ -1,3 +1,4 @@
+import { VirtualAuthenticator } from "@packserver/core/identity/virtual-authenticator";
 import { TURNSTILE_PASS_TOKEN } from "@packserver/ports/fakes";
 import type { ApiResponse, Driver } from "../../drivers/driver";
 import type { FakeGitHubAccount } from "../../fakes/github-login";
@@ -7,7 +8,8 @@ import { createMail } from "../mail";
 import { createUserTokens, type UserTokens } from "../tokens";
 import { Refusal, type Observation, type RefusalReason } from "../outcomes";
 import type {
-  AccountInfo, Assertion, FormFaults, Notification, Publisher, PublisherOpts, Session, SessionCookie, SessionInfo, User, UserOpts, Visitor,
+  AccountInfo, Assertion, AssertionChoice, FormFaults, Notification, Passkey, PasskeyInfo, Publisher, PublisherOpts, RecoveryInfo, Sensitive,
+  SensitiveAction, Session, SessionCookie, SessionInfo, User, UserOpts, Visitor,
 } from "../types";
 
 /** People: members, publishers, anonymous visitors and the personas that name states requirements use. */
@@ -44,6 +46,12 @@ interface Client {
 class Account {
   handle: string | null = null;
   current: Session | undefined;
+  /** The person's authenticator, which holds every passkey they enrolled. */
+  readonly device = new VirtualAuthenticator();
+  /** The recovery codes last shown. */
+  codes: string[] = [];
+  /** The assertion most recently spent, for a scenario that presents it again. */
+  spent: Assertion | undefined;
   constructor(
     readonly github: FakeGitHubAccount,
     readonly email: string,
@@ -145,6 +153,8 @@ export interface CallRequest {
 /** What an area module needs to act as a person it did not create. */
 export interface Caller {
   call(req: CallRequest): Promise<ApiResponse>;
+  /** The headers a sensitive request carries for the action, as `assertion` asks; the person enrols a first passkey when there is none. */
+  assertionHeaders(action: string, o?: Sensitive, target?: string): Promise<Record<string, string>>;
 }
 
 export function callerOf(user: User): Caller {
@@ -183,6 +193,7 @@ class Person implements User {
       send: (req) => this.send(req),
       formHeaders: (session) => this.formHeaders(session),
       session: () => this.view,
+      assertionHeaders: (action, o, target) => this.assertionHeaders(action, o, target),
       refused: refusal,
       aliases: ctx.aliases,
     });
@@ -234,7 +245,8 @@ class Person implements User {
   }
 
   async signIn(opts: { via?: "github" | "passkey" | "email"; next?: string } = {}): Promise<Session> {
-    if (opts.via && opts.via !== "github") throw new NotImplemented(`users.signIn via ${opts.via}`);
+    if (opts.via === "email") throw new NotImplemented(`users.signIn via ${opts.via}`);
+    if (opts.via === "passkey") return this.signInWithPasskey(opts.next);
     const held = this.view;
     const start = await this.send({
       method: "POST",
@@ -263,6 +275,30 @@ class Person implements User {
     return session;
   }
 
+  /** A person with no passkey yet signs up with one; one who has a passkey signs in with it. */
+  private async signInWithPasskey(next?: string): Promise<Session> {
+    const held = this.view;
+    const human = { "cf-turnstile-response": this.client.humanCheck === "pass" ? TURNSTILE_PASS_TOKEN : "not-a-passing-token" };
+    const signingUp = this.who.device.ids().length === 0;
+    const phase = signingUp ? "signup" : "signin";
+    const start = await this.send({ method: "POST", path: `/api/auth/passkey/${phase}/options`, session: held, json: {}, headers: human });
+    if (start.status !== 200) throw refusal(start, "signIn");
+    const options = (start.json() as { options: Parameters<VirtualAuthenticator["create"]>[0] & Parameters<VirtualAuthenticator["get"]>[0] }).options;
+    const response = signingUp ? await this.who.device.create(options, ORIGIN) : await this.who.device.get(options, ORIGIN);
+    const finish = await this.send({
+      method: "POST", path: `/api/auth/passkey/${phase}/verify`, session: held, json: { response, ...(next ? { next } : {}) },
+    });
+    if (finish.status !== 200) throw refusal(finish, "signIn");
+    const line = cookieValue(finish, SESSION_COOKIE);
+    if (!line) throw new InfrastructureError("signIn: the site finished the passkey ceremony without setting a session cookie");
+    const done = finish.json() as { landed_on: string; recovery_codes?: string[] };
+    if (done.recovery_codes) this.who.codes = done.recovery_codes;
+    const { value, attributes } = parseCookie(line);
+    const session: Session = { id: value, landedOn: done.landed_on, cookie: attributes };
+    this.who.current = session;
+    return session;
+  }
+
   async signOut(faults?: FormFaults): Promise<void> {
     const session = this.view;
     const res = await this.send({ method: "POST", path: "/api/auth/signout", session, headers: await this.formHeaders(session, faults) });
@@ -275,6 +311,19 @@ class Person implements User {
     const res = await this.send({ method: "POST", path: "/api/auth/handle", session, json: { handle }, headers: await this.formHeaders(session, faults) });
     if (res.status !== 200) throw refusal(res, "chooseHandle");
     this.who.handle = handle;
+  }
+
+  /** A scope that predates the MFA rule, which makes the account a publisher without any gate having applied. */
+  async seedScopeMembership(scope: string, driver: Driver): Promise<void> {
+    if (!driver.storage) throw new InfrastructureError(`the ${driver.kind} driver cannot seed a scope: it has no storage`);
+    const { db } = await driver.storage();
+    const userId = await this.ownId();
+    const at = new Date(await this.ctx.driver.fakes!.clock.call<number>("now")).toISOString();
+    const id = crypto.randomUUID();
+    await db.batch([
+      db.prepare("insert into scopes (id, name, kind, state, created_at) values (?, ?, 'user', 'active', ?)").bind(id, this.ctx.aliases.alias(scope), at),
+      db.prepare("insert into scope_members (scope_id, user_id, role, created_at) values (?, ?, 'owner', ?)").bind(id, userId, at),
+    ]);
   }
 
   /** Used by `users.create`, which names the person by the scenario's word and the system by its alias. */
@@ -290,9 +339,172 @@ class Person implements User {
     return this.send({ ...rest, session, headers: { ...(await this.formHeaders(session, faults)), ...headers } });
   }
 
-  assertionFor(): Promise<Assertion> {
-    throw new NotImplemented("users.assertionFor");
+  async assertionHeaders(action: string, o: Sensitive = {}, target = ""): Promise<Record<string, string>> {
+    if (o.assertion !== "none" && (await this.mfa.passkeys()).length === 0) await this.mfa.enrol();
+    return (await this.presented({ action, target }, o)).headers;
   }
+
+  /** The action and target an assertion is made for; a verb's own name goes in `action`. */
+  private subject(action: SensitiveAction): { action: string; target: string } {
+    if (typeof action === "string") return { action, target: "" };
+    if (typeof action.action !== "string") throw new InfrastructureError("assertionFor: name the action as a string or { action, target }");
+    return { action: action.action, target: typeof action.target === "string" ? action.target : "" };
+  }
+
+  private async ownId(session?: Session): Promise<string> {
+    const res = await this.send({ method: "GET", path: "/api/auth/session", session: session ?? this.view });
+    if (res.status !== 200) throw refusal(res, "account");
+    return (res.json() as { user: { id: string } }).user.id;
+  }
+
+  /** Follows a rotation: the session the site sent back replaces the one this view acted through. */
+  private adopt(res: ApiResponse, from: Session | undefined): Session | undefined {
+    const line = cookieValue(res, SESSION_COOKIE);
+    if (!line) return undefined;
+    const { value, attributes } = parseCookie(line);
+    const next: Session = { id: value, cookie: attributes };
+    if (this.who.current?.id === from?.id) this.who.current = next;
+    return next;
+  }
+
+  async assertionFor(action: SensitiveAction, how: AssertionChoice = {}): Promise<Assertion> {
+    const made = await this.attemptAssertion(this.subject(action), how);
+    if (made.res.status !== 200) throw refusal(made.res, "assertionFor");
+    return made.assertion!;
+  }
+
+  private async attemptAssertion(
+    asked: { action: string; target: string },
+    how: AssertionChoice & { badSignature?: boolean; wrongCode?: string },
+  ): Promise<{ res: ApiResponse; assertion?: Assertion }> {
+    const session = this.view;
+    const headers = await this.formHeaders(session);
+    const body: Record<string, unknown> = { ...asked };
+    if (how.recoveryCode !== undefined || how.wrongCode !== undefined) {
+      body.recovery_code = how.wrongCode ?? how.recoveryCode;
+    } else {
+      const opts = await this.send({ method: "POST", path: "/api/auth/assert/options", session, json: asked, headers });
+      if (opts.status !== 200) return { res: opts };
+      const options = (opts.json() as { options: Parameters<VirtualAuthenticator["get"]>[0] }).options;
+      body.response = await this.who.device.get(options, ORIGIN, {
+        ...(how.passkey ? { credentialId: how.passkey.credentialId } : {}),
+        ...(how.badSignature ? { badSignature: true } : {}),
+      });
+    }
+    const res = await this.send({ method: "POST", path: "/api/auth/assert", session, json: body, headers: await this.formHeaders(session) });
+    if (res.status !== 200) return { res };
+    const done = res.json() as {
+      assertion: string; method: "passkey" | "recovery"; warning?: string; recovery_codes_remaining?: number; offer?: string;
+    };
+    const next = this.adopt(res, session);
+    const assertion: Assertion = {
+      ...asked,
+      method: done.method,
+      token: done.assertion,
+      session: next ?? session!,
+      madeOn: session?.id ?? "",
+      ...(done.warning ? { notice: { warning: done.warning, remaining: done.recovery_codes_remaining ?? 0, offer: done.offer ?? "" } } : {}),
+    };
+    return { res, assertion };
+  }
+
+  async failAssertion(action: SensitiveAction, how: { recoveryCode?: string } = {}): Promise<void> {
+    const made = await this.attemptAssertion(this.subject(action), how.recoveryCode === undefined ? { badSignature: true } : { wrongCode: how.recoveryCode });
+    if (made.res.status === 200) throw new InfrastructureError("failAssertion: the site accepted an assertion that should not verify");
+    const refused = refusal(made.res, "failAssertion");
+    if (refused.reason !== "step-up" && refused.reason !== "rate-limited") throw refused;
+  }
+
+  /**
+   * What a sensitive request carries: the verb's own assertion by default, none, or the one spent last.
+   * The returned session is the one the request must act through.
+   */
+  private async presented(asked: { action: string; target: string }, o: Sensitive): Promise<{ headers: Record<string, string>; session: Session | undefined }> {
+    const choice = o.assertion;
+    if (choice === "none") return { headers: {}, session: this.view };
+    const assertion = choice === "replay" ? this.who.spent : choice ?? (await this.assertionFor(asked));
+    if (!assertion) throw new InfrastructureError("a replay needs an assertion spent earlier");
+    this.who.spent = assertion;
+    const here = this.view;
+    // An assertion works through the session it was made on, however that session has been replaced since; another session just carries it.
+    const own = here?.id === assertion.madeOn || here?.id === assertion.session.id;
+    return { headers: { "x-assertion": assertion.token }, session: own ? assertion.session : here };
+  }
+
+  private async sensitivePost(path: string, asked: { action: string; target: string }, o: Sensitive, json?: unknown): Promise<ApiResponse> {
+    const { headers, session } = await this.presented(asked, o);
+    const res = await this.send({ method: "POST", path, session, json: json ?? {}, headers: { ...(await this.formHeaders(session)), ...headers } });
+    this.adopt(res, session);
+    return res;
+  }
+
+  readonly mfa = {
+    enrol: async (o: Sensitive & { label?: string; faults?: FormFaults } = {}): Promise<Passkey & { recoveryCodes: string[] }> => {
+      const userId = await this.ownId();
+      const first = (await this.mfa.passkeys()).length === 0;
+      // The assertion rotates the session, and the ceremony's challenge belongs to the session that finishes it.
+      const { headers, session: acting } = first ? { headers: {}, session: this.view } : await this.presented({ action: "factor.add", target: userId }, o);
+      const start = await this.send({ method: "POST", path: "/api/auth/passkey/enrol/options", session: acting, json: {}, headers: await this.formHeaders(acting, o.faults) });
+      if (start.status !== 200) throw refusal(start, "mfa.enrol");
+      const options = (start.json() as { options: Parameters<VirtualAuthenticator["create"]>[0] }).options;
+      const response = await this.who.device.create(options, ORIGIN);
+      const res = await this.send({
+        method: "POST",
+        path: "/api/auth/passkey/enrol/verify",
+        session: acting,
+        json: { response, ...(o.label ? { label: o.label } : {}) },
+        headers: { ...(await this.formHeaders(acting, o.faults)), ...headers },
+      });
+      this.adopt(res, acting);
+      if (res.status !== 200) throw refusal(res, "mfa.enrol");
+      const done = res.json() as { factor: { id: string }; recovery_codes?: string[] };
+      if (done.recovery_codes) this.who.codes = done.recovery_codes;
+      return { id: done.factor.id, credentialId: response.id, recoveryCodes: done.recovery_codes ?? [] };
+    },
+
+    passkeys: async (): Promise<PasskeyInfo[]> => {
+      const res = await this.send({ method: "GET", path: "/api/auth/factors", session: this.view });
+      if (res.status !== 200) throw refusal(res, "mfa.passkeys");
+      const body = res.json() as { passkeys: Array<{ id: string; label: string | null; last_used_at: string | null; hold_until: string | null }> };
+      return body.passkeys.map((k) => ({ id: k.id, label: k.label, lastUsedAt: k.last_used_at, heldUntil: k.hold_until }));
+    },
+
+    codes: (): string[] => [...this.who.codes],
+
+    remove: async (passkey: Passkey, o: Sensitive = {}): Promise<void> => {
+      const res = await this.sensitivePost(`/api/auth/passkeys/${encodeURIComponent(passkey.id)}/remove`, { action: "factor.remove", target: passkey.id }, o);
+      if (res.status !== 200) throw refusal(res, "mfa.remove");
+    },
+
+    recovery: async (): Promise<RecoveryInfo> => {
+      const res = await this.send({ method: "GET", path: "/api/auth/recovery", session: this.view });
+      if (res.status !== 200) throw refusal(res, "mfa.recovery");
+      const body = res.json() as { has_codes: boolean; saved: boolean; remaining: number };
+      return { hasCodes: body.has_codes, saved: body.saved, remaining: body.remaining };
+    },
+
+    confirmCodesSaved: async (): Promise<void> => {
+      const session = this.view;
+      const res = await this.send({ method: "POST", path: "/api/auth/recovery/saved", session, json: {}, headers: await this.formHeaders(session) });
+      if (res.status !== 200) throw refusal(res, "mfa.confirmCodesSaved");
+    },
+
+    regenerateCodes: async (o: Sensitive = {}): Promise<string[]> => {
+      const userId = await this.ownId();
+      const res = await this.sensitivePost("/api/auth/recovery/regenerate", { action: "recovery.regenerate", target: userId }, o);
+      if (res.status !== 200) throw refusal(res, "mfa.regenerateCodes");
+      this.who.codes = (res.json() as { recovery_codes: string[] }).recovery_codes;
+      return this.who.codes;
+    },
+
+    pages: async (): Promise<string> => {
+      const texts: string[] = [];
+      for (const path of ["/api/auth/session", "/api/auth/sessions", "/api/auth/factors", "/api/auth/recovery"]) {
+        texts.push((await this.send({ method: "GET", path, session: this.view })).text);
+      }
+      return texts.join("\n");
+    },
+  };
   star(): Promise<void> {
     throw new NotImplemented("users.star");
   }
@@ -308,8 +520,8 @@ export const createUsers = (driver: Driver, aliases: Aliases): UsersModule => {
   let people = 0;
 
   const newcomer = (opts: UserOpts = {}, name = opts.handle): { person: Person; name: string } => {
-    if (opts.via && opts.via !== "github") throw new NotImplemented(`users.create via ${opts.via}`);
-    if (opts.mfa) throw new NotImplemented("users.create with mfa");
+    if (opts.via === "email") throw new NotImplemented(`users.create via ${opts.via}`);
+    if (opts.mfa === "totp") throw new NotImplemented("users.create with totp");
     if (opts.ageDays !== undefined) throw new NotImplemented("users.create with ageDays");
     const fakes = driver.fakes;
     if (!fakes) throw new InfrastructureError(`the ${driver.kind} driver has no fake GitHub: an account cannot be made on a deployment`);
@@ -320,7 +532,10 @@ export const createUsers = (driver: Driver, aliases: Aliases): UsersModule => {
       id: 1_000_000 + (hash(system) % 900_000_000),
       login: system,
       name: label,
-      emails: [{ email, verified: opts.emailVerified ?? true, primary: true }],
+      emails: [
+        { email, verified: opts.emailVerified ?? true, primary: true },
+        ...(opts.moreEmails ?? []).map((extra) => ({ email: extra, verified: true, primary: false })),
+      ],
       orgs: opts.githubOrgs ?? [],
     });
     const who = new Account(github, email);
@@ -334,8 +549,10 @@ export const createUsers = (driver: Driver, aliases: Aliases): UsersModule => {
       newcomer: (opts) => newcomer(opts).person,
       async create(opts = {}) {
         const { person, name } = newcomer(opts);
-        await person.signIn();
+        await person.signIn(opts.via === "passkey" ? { via: "passkey" } : {});
         await person.claimHandle(name, aliases.alias(name));
+        if (opts.mfa === "passkey" && opts.via !== "passkey") await person.mfa.enrol();
+        if (opts.seedScope) await person.seedScopeMembership(opts.seedScope, driver);
         await person.signOut();
         return person;
       },

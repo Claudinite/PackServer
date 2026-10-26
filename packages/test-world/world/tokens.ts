@@ -4,7 +4,7 @@ import type { ApiResponse, Driver } from "../drivers/driver";
 import type { Aliases } from "./alias";
 import { InfrastructureError } from "./errors";
 import { NotFound, Refusal, type Observation, type RefusalReason } from "./outcomes";
-import type { Assertion, Pack, Session, Sensitive, User } from "./types";
+import type { Pack, Session, Sensitive, User } from "./types";
 
 type Statement = { all(): Promise<{ results?: Array<Record<string, unknown>>; meta?: { changes?: number; last_row_id?: number } }> };
 
@@ -87,6 +87,7 @@ export interface TokenActor {
   send(req: { method: string; path: string; session?: Session | undefined; json?: unknown; headers?: Record<string, string> }): Promise<ApiResponse>;
   formHeaders(session: Session | undefined): Promise<Record<string, string>>;
   session(): Session | undefined;
+  assertionHeaders(action: string, o?: Sensitive, target?: string): Promise<Record<string, string>>;
   refused(res: ApiResponse, what: string): Refusal;
   aliases: Aliases;
 }
@@ -99,18 +100,12 @@ const observe = (res: ApiResponse): Observation => ({
   body: res.text,
 });
 
-function assertionHeader(assertion: Sensitive["assertion"]): Record<string, string> {
-  if (assertion === "none") return {};
-  if (assertion === "replay") return { "x-assertion-stub": "replayed" };
-  const action = (assertion as Assertion | undefined)?.action ?? MINT_ACTION;
-  return { "x-assertion-stub": action };
-}
-
 export function createUserTokens(actor: TokenActor): UserTokens {
   return {
     async mint(opts) {
-      const session = actor.session();
       const target = opts.read ? { pack: opts.read.systemName } : opts.readScope ? { scope: `@${actor.aliases.alias(opts.readScope)}` } : {};
+      const assertion = await actor.assertionHeaders(MINT_ACTION, opts, target.pack ?? target.scope ?? "");
+      const session = actor.session();
       const res = await actor.send({
         method: "POST",
         path: "/api/tokens",
@@ -122,7 +117,7 @@ export function createUserTokens(actor: TokenActor): UserTokens {
           ...(opts.cidr === undefined ? {} : { cidr: opts.cidr }),
           ...(opts.label === undefined ? {} : { label: opts.label }),
         },
-        headers: { ...(await actor.formHeaders(session)), ...assertionHeader(opts.assertion) },
+        headers: { ...(await actor.formHeaders(session)), ...assertion },
       });
       if (res.status === 404) return Promise.reject(new Refusal("forbidden", { message: "not found" }));
       if (res.status !== 201) throw actor.refused(res, "tokens.mint");

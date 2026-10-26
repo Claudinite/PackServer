@@ -19,7 +19,7 @@ routes.get("/scopes/:scope/moved/:pack", async (c) => {
 });
 
 /** Offers a pack to another scope; nothing moves until that scope's owner accepts (REQ-SCOPE-014). */
-routes.post("/scopes/:scope/packs/:pack/transfer", sensitive("pack.transfer"), async (c) => {
+routes.post("/scopes/:scope/packs/:pack/transfer", sensitive("pack.transfer", (c) => `${c.req.param("scope")}/${c.req.param("pack")}`), async (c) => {
   const scopeName = c.req.param("scope");
   const packName = c.req.param("pack");
   const ports = scopePorts(c);
@@ -45,7 +45,7 @@ routes.post("/scopes/:scope/packs/:pack/transfer", sensitive("pack.transfer"), a
 /** Offers waiting for this person to accept as an owner of the receiving scope. */
 routes.get("/transfers", requireSession(), async (c) => ok(c, { transfers: await incomingFor(scopePorts(c), c.get("session")!.record.user_id) }));
 
-routes.post("/transfers/:id/accept", sensitive("pack.transfer.accept"), async (c) => {
+routes.post("/transfers/:id/accept", sensitive("pack.transfer.accept", (c) => c.req.param("id") ?? ""), async (c) => {
   const result = await acceptTransfer(scopePorts(c), c.get("session")!.record.user_id, c.req.param("id"));
   if (result.ok) return ok(c, { transfer: result.transfer });
   if (result.reason === "not_found") return notFound();

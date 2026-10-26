@@ -1,7 +1,7 @@
 import { authorize, type Decision, type Need, type ScopePorts } from "@packserver/core/scopes";
 import { idempotency, refusal, requireAssertion, requireSession, sessionCaller, sessionCsrf } from "@packserver/http";
 import type { Context, MiddlewareHandler } from "hono";
-import { sessionPorts, siteOriginOf, type WebEnv } from "../../context";
+import { mfaPorts, siteOriginOf, type WebEnv } from "../../context";
 
 const NO_STORE = { "cache-control": "no-store" };
 
@@ -11,12 +11,16 @@ const chain =
     // A step's Response travels up as its return value, which only the outermost step hands to Hono.
     steps.reduceRight<() => Promise<Response | void>>((following, step) => async () => step(c, following as () => Promise<void>), next)() as Promise<Response | void>;
 
-/** A form or JSON post that acts for the signed-in person, with the per-action assertion the action claims. */
-export const sensitive = (action: string): MiddlewareHandler<WebEnv> =>
+/**
+ * A form or JSON post that acts for the signed-in person, with the per-action assertion the action
+ * claims. `target` names the object the request acts on, so an assertion made for one object works
+ * on no other.
+ */
+export const sensitive = (action: string, target: (c: Context<WebEnv>) => string | Promise<string>): MiddlewareHandler<WebEnv> =>
   chain(
   requireSession<WebEnv>(),
   sessionCsrf<WebEnv>(siteOriginOf),
-  requireAssertion<WebEnv>(action, { ports: (c) => sessionPorts(c.get("runtime")), environment: (c) => c.get("runtime").environment }),
+  requireAssertion<WebEnv>(action, { ports: (c) => mfaPorts(c.get("runtime")), target }),
   (c, next) => idempotency({ kv: c.get("runtime").ports.kv.SESSIONS_KV!, caller: sessionCaller })(c, next),
 );
 
