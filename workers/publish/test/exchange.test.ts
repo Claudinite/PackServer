@@ -40,6 +40,7 @@ function setup(options: { visibility?: string; insert?: () => never; limit?: num
     .on(/from packs p join scopes/, () => ({ rows: options.visibility ? [{ visibility: options.visibility }] : [] }))
     .on(/from trusted_publishers/, () => ({ rows: [REGISTRATION] }))
     .on(/from pack_versions/, () => ({ rows: [] }))
+    .on(/from recovery_requests/, () => ({ rows: [] }))
     .on(/insert into upload_credentials/, () => (options.insert ? options.insert() : { rows: [], meta: { changes: 1, last_row_id: null } }));
   const runtime: PublishRuntime = {
     worker: "publish",

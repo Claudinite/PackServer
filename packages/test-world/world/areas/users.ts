@@ -8,7 +8,7 @@ import { createMail } from "../mail";
 import { createUserTokens, type UserTokens } from "../tokens";
 import { Refusal, type Observation, type RefusalReason } from "../outcomes";
 import type {
-  AccountInfo, Assertion, AssertionChoice, FormFaults, Notification, Passkey, PasskeyInfo, Publisher, PublisherOpts, RecoveryInfo, Sensitive,
+  AccountInfo, Assertion, HistoryEntry, AssertionChoice, FormFaults, Notification, Passkey, PasskeyInfo, Publisher, PublisherOpts, RecoveryInfo, Sensitive,
   SensitiveAction, Session, SessionCookie, SessionInfo, User, UserOpts, Visitor,
 } from "../types";
 
@@ -40,6 +40,8 @@ const STATE_COOKIE = "__Host-github-state";
 interface Client {
   ip: string;
   humanCheck: "pass" | "fail";
+  userAgent?: string;
+  country?: string;
 }
 
 /** One person, whichever session or network address a scenario views them from. */
@@ -129,7 +131,7 @@ interface Request {
 
 /** One HTTP request as a browser at `client` would make it, cookies and form encoding included. */
 function request(driver: Driver, client: Client, req: Request): Promise<ApiResponse> {
-  const headers: Record<string, string> = { "user-agent": BROWSER, "cf-connecting-ip": client.ip, "cf-ipcountry": "NO", ...req.headers };
+  const headers: Record<string, string> = { "user-agent": client.userAgent ?? BROWSER, "cf-connecting-ip": client.ip, "cf-ipcountry": client.country ?? "NO", ...req.headers };
   const cookies = { ...(req.session ? { [SESSION_COOKIE]: req.session.id } : {}), ...req.cookies };
   if (Object.keys(cookies).length > 0) headers.cookie = Object.entries(cookies).map(([k, v]) => `${k}=${v}`).join("; ");
   let body: string | undefined;
@@ -171,6 +173,15 @@ class Person implements User {
       const body = res.json() as { sessions: Array<{ id: string; device: SessionInfo["device"]; last_seen: number; current: boolean }> };
       return body.sessions.map((s) => ({ id: s.id, device: s.device, lastSeen: new Date(s.last_seen), current: s.current }));
     },
+    revoke: async (session: { id: string }, faults?: FormFaults): Promise<void> => {
+      const view = this.view;
+      const own = session.id === (await this.sessionHash(view));
+      const res = await this.send({
+        method: "POST", path: `/api/auth/sessions/${encodeURIComponent(session.id)}/revoke`, session: view, json: {}, headers: await this.formHeaders(view, faults),
+      });
+      if (res.status !== 200) throw refusal(res, "sessions.revoke");
+      if (own) this.who.current = undefined;
+    },
   };
 
   readonly account = {
@@ -179,6 +190,75 @@ class Person implements User {
       if (res.status !== 200) throw refusal(res, "account.show");
       const body = res.json() as { user: { id: string; handle: string | null }; identities: Array<{ provider: string; login: string | null }> };
       return { id: body.user.id, handle: body.user.handle, identities: body.identities };
+    },
+    delete: async (o: Sensitive = {}): Promise<void> => {
+      const userId = await this.ownId();
+      const res = await this.sensitivePost("/api/auth/delete", { action: "account.delete", target: userId }, o);
+      if (res.status !== 200) throw refusal(res, "account.delete");
+      this.who.current = undefined;
+    },
+    history: async (): Promise<HistoryEntry[]> => {
+      const res = await this.send({ method: "GET", path: "/api/auth/history", session: this.view });
+      if (res.status !== 200) throw refusal(res, "account.history");
+      const body = res.json() as { events: Array<{ at: string; action: string; target: string | null }> };
+      return body.events.map((e) => ({ at: new Date(e.at), action: e.action, target: e.target }));
+    },
+  };
+
+  readonly providers = {
+    linkGitHub: async (o: Sensitive = {}): Promise<void> => {
+      const session = this.view;
+      const res = await this.sensitivePost("/api/auth/providers/github/link", { action: "provider.link", target: "github" }, o, {});
+      if (res.status !== 200) throw refusal(res, "providers.linkGitHub");
+      const state = cookieValue(res, STATE_COOKIE);
+      const authorize = (res.json() as { redirect: string }).redirect;
+      if (!state) throw new InfrastructureError("providers.linkGitHub: the site sent no state cookie");
+      const callback = new URL(this.github.approve(authorize, this.who.github.id));
+      const finish = await this.send({
+        method: "GET", path: callback.pathname + callback.search, session: this.view ?? session, cookies: { [STATE_COOKIE]: parseCookie(state).value },
+      });
+      if (finish.status !== 303) throw refusal(finish, "providers.linkGitHub");
+    },
+  };
+
+  readonly recovery = {
+    /** Asks for a recovery by an address; the site answers the same whatever it did. */
+    request: async (address?: string): Promise<void> => {
+      const res = await this.send({
+        method: "POST", path: "/api/auth/recovery/request", json: { email: address ?? this.who.email },
+        headers: { "cf-turnstile-response": this.client.humanCheck === "pass" ? TURNSTILE_PASS_TOKEN : "not-a-passing-token" },
+      });
+      if (res.status !== 202) throw refusal(res, "recovery.request");
+    },
+    /** Stops the recovery with the link in the newest "recovery requested" mail the address received. */
+    cancelFromMail: async (address?: string): Promise<void> => {
+      const mail = createMail(this.ctx.driver).inbox({ email: address ?? this.who.email }).all().filter((m) => /recovery requested/i.test(m.subject));
+      const token = /[?&]token=([0-9a-f]{64})/.exec(mail.at(-1)?.text ?? "")?.[1];
+      if (!token) throw new InfrastructureError("recovery.cancelFromMail: no notice with a cancel link has been mailed");
+      const res = await this.send({ method: "POST", path: "/api/auth/recovery/cancel-link", json: { token }, headers: { origin: ORIGIN } });
+      if (res.status !== 200) throw refusal(res, "recovery.cancelFromMail");
+    },
+    /** The signed-in person stops their own open recovery. */
+    cancel: async (): Promise<void> => {
+      const session = this.view;
+      const res = await this.send({ method: "POST", path: "/api/auth/recovery/cancel", session, json: {}, headers: await this.formHeaders(session) });
+      if (res.status !== 200) throw refusal(res, "recovery.cancel");
+    },
+    /** Follows the link in the newest approval mail the address received. */
+    signIn: async (address?: string, faults: FormFaults = {}): Promise<Session> => {
+      const mail = createMail(this.ctx.driver).inbox({ email: address ?? this.who.email }).all().filter((m) => /recovery was approved/i.test(m.subject));
+      const token = /[?&]token=([0-9a-f]{64})/.exec(mail.at(-1)?.text ?? "")?.[1];
+      if (!token) throw new InfrastructureError("recovery.signIn: no approval link has been mailed");
+      const res = await this.send({
+        method: "POST", path: "/api/auth/recovery/complete", json: { token }, headers: { origin: faults.origin === "foreign" ? FOREIGN_ORIGIN : ORIGIN },
+      });
+      if (res.status !== 200) throw refusal(res, "recovery.signIn");
+      const line = cookieValue(res, SESSION_COOKIE);
+      if (!line) throw new InfrastructureError("recovery.signIn: the site set no session cookie");
+      const { value, attributes } = parseCookie(line);
+      const session: Session = { id: value, landedOn: (res.json() as { landed_on: string }).landed_on, cookie: attributes };
+      this.who.current = session;
+      return session;
     },
   };
 
@@ -225,6 +305,32 @@ class Person implements User {
   }
   failingHumanCheck(): User {
     return new Person(this.ctx, this.who, { ...this.client, humanCheck: "fail" }, this.bound);
+  }
+  onDevice(device: { userAgent?: string; country?: string }): User {
+    return new Person(this.ctx, this.who, { ...this.client, ...device }, this.bound);
+  }
+
+  /** The hash the site lists a session under. */
+  private async sessionHash(session: Session | undefined): Promise<string | undefined> {
+    const res = await this.send({ method: "GET", path: "/api/auth/session", session });
+    return res.status === 200 ? (res.json() as { session: { id: string } }).session.id : undefined;
+  }
+
+  /** What the world does to a person that they cannot do themselves: take their passkeys and linked sign-ins away, as loss would. */
+  async loseFactors(which: { passkeys?: boolean; providers?: boolean }): Promise<void> {
+    const driver = this.ctx.driver;
+    if (!driver.storage) throw new InfrastructureError(`the ${driver.kind} driver has no storage seam`);
+    const { db } = await driver.storage();
+    const userId = await this.ownId();
+    const run = (sql: string) => db.batch([db.prepare(sql).bind(userId)]);
+    if (which.passkeys) {
+      await run("delete from credential_flags where credential_id in (select id from credentials where user_id = ?1)");
+      await run("delete from credentials where user_id = ?1");
+      await run("delete from recovery_codes where user_id = ?1");
+      await run("delete from recovery_sets where user_id = ?1");
+      this.who.codes = [];
+    }
+    if (which.providers) await run("delete from identities where user_id = ?1");
   }
 
   private send(req: Request): Promise<ApiResponse> {
@@ -320,9 +426,11 @@ class Person implements User {
     const { db } = await driver.storage();
     const userId = await this.ownId();
     const at = new Date(await this.ctx.driver.fakes!.clock.call<number>("now")).toISOString();
-    const id = crypto.randomUUID();
+    const name = this.ctx.aliases.alias(scope);
+    // The id the CI seed gives a scope of this name, so either may create it first.
+    const id = `scope-${name}`;
     await db.batch([
-      db.prepare("insert into scopes (id, name, kind, state, created_at) values (?, ?, 'user', 'active', ?)").bind(id, this.ctx.aliases.alias(scope), at),
+      db.prepare("insert or ignore into scopes (id, name, kind, state, created_at) values (?, ?, 'user', 'active', ?)").bind(id, name, at),
       db.prepare("insert into scope_members (scope_id, user_id, role, created_at) values (?, ?, 'owner', ?)").bind(id, userId, at),
     ]);
   }

@@ -47,14 +47,14 @@ describe("IT-AUDIT-001 every sensitive action writes an entry", () => {
   it("queues and copies one entry per action with actor, action, target and time", async () => {
     const { audit, events, d1, fakes } = setup();
     const sensitive = AUDIT_ACTIONS.filter((a) => !a.endsWith(".refused"));
-    expect(sensitive).toHaveLength(12);
+    expect(sensitive).toHaveLength(18);
     for (const action of sensitive) await audit({ kind: "user", id: "u1" }, action, `target:${action}`, { user_id: "u1" });
-    expect(events()).toHaveLength(12);
+    expect(events()).toHaveLength(sensitive.length);
     for (const e of events()) {
       expect(acceptAuditEvent(e).ok).toBe(true);
       expect(e).toMatchObject({ actor: { kind: "user", id: "u1" }, target: `target:${e.action}`, at: new Date(fakes.clock.now()).toISOString() });
     }
-    expect(d1.rows("select * from recent_activity")).toHaveLength(12);
+    expect(d1.rows("select * from recent_activity")).toHaveLength(sensitive.length);
   });
 
   it("exposes no way to edit or delete the record", () => {
