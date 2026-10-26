@@ -1,4 +1,4 @@
-import { accepted, expect, scenario, type Run, type World } from "@packserver/test-world";
+import { expect, scenario, type Run, type World } from "@packserver/test-world";
 
 type Publisher = Awaited<ReturnType<World["publishers"]["create"]>>;
 
@@ -156,46 +156,6 @@ scenario("IT-VAL-050 Probabilities and thresholds never appear in a report", asy
   const shown = JSON.stringify([report?.findings, report?.prose_screen]);
   expect(shown).not.toMatch(/threshold|probabilit|\b0\.\d+\b/i);
   expect(report?.prose_screen).toMatchObject({ implementation: "static-only", model_version: null });
-});
-
-const WORKFLOW = ".github/workflows/publish.yml";
-
-scenario("IT-PUB-006 Provenance comes from OIDC claims only, and a public source tree is verified", async (world) => {
-  const repo = world.ci.repo("acme/packs", { id: 5150, ownerId: 1001 });
-  await world.ci.seedTrustedPublisher({ pack: "@acme/gcp", repo, workflow: WORKFLOW, environment: "release", path: "packs/gcp" });
-  const workflow = world.ci.workflow({ repo, environment: "release", ref: "refs/tags/gcp/1.0.0" });
-
-  const matching = world.archive("gcp", { version: "1.0.0" });
-  const source = world.github.repo("acme/packs", { id: 5150 });
-  const tree = await world.validation.sourceFiles(matching);
-  const commit = source.commit(Object.fromEntries(Object.entries(tree).map(([path, file]) => [`packs/gcp/${path}`, file])));
-
-  const credential = accepted(await workflow.exchange("@acme/gcp", "1.0.0", { token_options: { claims: { sha: commit } } }));
-  const verified = await (await world.publishFromCi(credential, matching)).finished();
-  expect(await rulesOf(verified)).toEqual(["fixtures.missing", "license.missing"]);
-  expect(await verified.verdict()).toBe("warn");
-  expect((await verified.report())?.source_verified).toBe(true);
-  expect((await verified.milestones()).find((m) => m.step === "source")).toMatchObject({ outcome: "ok" });
-  expect(await rulesOf(verified)).not.toContain("provenance.tree_mismatch");
-
-  const different = world.archive("gcp", { version: "1.0.1", files: { "README.md": "# not what the repository holds\n" } });
-  const tampered = accepted(await workflow.exchange("@acme/gcp", "1.0.1", { token_options: { claims: { sha: commit } } }));
-  const mismatch = await (await world.publishFromCi(tampered, different)).finished();
-  expect(await mismatch.verdict()).toBe("fail");
-  expect(await rulesOf(mismatch)).toContain("provenance.tree_mismatch");
-  expect((await mismatch.report())?.source_verified).toBe(false);
-
-  const secret = world.ci.repo("acme/secret-packs", { id: 5160, ownerId: 1001 });
-  await world.ci.seedTrustedPublisher({ pack: "@acme/vault", repo: secret, workflow: WORKFLOW, environment: "release", path: "packs/vault" });
-  const hidden = world.github.repo("acme/secret-packs", { id: 5160, private: true });
-  const privateArchive = world.archive("gcp", { version: "1.0.0" });
-  const privateCommit = hidden.commit(Object.fromEntries(Object.entries(await world.validation.sourceFiles(privateArchive)).map(([path, file]) => [`packs/vault/${path}`, file])));
-  const vault = world.ci.workflow({ repo: secret, environment: "release", ref: "refs/tags/vault/1.0.0" });
-  const unverifiable = accepted(await vault.exchange("@acme/vault", "1.0.0", { token_options: { claims: { sha: privateCommit } } }));
-  const kept = await (await world.publishFromCi(unverifiable, privateArchive)).finished();
-  expect(await kept.verdict()).toBe("warn");
-  expect(await rulesOf(kept)).toContain("provenance.source-unverified");
-  expect((await kept.report())?.source_verified).toBe(false);
 });
 
 scenario("IT-VAL-012 The prose screen runs last and reads changed files in full; there is no diff mode", async (world) => {

@@ -1,6 +1,9 @@
-import { expect, scenario } from "@packserver/test-world";
+import { accepted, expect, scenario } from "@packserver/test-world";
+import type { Run } from "@packserver/test-world";
 import type { ScenarioOpts, World } from "@packserver/test-world";
 
+const WORKFLOW = ".github/workflows/publish.yml";
+const rulesOf = async (run: Run) => (await run.findings()).map((f) => f.rule);
 const NEEDS: ScenarioOpts = { needs: ["fakes", "storage"] };
 const COMMIT_FILES = {
   "packs/gcp/pack.json": '{"name":"gcp"}',
@@ -195,7 +198,7 @@ scenario(
 );
 
 scenario(
-  "IT-PUB-006 Provenance comes from OIDC claims only, and a public source tree is verified (fetch half)",
+  "IT-PUB-006 Provenance comes from OIDC claims only, and a public source tree is verified",
   async (world) => {
     const g = world.github;
     const packs = g.repo("acme/packs");
@@ -223,9 +226,47 @@ scenario(
     expect(g.apiCalls().slice(before).some((c) => c.path.includes("/git/"))).toBe(false);
     expect(await g.fetchTree({ repository: packs, commit, path: "packs/nothing" })).toEqual({ status: "not_found" });
 
+    // The validator half: the repository tree at the claimed commit against the validated archive.
+    const signed = world.ci.repo("acme/signed-packs", { id: 5151, ownerId: 1001 });
+    await world.ci.seedTrustedPublisher({ pack: "@acme/gcp", repo: signed, workflow: WORKFLOW, environment: "release", path: "packs/gcp" });
+    const signedFlow = world.ci.workflow({ repo: signed, environment: "release", ref: "refs/tags/gcp/1.0.0" });
+
+    const signedArchive = world.archive("gcp", { version: "1.0.0" });
+    const signedSource = world.github.repo("acme/signed-packs", { id: 5151 });
+    const signedTree = await world.validation.sourceFiles(signedArchive);
+    const signedCommit = signedSource.commit(Object.fromEntries(Object.entries(signedTree).map(([path, file]) => [`packs/gcp/${path}`, file])));
+
+    const signedCredential = accepted(await signedFlow.exchange("@acme/gcp", "1.0.0", { token_options: { claims: { sha: signedCommit } } }));
+    const verified = await (await world.publishFromCi(signedCredential, signedArchive)).finished();
+    expect(await rulesOf(verified)).toEqual(["fixtures.missing", "license.missing"]);
+    expect(await verified.verdict()).toBe("warn");
+    expect((await verified.report())?.source_verified).toBe(true);
+    expect((await verified.milestones()).find((m) => m.step === "source")).toMatchObject({ outcome: "ok" });
+    expect(await rulesOf(verified)).not.toContain("provenance.tree_mismatch");
+
+    const different = world.archive("gcp", { version: "1.0.1", files: { "README.md": "# not what the repository holds\n" } });
+    const tampered = accepted(await signedFlow.exchange("@acme/gcp", "1.0.1", { token_options: { claims: { sha: signedCommit } } }));
+    const mismatch = await (await world.publishFromCi(tampered, different)).finished();
+    expect(await mismatch.verdict()).toBe("fail");
+    expect(await rulesOf(mismatch)).toContain("provenance.tree_mismatch");
+    expect((await mismatch.report())?.source_verified).toBe(false);
+
+    const vaultRepo = world.ci.repo("acme/vault-packs", { id: 5160, ownerId: 1001 });
+    await world.ci.seedTrustedPublisher({ pack: "@acme/vault", repo: vaultRepo, workflow: WORKFLOW, environment: "release", path: "packs/vault" });
+    const hidden = world.github.repo("acme/vault-packs", { id: 5160, private: true });
+    const privateArchive = world.archive("gcp", { version: "1.0.0" });
+    const privateCommit = hidden.commit(Object.fromEntries(Object.entries(await world.validation.sourceFiles(privateArchive)).map(([path, file]) => [`packs/vault/${path}`, file])));
+    const vault = world.ci.workflow({ repo: vaultRepo, environment: "release", ref: "refs/tags/vault/1.0.0" });
+    const unverifiable = accepted(await vault.exchange("@acme/vault", "1.0.0", { token_options: { claims: { sha: privateCommit } } }));
+    const kept = await (await world.publishFromCi(unverifiable, privateArchive)).finished();
+    expect(await kept.verdict()).toBe("warn");
+    expect(await rulesOf(kept)).toContain("provenance.source-unverified");
+    expect((await kept.report())?.source_verified).toBe(false);
+
     // GitHub failing is not an answer about the repository.
     g.failApi(503);
     expect(await g.fetchTree({ repository: packs, commit, path: "packs/gcp" })).toEqual({ status: "unreachable", retry_after_s: 7 });
+
     await expectNoWrites(world);
   },
   NEEDS,
