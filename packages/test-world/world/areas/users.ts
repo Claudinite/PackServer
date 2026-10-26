@@ -549,7 +549,7 @@ export const createUsers = (driver: Driver, aliases: Aliases): UsersModule => {
     const system = aliases.alias(label);
     const email = opts.email ?? `${system}@example.test`;
     const github = fakes.githubLogin.register({
-      id: 1_000_000 + (hash(system) % 900_000_000),
+      id: opts.githubId ?? 1_000_000 + (hash(system) % 900_000_000),
       login: system,
       name: label,
       emails: [

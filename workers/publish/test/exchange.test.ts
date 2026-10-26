@@ -1,11 +1,10 @@
-import { OIDC_AUDIENCE } from "@packserver/core/publishing";
+import { OIDC_AUDIENCE, resetJwksMemory } from "@packserver/core/publishing";
 import { createFakePorts } from "@packserver/ports/fakes";
 import { SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
 import { exportJWK, generateKeyPair, SignJWT, type JWK } from "jose";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import type { PublishRuntime } from "../src/bindings";
-import { resetJwksMemory } from "../src/oidc/jwks";
 
 const ISSUER = "https://issuer.example";
 const NOW_S = 1_000_000;

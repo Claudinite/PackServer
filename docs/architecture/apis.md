@@ -20,8 +20,9 @@ Notable endpoints:
 | `GET /api/verify/<sha256>` | Verify by hash (REQ-DELIV-021) |
 | `POST /api/report/hash-mismatch` | Client mismatch report (REQ-CN-012, REQ-TELEM-009) |
 | `POST /api/tokens/leak` | Leak report, full token only (REQ-PUB-032) |
-| `GET /api/private/index` | The signed per-pack private entries the caller may read, after the OIDC, session or `psr_` check (REQ-PRIV-016, REQ-PRIV-020) |
+| `GET /api/private/index` | The signed per-pack private entries the caller may read, after the OIDC, session, device-code or `psr_` check (REQ-PRIV-016, REQ-PRIV-020). `?pack=@scope/name` asks for one pack and is answered as not found unless the caller may read it; a credential that does not verify gets the one `401`, whatever it names |
 | `GET /api/private/v/<opaque version id>` | Streamed private archive or 5-minute presigned URL; the id is the one the private entry names, so no pack name reaches a log (REQ-DELIV-007) |
+| `GET`, `POST /api/packs/@scope/name/grants`, `DELETE …/grants/<account id>` | A pack's allowlist of GitHub accounts, by numeric id (REQ-PRIV-014): a maintainer lists, adds (`account_id`, `account_type`, optional `private_repos_only`) and removes; a person holding only the `member` role is refused as forbidden and anyone outside the scope gets not found. The passkey and audit steps of REQ-PRIV-019 belong to the access page |
 | `GET /api/search?q=…` | Site search and browse (no `q`): `category`, `part`, `verified`, `verified_domains`, `has_repository`, `sort` (score, stars, rating, recent, fetches), `limit`, `offset`; delegates to `mcp`'s search over a service binding |
 | `GET /api/categories`, `GET /api/trending` | The fixed category list with counts; the Trending rail's packs (REQ-COMM-014); both delegate to `mcp` |
 
