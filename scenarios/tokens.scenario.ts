@@ -103,9 +103,10 @@ scenario("IT-PUB-032 Leak reports act on the full token only and reveal nothing"
   await expect(prefix).toLookTheSameAs(full);
 
   const burst = [];
-  for (let i = 0; i < 20; i++) burst.push(await world.tokens.leakReport(`not-a-token-${i}`, { from }));
+  // The limiter counts in wall-clock windows, so a burst can straddle two of them; one more than two windows' worth (10 each) must be refused.
+  for (let i = 0; i < 21; i++) burst.push(await world.tokens.leakReport(`not-a-token-${i}`, { from }));
   expect(burst.some((report) => report instanceof Refusal)).toBe(true);
-  await expect(burst.at(-1)).toBeRateLimited();
+  await expect(burst.find((report) => report instanceof Refusal)).toBeRateLimited();
 }, storage);
 
 scenario("IT-AUDIT-006 Token last-used is visible and hourly-accurate", async (world) => {
