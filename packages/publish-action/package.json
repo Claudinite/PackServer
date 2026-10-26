@@ -1,0 +1,21 @@
+{
+  "name": "@packserver/publish-action",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./template": "./src/template.ts"
+  },
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/index.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@packserver/core": "workspace:*"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "yaml": "2.9.1"
+  }
+}
