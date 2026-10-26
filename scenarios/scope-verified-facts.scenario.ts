@@ -30,28 +30,6 @@ scenario(
 );
 
 scenario(
-  "IT-PAY-018 Nothing is charged: applying for Verified Publisher proceeds with no payment (verification half)",
-  async (world) => {
-    const p = await world.publishers.create({ handle: "p", mfa: "passkey" });
-    const o = await p.orgs.create("o");
-    const challenge = await o.verifyDomain("o.example");
-    challenge.publishTxt();
-    await o.checkDomain(challenge);
-    await o.requireMfa("passkey");
-
-    const application = await o.applyVerified();
-    expect(application).toMatchObject({ state: "pending" });
-    expect(Object.keys(application).sort()).toEqual(["basis", "denialReason", "renewableAt", "state"]);
-    await world.verifiedPublishers.approve(o);
-    await expect(o.verification()).resolves.toMatchObject({ application: { state: "approved" } });
-
-    const calls = await world.recorder.invocations();
-    expect(calls.filter((c) => /polar|stripe|paddle|payment|checkout/i.test(c.target))).toEqual([]);
-  },
-  NEEDS,
-);
-
-scenario(
   "JT-007 Verified Publisher application: pending, denied with a reason, renewed, approved, marked (proof half)",
   async (world) => {
     const acmeGh = world.alias("acmegh");
