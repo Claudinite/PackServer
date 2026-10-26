@@ -62,7 +62,7 @@ describe("the plan", () => {
 
   it("includes the audit dead-letter queue, the extras, and no shadow-records bucket", () => {
     const p = planResources("production");
-    expect(p.queues).toEqual(["audit", "audit-dlq", "notify", "reindex"]);
+    expect(p.queues).toEqual(["audit", "audit-dlq", "notify", "notify-dlq", "reindex", "reindex-dlq"]);
     expect(p.kv).toEqual(["cache", "gates", "oauth", "sessions", "telemetry"]);
     expect(p.r2).toEqual(["audit-log", "ops", "packs-private", "packs-public", "packs-staging", "validation-reports"]);
     expect(p.r2.join()).not.toContain("shadow-records");

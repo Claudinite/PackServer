@@ -29,8 +29,8 @@ const ENV_IMPORT = /import\s*\{[^}]*\benv\b[^}]*\}\s*from\s*["']cloudflare:worke
 // The GitHub App's OAuth client id and secret: web finishes GitHub sign-in with them. The App's private key and webhook secret stay with the github Worker.
 const WEB_SIGN_IN_SECRETS = ["GITHUB_APP_CLIENT_ID", "GITHUB_APP_CLIENT_SECRET"];
 
-// Who sends mail: web, and admin for the notices its crons raise, through Email Service in the deployed environments. env.test sends over fetch to the world's mail fake.
-const EMAIL_SENDERS = { web: ["EMAIL"], admin: ["EMAIL"] };
+// Who sends mail: web, admin for the notices its crons raise, and the validator for a promoted version's notice, through Email Service in the deployed environments. env.test sends over fetch to the world's mail fake.
+const EMAIL_SENDERS = { web: ["EMAIL"], admin: ["EMAIL"], validator: ["EMAIL"] };
 
 const suffix = (env, name, sep = "-") => (env === "production" ? name : `${name}${sep}${env}`);
 const workerName = suffix;
@@ -275,7 +275,7 @@ function bindingReads(sourceFile, names) {
   return reads;
 }
 
-const DO_BASES = new Set(["DurableObject", "WorkflowEntrypoint"]);
+const DO_BASES = new Set(["DurableObject", "WorkflowEntrypoint", "WorkerEntrypoint"]);
 const inObjectClass = (node) => {
   for (let n = node.parent; n; n = n.parent) {
     if (ts.isClassLike(n)) return (n.heritageClauses ?? []).some((h) => h.types.some((t) => DO_BASES.has(t.expression.getText())));
@@ -287,7 +287,7 @@ const inObjectClass = (node) => {
 function envStructure(sourceFile) {
   const found = { dotEnv: false, destructured: false, envImport: false };
   const visit = (node) => {
-    // A Durable Object or Workflow class owns its `this.env`; the binding names it may read off it are still held to bindings.ts.
+    // A Durable Object, Workflow or service-binding entrypoint class owns its `this.env`; the binding names it may read off it are still held to bindings.ts.
     if (ts.isPropertyAccessExpression(node) && node.name.text === "env" && !(ts.isIdentifier(node.expression) && node.expression.text === "process") && !(node.expression.kind === ts.SyntaxKind.ThisKeyword && inObjectClass(node))) found.dotEnv = true;
     if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent) && (node.propertyName ?? node.name).getText() === "env") found.destructured = true;
     if (ts.isImportDeclaration(node) && /(^|\/)bindings$/.test(literalText(node.moduleSpecifier) ?? "")) {

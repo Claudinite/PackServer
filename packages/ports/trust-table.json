@@ -91,7 +91,7 @@
         "OPS_BUCKET": { "bucket": "ops", "access": "read" }
       },
       "queues": { "NOTIFY_QUEUE": "notify" },
-      "queue_consumers": [],
+      "queue_consumers": ["notify", "reindex"],
       "workflows": { "VALIDATE_PACK": "validate-pack" },
       "durable_objects": {
         "SCOPE_COORDINATOR": { "class": "ScopeCoordinator", "host": "publish" },

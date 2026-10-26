@@ -32,6 +32,44 @@ scenario("IT-DELIV-001 Public versions download from write-once URLs the signed 
   await pack.seedProof({ verified: true, verifiedDomain: "acme.com" });
   expect(await version.verification()).toEqual({ verified: true, verifiedDomain: "acme.com" });
   expect(await pack.stored("1.0.0")).toEqual(stored);
+
+  // The same, for a version the registry promoted itself.
+  const owner = await world.publishers.create({ handle: "pat" });
+  const org = await owner.orgs.create("promoted");
+  const admitted = await owner.publish(world.archive("gcp", { version: "1.0.0" })).as("@promoted/gcp@1.0.0");
+  await world.validation.completes(admitted);
+  const published = await (await admitted.promoted()).published();
+  for (const object of published.objects) {
+    expect(object.cacheControl).toMatch(/immutable/);
+    expect(object.contentDisposition).toMatch(/^attachment; filename="[^"]+"$/);
+  }
+  const indexes = await world.registry.indexes(admitted.pack);
+  expect(indexes.scope.document.packs.map((p) => p.name)).toEqual([admitted.pack.systemName]);
+  expect(indexes.scope.document.packs[0]?.versions[0]).toMatchObject({
+    version: "1.0.0",
+    sha256: published.canonicalSha256,
+    size: published.archive.byteLength,
+    status: "active",
+    verified: false,
+    verified_domain: null,
+    verified_github_org: null,
+    source_verified: false,
+    min_engine_version: "1.61001.1",
+    requires: [],
+    source_commit: null,
+    preinstall: { guards: [], tasks: [], forced_skills: [], github_actions: [], new: [] },
+  });
+
+  const challenge = await org.verifyDomain("promoted.example");
+  challenge.publishTxt();
+  await org.checkDomain(challenge);
+  const reindexed = await world.registry.proofChanged(admitted.pack);
+  expect(reindexed.scope.verifies).toBe(true);
+  expect(reindexed.scope.document.serial).toBeGreaterThan(indexes.scope.document.serial);
+  const entry = reindexed.scope.document.packs[0]?.versions[0];
+  expect(entry).toMatchObject({ verified: false, verified_github_org: null });
+  expect(world.unalias(String(entry?.verified_domain))).toBe("promoted.example");
+  expect(await admitted.published()).toEqual(published);
 }, storage);
 
 scenario("IT-DELIV-008 Yanked versions fetch by exact version only", async (world) => {

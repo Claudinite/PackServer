@@ -5,8 +5,8 @@ import {
 } from "@packserver/ports/cloudflare";
 import { oidcConfig, type OidcConfig } from "@packserver/core/publishing";
 import { PortError, type Clock, type D1, type Ports } from "@packserver/ports";
-import { SignAndWriteRootResponse } from "@packserver/schema";
-import type { IndexRebuilder, RootNotifier } from "./coordinator";
+import { SignAndWriteRootResponse, SignPrivateEntriesResponse, SignScopeIndexResponse } from "@packserver/schema";
+import { createIndexRebuilder, type IndexSigner, type RootNotifier, type IndexRebuilder } from "./coordinator";
 import { ROOT_COORDINATOR_NAME, type RootSigner } from "./root-coordinator";
 import { awsPresigner, type Presigner } from "./upload/presign";
 
@@ -38,6 +38,9 @@ export interface Env {
   /** Read only under `env.test`, where the issuer is the test world's. */
   OIDC_ISSUER?: string;
   OIDC_JWKS_URL?: string;
+  /** Milliseconds, as text: how long an index rebuild request is answered by the last one, and how long root changes are batched. */
+  REBUILD_DEBOUNCE_MS: string;
+  ROOT_BATCH_MS: string;
   /** The fake clock, bound only under `env.test`. */
   CLOCK?: Fetcher & { now(): Promise<number> };
 }
@@ -119,37 +122,51 @@ export interface CoordinatorDeps {
   signer: RootSigner;
   indexes: IndexRebuilder;
   root: RootNotifier;
+  timings: { rebuildDebounceMs: number; rootBatchMs: number };
+}
+
+function millis(name: string, value: string | undefined): number {
+  const n = Number(value);
+  if (value === undefined || !Number.isInteger(n) || n < 0) throw new Error(`${name} must be a number of milliseconds, not ${JSON.stringify(value)}`);
+  return n;
 }
 
 type Rpc = Record<string, ((request: unknown) => Promise<unknown>) | undefined>;
 
-/**
- * The validator signs and writes; a coordinator only orchestrates. Until the validator's
- * `signAndWriteRoot` lands the call is rejected by the receiver, and the root coordinator keeps
- * its work and retries.
- */
-function validatorSigner(binding: Fetcher): RootSigner {
-  const rpc = binding as unknown as Rpc;
+function entrypoint(binding: Fetcher, name: string): (request: unknown) => Promise<unknown> {
+  return async (request) => {
+    const rpc = binding as unknown as Rpc;
+    if (!rpc[name]) throw new PortError("not_wired", `the validator has no ${name} entrypoint`);
+    return rpc[name](request);
+  };
+}
+
+/** The validator signs and writes; a coordinator only orchestrates, and a rejected call leaves its work to be retried. */
+function validatorSigner(binding: Fetcher): RootSigner & IndexSigner {
   return {
     async signAndWriteRoot(request) {
-      const call = rpc.signAndWriteRoot;
-      if (!call) throw new PortError("not_wired", "the validator has no signAndWriteRoot entrypoint yet");
-      const ack = SignAndWriteRootResponse.parse(await call.call(binding, request));
+      const ack = SignAndWriteRootResponse.parse(await entrypoint(binding, "signAndWriteRoot")(request));
       return { sha256: ack.sha256, serial: ack.serial };
+    },
+    async signScopeIndex(request) {
+      const ack = SignScopeIndexResponse.parse(await entrypoint(binding, "signScopeIndex")(request));
+      return { sha256: ack.sha256, serial: ack.serial };
+    },
+    async signPrivateEntries(request) {
+      return SignPrivateEntriesResponse.parse(await entrypoint(binding, "signPrivateEntries")(request));
     },
   };
 }
 
 export function createCoordinatorDeps(env: Env): CoordinatorDeps {
   const durableObjects = durableObjectsPort({ RootCoordinator: env.ROOT_COORDINATOR });
+  const d1 = d1Port(env.DB);
+  const signer = validatorSigner(env.VALIDATOR);
   return {
-    d1: d1Port(env.DB),
-    signer: validatorSigner(env.VALIDATOR),
-    indexes: {
-      async rebuild() {
-        throw new PortError("not_wired", "building and signing a scope index lands with promotion");
-      },
-    },
+    d1,
+    signer,
+    indexes: createIndexRebuilder({ d1, signer, now: () => Date.now() }),
+    timings: { rebuildDebounceMs: millis("REBUILD_DEBOUNCE_MS", env.REBUILD_DEBOUNCE_MS), rootBatchMs: millis("ROOT_BATCH_MS", env.ROOT_BATCH_MS) },
     root: {
       async scopeChanged(change) {
         await durableObjects.call("RootCoordinator", ROOT_COORDINATOR_NAME, "notifyScopeChange", [change]);

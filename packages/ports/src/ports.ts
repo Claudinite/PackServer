@@ -247,10 +247,19 @@ export interface D1 {
   batch(statements: Array<{ sql: string; params?: unknown[] }>): Promise<D1Result[]>;
 }
 
+/** The headers a stored object is served with. */
+export interface R2PutOptions {
+  content_type?: string;
+  content_disposition?: string;
+  cache_control?: string;
+}
+
 export interface R2 {
   get(key: string): Promise<Uint8Array | null>;
   head(key: string): Promise<{ size: number } | null>;
-  put(key: string, body: Uint8Array, options?: { content_type?: string }): Promise<void>;
+  put(key: string, body: Uint8Array, options?: R2PutOptions): Promise<void>;
+  /** Writes only when nothing is at the key; false means something was, and it was left as it is. */
+  putIfAbsent(key: string, body: Uint8Array, options?: R2PutOptions): Promise<boolean>;
   delete(key: string): Promise<void>;
   list(prefix: string): Promise<string[]>;
 }

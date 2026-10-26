@@ -169,4 +169,15 @@ scenario("IT-VAL-015 Warnings do not block; the full report is public once publi
   expect(view.trust).toContain("Docs 1");
   expect(view.text.replace(view.trust, "")).not.toMatch(/warning/i);
   expect(view.links.find((l) => l.text === "Full report")?.href).toMatch(/run-warned$/);
+
+  // A version that only warned is promoted, with its warnings counted by category beside its files.
+  const publisher = await world.publishers.create({ handle: "pat" });
+  const admitted = await publisher.publish(world.archive("gcp", { version: "1.0.0" })).as("@pat/gcp@1.0.0");
+  const run = await world.validation.completes(admitted);
+  expect(await run.verdict()).toBe("warn");
+  const published = await (await admitted.promoted()).published();
+  expect(await admitted.status()).toBe("active");
+  expect(published.meta).toMatchObject({ warnings: { license: 1 }, validation_run: run.id });
+  expect(published.contents.files.map((f) => f.path)).toContain("README.md");
+  expect(published.contents.readme).not.toBeNull();
 }, storage);

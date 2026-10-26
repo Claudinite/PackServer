@@ -11,6 +11,14 @@ scenario(
     const q = await world.publishers.create({ handle: "q" });
     const verified = await p.orgs.create("verified");
     const plain = await q.orgs.create("plain");
+    // A Verified Publisher's own versions are staged (REQ-PUB-019), so these are published before the approval.
+    const verifiedVersion = await p.publish(world.archive("gcp", { version: "1.0.0" })).as("@verified/gcp@1.0.0");
+    const plainVersion = await q.publish(world.archive("gcp", { version: "1.0.0" })).as("@plain/gcp@1.0.0");
+    await Promise.all([verifiedVersion, plainVersion].map(async (admitted) => {
+      await world.validation.completes(admitted);
+      await admitted.promoted();
+    }));
+
     const challenge = await verified.verifyDomain("verified.example");
     challenge.publishTxt();
     await verified.checkDomain(challenge);
@@ -21,10 +29,24 @@ scenario(
     await expect(world.profiles.profile(verified)).resolves.toMatchObject({ verifiedPublisher: true, verifiedDomain: "verified.example", verifiedGithubOrg: null });
     await expect(world.profiles.profile(plain)).resolves.toMatchObject({ verifiedPublisher: false, verifiedDomain: null, verifiedGithubOrg: null, held: false });
 
+    // The signed index follows the status once the approval is made.
+    const approved = (await world.registry.proofChanged(verifiedVersion.pack)).scope.document.packs[0]?.versions[0];
+    expect(approved).toMatchObject({ verified: true, verified_github_org: null });
+    expect(world.unalias(String(approved?.verified_domain))).toBe("verified.example");
+    expect((await world.registry.indexes(plainVersion.pack)).scope.document.packs[0]?.versions[0]).toMatchObject({
+      verified: false,
+      verified_domain: null,
+      verified_github_org: null,
+    });
+    expect(await plainVersion.verification()).toEqual({ verified: false });
+
     await world.verifiedPublishers.revoke(verified, "impersonation");
     await expect(world.profiles.profile(verified)).resolves.toMatchObject({ verifiedPublisher: false, verifiedDomain: "verified.example", mark: { text: "● verified.example", hoverLabel: null } });
     await expect(world.verifiedPublishers.reindexed(verified)).resolves.toContain("verified_publisher_changed");
     expect(world.mail.inbox(p).latest().text).toContain("revoked");
+    const revoked = (await world.registry.proofChanged(verifiedVersion.pack)).scope.document.packs[0]?.versions[0];
+    expect(revoked).toMatchObject({ verified: false, verified_github_org: null });
+    expect(world.unalias(String(revoked?.verified_domain))).toBe("verified.example");
   },
   NEEDS,
 );

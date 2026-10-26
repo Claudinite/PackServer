@@ -4,7 +4,7 @@ import { WorldFakes } from "../fakes/compose";
 import { createWorldHarness, testWorkerName, type HarnessOptions, type WorldHarness } from "../harness";
 import { InfrastructureError } from "../world/errors";
 import { filterInvocations, invocationsFromLogs, type InvocationFilter, type InvocationView } from "../world/recorder";
-import type { ApiRequest, ApiResponse, Capability, Driver, McpCredentials, OpsBucket, SeedStorage, StorageAccess, UiActions } from "./driver";
+import type { ApiRequest, ApiResponse, Capability, Driver, McpCredentials, OpsBucket, PackBucket, SeedObjectMetadata, SeedStorage, StorageAccess, UiActions } from "./driver";
 import { McpClient } from "./mcp";
 import { encodeBody, toApiResponse, VersionObserver } from "./observe";
 
@@ -33,6 +33,13 @@ interface ValidatorStores {
     get(key: string): Promise<{ arrayBuffer(): Promise<ArrayBuffer> } | null>;
   };
   OPS_BUCKET: { put(key: string, value: Uint8Array | string): Promise<unknown> };
+  PACKS_PUBLIC: PackStore;
+  PACKS_PRIVATE: PackStore;
+}
+interface PackStore {
+  get(key: string): Promise<{ arrayBuffer(): Promise<ArrayBuffer> } | null>;
+  head(key: string): Promise<{ size: number; httpMetadata?: SeedObjectMetadata } | null>;
+  list(options: { prefix: string; cursor?: string }): Promise<{ objects: Array<{ key: string }>; truncated: boolean; cursor?: string }>;
 }
 
 /** What the harness serves when a version is uploaded without a release tag. */
@@ -132,7 +139,38 @@ export class InProcessDriver implements Driver {
         await (await this.validatorEnv()).OPS_BUCKET.put(key, value);
       },
     },
+    reindex: {
+      send: async (message) => {
+        const env = (await this.harness.server.getWorker<{ REINDEX_QUEUE: { send(m: unknown): Promise<void> } }>(testWorkerName("web")).getEnv());
+        await env.REINDEX_QUEUE.send(message);
+      },
+    },
+    packs: {
+      public: this.packBucket("PACKS_PUBLIC"),
+      private: this.packBucket("PACKS_PRIVATE"),
+    },
   };
+
+  private packBucket(binding: "PACKS_PUBLIC" | "PACKS_PRIVATE"): PackBucket {
+    const store = async () => (await this.validatorEnv())[binding];
+    return {
+      get: async (key) => {
+        const object = await (await store()).get(key);
+        return object ? new Uint8Array(await object.arrayBuffer()) : null;
+      },
+      head: async (key) => (await store()).head(key),
+      list: async (prefix) => {
+        const out: string[] = [];
+        let cursor: string | undefined;
+        do {
+          const page = await (await store()).list({ prefix, ...(cursor ? { cursor } : {}) });
+          out.push(...page.objects.map((o) => o.key));
+          cursor = page.truncated ? page.cursor : undefined;
+        } while (cursor);
+        return out;
+      },
+    };
+  }
 
   private async validatorEnv() {
     if (!this.harness.workers.includes("validator")) throw new InfrastructureError("the validator Worker is not booted, so there are no validation reports to reach");

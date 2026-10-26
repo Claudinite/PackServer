@@ -12,7 +12,7 @@ type Args<T extends (...a: never[]) => unknown> = Parameters<T>;
 
 /** One per scope. Methods are on the prototype because only those are reachable over RPC. */
 export class ScopeCoordinator extends DurableObject<ObjectEnv> {
-  private readonly logic = new ScopeCoordinatorLogic(storageOf(this.ctx), Date.now, createCoordinatorDeps(this.env));
+  private readonly logic = ((deps) => new ScopeCoordinatorLogic(storageOf(this.ctx), Date.now, deps, deps.timings.rebuildDebounceMs))(createCoordinatorDeps(this.env));
   ping() {
     return this.logic.ping();
   }
@@ -52,7 +52,7 @@ export class Quota extends DurableObject<ObjectEnv> {
 
 /** The singleton that signs `index/v1/root.json` through the validator. */
 export class RootCoordinator extends DurableObject<ObjectEnv> {
-  private readonly logic = new RootCoordinatorLogic(storageOf(this.ctx), Date.now, createCoordinatorDeps(this.env).signer);
+  private readonly logic = ((deps) => new RootCoordinatorLogic(storageOf(this.ctx), Date.now, deps.signer, deps.timings.rootBatchMs))(createCoordinatorDeps(this.env));
   ping() {
     return this.logic.ping();
   }

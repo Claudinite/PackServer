@@ -16,6 +16,8 @@
       "vars": {
         "WORKER": "publish",
         "ENVIRONMENT": "test",
+        "REBUILD_DEBOUNCE_MS": "300",
+        "ROOT_BATCH_MS": "300",
         "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
         "STAGING_S3_ACCESS_KEY_ID": "test-staging-access-key",
         "STAGING_S3_SECRET_ACCESS_KEY": "test-staging-secret-key",
@@ -141,7 +143,9 @@
       ],
       "vars": {
         "WORKER": "publish",
-        "ENVIRONMENT": "staging"
+        "ENVIRONMENT": "staging",
+        "REBUILD_DEBOUNCE_MS": "5000",
+        "ROOT_BATCH_MS": "10000"
       },
       "d1_databases": [
         {
@@ -303,7 +307,9 @@
       ],
       "vars": {
         "WORKER": "publish",
-        "ENVIRONMENT": "production"
+        "ENVIRONMENT": "production",
+        "REBUILD_DEBOUNCE_MS": "5000",
+        "ROOT_BATCH_MS": "10000"
       },
       "d1_databases": [
         {

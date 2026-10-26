@@ -24,6 +24,14 @@ vi.mock("../src/workflow/steps", async (original) => {
   };
 });
 
+vi.mock("../src/promote/promote", () => {
+  const done = async () => undefined;
+  return {
+    prepare: vi.fn(async () => ({ promote: true, versionId: "v" })),
+    writeObjects: vi.fn(done), commit: vi.fn(done), reindex: vi.fn(done), search: vi.fn(done), notify: vi.fn(done),
+  };
+});
+
 const rt = { ports: { clock: { now: () => Date.now(), sync: async () => undefined } } } as unknown as ValidatorRuntime;
 
 /** Runs each step once, records the policy it was given, and throws from the named steps. */
