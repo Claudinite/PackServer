@@ -11,9 +11,11 @@
     "@packserver/core": "workspace:*",
     "@packserver/http": "workspace:*",
     "@packserver/ports": "workspace:*",
+    "@packserver/rules": "workspace:*",
     "@packserver/schema": "workspace:*",
     "@packserver/ui": "workspace:*",
-    "hono": "catalog:"
+    "hono": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:"

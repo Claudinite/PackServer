@@ -4,6 +4,8 @@ export { Refusal, NotFound, Ignored, Held } from "./world/outcomes";
 export { accepted, archiveBytes, type CiRepo, type CiWorkflow, type Presigned, type Staged, type StagedObject, type UploadCredential } from "./world/ci-workflow";
 export type * from "./world/types";
 export type { PackBody, VersionBody, Read } from "./world/packs";
+export type { PackPageView } from "./world/page-view";
+export { hostileReadme } from "./world/page-view";
 export type { OrgHandle, PeopleView, ProfileView, TransferHandle, Invitation, ScopeRole } from "./world/scopes";
 export type { ScopeOwner } from "./world/areas/scopes";
 export type { ListingSeed, SignalsSeed, Filters as SearchFilters, Results as SearchResults, ResultCard } from "./world/areas/search";

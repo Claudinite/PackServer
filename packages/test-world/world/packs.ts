@@ -5,6 +5,7 @@ import type { ApiResponse, Driver, SeedStorage } from "../drivers/driver";
 import type { Aliases } from "./alias";
 import { InfrastructureError, NotImplemented } from "./errors";
 import { Held, NotFound, Refusal, type Observation } from "./outcomes";
+import { viewOfPackPage, type PackPageView } from "./page-view";
 import type { Pack, Verification, Version } from "./types";
 
 export interface PublicPackOptions {
@@ -14,6 +15,10 @@ export interface PublicPackOptions {
   verification?: { verified?: boolean; verifiedDomain?: string; verifiedGithubOrg?: string; sourceVerified?: boolean };
   capabilities?: Capability[];
   preinstall?: Partial<PreInstallManifest>;
+  /** The score `meta.json` and the version row carry; the default is 80 with no parts. */
+  score?: Pick<Meta["score"], "total" | "parts">;
+  /** How many of each inventory part `meta.json` counts; the default is none. */
+  inventory?: Partial<Record<(typeof INVENTORY_PARTS)[number], number>>;
 }
 
 export interface StateChange {
@@ -73,6 +78,15 @@ export interface PackHandle extends Pack {
   /** The public view: a body, `NotFound`, `Held` for a quarantined exact version, or a refusal. */
   read(o?: ReadOptions): Promise<Read | NotFound | Held | Refusal>;
   observe(o?: ReadOptions): Promise<Observation>;
+  /**
+   * The pack's page as an anonymous visitor (or, with `session`, a signed-in one) reads it. The page needs the pack's
+   * search listing, so seed one with `search.list` first.
+   */
+  page(tab?: "overview" | "contents" | "versions", o?: ReadOptions): Promise<PackPageView | NotFound>;
+  /** The README and files the validator will publish beside `meta.json` for the Contents tab. */
+  seedContents(version: string, contents: { readme?: string | null; files?: Array<{ path: string; text: string }> }): Promise<void>;
+  /** The published report of a version, with one warning finding per rule id given. */
+  seedReport(version: string, report: { runId: string; warnings?: string[] }): Promise<void>;
   /** Gives the pack's scope a proof: every version's verification facts change, no object does. */
   seedProof(facts: { verified: boolean; verifiedDomain?: string; verifiedGithubOrg?: string }): Promise<void>;
   /** Moves every seeded version to `removed`, as a deleted pack looks to the registry. */
@@ -194,7 +208,7 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
     const provenance: Meta["provenance"] = sourceVerified
       ? { source: "oidc", repository: `${pack.scope}/packs`, repository_id: 1234, commit: "b".repeat(40), ref: "refs/tags/v1", event: "push", workflow_run: "1", path: `packs/${pack.packName}`, source_verified: true }
       : { source: "upload", source_verified: false };
-    const inventory = Object.fromEntries(INVENTORY_PARTS.map((p) => [p, { count: 0, names: [], tokens: null }])) as unknown as Meta["inventory"];
+    const inventory = Object.fromEntries(INVENTORY_PARTS.map((p) => [p, { count: pack.options.inventory?.[p] ?? 0, names: [], tokens: null }])) as unknown as Meta["inventory"];
     const preinstall: PreInstallManifest = { ...EMPTY_PREINSTALL, ...pack.options.preinstall };
     const meta: Meta = {
       pack: pack.systemName,
@@ -203,7 +217,7 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
       capabilities: pack.options.capabilities ?? [],
       preinstall,
       url_inventory: [],
-      score: { total: 80, parts: [], cap: null },
+      score: { total: pack.options.score?.total ?? 80, parts: pack.options.score?.parts ?? [], cap: null },
       rules_version: RULES_VERSION,
       verification: facts,
       provenance,
@@ -267,7 +281,7 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
         .prepare(
           "INSERT OR REPLACE INTO pack_versions (id, pack_id, version, state, sha256, upload_sha256, size_bytes, published_at, verified, verified_domain, verified_github_org, source_verified, min_engine_version, requires, source_commit, score, score_rules_version, report_key) VALUES (?, (SELECT p.id FROM packs p JOIN scopes s ON s.id = p.scope_id WHERE s.name = ? AND p.name = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
-        .bind(v.id, pack.scope, pack.packName, v.version, v.status, v.canonicalSha256, v.uploadSha256, v.size, v.publishedAt, facts.verified ? 1 : 0, facts.verifiedDomain ?? null, facts.verifiedGithubOrg ?? null, facts.sourceVerified ? 1 : 0, MIN_ENGINE, "[]", null, 80, RULES_VERSION, `reports/${v.id}.json`),
+        .bind(v.id, pack.scope, pack.packName, v.version, v.status, v.canonicalSha256, v.uploadSha256, v.size, v.publishedAt, facts.verified ? 1 : 0, facts.verifiedDomain ?? null, facts.verifiedGithubOrg ?? null, facts.sourceVerified ? 1 : 0, MIN_ENGINE, "[]", null, pack.options.score?.total ?? 80, RULES_VERSION, `reports/${v.id}.json`),
     ]);
   }
 
@@ -403,6 +417,28 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
       read: (o) => read(pack.systemName, o),
       async observe(o) {
         return observation(await get(pathFor(pack.systemName, o?.version), headersFor(o)));
+      },
+      async page(tab = "overview", o) {
+        const path = `/packs/${pack.systemName}${tab === "overview" ? "" : `/${tab}`}${o?.version ? `?version=${o.version}` : ""}`;
+        const res = await get(path, headersFor(o));
+        if (res.status === 404) return new NotFound();
+        return viewOfPackPage(res.status, aliases.unalias(res.text), { "cache-control": res.headers.get("cache-control") ?? "" });
+      },
+      async seedContents(version, contents) {
+        if (!pack.versions.has(version)) throw new InfrastructureError(`${pack.name}@${version} was not seeded`);
+        const { packsPublic } = await storage();
+        await packsPublic.put(`${pack.systemName}/${version}/contents.json`, JSON.stringify({ readme: contents.readme ?? null, files: contents.files ?? [] }));
+      },
+      async seedReport(version, report) {
+        const v = pack.versions.get(version);
+        if (!v) throw new InfrastructureError(`${pack.name}@${version} was not seeded`);
+        const { packsPublic } = await storage();
+        const findings = (report.warnings ?? []).map((rule) => ({ rule, class: "warn", file: null, line: null, quote: null, hint: "see the rule" }));
+        const body = {
+          run_id: report.runId, pack: pack.systemName, version, rules_version: RULES_VERSION, started_at: v.publishedAt, finished_at: v.publishedAt,
+          verdict: findings.length > 0 ? "warn" : "pass", steps: [], findings, tree_hash: null, canonical_sha256: v.canonicalSha256, source_verified: false, prose_screen: null, score: 80,
+        };
+        await packsPublic.put(`reports/${v.id}.json`, JSON.stringify(body));
       },
       async seedProof(facts) {
         pack.options = { ...pack.options, verification: { ...pack.options.verification, ...facts } };

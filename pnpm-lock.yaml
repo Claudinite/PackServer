@@ -401,6 +401,9 @@ importers:
       '@packserver/ports':
         specifier: workspace:*
         version: link:../../packages/ports
+      '@packserver/rules':
+        specifier: workspace:*
+        version: link:../../packages/rules
       '@packserver/schema':
         specifier: workspace:*
         version: link:../../packages/schema
@@ -410,6 +413,9 @@ importers:
       hono:
         specifier: 'catalog:'
         version: 4.13.13
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
     devDependencies:
       '@cloudflare/workers-types':
         specifier: 'catalog:'
