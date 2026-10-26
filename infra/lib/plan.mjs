@@ -16,7 +16,7 @@ export const DEFAULT_EMBEDDING_MODEL = "@cf/baai/bge-m3";
 // Resources no Worker binding names, with the reason each exists.
 export const EXTRAS = {
   r2: ["audit-log"],
-  queues: ["reindex"],
+  queues: [],
 };
 
 // Public hosts of the R2 custom domains, keyed by the (suffixed) bucket they front.

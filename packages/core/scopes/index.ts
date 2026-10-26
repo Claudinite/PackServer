@@ -7,3 +7,5 @@ export * from "./personal.ts";
 export * from "./people.ts";
 export * from "./lifecycle.ts";
 export * from "./transfers.ts";
+export * from "./verified-publisher.ts";
+export * from "./proofs/index.ts";
