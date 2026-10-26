@@ -1,9 +1,11 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import DurationSequencer from "./packages/test-world/sequencer.ts";
 import { scenarioTestOptions } from "./packages/test-world/vitest.ts";
 
 export default defineConfig({
   test: {
+    sequence: { sequencer: DurationSequencer },
     projects: [
       {
         test: { name: "infra", include: ["infra/**/*.test.mjs", "tools/**/*.test.{mjs,ts}"] },

@@ -197,6 +197,13 @@ nightly or weekly job, so the estimate is **over the free budget**; the shard co
 skip CI; a newer push cancels the older run; nothing nightly or weekly runs on forks. Shards grow by
 one when the scenario job's p90 passes 90 s for a week, or sooner when green runs breach the budget;
 shards cost billed minutes, not wall-clock.
+The `scenarios` shards are balanced by duration: `packages/test-world/shard-weights.json` records each
+scenario file's seconds, and a vitest sequencer deals the files heaviest-first onto the lightest shard
+(a file with no entry counts as the median one). Vitest's own split hashes the path, which left the
+slowest of six shards at 105-124 s beside others at 66-90 s. Refresh the weights from a run's JUnit
+with `node packages/test-world/shard-weights.update.mjs reports/scenarios-*.xml`. A scenario file
+boots one local workerd, and that boot is the fixed cost of the file: a booted session is migrated
+and used as it stands, not restarted first, because `reset` restarts the whole session.
 The third `scenarios` leg came when two legs ran 100-138 s and pushed the run past 2 minutes; while
 the repository is public its standard-runner minutes are not billed. The fourth came when the
 slowest of three ran 131 s and left a fully green run at 137 s; the fifth and sixth when new
