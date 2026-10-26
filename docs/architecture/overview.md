@@ -168,7 +168,7 @@ of recurring jobs; other pages link here.
 | Daily | Re-sign `root.json` with a fresh `expires` even with no publishes | validator (via `RootCoordinator`) | REQ-DELIV-003 |
 | Daily | Prune `recent_activity` past 90 days, expired `packs-staging` objects (14 days; dry-runs 1 hour), expired invites and challenges, finished Workflow milestones past 30 days | admin | REQ-PUB-020 |
 | Daily | Audit chain head to Sigstore Rekor and `/.well-known/audit-heads`; nightly chain verifier | admin | REQ-AUDIT-005 |
-| Weekly | Public adoption scan: the `github` Worker searches public repositories through GitHub code search for Claudinite settings files and reads the packs they declare; a run stops after 10 minutes and the next resumes from its saved cursor; it never reads a private repository; the counts are approximate and feed the declaring-repo count, ranking and Trending | github | REQ-TELEM-007 |
+| Weekly | Public adoption scan: the `github` Worker searches public repositories through GitHub code search for Claudinite settings files and reads the packs they declare; the cron fires hourly on Sunday, a run stops after 10 minutes and the next resumes from its saved cursor until the scan completes; it never reads a private repository; the counts are approximate and feed the declaring-repo count, ranking and Trending | github | REQ-TELEM-007 |
 | Weekly | URL domains in live prose re-resolved; the thousand most-declared packs re-run the full pipeline | validator | REQ-VAL-018 |
 | Every 30 days per scope | Domain proof re-check | admin | REQ-SCOPE-006 |
 | Every 5 minutes (every minute during a rollout) | The gate judge and the synthetic prober | judge, prober | [../operations/monitoring.md](../operations/monitoring.md) |

@@ -103,8 +103,15 @@
     {
       "idx": 14,
       "version": "6",
-      "when": 1793021176541,
-      "tag": "20261026132616_publisher_changes_publish_settings",
+      "when": 1793020487810,
+      "tag": "20261026131447_github_adoption_scans",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1793024018069,
+      "tag": "20261026141338_publisher_changes_publish_settings",
       "breakpoints": true
     }
   ]
