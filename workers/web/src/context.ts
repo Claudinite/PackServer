@@ -55,7 +55,7 @@ export const securityUrlOf = (c: Context<WebEnv>): string => `https://${new URL(
 
 /** The one call for a sensitive action; a failed send rejects, so the caller can refuse before acting. */
 export async function recordAudit(
-  c: Context<WebEnv>, userId: string, action: AuditAction, target?: string, detail?: AuditExtra["detail"],
+  c: Context<WebEnv>, userId: string, action: AuditAction, target?: string, detail?: AuditExtra["detail"], scopeId?: string,
 ): Promise<void> {
   const runtime = runtimeOf(c);
   const ipMaster = (await runtime.ports.telemetry.keys()).ipMaster;
@@ -64,6 +64,7 @@ export async function recordAudit(
   const audit = createAudit({ clock: runtime.ports.clock, rng: runtime.ports.rng, queue, d1: runtime.ports.d1 }, { ipKey: ipMaster ?? "" });
   await audit({ kind: "user", id: userId }, action, target, {
     user_id: userId,
+    ...(scopeId === undefined ? {} : { scope_id: scopeId }),
     ...(ipMaster === undefined ? {} : { ip: clientIp(c) }),
     ...(detail === undefined ? {} : { detail }),
   });
