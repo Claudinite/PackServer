@@ -74,7 +74,8 @@ export class HttpDriver implements Driver {
   }
 
   async start(): Promise<void> {
-    const res = await this.http.request({ surface: "web", method: "GET", path: "/" });
+    // A path nothing serves: the home page reads the catalogue, which is legitimately unavailable before the first reset.
+    const res = await this.http.request({ surface: "web", method: "GET", path: "/no/such/path" });
     if (res.status >= 500) throw new InfrastructureError(`${this.env.baseUrl.host} answered ${res.status}`);
   }
   async reset(): Promise<void> {}

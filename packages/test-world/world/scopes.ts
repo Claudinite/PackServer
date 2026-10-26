@@ -48,6 +48,8 @@ export interface OrgHandle extends Org {
   setRole(user: User, role: ScopeRole, o?: Sensitive): Promise<void>;
   remove(who: User | Invitation, o?: Sensitive): Promise<void>;
   delete(o?: Sensitive): Promise<void>;
+  /** What everyone acting for the organisation must have enrolled. */
+  requireMfa(policy: "none" | "mfa" | "passkey", o?: Sensitive): Promise<void>;
   people(): Promise<PeopleView | NotFound>;
   /** The people list as the site answers it, for asserting on its words. */
   peopleObservation(): Promise<Observation>;
@@ -173,6 +175,9 @@ export function createScopeVerbs(driver: Driver, aliases: Aliases): ScopeVerbs {
       },
       async delete(o) {
         done(await call("DELETE", "", "org.delete", o), "org.delete");
+      },
+      async requireMfa(policy, o) {
+        done(await call("POST", "/mfa-policy", "org.mfa-policy", o, { policy }), "org.requireMfa");
       },
       async people() {
         const res = await call("GET", "/people", null);
