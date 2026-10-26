@@ -1,6 +1,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createTestHarness, type TestHarness } from "wrangler";
+import testFakes from "@packserver/ports/test-fakes" with { type: "json" };
 import { TRUST_TABLE, type WorkerName } from "@packserver/ports";
 import { REPO_ROOT } from "./root";
 import { CLOCK_WORKER, FAKE_WORKERS, fakeWorkerConfig } from "./fake-workers";
@@ -35,10 +36,10 @@ export function discoverWorkers(root: string): WorkerName[] {
   return (found as WorkerName[]).sort((a, b) => Number(b === PRIMARY) - Number(a === PRIMARY) || a.localeCompare(b));
 }
 
-/** The fake Workers a set of product Workers binds under `env.test`, from the trust table. */
+/** The fake Workers a set of product Workers binds under `env.test`, from the test-only fakes file. */
 export function fakesFor(workers: WorkerName[]): string[] {
   const names = new Set<string>([CLOCK_WORKER]);
-  for (const worker of workers) for (const fake of Object.values(TRUST_TABLE[worker].fakes)) names.add(fake as string);
+  for (const worker of workers) for (const fake of Object.values((testFakes as Record<string, Record<string, string>>)[worker] ?? {})) names.add(fake);
   const missing = [...names].filter((n) => !(n in FAKE_WORKERS));
   if (missing.length > 0) throw new Error(`the trust table binds ${missing.join(", ")} but the test world has no such fake Worker`);
   return [...names].sort();

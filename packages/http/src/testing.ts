@@ -1,4 +1,5 @@
 import { expectedBindings, TRUST_TABLE, type WorkerName } from "@packserver/ports";
+import testFakes from "@packserver/ports/test-fakes" with { type: "json" };
 import { expect, it, describe } from "vitest";
 import { baseSecurityHeaders, NON_HTML_CSP } from "@packserver/ui/headers";
 import { VERSION_HEADER } from "./version";
@@ -78,7 +79,7 @@ export const SHELL_VERSION = "version-test";
 
 /** An `env` with every binding the trust table gives the Worker, as an empty object that is never called; under `env.test` a fake Worker's binding is a service binding. */
 export function dummyEnv(worker: WorkerName, environment = "test"): Record<string, unknown> {
-  const fakes = environment === "test" ? Object.keys(TRUST_TABLE[worker].fakes) : [];
+  const fakes = environment === "test" ? Object.keys((testFakes as Record<string, Record<string, string>>)[worker] ?? {}) : [];
   const env: Record<string, unknown> = Object.fromEntries(expectedBindings(worker).map((name) => [name, fakes.includes(name) ? { fetch: () => {} } : {}]));
   env.WORKER = worker;
   env.ENVIRONMENT = environment;

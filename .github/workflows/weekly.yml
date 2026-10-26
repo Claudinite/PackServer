@@ -1,0 +1,63 @@
+# The weekly real-backend suites (docs/testing/README.md §4, §6, §9): the scenarios that can run
+# against a deployment, over http, against staging. The Access service token admits the two staging
+# hostnames only, and this workflow holds no Cloudflare API token. The repo permits no cron but the
+# Claudinite scheduler, so this is a dispatch that scheduler fires.
+name: weekly
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: weekly
+  cancel-in-progress: false
+
+jobs:
+  staging:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: staging
+    permissions:
+      contents: read
+    env:
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      # Handled outcome, not a failure: no token until the staging Access application exists (I-1).
+      - id: configured
+        run: |
+          if [ -n "$CF_ACCESS_CLIENT_ID" ] && [ -n "$CF_ACCESS_CLIENT_SECRET" ]; then echo "yes=true" >> "$GITHUB_OUTPUT"; else echo "::notice::the staging environment has no Access service token yet; nothing to run"; fi
+      - if: steps.configured.outputs.yes == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - if: steps.configured.outputs.yes == 'true'
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - if: steps.configured.outputs.yes == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - if: steps.configured.outputs.yes == 'true'
+        run: pnpm install --frozen-lockfile
+      # Scenarios that need a fake, a clock or a reset skip themselves under the http driver.
+      - if: steps.configured.outputs.yes == 'true'
+        env:
+          TEST_DRIVER: http
+          PACKSERVER_BASE_URL: https://registry-staging.claudinite.com
+          PACKSERVER_ACCESS_HOST: registry-staging.claudinite.com
+        run: pnpm exec vitest run --project scenarios --passWithNoTests --retry 1 --reporter=default --reporter=junit --outputFile.junit=reports/scenarios.xml
+      - if: always() && steps.configured.outputs.yes == 'true'
+        run: node docs/testing/coverage.mjs --junit reports/scenarios.xml
+      - if: always() && steps.configured.outputs.yes == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: weekly-junit
+          path: reports/
+          if-no-files-found: ignore
