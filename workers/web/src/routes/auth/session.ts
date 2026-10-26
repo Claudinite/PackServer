@@ -57,7 +57,8 @@ routes.post(
     const fields = await formFields(c);
     const raw = typeof fields.handle === "string" ? fields.handle : ((await c.req.json().catch(() => ({}))) as { handle?: unknown }).handle;
     if (typeof raw !== "string") return refusal("forbidden", { status: 400, message: "format: a handle is required." });
-    const verdict = await chooseHandle(c.get("runtime").ports.d1, c.get("session")!.record.user_id, raw);
+    const { d1, clock, rng } = c.get("runtime").ports;
+    const verdict = await chooseHandle({ d1, clock, rng }, c.get("session")!.record.user_id, raw);
     if (verdict.ok) return c.json({ handle: verdict.handle }, 200, { "cache-control": "no-store" });
     const message = `${verdict.reason}: ${verdict.message}`;
     return verdict.reason === "taken" ? refusal("exists", { message }) : refusal("forbidden", { status: verdict.reason === "format" ? 422 : 403, message });

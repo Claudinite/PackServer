@@ -1,3 +1,4 @@
+import { ensurePersonalScope } from "@packserver/core/scopes";
 import {
   createSession, describeDevice, destroySession, GitHubLoginError, hashSessionId, pkceChallenge, safeReturnTarget, signInWithGitHub, toHex,
 } from "@packserver/core/identity";
@@ -77,6 +78,10 @@ routes.get("/auth/github/callback", async (c) => {
     return refusal("exists", {
       message: "An account already uses this address. Sign in with the original method, then link GitHub from Account > Security.",
     });
+  }
+
+  if (outcome.handle !== null) {
+    await ensurePersonalScope({ d1: runtime.ports.d1, clock: runtime.ports.clock, rng: runtime.ports.rng }, outcome.user_id, outcome.handle);
   }
 
   const ports = sessionPorts(runtime);

@@ -2,6 +2,7 @@
 // system only when a verb or observation does. Area tasks fill the modules that return them.
 
 import type { Observation } from "./outcomes";
+import type { UserTokens } from "./tokens";
 
 export type Duration = string;
 
@@ -176,6 +177,7 @@ export interface User {
   /** Sends the handle as given: a scenario that tests a reserved or taken name must not have it aliased. */
   chooseHandle(handle: string, o?: FormFaults): Promise<void>;
   sessions: { list(): Promise<SessionInfo[]> };
+  tokens: UserTokens;
   account: { show(): Promise<AccountInfo> };
   /** The same person at another network address. */
   from(ip: string): User;

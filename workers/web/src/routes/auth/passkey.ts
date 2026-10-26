@@ -128,7 +128,7 @@ routes.post("/auth/passkey/enrol/verify", requireSession(), sessionCsrf<WebEnv>(
   const registration = await finishRegistration(ports, relyingPartyOf(c), "enrol", body.response as RegistrationResponseJSON, live.sid_hash);
   if (!registration || registration.user_id !== userId) return badCeremony();
 
-  const hold = await holdUntilFor(ports, userId, c.get("assertion") ?? null);
+  const hold = first ? null : await holdUntilFor(ports, userId, c.get("assertion") ?? null);
   await recordAudit(c, userId, "factor.added", undefined, { kind: "passkey" });
   const credential = await saveCredential(ports, registration, { label: asText(body.label, MAX_LABEL) ?? null, hold_until: hold });
   const codes = first ? await replaceRecoveryCodes(ports, userId) : undefined;

@@ -1,0 +1,8 @@
+---
+name: production-retrospective
+description: Design and file the review that comes back once a larger element has lived in production. Use when designing such an element, or when its merge completes it.
+metadata:
+  body: workflow
+  usage:
+    expect: judgment
+---

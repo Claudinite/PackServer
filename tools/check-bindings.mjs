@@ -396,6 +396,10 @@ export function checkBindings(rootDir) {
   root = rootDir;
   problems = [];
   const table = JSON.parse(readFileSync(join(root, "packages/ports/trust-table.json"), "utf8")).workers;
+  // The test-only binding names live in their own file so no production bundle carries them (IT-OPS-003).
+  const testFakes = JSON.parse(readFileSync(join(root, "packages/ports/test-fakes.json"), "utf8"));
+  for (const w of Object.keys(testFakes)) if (!table[w]) problem("packages/ports/test-fakes.json", `names ${w}, which the trust table does not`);
+  for (const [w, t] of Object.entries(table)) t.fakes = testFakes[w] ?? {};
   const configs = {};
   for (const [worker, t] of Object.entries(table)) {
     const path = join(root, "workers", worker, "wrangler.jsonc");

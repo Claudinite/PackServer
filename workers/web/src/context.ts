@@ -1,12 +1,12 @@
 import { createAudit, type AuditAction, type AuditExtra } from "@packserver/core/audit";
 import { relyingPartyFor, type MfaPorts, type SessionPorts } from "@packserver/core/identity";
 import { sendNotice, type NoticeData, type NoticeKind } from "@packserver/core/mail";
-import { clientIp, resolveSession, type SessionVariables } from "@packserver/http";
+import { clientIp, resolveSession, type SessionVariables, type TokenVariables } from "@packserver/http";
 import { syncClock } from "@packserver/ports";
 import type { Context, MiddlewareHandler } from "hono";
 import type { WebRuntime } from "./bindings";
 
-export interface WebVariables extends SessionVariables {
+export interface WebVariables extends SessionVariables, TokenVariables {
   runtime: WebRuntime;
 }
 export type WebEnv = { Variables: WebVariables };

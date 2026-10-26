@@ -37,7 +37,7 @@ describe("service-binding contracts", () => {
   it("web -> mcp search cards carry a verdict value and the score parts", () => {
     const card = {
       id: "@acme/gcp", pitch: "p", inventory_counts: { skills: 1 }, context_cost: 100, verified: true,
-      verified_domain: null, verified_github_org: null, verdict: "pass", repository: null, rating: null, score: 80,
+      verified_domain: null, verified_github_org: null, verdict: "pass", repository: null, rating: null, stars: 0, fetches_30d: 0, category: "cloud", score: 80,
       score_parts: [{ part: "context", weight: 25, points: 20, rules: [] }], newest_eligible: null,
     };
     expect(SearchResponse.safeParse({ cards: [card], degraded: false }).success).toBe(true);
@@ -47,6 +47,8 @@ describe("service-binding contracts", () => {
   it("web -> mcp search", () => {
     expect(SearchRequest.safeParse({ query: "gcp", limit: 10 }).success).toBe(true);
     expect(SearchRequest.safeParse({ query: "" }).success).toBe(false);
+    expect(SearchRequest.safeParse({ sort: "stars", offset: 20 }).success).toBe(true);
+    expect(SearchRequest.safeParse({ sort: "newest" }).success).toBe(false);
     expect(SearchRequest.safeParse({ query: "x", limit: 500 }).success).toBe(false);
   });
   it("web -> publish uploads", () => {

@@ -11,10 +11,12 @@ import { createModeration } from "./areas/moderation";
 import { createOperator } from "./areas/operator";
 import { createPublishing } from "./areas/publishing";
 import { createScopes } from "./areas/scopes";
+import { createSearch } from "./areas/search";
 import { createTelemetry } from "./areas/telemetry";
 import { createUsers } from "./areas/users";
 import { createValidation } from "./areas/validation";
 import { createClock } from "./clock";
+import { createCi } from "./ci-workflow";
 import { InfrastructureError } from "./errors";
 import { createMail } from "./mail";
 import { createPlatform } from "./platform";
@@ -29,13 +31,14 @@ export function createWorld(driver: Driver, title: string) {
       return filterInvocations(driver.recorder.invocations(filter), filter);
     },
   };
+  const people = createUsers(driver, aliases);
   return {
     driver,
-    ...createUsers(driver, aliases),
-    ...createScopes(driver, aliases),
+    ...people,
+    ...createScopes(driver, aliases, people),
     ...createPublishing(),
     ...createValidation(),
-    ...createAccess(),
+    ...createAccess(driver),
     ...createCommunity(),
     ...createModeration(),
     ...createAdmin(),
@@ -43,7 +46,9 @@ export function createWorld(driver: Driver, title: string) {
     ...createAgents(),
     ...createGitHub(driver),
     ...createAuditModule(driver),
+    ...createSearch(driver, aliases),
     ...createTelemetry(),
+    ...createCi(driver, (name) => aliases.alias(name)),
     operator: createOperator(driver),
     clock: createClock(driver),
     mail: createMail(driver),

@@ -47,8 +47,36 @@
     {
       "idx": 6,
       "version": "6",
-      "when": 1792732565190,
-      "tag": "20261023051605_mfa_passkeys_recovery",
+      "when": 1792728209675,
+      "tag": "20261023040329_publishing_trusted_publishers_upload_credentials",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1793010314123,
+      "tag": "20261026102514_search_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1793010808537,
+      "tag": "20261026103328_tokens_read_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1793011297793,
+      "tag": "20261026104137_scopes_orgs_transfers",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1793011808114,
+      "tag": "20261026105008_mfa_passkeys_recovery",
       "breakpoints": true
     }
   ]
