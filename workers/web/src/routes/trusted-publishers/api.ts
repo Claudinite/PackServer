@@ -51,18 +51,32 @@ async function target(c: Context<WebEnv>) {
   return { scope, packName: packOf(c), visibility: rows[0]?.visibility === "private" ? ("private" as const) : ("public" as const) };
 }
 
+const fieldsOf = (p: PublisherView): Record<string, string> => ({
+  repository: p.repository,
+  "repository id": p.repository_id,
+  "repository owner id": p.repository_owner_id,
+  workflow: p.workflow,
+  environment: p.environment ?? "none",
+  path: p.path,
+  refs: p.refs.join(", "),
+  events: p.events.join(", "),
+});
+
+/** What the owners are told: every field of a new registration, or each field that changed as before to after. */
+function describe(after: PublisherView, before?: PublisherView): string {
+  const now = fieldsOf(after);
+  if (!before) return Object.entries(now).map(([k, v]) => `${k} ${v}`).join("; ");
+  const was = fieldsOf(before);
+  const moved = Object.keys(now).filter((k) => now[k] !== was[k]).map((k) => `${k} ${was[k]} -> ${now[k]}`);
+  return `${after.repository}: ${moved.length > 0 ? moved.join("; ") : "no field changed"}`;
+}
+
 /** Every owner hears of a change to who may publish the pack (REQ-PUB-002). */
-async function tellOwners(c: Context<WebEnv>, scopeId: string, change: "added" | "changed", pack: string, publisher: PublisherView): Promise<void> {
+async function tellOwners(c: Context<WebEnv>, scopeId: string, change: "added" | "changed", pack: string, what: string): Promise<void> {
   const runtime = runtimeOf(c);
   const { rows } = await runtime.ports.d1.query("select handle from users where id = ?", [c.get("session")!.record.user_id]);
   const host = new URL(runtime.config.siteOrigins[0]).host;
-  const data = {
-    pack,
-    change,
-    publisher: `${publisher.repository} (${publisher.workflow}${publisher.environment ? `, environment ${publisher.environment}` : ""})`,
-    actor: String(rows[0]?.handle ?? "An owner"),
-    packUrl: `https://${host}/packs/${pack}`,
-  };
+  const data = { pack, change, publisher: what, actor: String(rows[0]?.handle ?? "An owner"), packUrl: `https://${host}/packs/${pack}` };
   for (const address of await ownerAddresses(runtime.ports.d1, scopeId)) await sendNotice(runtime.ports.mail, address, "trusted-publisher-changed", data);
 }
 
@@ -88,26 +102,32 @@ routes.post("/trusted-publishers/:scope/:name", sensitive(HELD_ACTION_NAMES.trus
   if (missing) return badRequest(`${missing}: required.`);
   const userId = c.get("session")!.record.user_id;
   const ports = scopePorts(c);
-  await recordAudit(c, userId, "trusted_publisher.changed", targetOf(c), { change: "added" }, t.scope.id);
   const out = await registerPublisher(ports, { scope: t.scope, packName: t.packName, userId, input: input as PublisherInput });
   if (!out.ok) {
     if (out.reason === "invalid") return badRequest(out.message);
     return refusal(out.reason === "cap" ? "quota" : "exists", { status: out.reason === "cap" ? 429 : 409, message: out.message });
   }
-  await tellOwners(c, t.scope.id, "added", `@${t.scope.name}/${t.packName}`, out.publisher);
+  await recordAudit(c, userId, "trusted_publisher.changed", targetOf(c), { change: "added" }, t.scope.id);
+  await tellOwners(c, t.scope.id, "added", `@${t.scope.name}/${t.packName}`, describe(out.publisher));
   return ok(c, { publisher: out.publisher }, 201);
 });
 
-/** Turns trusted-publishing-only on or off for an existing pack (REQ-PUB-008). */
-routes.put("/trusted-publishers/:scope/:name/only", signedInPost(), async (c) => {
+async function setOnly(c: Context<WebEnv>, on: boolean): Promise<Response> {
   const t = await target(c);
   if (!t) return notFound();
   const who = await standing(c, { scope: t.scope.name, need: "owner", resource: t.visibility });
   if (who instanceof Response) return who;
-  const on = (await jsonBody(c)).on;
-  if (typeof on !== "boolean") return badRequest("on: true or false.");
-  return (await setTrustedOnly(scopePorts(c), t.scope.id, t.packName, on)) ? ok(c, { trusted_only: on }) : notFound();
-});
+  if (!(await setTrustedOnly(scopePorts(c), t.scope.id, t.packName, on))) return notFound();
+  await recordAudit(c, c.get("session")!.record.user_id, "trusted_publisher.changed", targetOf(c), { change: on ? "trusted-only-on" : "trusted-only-off" }, t.scope.id);
+  if (!on) await tellOwners(c, t.scope.id, "changed", `@${t.scope.name}/${t.packName}`, "trusted-publishing-only turned off, so web uploads are allowed again");
+  return ok(c, { trusted_only: on });
+}
+
+/** Turns trusted-publishing-only on (REQ-PUB-008); tightening needs no assertion. */
+routes.put("/trusted-publishers/:scope/:name/only", signedInPost(), (c) => setOnly(c, true));
+
+/** Turning it off loosens who may publish, so it is held and assertion-bound like a registration change. */
+routes.delete("/trusted-publishers/:scope/:name/only", sensitive(HELD_ACTION_NAMES.trustedPublisherChange, targetOf), (c) => setOnly(c, false));
 
 /** Changes one registration. */
 routes.put("/trusted-publishers/:scope/:name/:id", sensitive(HELD_ACTION_NAMES.trustedPublisherChange, targetOf), async (c) => {
@@ -118,10 +138,10 @@ routes.put("/trusted-publishers/:scope/:name/:id", sensitive(HELD_ACTION_NAMES.t
   const input = inputFrom(await jsonBody(c));
   if (typeof input === "string") return badRequest(input);
   const userId = c.get("session")!.record.user_id;
-  await recordAudit(c, userId, "trusted_publisher.changed", targetOf(c), { change: "changed" }, t.scope.id);
   const out = await changePublisher(scopePorts(c), { scope: t.scope, packName: t.packName, userId, id: c.req.param("id") ?? "", patch: input });
   if (!out.ok) return out.reason === "not-found" ? notFound() : badRequest(out.message);
-  await tellOwners(c, t.scope.id, "changed", `@${t.scope.name}/${t.packName}`, out.publisher);
+  await recordAudit(c, userId, "trusted_publisher.changed", targetOf(c), { change: "changed" }, t.scope.id);
+  await tellOwners(c, t.scope.id, "changed", `@${t.scope.name}/${t.packName}`, describe(out.publisher, out.before));
   return ok(c, { publisher: out.publisher });
 });
 

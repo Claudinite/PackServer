@@ -33,7 +33,7 @@ describe("normalizePublisher", () => {
     expect(normalizePublisher({ ...INPUT, repository: "acme" }, "gcp")).toMatchObject({ ok: false });
     expect(normalizePublisher({ ...INPUT, repository_id: "abc" }, "gcp")).toMatchObject({ ok: false });
     expect(normalizePublisher({ ...INPUT, workflow: "../x.yml" }, "gcp")).toMatchObject({ ok: false });
-    expect(normalizePublisher({ ...INPUT, events: ["pull_request_target"] }, "gcp")).toMatchObject({ ok: false });
+    for (const event of ["pull_request_target", "issue_comment", "schedule"]) expect(normalizePublisher({ ...INPUT, events: [event] }, "gcp")).toMatchObject({ ok: false });
     expect(normalizePublisher({ ...INPUT, refs: ["main"] }, "gcp")).toMatchObject({ ok: false });
   });
 });
@@ -57,6 +57,15 @@ describe("registerPublisher (REQ-PUB-001)", () => {
     expect(await t.register("real")).toMatchObject({ ok: true, publisher: { pending_until: null } });
     t.advance(PENDING_NAME_MS + 1);
     expect(await t.register("p10")).toMatchObject({ ok: true });
+  });
+
+  it("never deletes the registration of a pack that exists, even with a stale pending date", async () => {
+    const t = setup();
+    t.db.exec(`insert into packs (id, scope_id, name, visibility, created_at) values ('pk', 's1', 'real', 'public', '${t.at}')`);
+    t.db.exec(`insert into trusted_publishers (id, scope_id, pack_name, repository_id, repository_owner_id, repository, workflow, path, refs, events, pending_until, created_at, updated_at)
+      values ('old', 's1', 'real', '1', '1', 'a/b', 'w.yml', 'p', '[]', '[]', '2020-01-01T00:00:00.000Z', '${t.at}', '${t.at}')`);
+    await t.register("other");
+    expect(t.db.prepare("select 1 from trusted_publishers where id = 'old'").all()).toHaveLength(1);
   });
 
   it("refuses the same repository, workflow, environment and path twice", async () => {

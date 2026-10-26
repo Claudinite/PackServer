@@ -1,6 +1,6 @@
 import type { Clock, D1, Rng } from "@packserver/ports";
 import { iso, newId } from "../scopes/personal.ts";
-import { DEFAULT_EVENTS, FORBIDDEN_EVENTS, defaultRefs } from "./oidc.ts";
+import { DEFAULT_EVENTS, defaultRefs } from "./oidc.ts";
 
 /** REQ-PUB-001: how long a registration for a pack that does not exist yet reserves its name. */
 export const PENDING_NAME_MS = 14 * 24 * 3_600_000;
@@ -48,8 +48,7 @@ type Scope = { id: string; name: string };
 const SLUG = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const DIGITS = /^[0-9]{1,20}$/;
 const CLEAN_PATH = (value: string): boolean => value.length > 0 && value.length <= 300 && !value.startsWith("/") && !value.split("/").some((part) => part === ".." || part === "") && !/[\p{Cc}@]/u.test(value);
-const FORBIDDEN = new Set<string>(FORBIDDEN_EVENTS);
-const EVENT_NAME = /^[a-z_]{1,40}$/;
+const ALLOWED_EVENTS = new Set<string>(DEFAULT_EVENTS);
 
 /** The input made canonical, or the first thing wrong with it. */
 export function normalizePublisher(input: PublisherInput, packName: string): { ok: true; value: Required<Omit<PublisherInput, "default_branch">> } | { ok: false; message: string } {
@@ -62,8 +61,8 @@ export function normalizePublisher(input: PublisherInput, packName: string): { o
   const refs = input.refs ?? defaultRefs(packName, input.default_branch ?? "main");
   if (refs.length === 0 || refs.length > 10 || !refs.every((r) => typeof r === "string" && /^refs\/[^\s]{1,200}$/.test(r))) return { ok: false, message: "refs: give up to 10 patterns, each starting with refs/." };
   const events = input.events ?? [...DEFAULT_EVENTS];
-  if (events.length === 0 || events.length > 10 || !events.every((e) => typeof e === "string" && EVENT_NAME.test(e) && !FORBIDDEN.has(e))) {
-    return { ok: false, message: `events: name up to 10 events, never ${FORBIDDEN_EVENTS.join(", ")}.` };
+  if (events.length === 0 || events.length > 10 || !events.every((e) => typeof e === "string" && ALLOWED_EVENTS.has(e))) {
+    return { ok: false, message: `events: choose from ${DEFAULT_EVENTS.join(", ")}; events an outsider can trigger are refused.` };
   }
   return { ok: true, value: { repository: input.repository, repository_id: input.repository_id, repository_owner_id: input.repository_owner_id, workflow: input.workflow, environment, path: input.path, refs: [...new Set(refs)], events: [...new Set(events)] } };
 }
@@ -120,7 +119,11 @@ export async function registerPublisher(
 
   const { rows: packRows } = await ports.d1.query("select 1 from packs where scope_id = ? and name = ?", [scope.id, packName]);
   const pending = packRows.length === 0;
-  await ports.d1.query("delete from trusted_publishers where scope_id = ? and pending_until is not null and pending_until <= ?", [scope.id, now]);
+  await ports.d1.query(
+    `delete from trusted_publishers where scope_id = ? and pending_until is not null and pending_until <= ?
+       and not exists (select 1 from packs p where p.scope_id = trusted_publishers.scope_id and p.name = trusted_publishers.pack_name)`,
+    [scope.id, now],
+  );
 
   const { rows: same } = await ports.d1.query(
     "select 1 from trusted_publishers where scope_id = ? and pack_name = ? and repository_id = ? and workflow = ? and coalesce(environment, '') = ? and path = ?",

@@ -60,12 +60,24 @@ scenario("IT-PUB-002 Changing a trusted publisher needs an assertion and emails 
   const forOtherPack = await p.assertionFor({ action: "trusted-publisher.change", target: "acme/other" });
   await expect(world.trusted.change(added, { by: p, workflow: ".github/workflows/release.yml", assertion: forOtherPack })).toBeRefused("step-up");
 
+  await expect(world.trusted.change(added, { by: p, events: ["issue_comment"] })).toBeRefusedSaying("events");
+  await expect(world.trusted.change(added, { by: p, events: ["pull_request_target"] })).toBeRefusedSaying("events");
+  expect(world.mail.inbox(p).all().filter((n) => /changed/i.test(n.subject))).toHaveLength(0);
+
   const changed = await world.trusted.change(added, { by: p, workflow: ".github/workflows/release.yml" });
   expect(changed).toMatchObject({ id: added.id, workflow: ".github/workflows/release.yml" });
   for (const owner of owners) {
     const notice = world.mail.inbox(owner).latest();
     expect(notice.subject).toMatch(/trusted publisher changed/i);
-    expect(notice.text).toContain(".github/workflows/release.yml");
+    expect(notice.text).toContain(`workflow ${WORKFLOW} -> .github/workflows/release.yml`);
+  }
+
+  const moved = world.ci.repo("acme/packs", { id: 6262, ownerId: 2002 });
+  await world.trusted.change(changed, { by: p, repo: moved });
+  for (const owner of owners) {
+    const text = world.mail.inbox(owner).latest().text;
+    expect(text).toContain("repository id 5150 -> 6262");
+    expect(text).toContain("repository owner id 1001 -> 2002");
   }
 });
 
@@ -79,11 +91,19 @@ scenario("IT-PUB-008 Trusted-publishing-only refuses web uploads", async (world)
   await world.trusted.setOnly("@acme/gcp", true, p);
   await expect(world.trusted.webUpload("@acme/gcp", m)).toBeRefused("trusted-only");
   await expect(world.trusted.setOnly("@acme/gcp", false, m)).rejects.toMatchObject({ reason: "forbidden" });
+  await expect(world.trusted.setOnly("@acme/gcp", false, p, { assertion: "none" })).rejects.toMatchObject({ reason: "step-up" });
+  await expect(world.trusted.webUpload("@acme/gcp", m)).toBeRefused("trusted-only");
   expect(await world.ci.staging.objects("acme")).toEqual([]);
 
   const run = world.ci.workflow({ repo, environment: "release", ref: "refs/tags/gcp/9.0.0" });
   const credential = accepted(await run.exchange("@acme/gcp", "9.0.0"));
   expect(accepted(await credential.upload(new Uint8Array(1024).fill(7)))).toMatchObject({ sizeBytes: 1024 });
+
+  const before = world.mail.inbox(p).all().length;
+  await world.trusted.setOnly("@acme/gcp", false, p);
+  await expect(world.trusted.webUpload("@acme/gcp", m)).resolves.toBe("allowed");
+  expect(world.mail.inbox(p).all().length).toBe(before + 1);
+  expect(world.mail.inbox(p).latest().text).toContain("turned off");
 });
 
 scenario("IT-VAL-038 The next version after a publisher-change event is a first publish (emitter half)", async (world) => {

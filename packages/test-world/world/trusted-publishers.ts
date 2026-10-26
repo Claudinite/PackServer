@@ -43,7 +43,7 @@ export interface TrustedPublishersModule {
   change(registration: TrustedRegistration, o: { by: User } & Partial<RegistrationFields> & Sensitive): Promise<TrustedRegistration>;
   list(pack: string, by: User): Promise<TrustedRegistration[]>;
   /** Turns trusted-publishing-only on or off. */
-  setOnly(pack: string, on: boolean, by: User): Promise<void>;
+  setOnly(pack: string, on: boolean, by: User, o?: Sensitive): Promise<void>;
   /** Asks to start a web upload of the pack; a refusal is thrown. */
   webUpload(pack: string, by: User): Promise<"allowed">;
   /** The publisher-change events recorded for the pack, oldest first. */
@@ -122,8 +122,10 @@ export function createTrustedPublishers(driver: Driver, aliases: Aliases): { tru
         const body = done(await callerOf(by).call({ method: "GET", path: pathFor(pack) }), "trusted.list") as { publishers: Array<Record<string, unknown>> };
         return body.publishers.map((p) => view(pack, p));
       },
-      async setOnly(pack, on, by) {
-        done(await callerOf(by).call({ method: "PUT", path: `${pathFor(pack)}/only`, json: { on } }), "trusted.setOnly");
+      async setOnly(pack, on, by, o) {
+        const { scope, name } = split(pack);
+        const headers = on ? {} : await callerOf(by).assertionHeaders(ACTION, o, `${scope}/${name}`);
+        done(await callerOf(by).call({ method: on ? "PUT" : "DELETE", path: `${pathFor(pack)}/only`, json: {}, headers }), "trusted.setOnly");
       },
       async webUpload(pack, by) {
         done(await callerOf(by).call({ method: "POST", path: `${pathFor(pack)}/web-upload`, json: {} }), "trusted.webUpload");
