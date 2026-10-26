@@ -6,8 +6,8 @@ import type { Aliases } from "./alias";
 import type { CiModule, Presigned } from "./ci-workflow";
 import { InfrastructureError, NotImplemented, stubModule } from "./errors";
 import { Refusal, type RefusalReason } from "./outcomes";
-import type { UsersModule } from "./areas/users";
-import type { Archive, Pack, PublisherOpts, Scope, User, ValidationRun, Version, VersionStatus, Verification } from "./types";
+import type { ScopeOwner, ScopesModule } from "./areas/scopes";
+import type { Archive, Pack, PublisherOpts, UserOpts, ValidationRun, Version, VersionStatus, Verification } from "./types";
 import type { ValidationModule } from "./areas/validation";
 
 export interface ArchiveOptions {
@@ -111,10 +111,8 @@ export class AdmittedVersion implements Version {
   }
 }
 
-export interface PublisherHandleOpts extends PublisherOpts {
-  /** The scope's name as the scenario spells it; default is the person's own name. */
-  scope?: string;
-}
+/** A person's options, plus whether their personal scope is a Verified Publisher's. */
+export type PublisherHandleOpts = UserOpts & Pick<PublisherOpts, "verified">;
 
 export interface PublishOptions {
   visibility?: "private";
@@ -123,8 +121,7 @@ export interface PublishOptions {
   declaredSha256?: string;
 }
 
-export interface PublisherHandle extends Omit<User, "as" | "from" | "failingHumanCheck"> {
-  readonly scope: Scope;
+export interface PublisherHandle extends ScopeOwner {
   publish(archive: ArchiveHandle): { as(nameAtVersion: string, o?: PublishOptions): Promise<AdmittedVersion> };
   dryRun(archive: ArchiveHandle, o?: { proseScreen?: boolean }): Promise<Run>;
 }
@@ -160,7 +157,7 @@ const NAME_AT_VERSION = /^@([a-z0-9][a-z0-9._-]*)\/([a-z0-9][a-z0-9._-]*)@(\d+\.
 const KNOWN_REASONS = new Set<string>(["quota", "exists", "forbidden", "oidc.invalid", "signature", "rate-limited", "scope", "category", "trusted-only"]);
 
 /** Publishing as a signed-in person: the archive, the publisher, the wizard's publish and dry-run, and a version's run. */
-export function createPublishFlow(driver: Driver, aliases: Aliases, users: UsersModule, ci: CiModule) {
+export function createPublishFlow(driver: Driver, aliases: Aliases, scopes: Pick<ScopesModule, "publishers">, ci: CiModule) {
   const storage = () => {
     if (!driver.publishStorage) throw new InfrastructureError(`the ${driver.kind} driver has no storage access: publishers cannot be seeded on a deployment`);
     return driver.publishStorage;
@@ -193,18 +190,18 @@ export function createPublishFlow(driver: Driver, aliases: Aliases, users: Users
   }
 
   async function createPublisher(opts: PublisherHandleOpts = {}): Promise<PublisherHandle> {
-    const person = await users.users.create();
-    const word = opts.scope ?? person.handle;
+    const { verified, ...userOpts } = opts;
+    const person = await scopes.publishers.create(userOpts);
+    const word = person.scope.name;
     const scope = aliases.alias(word);
-    const now = new Date(await driver.fakes!.clock.call<number>("now")).toISOString();
     const sql = storage().sql;
-    const userId = String((await sql("select id from users where handle = ?", [aliases.alias(person.handle)]))[0]?.id ?? "");
-    if (!userId) throw new InfrastructureError(`the person ${person.handle} has no account row to publish from`);
-    await sql(
-      "insert into scopes (id, name, kind, state, created_at, verified_domain) values (?, ?, 'user', 'active', ?, ?)",
-      [`scope-${scope}`, scope, now, opts.verified ? `${scope}.example` : null],
+    const found = await sql(
+      "select u.id as user_id, s.id as scope_id from users u join scopes s on s.name = ? join scope_members m on m.scope_id = s.id and m.user_id = u.id where u.handle = ?",
+      [scope, scope],
     );
-    await sql("insert into scope_members (scope_id, user_id, role, created_at) values (?, ?, 'owner', ?)", [`scope-${scope}`, userId, now]);
+    const userId = String(found[0]?.user_id ?? "");
+    if (!userId) throw new InfrastructureError(`the person ${word} is not a member of their personal scope, so there is nothing to publish to`);
+    if (verified) await sql("update scopes set verified_domain = ? where id = ?", [`${scope}.example`, String(found[0]?.scope_id)]);
 
     const parse = (nameAtVersion: string) => {
       const m = NAME_AT_VERSION.exec(nameAtVersion);
@@ -266,8 +263,7 @@ export function createPublishFlow(driver: Driver, aliases: Aliases, users: Users
       };
     };
 
-    const handle: PublisherHandle = Object.assign(Object.create(person) as User, {
-      scope: { name: word },
+    const handle: PublisherHandle = Object.assign(Object.create(person) as ScopeOwner, {
       publish(archive: ArchiveHandle) {
         return {
           async as(nameAtVersion: string, o: PublishOptions = {}): Promise<AdmittedVersion> {

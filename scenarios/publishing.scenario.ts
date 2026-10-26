@@ -151,7 +151,7 @@ scenario("IT-PUB-030 The upload credential is bound, single-use, size-capped and
 });
 
 scenario("IT-PUB-017 Versions are immutable; re-publishing a version is an error", async (world) => {
-  const z = await world.publishers.create({ scope: "z" });
+  const z = await world.publishers.create({ handle: "z" });
   const original = world.archive("gcp", { version: "1.0.0" });
   const other = world.archive("gcp", { version: "1.0.0", files: { "README.md": "# different bytes\n" } });
   expect(other.sha256).not.toBe(original.sha256);
@@ -168,10 +168,10 @@ scenario("IT-PUB-017 Versions are immutable; re-publishing a version is an error
 });
 
 scenario("IT-PUB-026 20 versions per pack a day; 5 new packs per scope a day, 20 for a Verified Publisher", async (world) => {
-  const versions = await world.publishers.create({ scope: "vers" });
-  const plain = await world.publishers.create({ scope: "plain" });
-  const verified = await world.publishers.create({ scope: "vp", verified: true });
-  const racer = await world.publishers.create({ scope: "race" });
+  const versions = await world.publishers.create({ handle: "vers" });
+  const plain = await world.publishers.create({ handle: "plain" });
+  const verified = await world.publishers.create({ handle: "vp", verified: true });
+  const racer = await world.publishers.create({ handle: "race" });
 
   const day = await Promise.all([
     (async () => {
@@ -202,8 +202,8 @@ scenario("IT-PUB-026 20 versions per pack a day; 5 new packs per scope a day, 20
 });
 
 scenario("IT-PUB-027 Concurrent publishes of one version yield one version and one new-pack count", async (world) => {
-  const z = await world.publishers.create({ scope: "z" });
-  const y = await world.publishers.create({ scope: "y" });
+  const z = await world.publishers.create({ handle: "z" });
+  const y = await world.publishers.create({ handle: "y" });
   const outcomes = (attempts: PromiseSettledResult<unknown>[]) => ({
     won: attempts.filter((a) => a.status === "fulfilled").length,
     lost: attempts.filter((a) => a.status === "rejected") as PromiseRejectedResult[],
@@ -230,7 +230,7 @@ scenario("IT-PUB-027 Concurrent publishes of one version yield one version and o
 });
 
 scenario("IT-VAL-002 Hash mismatch, oversize or non-zstd fail before any sandbox starts", async (world) => {
-  const v = await world.publishers.create({ scope: "v" });
+  const v = await world.publishers.create({ handle: "v" });
   const valid = world.archive("gcp");
 
   await expect(v.publish(world.archive("gcp", { padTo: 3 * MiB + 1 })).as("@v/big@1.0.0")).toBeRefused("quota");

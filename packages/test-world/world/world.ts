@@ -33,14 +33,15 @@ export function createWorld(driver: Driver, title: string) {
     },
   };
   const people = createUsers(driver, aliases);
+  const scopes = createScopes(driver, aliases, people);
   const ci = createCi(driver, (name) => aliases.alias(name));
   return {
     driver,
     ...people,
-    ...createScopes(driver, aliases, people),
+    ...scopes,
     ...createPublishing(),
     ...createValidation(),
-    ...createPublishFlow(driver, aliases, people, ci),
+    ...createPublishFlow(driver, aliases, scopes, ci),
     ...createAccess(driver),
     ...createCommunity(),
     ...createModeration(),
