@@ -4,7 +4,7 @@ import { WorldFakes } from "../fakes/compose";
 import { createWorldHarness, testWorkerName, type HarnessOptions, type WorldHarness } from "../harness";
 import { InfrastructureError } from "../world/errors";
 import { filterInvocations, invocationsFromLogs, type InvocationFilter, type InvocationView } from "../world/recorder";
-import type { ApiRequest, ApiResponse, Capability, Driver, McpCredentials, SeedStorage, StorageAccess, UiActions } from "./driver";
+import type { ApiRequest, ApiResponse, Capability, Driver, McpCredentials, OpsBucket, SeedStorage, StorageAccess, UiActions } from "./driver";
 import { McpClient } from "./mcp";
 import { encodeBody, toApiResponse, VersionObserver } from "./observe";
 
@@ -107,7 +107,8 @@ export class InProcessDriver implements Driver {
 
   async storage(): Promise<SeedStorage> {
     const env = (await this.harness.server.getWorker(testWorkerName("web")).getEnv()) as { DB: SeedStorage["db"]; PACKS_PUBLIC: SeedStorage["packsPublic"]; PACKS_PRIVATE: SeedStorage["packsPrivate"] };
-    return { db: env.DB, packsPublic: env.PACKS_PUBLIC, packsPrivate: env.PACKS_PRIVATE };
+    const ops = this.harness.workers.includes("admin") ? (await this.harness.server.getWorker<{ OPS_BUCKET: OpsBucket }>(testWorkerName("admin")).getEnv()).OPS_BUCKET : undefined;
+    return { db: env.DB, packsPublic: env.PACKS_PUBLIC, packsPrivate: env.PACKS_PRIVATE, ...(ops && { ops }) };
   }
 
   mcp = { client: async (credentials?: McpCredentials) => new McpClient((req) => this.http.request(req), credentials) };
