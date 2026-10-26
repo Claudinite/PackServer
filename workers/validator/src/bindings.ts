@@ -8,6 +8,8 @@ import type { Ports, R2, R2Read } from "@packserver/ports";
 export interface Env {
   WORKER: string;
   ENVIRONMENT: string;
+  /** The wait before the first retry of a step that hit an infrastructure error; each further retry doubles it. */
+  STEP_RETRY_DELAY: string;
   DB: D1Database;
   PACKS_STAGING: R2Bucket;
   PACKS_PUBLIC: R2Bucket;
@@ -80,3 +82,5 @@ export function createRuntime(env: Env): ValidatorRuntime {
     { github: env.GITHUB },
   );
 }
+
+export type ObjectEnv = Env;

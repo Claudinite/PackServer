@@ -67,13 +67,13 @@ no test here counts a credit.
 - **Covers:** REQ-VAL-023
 - **Runs:** push, sandbox
 - **Action:** publish each of `bomb-repetitive`, `bomb-many-files`, `bomb-header-lies`, `bomb-huge-window`, `bomb-concatenated-frames`, `bomb-entry-count`, `bomb-deep-nesting`, `nested-archive`, `bomb-quine`, `bomb-sparse-entry`, `bomb-oversized-size-field`, `bomb-unknown-entry-type`, `bomb-skippable-frames`, `bomb-long-path`.
-- **Assert:** the first seven fail `archive.bomb`, the rest `archive.unsafe`; each within bounded time and memory (the `sandbox` run measures); no prose call for any.
+- **Assert:** the first seven fail `archive.bomb`, the rest `archive.unsafe` except `bomb-skippable-frames`, which fails at integrity as `integrity.not_zstd` with no container started; each within bounded time and memory (the `sandbox` run measures); no prose call for any.
 
 ### IT-VAL-014 Infrastructure errors retry and cost nothing; extraction failures are final
 - **Covers:** REQ-VAL-014
 - **Runs:** push
-- **Action:** script sandbox B to time out at step 8 twice then succeed; script a crash at step 3; script a crash at step 6 followed by success.
-- **Assert:** the first run reaches `published` after two retries with no quota consumed by the retries; the step-3 crash is `archive.unsafe`, final, with no "Re-run" offered and no prose call; the step-6 crash resumes from step 5's milestone (the recorder shows steps 1–5 ran once).
+- **Action:** script sandbox B to time out at step 8 twice then succeed; script a crash at step 3.
+- **Assert:** the first run reaches `published` after two retries with no quota consumed by the retries; the step-3 crash is `archive.unsafe`, final, with no "Re-run" offered and no prose call; the step-8 retries resume after the sandbox A step's milestone (steps 3 to 6 are one container call, which the recorder shows ran once).
 - **Contrast:** a run that times out three times shows verdict `error` and offers "Re-run".
 
 ### IT-VAL-045 A sandbox run is bounded in time and a timeout is a verdict

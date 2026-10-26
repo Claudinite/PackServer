@@ -8,8 +8,10 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@packserver/core": "workspace:*",
     "@packserver/http": "workspace:*",
     "@packserver/ports": "workspace:*",
+    "@packserver/rules": "workspace:*",
     "@packserver/schema": "workspace:*",
     "hono": "catalog:"
   },

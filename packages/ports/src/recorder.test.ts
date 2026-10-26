@@ -232,8 +232,8 @@ describe("port inventory", () => {
     ports.d1.on(/./, () => ({ rows: [{ id: 1 }], meta: { changes: 1, last_row_id: 3 } }));
     ports.durableObjects.register("Quota", "n", { peek: () => ({ schema_version: 1, count: 0 }) });
     ports.github.repos.set("a/b", { slug: "a/b", id: 1, default_branch: "main", private: false, archived: false });
-    ports.sandbox.scriptInspect("k", { tree_hash: "h", canonical_key: "c", file_count: 1, findings: [] });
-    ports.sandbox.scriptRun("c", { loaded: true, round_trip_ok: true, checks: [], egress_attempts: [], findings: [] });
+    ports.sandbox.scriptInspect(() => ({ report: { outcome: "ok" }, canonical: new Uint8Array([1]) }));
+    ports.sandbox.scriptRun(() => ({ report: { outcome: "ok" } }));
     const { recorder } = wet(ports.clock);
     const p = instrumentAll(ports, recorder);
     const token = ports.oidc.mint({ aud: "packserver" });
@@ -245,7 +245,8 @@ describe("port inventory", () => {
     await p.vectors.upsert([{ id: "1", vector: [1, 0], metadata: { scope: "a" } }]);
     await p.vectors.query([1, 0], { topK: 1 }); await p.vectors.deleteByIds(["1"]);
     await p.embedder.embed(["text"]);
-    await p.sandbox.inspect({ archive_key: "k" }); await p.sandbox.run({ canonical_key: "c", tree_hash: "h" });
+    await p.sandbox.inspect({ upload: new Uint8Array([1]), request: { pack: "@a/b" } });
+    await p.sandbox.run({ canonical: new Uint8Array([1]), request: { pack: "@a/b" }, engines: [{ file: "1.0.0.tgz", bytes: new Uint8Array([2]) }] });
     await p.proseScreen.screen({ nonce: "n", chunks: [{ id: "1", text: "t" }] });
     await p.mail.send({ to: "a@b.example", subject: "s", text: "t" });
     await p.dns.resolveTxt("example.com");

@@ -2,7 +2,8 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadRules } from "@packserver/rules";
-import { scorePack } from "../index.ts";
+import { scoreInputsOf, ScoreInputs, scorePack, treeOfScoreInputs } from "../index.ts";
+import { buildTree } from "../../canonical/index.ts";
 import { cleanFiles, declared, GOOD_DESCRIPTION, input, readPackDir, RULES_VERSION, skill, TRUSTED, UPLOAD } from "./helpers.ts";
 
 const score = loadRules(RULES_VERSION).score;
@@ -288,7 +289,58 @@ describe("copies of canon packs (IT-SCORE-008, registry half)", () => {
       expect(a.losses.map((l) => [l.rule, l.file, l.points])).toEqual(pinned[name]!.losses);
       expect(a.total).toBe(100 - a.losses.reduce((n, l) => n + l.points, 0));
     });
+
+    it(`${name} scores the same from the inputs a sandbox hands over as from the tree itself`, () => {
+      const tree = readPackDir(join(packsDir, name));
+      const args = { capabilities: [], provenance: TRUSTED, linkedPublicRepository: true, publishedAdvisory: false, rulesVersion: RULES_VERSION };
+      const inputs = ScoreInputs.parse(JSON.parse(JSON.stringify(scoreInputsOf(tree, RULES_VERSION))));
+      expect(scorePack({ tree: treeOfScoreInputs(inputs), ...args })).toEqual(scorePack({ tree, ...args }));
+    });
   }
+});
+
+describe("the inputs a sandbox hands over", () => {
+  const long = Array.from({ length: 120 }, (_, i) => `line ${i}`).join("\n");
+  const files = cleanFiles({
+    "skills/commit/SKILL.md": skill("commit", GOOD_DESCRIPTION, "See [deep](deep.md), [long](long.md).\n"),
+    "skills/commit/deep.md": "# Deep\n\nMore in [elsewhere](more.md).\n",
+    "skills/commit/more.md": "# More\n",
+    "skills/commit/long.md": `# Long\n\n${long}\n`,
+    "skills/commit/notes.md": "Copy from C:\\Users\\me\\data and run it.\n",
+    "skills/commit/dated.md": "Use the old API before August 2025.\n",
+  });
+  const args = { capabilities: [], provenance: TRUSTED, linkedPublicRepository: true, publishedAdvisory: false, rulesVersion: RULES_VERSION };
+
+  it("score exactly as the tree does, reference files and other skill documents included", () => {
+    const tree = input(files).tree;
+    const direct = scorePack({ tree, ...args });
+    for (const rule of ["skill-structure.reference-depth", "skill-structure.reference-toc", "skill-structure.windows-paths", "skill-structure.time-sensitive"]) {
+      expect(lostOf(direct, rule), rule).not.toEqual([]);
+    }
+    const inputs = ScoreInputs.parse(JSON.parse(JSON.stringify(scoreInputsOf(tree, RULES_VERSION))));
+    expect(scorePack({ tree: treeOfScoreInputs(inputs), ...args })).toEqual(direct);
+  });
+});
+
+describe("a UTF-16 file keeps its NUL characters through the inputs", () => {
+  const utf16 = (text: string) => {
+    const out = new Uint8Array(2 + text.length * 2);
+    out.set([0xff, 0xfe]);
+    for (let i = 0; i < text.length; i++) new DataView(out.buffer).setUint16(2 + i * 2, text.charCodeAt(i), true);
+    return out;
+  };
+  it("scores a skill whose name holds a NUL as the tree does", () => {
+    const base = cleanFiles();
+    const tree = buildTree([
+      ...Object.entries(base).filter(([path]) => path !== "skills/commit/SKILL.md").map(([path, content]) => ({ path, executable: false, content: new TextEncoder().encode(content) })),
+      { path: "skills/commit/SKILL.md", executable: false, content: utf16(skill("bad\u0000name", GOOD_DESCRIPTION)) },
+    ]);
+    const args = { capabilities: [], provenance: TRUSTED, linkedPublicRepository: true, publishedAdvisory: false, rulesVersion: RULES_VERSION };
+    const direct = scorePack({ tree, ...args });
+    expect(lostOf(direct, "skill-structure.name")).not.toEqual([]);
+    const inputs = ScoreInputs.parse(JSON.parse(JSON.stringify(scoreInputsOf(tree, RULES_VERSION))));
+    expect(scorePack({ tree: treeOfScoreInputs(inputs), ...args })).toEqual(direct);
+  });
 });
 
 describe("declared checks are counted only when well formed", () => {

@@ -81,6 +81,10 @@ export interface UploadCredential {
   complete(): Promise<Staged | Refusal>;
   /** Presigns, PUTs `body` to the URL, and reports the upload complete. */
   upload(body: Uint8Array, against?: { pack?: string; version?: string }): Promise<Staged | Refusal>;
+  /** Starts validation of the staged object with the SHA-256 the publisher declares; the id of the run it opened. */
+  start(declaredSha256: string): Promise<{ runId: string } | Refusal>;
+  /** The run this credential started, as the registry shows it to the workflow. */
+  viewRun(runId: string): Promise<unknown>;
 }
 
 export interface CiWorkflow {
@@ -155,6 +159,14 @@ export function createCi(driver: Driver, alias: (name: string) => string) {
       },
       async complete() {
         return toOutcome(await post(`${baseFor()}/uploaded`, {}, auth), (b) => ({ key: String(b.key), sizeBytes: Number(b.size_bytes) }));
+      },
+      async viewRun(runId) {
+        const res = await driver.http.request({ surface: "publish", method: "GET", path: `/api/publish/runs/${runId}`, headers: auth });
+        if (res.status !== 200) throw new InfrastructureError(`reading run ${runId} as its credential answered ${res.status}: ${res.text.slice(0, 200)}`);
+        return res.json();
+      },
+      async start(declaredSha256) {
+        return toOutcome(await post(baseFor(), { sha256: declaredSha256 }, auth), (b) => ({ runId: String(b.run_id) }));
       },
       async upload(body, against) {
         const presigned = await self.presign(body.byteLength, against);

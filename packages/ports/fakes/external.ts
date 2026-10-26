@@ -18,8 +18,10 @@ import {
   type ProseScreenRequest,
   type ProseScreenResult,
   type Sandbox,
-  type SandboxAReport,
-  type SandboxBReport,
+  type SandboxInspectRequest,
+  type SandboxInspectResult,
+  type SandboxRunRequest,
+  type SandboxRunResult,
   type Turnstile,
   type VectorIndex,
   type VectorMatch,
@@ -142,27 +144,25 @@ export class FakeEmbedder implements Embedder {
 }
 
 export class FakeSandbox implements Sandbox {
-  readonly inspected: string[] = [];
-  readonly ran: string[] = [];
-  private readonly a = new Map<string, SandboxAReport>();
-  private readonly b = new Map<string, SandboxBReport>();
-  scriptInspect(archiveKey: string, report: SandboxAReport) {
-    this.a.set(archiveKey, report);
+  readonly inspected: SandboxInspectRequest[] = [];
+  readonly ran: SandboxRunRequest[] = [];
+  private a: ((request: SandboxInspectRequest) => SandboxInspectResult) | undefined;
+  private b: ((request: SandboxRunRequest) => SandboxRunResult) | undefined;
+  scriptInspect(answer: (request: SandboxInspectRequest) => SandboxInspectResult) {
+    this.a = answer;
   }
-  scriptRun(canonicalKey: string, report: SandboxBReport) {
-    this.b.set(canonicalKey, report);
+  scriptRun(answer: (request: SandboxRunRequest) => SandboxRunResult) {
+    this.b = answer;
   }
-  async inspect(request: { archive_key: string }) {
-    this.inspected.push(request.archive_key);
-    const r = this.a.get(request.archive_key);
-    if (!r) throw new PortError("unscripted", `no sandbox A script for ${request.archive_key}`);
-    return r;
+  async inspect(request: SandboxInspectRequest) {
+    this.inspected.push(request);
+    if (!this.a) throw new PortError("unscripted", "no sandbox A script");
+    return this.a(request);
   }
-  async run(request: { canonical_key: string; tree_hash: string }) {
-    this.ran.push(request.canonical_key);
-    const r = this.b.get(request.canonical_key);
-    if (!r) throw new PortError("unscripted", `no sandbox B script for ${request.canonical_key}`);
-    return r;
+  async run(request: SandboxRunRequest) {
+    this.ran.push(request);
+    if (!this.b) throw new PortError("unscripted", "no sandbox B script");
+    return this.b(request);
   }
 }
 

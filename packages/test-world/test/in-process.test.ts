@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { fixtureArchive } from "@packserver/core/canonical/fixtures";
 import { InfrastructureError } from "../world/errors";
 import { InProcessDriver, stripCredentials } from "../drivers/inprocess";
 import { testWorkerName } from "../harness";
@@ -8,8 +10,8 @@ interface Rpc {
   embed(texts: string[]): Promise<number[][]>;
   upsert(items: Array<{ id: string; vector: number[] }>): Promise<void>;
   query(vector: number[], o: { topK: number }): Promise<Array<{ id: string; score: number }>>;
-  inspect(r: { archive_key: string }): Promise<{ tree_hash: string }>;
-  run(r: { canonical_key: string; tree_hash: string }): Promise<{ loaded: boolean }>;
+  inspect(r: { upload: Uint8Array; request: unknown }): Promise<{ report: { outcome: string; tree_hash: string | null }; canonical: Uint8Array | null }>;
+  run(r: { canonical: Uint8Array; request: unknown; engines: Array<{ file: string; bytes: Uint8Array }> }): Promise<{ report: { outcome: string; error: string | null; engines: unknown[] } }>;
   verify(assertion: string): Promise<{ email: string }>;
   now(): Promise<number>;
 }
@@ -49,16 +51,35 @@ describe("the fake Workers behind the service bindings", () => {
     expect(await index.query(unit(0), { topK: 2 })).toEqual([]);
   });
 
-  it("the sandbox fakes answer only what is scripted, each from its own script", async () => {
+  it("sandbox A runs the real extractor, B answers cleanly unless scripted, and both can be made to fail", async () => {
     const a = await binding("validator", "SANDBOX_A");
     const b = await binding("validator", "SANDBOX_B");
-    await expect(rejection(() => a.inspect({ archive_key: "k" }))).rejects.toThrow(/no sandbox A script for k/);
-    await driver.fakes.scriptSandboxA("k", { tree_hash: "t", canonical_key: "c", file_count: 1, findings: [] });
-    expect((await a.inspect({ archive_key: "k" })).tree_hash).toBe("t");
-    await expect(rejection(() => b.run({ canonical_key: "c", tree_hash: "t" }))).rejects.toThrow(/no sandbox B script/);
-    await driver.fakes.scriptSandboxB("c", { loaded: true, round_trip_ok: true, checks: [], egress_attempts: [], findings: [] });
-    expect((await b.run({ canonical_key: "c", tree_hash: "t" })).loaded).toBe(true);
-    expect(await driver.fakes.workers.sandboxA!.call("calls")).toEqual({ inspected: ["k", "k"], ran: [] });
+    const request = { pack: "@acme/gcp", newest_version: null, rules_version: "2026.10.1", lookups: { popular_packs: [], verified_scopes: [], proven_domain_labels: [], readable_packs: [] }, previous_capabilities: null };
+
+    const junk = await a.inspect({ upload: new Uint8Array([1, 2, 3]), request });
+    expect(junk.report.outcome).toBe("refused");
+    expect(junk.canonical).toBeNull();
+
+    const upload = fixtureArchive("gcp");
+    const ok = await a.inspect({ upload, request });
+    expect(ok.report.outcome).toBe("ok");
+    expect(ok.canonical?.byteLength).toBeGreaterThan(0);
+    expect(ok.canonical).not.toEqual(upload);
+
+    await driver.fakes.scriptSandboxA(createHash("sha256").update(upload).digest("hex"), { crash: true });
+    await expect(rejection(() => a.inspect({ upload, request }))).rejects.toThrow(/container died/);
+
+    const treeHash = ok.report.tree_hash!;
+    const engines = [{ file: "1.61004.1.tgz", bytes: new Uint8Array([1]) }];
+    const bRequest = {
+      pack: "@acme/gcp", expected_tree_hash: treeHash, min_engine_version: "1.61001.1", oldest_engine_in_mirror: "1.61001.1",
+      engines: [{ role: "newest", version: "1.61004.1", sha256: "a".repeat(64), file: "1.61004.1.tgz" }],
+    };
+    expect((await b.run({ canonical: ok.canonical!, request: bRequest, engines })).report.outcome).toBe("ok");
+    await driver.fakes.scriptSandboxB(treeHash, { errorTimes: 1 });
+    expect((await b.run({ canonical: ok.canonical!, request: bRequest, engines })).report.error).toBe("crashed");
+    expect((await b.run({ canonical: ok.canonical!, request: bRequest, engines })).report.outcome).toBe("ok");
+    expect(await driver.fakes.workers.sandboxB!.call<{ ran: unknown[] }>("calls")).toMatchObject({ ran: [{ tree_hash: treeHash }, { tree_hash: treeHash }, { tree_hash: treeHash }] });
   });
 
   it("fake-access verifies its own assertion and refuses a forged one", async () => {

@@ -41,6 +41,9 @@ describe("rules registry (IT-VAL-024)", () => {
   });
 });
 
+/** Rules the orchestration reports from the sandboxes, the source check and the prose screen, not from the static engine. */
+const PIPELINE_ONLY = /^(sandbox\.|load\.|provenance\.|prose-screen\.|engine\.unsupported_min_version$)/;
+
 describe("runStaticRules", () => {
   it("passes a clean pack with no findings", async () => {
     const r = await runStaticRules(input(cleanFiles()), fakePorts());
@@ -96,7 +99,7 @@ describe("runStaticRules", () => {
       await runStaticRules(input({ ...cleanFiles(), "RULES.md": new Uint8Array([0x61, 0xff, 0x0a]) }), fakePorts()),
     ];
     for (const f of [...bare.findings, ...lax.findings, ...bad.flatMap((b) => b.findings), ...code.findings, ...dynamic.findings, ...more.flatMap((b) => b.findings)]) emitted.add(f.rule);
-    const missing = listRules(RULES_VERSION).map((x) => x.id).filter((id) => !id.startsWith("archive.") && !emitted.has(id));
+    const missing = listRules(RULES_VERSION).map((x) => x.id).filter((id) => !id.startsWith("archive.") && !PIPELINE_ONLY.test(id) && !emitted.has(id));
     expect(missing).toEqual([]);
   });
 

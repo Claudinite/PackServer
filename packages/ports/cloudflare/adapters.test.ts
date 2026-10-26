@@ -162,7 +162,7 @@ describe("fake Workers are chosen by ENVIRONMENT, never by the binding's shape",
   });
 
   it("leaves the sandbox and Access unwired where only the product bindings exist", () => {
-    expect(() => sandboxPort("production", product as never, product as never).inspect({ archive_key: "k" })).toThrow("no production adapter");
+    expect(() => sandboxPort("production", product as never, product as never).inspect({ upload: new Uint8Array(), request: {} })).toThrow("no production adapter");
     expect(() => accessPort("production", undefined).verify({} as never)).toThrow("no production adapter");
   });
 

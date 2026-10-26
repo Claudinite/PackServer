@@ -1,24 +1,12 @@
 import { ArchiveRefusal, canonicalise, extractArchive, isCanonical, type Canonical, type Tree } from "@packserver/core/canonical";
-import { archiveFinding, findingFactory, runStaticRules, type StaticRulePorts } from "@packserver/core/validation";
+import { archiveFinding, findingFactory, runStaticRules, type SandboxARequest, type StaticRulePorts } from "@packserver/core/validation";
+import { scoreInputsOf } from "@packserver/core/score";
 import { loadRules } from "@packserver/rules";
 import type { Finding } from "@packserver/schema";
 import type { Inspector } from "./a-inspectors.ts";
 import { errorReport, fitToCap, refusedReport, SandboxAReport, type ReportBase } from "./a-report.ts";
 
-/** Everything the Worker knows that the container cannot look up: D1 answers, snapshotted per run. */
-export interface RunRequest {
-  pack: string;
-  newest_version: string | null;
-  rules_version: string;
-  lookups: {
-    popular_packs: string[];
-    verified_scopes: string[];
-    proven_domain_labels: { label: string; scope: string }[];
-    /** Packs the publishing principal may read; any other name answers unreadable. */
-    readable_packs: string[];
-  };
-  previous_capabilities: unknown;
-}
+export type RunRequest = SandboxARequest;
 
 export interface RunHooks {
   imageDigest: string | null;
@@ -111,6 +99,7 @@ export async function runA(upload: Uint8Array, request: RunRequest, hooks: RunHo
       manifest: statics.manifest as Record<string, unknown> | null,
       urls: statics.urls as unknown as Record<string, unknown>[],
       capabilities,
+      score_inputs: scoreInputsOf(tree, request.rules_version),
       inspectors,
       timings_ms: { extract: extractMs, total },
       error: roundTrip ? null : "canonical re-pack did not round-trip to the validated tree",

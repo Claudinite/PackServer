@@ -26,6 +26,15 @@ interface PublishStores {
   };
 }
 
+/** The slice of the validator Worker's buckets the driver reaches. */
+interface ValidatorStores {
+  VALIDATION_REPORTS: {
+    list(options: { prefix: string; cursor?: string }): Promise<{ objects: Array<{ key: string }>; truncated: boolean; cursor?: string }>;
+    get(key: string): Promise<{ arrayBuffer(): Promise<ArrayBuffer> } | null>;
+  };
+  OPS_BUCKET: { put(key: string, value: Uint8Array | string): Promise<unknown> };
+}
+
 /** What the harness serves when a version is uploaded without a release tag. */
 const HARNESS_RELEASE = "unreleased";
 const MIGRATION_BINDING = "DB";
@@ -101,7 +110,34 @@ export class InProcessDriver implements Driver {
       },
       delete: async (key) => (await this.publishEnv()).PACKS_STAGING.delete(key),
     },
+    reports: {
+      list: async (prefix) => {
+        const bucket = (await this.validatorEnv()).VALIDATION_REPORTS;
+        const out: string[] = [];
+        let cursor: string | undefined;
+        do {
+          const page = await bucket.list({ prefix, ...(cursor ? { cursor } : {}) });
+          out.push(...page.objects.map((o) => o.key));
+          cursor = page.truncated ? page.cursor : undefined;
+        } while (cursor);
+        return out;
+      },
+      get: async (key) => {
+        const object = await (await this.validatorEnv()).VALIDATION_REPORTS.get(key);
+        return object ? new Uint8Array(await object.arrayBuffer()) : null;
+      },
+    },
+    ops: {
+      put: async (key, value) => {
+        await (await this.validatorEnv()).OPS_BUCKET.put(key, value);
+      },
+    },
   };
+
+  private async validatorEnv() {
+    if (!this.harness.workers.includes("validator")) throw new InfrastructureError("the validator Worker is not booted, so there are no validation reports to reach");
+    return this.harness.server.getWorker<ValidatorStores>(testWorkerName("validator")).getEnv();
+  }
 
   private async publishEnv() {
     if (!this.harness.workers.includes("publish")) throw new InfrastructureError("the publish Worker is not booted, so there is no registry database or staging bucket to reach");

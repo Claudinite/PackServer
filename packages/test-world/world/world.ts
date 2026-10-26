@@ -17,7 +17,7 @@ import { createScopes } from "./areas/scopes";
 import { createSearch } from "./areas/search";
 import { createTelemetry } from "./areas/telemetry";
 import { createUsers } from "./areas/users";
-import { createValidation } from "./areas/validation";
+import { createValidation } from "./validation";
 import { createPublishFlow } from "./publishing";
 import { createClock } from "./clock";
 import { createCi } from "./ci-workflow";
@@ -40,14 +40,15 @@ export function createWorld(driver: Driver, title: string) {
   const people = createUsers(driver, aliases);
   const scopes = createScopes(driver, aliases, people);
   const ci = createCi(driver, (name) => aliases.alias(name));
+  const validation = createValidation(driver);
   const undo: Array<() => Promise<void>> = [];
   return {
     driver,
     ...people,
     ...scopes,
     ...createPublishing(),
-    ...createValidation(),
-    ...createPublishFlow(driver, aliases, scopes, ci),
+    ...validation.module,
+    ...createPublishFlow(driver, aliases, scopes, ci, validation.ensureEngines),
     ...createAccess(driver),
     ...createCommunity(),
     ...createModeration(),
