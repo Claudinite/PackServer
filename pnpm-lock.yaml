@@ -27,6 +27,9 @@ catalogs:
     hono:
       specifier: 4.13.13
       version: 4.13.13
+    jose:
+      specifier: 6.2.13
+      version: 6.2.13
     msw:
       specifier: 3.0.3
       version: 3.0.3
@@ -160,6 +163,12 @@ importers:
       '@packserver/schema':
         specifier: workspace:*
         version: link:../schema
+      aws4fetch:
+        specifier: 'catalog:'
+        version: 1.0.20
+      jose:
+        specifier: 'catalog:'
+        version: 6.2.13
       msw:
         specifier: 'catalog:'
         version: 3.0.3(@types/node@22.20.5)(typescript@5.9.3)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -309,6 +318,9 @@ importers:
 
   workers/publish:
     dependencies:
+      '@packserver/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@packserver/http':
         specifier: workspace:*
         version: link:../../packages/http
@@ -318,9 +330,18 @@ importers:
       '@packserver/schema':
         specifier: workspace:*
         version: link:../../packages/schema
+      aws4fetch:
+        specifier: 'catalog:'
+        version: 1.0.20
       hono:
         specifier: 'catalog:'
         version: 4.13.13
+      jose:
+        specifier: 'catalog:'
+        version: 6.2.13
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
     devDependencies:
       '@cloudflare/workers-types':
         specifier: 'catalog:'
@@ -1878,6 +1899,9 @@ packages:
 
   jju@1.4.0:
     resolution: {integrity: sha512-8wb9Yw966OSxApiCt0K3yNJL8pnNeIv+OEq2YMidz4FKP6nonSRoOXc80iXY4JaN2FC11B9qsNmDsm+ZOfMROA==}
+
+  jose@6.2.13:
+    resolution: {integrity: sha512-7TIg10ZE1x82YediN+lcrPNvGMKge9yFHQD+Qho/b8y2adfugU3AsvvHfxV0fzyFllT6l9xCjf4RWY9g/Z9PJQ==}
 
   json-schema-traverse@0.4.1:
     resolution: {integrity: sha512-xbbCH5dCYU5T8LcEhhuh7HJ88HXuW3qsI3Y0zOZFKfZEHcpWiHU/Jxzk629Brsab/mMiHQti9wMP+845RPe3Vg==}
@@ -3598,6 +3622,8 @@ snapshots:
   isexe@2.0.0: {}
 
   jju@1.4.0: {}
+
+  jose@6.2.13: {}
 
   json-schema-traverse@0.4.1: {}
 

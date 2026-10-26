@@ -18,6 +18,8 @@
     "@packserver/http": "workspace:*",
     "@packserver/ports": "workspace:*",
     "@packserver/schema": "workspace:*",
+    "aws4fetch": "catalog:",
+    "jose": "catalog:",
     "msw": "catalog:",
     "undici": "catalog:",
     "wrangler": "catalog:"

@@ -4,7 +4,7 @@ import { WorldFakes } from "../fakes/compose";
 import { createWorldHarness, testWorkerName, type HarnessOptions, type WorldHarness } from "../harness";
 import { InfrastructureError } from "../world/errors";
 import { filterInvocations, invocationsFromLogs, type InvocationFilter, type InvocationView } from "../world/recorder";
-import type { ApiRequest, ApiResponse, Capability, Driver, McpCredentials, SeedStorage, UiActions } from "./driver";
+import type { ApiRequest, ApiResponse, Capability, Driver, McpCredentials, SeedStorage, StorageAccess, UiActions } from "./driver";
 import { McpClient } from "./mcp";
 import { encodeBody, toApiResponse, VersionObserver } from "./observe";
 
@@ -12,8 +12,18 @@ import { encodeBody, toApiResponse, VersionObserver } from "./observe";
 export function stripCredentials(text: string): string {
   return text
     .replace(/(authorization|cookie|set-cookie|cf-access-[a-z-]+|x-selftest-signature)(["']?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;]+(?: [^\s,;]+)?)/gi, "$1$2<redacted>")
-    .replace(/\b(pks_|ghs_|ghp_|whsec_|psr_)\w+/g, "<redacted>")
+    .replace(/\b(pks_|ghs_|ghp_|whsec_|psr_|psu_)\w+/g, "<redacted>")
     .replace(/\beyJ[\w-]+\.[\w-]+\.[\w-]+/g, "<redacted>");
+}
+
+/** The slice of the publish Worker's bindings the driver reaches, typed here because this package does not load the Workers types. */
+interface PublishStores {
+  DB: { prepare(sql: string): { bind(...params: unknown[]): { all(): Promise<{ results?: unknown[] }> } } };
+  PACKS_STAGING: {
+    list(options: { prefix: string; cursor?: string }): Promise<{ objects: Array<{ key: string; size: number }>; truncated: boolean; cursor?: string }>;
+    get(key: string): Promise<{ arrayBuffer(): Promise<ArrayBuffer> } | null>;
+    delete(key: string): Promise<void>;
+  };
 }
 
 /** What the harness serves when a version is uploaded without a release tag. */
@@ -65,6 +75,36 @@ export class InProcessDriver implements Driver {
     },
   };
 
+  publishStorage: StorageAccess = {
+    sql: async (statement, params = []) => {
+      const env = await this.publishEnv();
+      return ((await env.DB.prepare(statement).bind(...params).all()).results ?? []) as Array<Record<string, unknown>>;
+    },
+    staging: {
+      list: async (prefix) => {
+        const bucket = (await this.publishEnv()).PACKS_STAGING;
+        const out: Array<{ key: string; size: number }> = [];
+        let cursor: string | undefined;
+        do {
+          const page = await bucket.list({ prefix, ...(cursor ? { cursor } : {}) });
+          out.push(...page.objects.map((o) => ({ key: o.key, size: o.size })));
+          cursor = page.truncated ? page.cursor : undefined;
+        } while (cursor);
+        return out;
+      },
+      get: async (key) => {
+        const object = await (await this.publishEnv()).PACKS_STAGING.get(key);
+        return object ? new Uint8Array(await object.arrayBuffer()) : null;
+      },
+      delete: async (key) => (await this.publishEnv()).PACKS_STAGING.delete(key),
+    },
+  };
+
+  private async publishEnv() {
+    if (!this.harness.workers.includes("publish")) throw new InfrastructureError("the publish Worker is not booted, so there is no registry database or staging bucket to reach");
+    return this.harness.server.getWorker<PublishStores>(testWorkerName("publish")).getEnv();
+  }
+
   async storage(): Promise<SeedStorage> {
     const env = (await this.harness.server.getWorker(testWorkerName("web")).getEnv()) as { DB: SeedStorage["db"]; PACKS_PUBLIC: SeedStorage["packsPublic"]; PACKS_PRIVATE: SeedStorage["packsPrivate"] };
     return { db: env.DB, packsPublic: env.PACKS_PUBLIC, packsPrivate: env.PACKS_PRIVATE };
@@ -113,6 +153,7 @@ export class InProcessDriver implements Driver {
       logs: logs.map((l) => stripCredentials(`${l.level} ${l.message}`)),
       invocations: this.recorder.invocations(),
       egress: this.fakes.net.requests(),
+      staging: this.fakes.stagingS3?.requests() ?? [],
     };
   }
 
