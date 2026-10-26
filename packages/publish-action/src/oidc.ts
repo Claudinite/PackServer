@@ -6,8 +6,8 @@ export interface RunnerEnv {
 }
 
 /** Asks the runner for this job's OIDC token; it exists only when the job has `id-token: write`. */
-export async function requestToken(env: RunnerEnv, fetchFn: typeof fetch): Promise<string> {
-  const { ACTIONS_ID_TOKEN_REQUEST_URL: url, ACTIONS_ID_TOKEN_REQUEST_TOKEN: bearer } = env;
+export async function requestToken(runner: RunnerEnv, fetchFn: typeof fetch): Promise<string> {
+  const { ACTIONS_ID_TOKEN_REQUEST_URL: url, ACTIONS_ID_TOKEN_REQUEST_TOKEN: bearer } = runner;
   if (!url || !bearer) throw new Error("no OIDC token is available: give the job `permissions: id-token: write`");
   const target = new URL(url);
   target.searchParams.set("audience", AUDIENCE);

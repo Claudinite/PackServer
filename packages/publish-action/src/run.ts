@@ -28,15 +28,16 @@ export interface Outcome {
 
 /** Nothing here writes to GitHub: the verdict is read in the registry's dashboard and mailed. */
 export async function publish(inputs: Inputs, steps: Steps): Promise<Outcome> {
-  const { env, log } = steps;
-  const io: api.Fetching = { fetch: steps.fetch, registry: inputs.registry, versionKey: env.GITHUB_RUN_ID };
+  const { log } = steps;
+  const runner = steps.env;
+  const io: api.Fetching = { fetch: steps.fetch, registry: inputs.registry, versionKey: runner.GITHUB_RUN_ID };
 
   await steps.vendor();
   const canonical = await steps.pack();
   log(`packed ${inputs.pack}@${inputs.version}: ${canonical.archive.length} bytes, sha256 ${canonical.sha256}`);
 
-  const token = await requestToken(env, steps.fetch);
-  const { credential } = await api.exchange(io, { token, pack: inputs.pack, version: inputs.version, job: env.GITHUB_JOB });
+  const token = await requestToken(runner, steps.fetch);
+  const { credential } = await api.exchange(io, { token, pack: inputs.pack, version: inputs.version, job: runner.GITHUB_JOB });
   const target = await api.presign(io, credential, inputs.pack, inputs.version, canonical.archive.length);
   await api.put(io, target, canonical.archive);
   await api.confirmUploaded(io, credential, inputs.pack, inputs.version);
