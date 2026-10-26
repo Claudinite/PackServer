@@ -107,6 +107,9 @@ importers:
       aws4fetch:
         specifier: 'catalog:'
         version: 1.0.20
+      jose:
+        specifier: 'catalog:'
+        version: 6.2.13
       zod:
         specifier: 'catalog:'
         version: 4.6.7
@@ -138,6 +141,19 @@ importers:
       '@cloudflare/workers-types':
         specifier: 'catalog:'
         version: 5.20261022.1
+
+  packages/publish-action:
+    dependencies:
+      '@packserver/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
 
   packages/rules:
     dependencies:
@@ -413,6 +429,9 @@ importers:
       '@packserver/ports':
         specifier: workspace:*
         version: link:../../packages/ports
+      '@packserver/rules':
+        specifier: workspace:*
+        version: link:../../packages/rules
       '@packserver/schema':
         specifier: workspace:*
         version: link:../../packages/schema

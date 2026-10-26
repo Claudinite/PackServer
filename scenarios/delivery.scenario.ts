@@ -1,5 +1,5 @@
 import { expect, scenario, type ScenarioOpts } from "@packserver/test-world";
-import { Refusal } from "@packserver/test-world";
+import { Held, NotFound, Refusal } from "@packserver/test-world";
 import type { PackBody } from "@packserver/test-world";
 
 const storage: ScenarioOpts = { needs: ["storage"] };
@@ -96,6 +96,20 @@ scenario("IT-DELIV-013 Private responses are never cached; immutable only on con
   expect(await secret.observe()).toLookTheSameAs(await nothing.observe());
   expect(await secret.observe({ version: "1.0.0" })).toLookTheSameAs(await nothing.observe({ version: "1.0.0" }));
   expect((await secret.observe({ session: true })).headers["cache-control"]).toBe("private, no-store");
+
+  const alice = world.access.account("alice");
+  await world.access.allowAccount(secret, alice);
+  const reader = world.member().inActionsOf(world.access.repository(alice, "app"));
+  const index = await reader.index({ pack: secret.systemName });
+  const archive = await reader.download((await secret.stored("1.0.0")).versionId);
+  if (index instanceof NotFound || index instanceof Refusal || archive instanceof NotFound || archive instanceof Held || archive instanceof Refusal) {
+    throw new Error("the allowlisted repository was refused");
+  }
+  expect(index.headers["cache-control"]).toBe("private, no-store");
+  expect(archive.headers["cache-control"]).toBe("private, no-store");
+  expect(archive.headers["content-disposition"]).toContain("attachment");
+  expect(archive.headers["x-content-type-options"]).toBe("nosniff");
+  expect((await world.member().inActionsOf(world.access.repository(world.access.account("mallory"), "app")).observe({ index: { pack: secret.systemName } })).headers["cache-control"]).toBe("private, no-store");
 }, storage);
 
 // Not covered here: the edge half of IT-DELIV-014 (nosniff on the custom domain, Claudinite/PackServer#142).
@@ -135,9 +149,10 @@ scenario("IT-DELIV-021 Anyone can verify an archive by hash", async (world) => {
 
   const burst = "203.0.113.77";
   const answers = [];
-  for (let i = 0; i < 100; i++) answers.push(await world.packs.verify(canonical.canonicalSha256, { ip: burst }));
+  // The limiter counts in wall-clock windows, so a burst can straddle two of them; one more than two windows' worth must be refused.
+  for (let i = 0; i < 121; i++) answers.push(await world.packs.verify(canonical.canonicalSha256, { ip: burst }));
   expect(answers.slice(0, 10).every((a) => !(a instanceof Refusal))).toBe(true);
-  await expect(answers.at(-1)).toBeRateLimited();
+  await expect(answers.find((a) => a instanceof Refusal)).toBeRateLimited();
 }, storage);
 
 scenario("IT-MCP-005 get_pack returns the full public view; the adopt snippet is a Preview until the engine ships", async (world) => {

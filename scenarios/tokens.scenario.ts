@@ -135,6 +135,12 @@ scenario("IT-PRIV-018 psr_ read tokens serve CI outside GitHub Actions", async (
   const listed = await owner.tokens.list();
   expect(listed).toHaveLength(1);
   expect(listed[0]).toMatchObject({ id: token.id, pack: secret.name, status: "active" });
+
+  const ci = world.member().withToken(token);
+  expect(await ci.index({ pack: secret.systemName })).toMatchObject({ entries: [{ pack: secret.systemName }] });
+  expect(await ci.download((await secret.stored("1.0.0")).versionId)).toMatchObject({ sha256: (await secret.stored("1.0.0")).canonicalSha256 });
+  await expect(ci.index({ pack: other.systemName })).toBeNotFound();
+  await expect(ci.download((await other.stored("1.0.0")).versionId)).toBeNotFound();
 }, storage);
 
 scenario("JT-008 A psr_ read token serves CI outside Actions, is leaked, and dies at once", async (world) => {

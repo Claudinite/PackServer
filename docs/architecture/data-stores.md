@@ -63,7 +63,7 @@ CDN, and a key that embeds the upload credential's id cannot overwrite another u
 `packs-public` is written once per version at an immutable key; scope indexes are written once at
 their content hash and only the root is rewritten, by one writer. `packs-private` has no custom
 domain and no public index; its private index entries are signed fragments the serving Worker
-returns as-is (REQ-PRIV-020). Reports can quote private content, so they stay out of D1 and the
+returns as-is (REQ-PRIV-020), at `private-index/<pack id>.json`; archives sit at `v/<version id>/pack.tar.zst`. Reports can quote private content, so they stay out of D1 and the
 public bucket; D1 keeps the summary and the report key. The `validation-reports` prose-screen
 numbers are never rendered anywhere. The prune cadences are in
 [overview.md](overview.md) §Scheduled work.

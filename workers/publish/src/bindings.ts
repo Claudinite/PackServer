@@ -3,7 +3,7 @@ import {
   cryptoRng, d1Port, durableObjectsPort, kvPort, queuePort, r2Port, rateLimitPort, readSecret, systemClock, workerRuntime,
   type WorkerRuntime,
 } from "@packserver/ports/cloudflare";
-import { GITHUB_OIDC_ISSUER, GITHUB_OIDC_JWKS_URL, OIDC_AUDIENCE } from "@packserver/core/publishing";
+import { oidcConfig, type OidcConfig } from "@packserver/core/publishing";
 import { PortError, type Clock, type D1, type Ports } from "@packserver/ports";
 import { SignAndWriteRootResponse } from "@packserver/schema";
 import type { IndexRebuilder, RootNotifier } from "./coordinator";
@@ -47,11 +47,7 @@ export interface PublishServices {
   validator: Fetcher;
 }
 
-export interface OidcConfig {
-  issuer: string;
-  jwksUrl: string;
-  audience: string;
-}
+export { oidcConfig, type OidcConfig };
 
 export interface PublishConfig {
   oidc: OidcConfig;
@@ -60,19 +56,6 @@ export interface PublishConfig {
 }
 
 export type PublishRuntime = WorkerRuntime<PublishPorts, PublishServices> & { config: PublishConfig };
-
-/**
- * GitHub's issuer, always, outside `env.test`: a production Worker has no way to be told
- * another, so a token from a test issuer is refused as a wrong issuer before any key is fetched.
- */
-export function oidcConfig(env: Pick<Env, "ENVIRONMENT" | "OIDC_ISSUER" | "OIDC_JWKS_URL">): OidcConfig {
-  const test = env.ENVIRONMENT === "test" && env.OIDC_ISSUER !== undefined && env.OIDC_JWKS_URL !== undefined;
-  return {
-    issuer: test ? env.OIDC_ISSUER! : GITHUB_OIDC_ISSUER,
-    jwksUrl: test ? env.OIDC_JWKS_URL! : GITHUB_OIDC_JWKS_URL,
-    audience: OIDC_AUDIENCE,
-  };
-}
 
 /**
  * The instant for one request. Time does not pass inside it, which is how the fake clock's

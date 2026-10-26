@@ -1,13 +1,11 @@
-import { chooseRegistration, type Registration } from "@packserver/core/publishing";
+import { chooseRegistration, JwksUnavailable, verifyActionsToken, type Registration } from "@packserver/core/publishing";
 import { clientIp, rateLimit, refusal } from "@packserver/http";
 import { PackName, PackVersion } from "@packserver/schema";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { PublishRuntime } from "../bindings";
 import { badRequest, readJson, unavailable } from "../respond";
-import { issueCredential, TokenAlreadyUsed } from "../upload/credentials";
-import { JwksUnavailable } from "./jwks";
-import { verifyActionsToken } from "./verify";
+import { issueCredential, PublishingFrozen, TokenAlreadyUsed } from "../upload/credentials";
 
 const MAX_BODY_BYTES = 16 * 1024;
 
@@ -133,6 +131,7 @@ export function oidcRoutes(runtime: PublishRuntime): Hono {
       });
     } catch (error) {
       if (error instanceof TokenAlreadyUsed) return refusal("oidc.invalid", { message: "token already used" });
+      if (error instanceof PublishingFrozen) return refusal("forbidden", { message: "publishing for this scope is paused while an account recovery is under review" });
       throw error;
     }
     return Response.json(

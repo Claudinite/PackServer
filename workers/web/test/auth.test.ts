@@ -1,3 +1,4 @@
+import { oidcConfig } from "@packserver/core/publishing";
 import { hashSessionId, pkceChallenge, type GitHubProfile } from "@packserver/core/identity";
 import { migratedD1 } from "@packserver/core/identity/testing";
 import { SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
@@ -43,7 +44,7 @@ function setup(github: { profile: (request: { codeVerifier: string }) => Promise
       },
     },
     services: { mcp: {} as Fetcher, publish: {} as Fetcher },
-    config: { cdnOrigin: undefined, siteOrigins: [ORIGIN, CANARY] },
+    config: { oidc: oidcConfig({ ENVIRONMENT: "production" }), fetch, cdnOrigin: undefined, siteOrigins: [ORIGIN, CANARY] },
   };
   const app = createApp(runtime);
   let host = ORIGIN;
@@ -224,5 +225,36 @@ describe("the signed-in session", () => {
     expect(me.status).toBe(200);
     expect(await me.json()).toMatchObject({ user: { handle: null, display_name: "Ann" }, identities: [{ provider: "github", login: "ann" }], csrf: expect.stringMatching(/^[0-9a-f]{64}$/) });
     expect((await h.request("/api/auth/session")).status).toBe(401);
+  });
+});
+
+describe("cancelling one's own recovery", () => {
+  const cancel = async (h: ReturnType<typeof setup>) => {
+    const done = await (await beginFlow(h)).callback();
+    const cookie = cookies(done)["__Host-session"]!.split(";")[0]!;
+    const me = (await (await h.request("/api/auth/session", { headers: { cookie } })).json()) as { csrf: string };
+    const res = await h.request("/api/auth/recovery/cancel", {
+      method: "POST",
+      headers: { cookie, origin: ORIGIN, "x-csrf-token": me.csrf, "idempotency-key": "cancel-key-0000001", "content-type": "application/json" },
+      body: "{}",
+    });
+    return { res, cancelled: ((await res.json()) as { cancelled: number }).cancelled };
+  };
+  const audited = (h: ReturnType<typeof setup>) =>
+    (h.fakes.queues["AUDIT_QUEUE"] as unknown as { messages: Array<{ action: string }> }).messages.filter((m) => m.action === "recovery.cancelled");
+
+  it("writes no audit entry when nothing was open", async () => {
+    const h = setup();
+    expect((await cancel(h)).cancelled).toBe(0);
+    expect(audited(h)).toEqual([]);
+  });
+
+  it("writes one when an open recovery was cancelled", async () => {
+    const h = setup();
+    await (await beginFlow(h)).callback();
+    const userId = (h.db.prepare("select user_id from identities where provider_user_id = '1001'").get() as { user_id: string }).user_id;
+    h.db.exec(`insert into recovery_requests (id, user_id, email, requested_at, ready_at, state) values ('r1', '${userId}', 'ann@example.test', 'x', 'y', 'pending')`);
+    expect((await cancel(h)).cancelled).toBe(1);
+    expect(audited(h)).toHaveLength(1);
   });
 });

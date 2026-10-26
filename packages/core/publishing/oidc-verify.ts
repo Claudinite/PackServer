@@ -1,7 +1,7 @@
-import { ActionsClaims } from "@packserver/core/publishing";
+import { ActionsClaims } from "./oidc.ts";
 import { decodeJwt, decodeProtectedHeader, errors, importJWK, jwtVerify } from "jose";
 import type { Clock } from "@packserver/ports";
-import { findKey, type JwksDeps } from "./jwks";
+import { findKey, type JwksDeps } from "./oidc-jwks.ts";
 
 export const SUPPORTED_ALGORITHM = "RS256";
 const CLOCK_TOLERANCE_S = 10;

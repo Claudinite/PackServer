@@ -82,6 +82,12 @@ export async function isRevoked(ports: Pick<SessionPorts, "d1">, sidHash: string
   return rows.length > 0;
 }
 
+/** The stored record of a session id, or null when the store has none; no expiry check, since the caller is ending it. */
+export async function loadSessionRecord(ports: Pick<SessionPorts, "kv">, sidHash: string): Promise<SessionRecord | null> {
+  const raw = await ports.kv.get(recordKey(sidHash));
+  return raw === null ? null : (JSON.parse(raw) as SessionRecord);
+}
+
 /**
  * Whether the session behind this id hash is still usable: its record exists and is neither past
  * its absolute limit nor idle, and it was not signed out or rotated away. Reads only; it does not

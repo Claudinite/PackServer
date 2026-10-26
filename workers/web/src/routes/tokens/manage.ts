@@ -2,7 +2,7 @@ import { listTokens, mintToken, revokeToken, type MintInput, type MintRefusal } 
 import { refusal, requireAssertion, requireSession, sessionCsrf } from "@packserver/http";
 import { PackName } from "@packserver/schema";
 import { Hono, type Context } from "hono";
-import { mfaPorts, runtimeOf, siteOriginOf, type WebEnv } from "../../context";
+import { mfaPorts, recordAudit, runtimeOf, siteOriginOf, type WebEnv } from "../../context";
 
 export const routes = new Hono<WebEnv>();
 
@@ -74,6 +74,7 @@ routes.post(
     if (typeof parsed === "string") return refusal("forbidden", { status: 422, message: parsed });
     const out = await mintToken(tokenPorts(c), { userId: c.get("session")!.record.user_id, ...parsed.input });
     if (!out.ok) return out.reason === "not-found" ? notFound() : refusal("forbidden", { status: 422, message: REFUSAL_TEXT[out.reason] });
+    await recordAudit(c, c.get("session")!.record.user_id, "token.minted", out.view.id, { expires_at: out.view.expires_at });
     return c.json({ token: out.token, ...out.view }, 201, NO_STORE);
   },
 );
@@ -85,5 +86,7 @@ routes.get("/tokens", requireSession(), async (c) => {
 
 routes.delete("/tokens/:id", requireSession(), sessionCsrf<WebEnv>(siteOriginOf), async (c) => {
   const revoked = await revokeToken(tokenPorts(c), c.get("session")!.record.user_id, c.req.param("id"));
-  return revoked ? c.json({ revoked: true }, 200, NO_STORE) : notFound();
+  if (!revoked) return notFound();
+  await recordAudit(c, c.get("session")!.record.user_id, "token.revoked", c.req.param("id"), { reason: "owner" });
+  return c.json({ revoked: true }, 200, NO_STORE);
 });

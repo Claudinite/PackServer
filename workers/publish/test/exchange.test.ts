@@ -1,11 +1,10 @@
-import { OIDC_AUDIENCE } from "@packserver/core/publishing";
+import { OIDC_AUDIENCE, resetJwksMemory } from "@packserver/core/publishing";
 import { createFakePorts } from "@packserver/ports/fakes";
 import { SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
 import { exportJWK, generateKeyPair, SignJWT, type JWK } from "jose";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import type { PublishRuntime } from "../src/bindings";
-import { resetJwksMemory } from "../src/oidc/jwks";
 
 const ISSUER = "https://issuer.example";
 const NOW_S = 1_000_000;
@@ -41,6 +40,7 @@ function setup(options: { visibility?: string; insert?: () => never; limit?: num
     .on(/from packs p join scopes/, () => ({ rows: options.visibility ? [{ visibility: options.visibility }] : [] }))
     .on(/from trusted_publishers/, () => ({ rows: [REGISTRATION] }))
     .on(/from pack_versions/, () => ({ rows: [] }))
+    .on(/from recovery_requests/, () => ({ rows: [] }))
     .on(/insert into upload_credentials/, () => (options.insert ? options.insert() : { rows: [], meta: { changes: 1, last_row_id: null } }));
   const runtime: PublishRuntime = {
     worker: "publish",
