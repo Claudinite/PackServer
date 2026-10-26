@@ -36,7 +36,7 @@ const shell = `
 .logo { display: inline-flex; align-items: center; gap: ${g(1)}; font-weight: 600; font-size: ${typeScale.lead}px; color: var(--ink); letter-spacing: -0.01em; }
 .logo:hover { text-decoration: none; }
 .logo svg { width: 20px; height: 20px; }
-.nav { display: flex; gap: ${g(2)}; margin-left: auto; }
+.nav { display: flex; flex-wrap: wrap; gap: ${g(1)} ${g(2)}; margin-left: auto; }
 .nav a { color: var(--grey-2); }
 .nav a[aria-current="page"] { color: var(--ink); }
 .wrap { max-width: ${layout.column}px; margin: 0 auto; padding: ${g(4)} 16px ${g(12)}; }
@@ -113,7 +113,48 @@ html.esc .hc:hover .pop, html.esc .hc:focus-within .pop { opacity: 0; visibility
 @media (prefers-reduced-motion: reduce) { .drawer, .pop { transition: none; } .chip .spin { animation: none; } }
 `;
 
+
+const pages = `
+.mt2 { margin-top: ${g(2)}; }
+.mt3 { margin-top: ${g(3)}; }
+.lede { color: var(--grey-1); margin-top: ${g(1)}; }
+.search { display: flex; gap: ${g(1)}; margin: ${g(3)} 0; }
+.search input[type="search"], .field input, .field select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px; padding: ${g(1)} 12px; min-width: 0; }
+.search input[type="search"] { flex: 1 1 auto; }
+.btn { font: inherit; color: var(--malachite); border: 1px solid var(--line-strong); border-radius: 6px; padding: ${g(1)} ${g(2)}; background: none; cursor: pointer; display: inline-block; }
+.btn:hover { text-decoration: none; border-color: var(--malachite); }
+.btn[disabled] { color: var(--grey-3); cursor: default; border-color: var(--line); }
+.cats { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: ${g(1)} ${g(3)}; list-style: none; margin: ${g(2)} 0 0; padding: 0; }
+.cats a { color: var(--ink); }
+.cats .n { color: var(--grey-2); margin-left: 6px; }
+.section { margin-top: ${g(6)}; }
+.cards { list-style: none; margin: ${g(2)} 0 0; padding: 0; display: flex; flex-direction: column; }
+.card { padding: ${g(2)} 0; }
+.card + .card { border-top: 1px solid var(--line); }
+.card .top { display: flex; flex-wrap: wrap; gap: ${g(1)} ${g(2)}; align-items: baseline; }
+.card .pk { font-weight: 500; color: var(--ink); }
+.card .pitch { color: var(--grey-1); margin-top: 2px; overflow-wrap: anywhere; }
+.card .meta { display: flex; flex-wrap: wrap; gap: ${g(1)} ${g(3)}; align-items: center; margin-top: ${g(1)}; font-size: ${typeScale.small}px; }
+.filters { display: flex; flex-wrap: wrap; gap: ${g(1)} ${g(2)}; align-items: center; font-size: ${typeScale.small}px; }
+.filters label { display: inline-flex; gap: 6px; align-items: center; }
+.field select { padding: 4px 8px; }
+details.more { font-size: ${typeScale.small}px; }
+details.more summary { cursor: pointer; color: var(--grey-2); }
+.empty { margin-top: ${g(6)}; color: var(--grey-1); }
+.foot { margin-top: ${g(8)}; color: var(--grey-2); font-size: ${typeScale.small}px; }
+.tools { list-style: none; margin: ${g(2)} 0 0; padding: 0; }
+.tools li { padding: 4px 0; }
+.snippet { background: var(--grey-5); border-radius: 6px; padding: ${g(1)} ${g(2)}; margin-top: ${g(1)}; user-select: all; }
+.rules { width: 100%; border-collapse: collapse; margin-top: ${g(2)}; }
+.rules td { padding: 4px ${g(2)} 4px 0; vertical-align: top; overflow-wrap: anywhere; }
+.rules tr:target td { background: var(--grey-5); }
+.rules .cls { color: var(--grey-2); white-space: nowrap; }
+.prices { list-style: none; margin: ${g(3)} 0; padding: 0; display: flex; flex-direction: column; gap: ${g(3)}; }
+.prices .what { color: var(--grey-1); font-size: ${typeScale.small}px; }
+.prices .amount { font-size: ${typeScale.title}px; }
+`;
+
 /** The one stylesheet every page inlines under a nonce. */
 export function pageCss(): string {
-  return [tokenCss(), base, shell, marks, layers].join("\n");
+  return [tokenCss(), base, shell, marks, layers, pages].join("\n");
 }

@@ -55,7 +55,7 @@ export function createApp(runtime: WebRuntime, options: AppOptions = {}): Hono<W
     app.route("/api", api);
   }
   for (const page of [homePage, browsePage, profilePage, claudeCodePage, rulesPage, pricingPage, packPage, signinPage, accountPage, reviewPage, reportPage, accessPage, dashboardPage, validationPage, publishPage, orgSettingsPage, githubPage]) {
-    app.route("/", page);
+    app.route("/", page as Hono<WebEnv>);
   }
   app.route("/", wellKnown);
   return app;
