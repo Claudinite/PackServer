@@ -12,6 +12,7 @@ export const NAV: readonly NavLink[] = [
   { href: "/claude-code", label: "Claude Code" },
   { href: "/rules", label: "Rules" },
   { href: "/pricing", label: "Pricing" },
+  { href: "/account", label: "Account" },
 ];
 
 export interface LayoutProps {
