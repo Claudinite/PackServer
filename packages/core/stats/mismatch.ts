@@ -1,5 +1,5 @@
 import type { Clock, D1 } from "@packserver/ports";
-import { liveTokenIds } from "../tokens/tokens.ts";
+import { liveTokenCondition } from "../tokens/tokens.ts";
 
 export interface MismatchDeps {
   d1: D1;
@@ -88,15 +88,24 @@ async function quarantine(deps: MismatchDeps, found: VersionRow, version: string
  * pack's public days and from revoked reporters count for nothing.
  */
 async function agreeingPrincipals(deps: MismatchDeps, found: VersionRow, version: string): Promise<number> {
+  if (found.visibility === "public") {
+    const { rows } = await deps.d1.query(
+      "select count(distinct reporter_id) as n from hash_mismatch_reports where pack_id = ? and version = ? and reporter_id is not null and expected = ?",
+      [found.packId, version, found.sha256],
+    );
+    return Number(rows[0]?.n ?? 0);
+  }
+  // The token must still reach this pack in the scope it sits in now.
+  const live = liveTokenCondition("t", deps.clock.now());
   const { rows } = await deps.d1.query(
-    "select reporter_id, token_id, covering from hash_mismatch_reports where pack_id = ? and version = ? and reporter_id is not null and expected = ?",
-    [found.packId, version, found.sha256],
+    `select count(distinct r.reporter_id) as n
+       from hash_mismatch_reports r
+       join packs p on p.id = r.pack_id
+       join read_tokens t on t.id = r.token_id and t.scope_id = p.scope_id and (t.pack_id is null or t.pack_id = r.pack_id)
+      where r.pack_id = ? and r.version = ? and r.expected = ? and r.covering = 1 and r.reporter_id is not null and ${live.sql}`,
+    [found.packId, version, found.sha256, ...live.params],
   );
-  if (found.visibility === "public") return new Set(rows.map((r) => String(r.reporter_id))).size;
-  const covering = rows.filter((r) => r.covering && r.token_id !== null);
-  const live = await liveTokenIds(deps, covering.map((r) => String(r.token_id)));
-  const counted = covering.filter((r) => live.has(String(r.token_id)));
-  return new Set(counted.map((r) => String(r.reporter_id))).size;
+  return Number(rows[0]?.n ?? 0);
 }
 
 /**

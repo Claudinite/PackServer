@@ -359,6 +359,23 @@ describe("mismatch reports", () => {
     expect(await state(t)).toBe("quarantined");
   });
 
+  it("counts a private version's reports with one query however many rows it has, and drops a token that no longer reaches the pack's scope", async () => {
+    const t = setup();
+    const id = await t.pack("@acme/secret", { visibility: "private" });
+    for (const u of ["u1", "u2"]) {
+      await user(t, u);
+      await mint(t, u);
+    }
+    const d = deps(t);
+    for (let i = 0; i < 120; i++) await reportMismatch(d, report({ pack: "@acme/secret" }), by("u1"));
+    expect(await state(t)).toBe("active");
+    // The pack moves to another scope: the token for the old one no longer reaches it.
+    await t.d1.query("insert into scopes (id, name, kind, state, created_at) values ('scope-elsewhere', 'elsewhere', 'org', 'active', 'x')");
+    await t.d1.query("update packs set scope_id = 'scope-elsewhere' where id = ?", [id]);
+    expect(await reportMismatch(d, report({ pack: "@elsewhere/secret" }), by("u2"))).toMatchObject({ principals: 0, quarantined: false });
+    expect(await state(t)).toBe("active");
+  });
+
   it("does not count reports that expected some other hash or are no mismatch", async () => {
     const t = setup();
     await t.pack("@acme/x");

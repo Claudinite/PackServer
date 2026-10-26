@@ -142,17 +142,16 @@ export interface TokenGrant {
  */
 export async function authenticateToken(ports: Pick<TokenPorts, "d1" | "clock">, presented: string, ip: string): Promise<TokenGrant | null> {
   if (!looksLikeToken(presented)) return null;
-  const roles = MINTING_ROLES.map(() => "?").join(", ");
+  const now = ports.clock.now();
+  const live = liveTokenCondition("t", now);
   const { rows } = await ports.d1.query(
-    `select t.id, t.user_id, t.cidr, t.expires_at, t.revoked_at, t.pack_id, s.name as scope, p.name as pack
+    `select t.id, t.user_id, t.cidr, t.pack_id, s.name as scope, p.name as pack
        from read_tokens t join scopes s on s.id = t.scope_id left join packs p on p.id = t.pack_id
-      where t.token_hash = ?
-        and exists (select 1 from scope_members m where m.scope_id = t.scope_id and m.user_id = t.user_id and m.role in (${roles}))`,
-    [await hashToken(presented), ...MINTING_ROLES],
+      where t.token_hash = ? and ${live.sql}`,
+    [await hashToken(presented), ...live.params],
   );
   const row = rows[0];
-  const now = ports.clock.now();
-  if (!row || row.revoked_at !== null || Date.parse(row.expires_at as string) <= now) return null;
+  if (!row) return null;
   if (row.pack_id !== null && row.pack === null) return null;
   if (row.cidr !== null) {
     const blocks = (JSON.parse(row.cidr as string) as string[]).flatMap((c) => parseCidr(c) ?? []);
@@ -165,17 +164,18 @@ export async function authenticateToken(ports: Pick<TokenPorts, "d1" | "clock">,
   return { id: row.id as string, user_id: row.user_id as string, scope: row.scope as string, pack: (row.pack as string | null) ?? null };
 }
 
-/** Of these token ids, the ones that still authenticate: not revoked, not expired, and their minter still manages the scope. */
-export async function liveTokenIds(ports: Pick<TokenPorts, "d1" | "clock">, ids: readonly string[]): Promise<Set<string>> {
-  if (ids.length === 0) return new Set();
+/**
+ * The conditions under which a stored token still authenticates, as a where-fragment on the
+ * `read_tokens` row aliased `alias` and its bound values: not revoked, not expired, and its minter
+ * still manages the scope. Every query that asks whether a token is alive uses this one.
+ */
+export function liveTokenCondition(alias: string, nowMs: number): { sql: string; params: Array<string | number> } {
   const roles = MINTING_ROLES.map(() => "?").join(", ");
-  const { rows } = await ports.d1.query(
-    `select t.id from read_tokens t
-      where t.id in (${ids.map(() => "?").join(", ")}) and t.revoked_at is null and t.expires_at > ?
-        and exists (select 1 from scope_members m where m.scope_id = t.scope_id and m.user_id = t.user_id and m.role in (${roles}))`,
-    [...ids, iso(ports.clock.now()), ...MINTING_ROLES],
-  );
-  return new Set(rows.map((r) => String(r.id)));
+  return {
+    sql: `${alias}.revoked_at is null and ${alias}.expires_at > ?
+      and exists (select 1 from scope_members m where m.scope_id = ${alias}.scope_id and m.user_id = ${alias}.user_id and m.role in (${roles}))`,
+    params: [iso(nowMs), ...MINTING_ROLES],
+  };
 }
 
 /** Whether a grant reaches a pack: a pack restriction names exactly that pack, a scope restriction any pack of the scope. */
