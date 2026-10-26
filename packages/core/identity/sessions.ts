@@ -1,4 +1,5 @@
 import { sha256Hex, type Clock, type D1, type KV, type Rng } from "@packserver/ports";
+import { rebindDeviceTokens, revokeDeviceTokens } from "./device-code.ts";
 
 export const SESSION_IDLE_MS = 12 * 3_600_000;
 export const SESSION_ABSOLUTE_MS = 7 * 24 * 3_600_000;
@@ -133,11 +134,13 @@ export async function rotateSession(ports: SessionPorts, live: LiveSession, patc
   const rotated = await persistNew(ports, { ...live.record, ...patch, csrf_key: toHex(ports.rng.bytes(SID_BYTES)) });
   await revoke(ports, live);
   await drop(ports, live.sid_hash, live.record.user_id);
+  await rebindDeviceTokens(ports, live.sid_hash, rotated.sid_hash);
   return rotated;
 }
 
 export async function destroySession(ports: SessionPorts, live: Pick<LiveSession, "sid_hash" | "record">): Promise<void> {
   await revoke(ports, live);
+  await revokeDeviceTokens(ports, live.sid_hash);
   await drop(ports, live.sid_hash, live.record.user_id);
 }
 

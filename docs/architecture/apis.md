@@ -15,6 +15,7 @@ Notable endpoints:
 | Path | Purpose |
 |---|---|
 | `POST /api/auth/*` | Sign-up, sign-in, passkey ceremonies, GitHub sign-in, recovery codes, device-code flow; the path the zone rate rule guards. Email codes and TOTP arrive with their phase |
+| `POST /api/auth/device`, `POST /api/auth/device/token`, `GET /api/auth/device/verify` | The device-code flow of `cn adopt` on a laptop (RFC 8628, REQ-PRIV-017): `cn` asks for a code pair and polls with the device code; the person types the short code on the verify page, sees the requesting country and what is granted, and allows or denies. The token is a `psr_`-shaped value held in the session store, not in D1; it reads private packs only and ends with the approving session. `GET /api/auth/device/grant` tells a client what its token may do |
 | `GET /api/packs/@scope/name[/version]` | Public view of a pack or version |
 | `GET /api/verify/<sha256>` | Verify by hash (REQ-DELIV-021) |
 | `POST /api/report/hash-mismatch` | Client mismatch report (REQ-CN-012, REQ-TELEM-009) |

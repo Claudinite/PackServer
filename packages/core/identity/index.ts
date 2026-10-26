@@ -4,3 +4,4 @@ export * from "./github-login.ts";
 export * from "./webauthn.ts";
 export * from "./recovery-codes.ts";
 export * from "./assertion.ts";
+export * from "./device-code.ts";

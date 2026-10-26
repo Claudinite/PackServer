@@ -1,7 +1,7 @@
 // The handle interfaces scenarios write against (dsl.md §4). A handle is a cheap view: it hits the
 // system only when a verb or observation does. Area tasks fill the modules that return them.
 
-import type { Observation } from "./outcomes";
+import type { Observation, Refusal } from "./outcomes";
 import type { UserTokens } from "./tokens";
 
 export type Duration = string;
@@ -186,6 +186,14 @@ export interface User {
   star(pack: Pack): Promise<void>;
   open(pack: Pack): Promise<unknown>;
   inbox(): Promise<Notification[]>;
+  /** The person's side of `cn adopt` on a laptop: the page where the code is typed, and the decision. */
+  deviceSignIn: {
+    open(): Promise<Observation>;
+    /** Types the code and returns the confirmation page; nothing is granted yet. */
+    enter(userCode: string): Promise<Observation>;
+    allow(userCode: string): Promise<Observation>;
+    deny(userCode: string): Promise<Observation>;
+  };
 }
 export interface Publisher extends User {
   scope: Scope;
@@ -210,7 +218,33 @@ export interface Admin {
   readonly handle: string;
 }
 
+/** The token `cn` holds after a device-code sign-in. */
+export interface DeviceToken {
+  readonly value: string;
+  /** How long the registry said it lasts, in seconds from when it was issued. */
+  readonly expiresInS: number;
+}
+export type DevicePollResult =
+  | { readonly status: "pending" | "slow-down" | "denied" | "expired" | "invalid" }
+  | { readonly status: "granted"; readonly token: DeviceToken };
+/** What a device token stands for. */
+export interface DeviceGrant {
+  readonly grants: readonly string[];
+  readonly expiresAt: Date;
+}
+/** A device-code sign-in `cn adopt` has started and is waiting on. */
+export interface DeviceSignIn {
+  /** What `cn` shows the person to type. */
+  readonly userCode: string;
+  /** Where `cn` sends the person; it carries no code. */
+  readonly link: string;
+  poll(): Promise<DevicePollResult>;
+}
 export interface Member {
+  /** `cn adopt` on a laptop at an address and country: asks for a code and waits for the person. */
+  signIn(opts?: { from?: string; country?: string }): Promise<DeviceSignIn>;
+  /** What the registry says a device token may do, as `cn` would find out before relying on it. */
+  grantOf(token: DeviceToken): Promise<DeviceGrant | Refusal>;
   fetchRoot(): Promise<unknown>;
   fetchIndex(scope: string): Promise<unknown>;
   adopt(pack: Pack, version: string): Promise<unknown>;
