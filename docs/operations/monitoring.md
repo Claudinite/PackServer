@@ -61,7 +61,7 @@ Areas and their signals:
   `session_revoked`. **token**: `minted`, `revoked`, `leak_reported`, `rejected`.
 - **scope**: `created`, `proof_changed`, `application_decided`. **grant**: `changed`.
   **admin**: `action`. **cloudflare**: `audit_event`.
-- **github**: `webhook_received`, `webhook_rejected`, `rate_limit_remaining`, `scan_completed`.
+- **github**: `webhook_received`, `webhook_rejected`, `rate_limit_remaining`, `scan_run`, `scan_completed`.
 - **email**: `sent`, `failed`. **queue**: `message_processed`, `dlq`, `backlog`.
   **workflow**: `instance_finished`, `wait_rearmed`. **rollup**: `completed`.
 - **audit**: `appended`, `batch_written`, `chain_verified`, `chain_broken`, `head_rebuilt`, `reconcile_skipped`.
