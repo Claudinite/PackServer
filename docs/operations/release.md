@@ -80,8 +80,19 @@ Common to both modes, on merge to `main`:
 **Candidate gating.** While a version's own id is the manifest's candidate and the release state is
 `verifying`, the version answers only requests that carry a valid `X-Selftest-Signature:
 t=<unix>, n=<nonce>, k=<key id>, v1=<hex>` where `v1 = HMAC-SHA256(SELFTEST_HMAC_KEY,
-method|path|t|n)`, `t` within ±5 minutes and `n` unseen; everything else gets the same 404 the public
-host gives an unknown path. The check fails open when the manifest read fails, so a verified
+METHOD|host|path|t|n|k)`, `t` within ±5 minutes and `n` unseen; everything else gets the same 404 the public
+host gives an unknown path. The candidate record is a mirror of the manifest (release id, state, and
+each Worker's version id and `changed` flag) that the release tooling writes to production's
+`TELEMETRY_KV` under `selftest/candidate` whenever it writes the manifest; every Worker holds that
+namespace, so none needs a read on `ops`. A Worker gates only on a record whose `release_id` is its
+own. A write is visible to every Worker only after KV's propagation (60 s), the edge cache on the
+read (60 s, the default for a read that sets no `cacheTtl`) and the isolate's own ten-second cache,
+plus a margin; that sum is one constant (`MIRROR_PROPAGATION_MS`, from `packages/ports/release-keys.json`),
+and the tooling waits it out after the candidate record is written, and again between the `rolling`
+write and the move to 100%, so no version takes traffic while it still believes it is gated. Staging
+has no candidate (it deploys straight to 100% and its suite sends unsigned requests), so it is not gated.
+Visitor-style (unsigned) requests are what the gate refuses; the probe-safe run therefore needs
+`SELFTEST_HMAC_KEY`, and verification skips the self-test with a logged reason when it is absent. The check fails open when the read fails, so a verified
 version that becomes the incumbent can never lock itself out. The prober and the controller sign
 their verification requests; the Access boundary of the canary host is the first layer and this the
 second.
@@ -187,7 +198,11 @@ environment, and a fresh passkey sign-in.
 
 - **Schema**: expand → code reading both shapes → backfill in ≤ 1,000-row batches → code reading the
   new shape → contract after a quiet week, each its own release; `SCHEMA_MIN..SCHEMA_MAX` compiled
-  in and checked by the self-test. Data a release writes stays readable by the previous release.
+  in and checked by the self-test. A database ahead of a build (an expand applied before its code,
+  or left behind by a rollback) passes while every migration past `SCHEMA_MAX` is an expand; a
+  build knows a later migration only by its name, so a contract migration is named for it
+  (`<stamp>_<area>_contract_<what>.sql`, checked beside its `-- contract-of:` marker). Data a
+  release writes stays readable by the previous release.
 - **Workflows**: never rename, remove or reorder a released step; restructure as a new class and let
   the old drain. A decision an admin makes while no instance is waiting is applied by the resumer
   from the D1 milestone ([../architecture/validation-pipeline.md](../architecture/validation-pipeline.md)).

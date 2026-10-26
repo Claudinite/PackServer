@@ -9,6 +9,8 @@ export interface HttpEnv {
   /** Release ids an answering Worker may report; required whenever an override is set. */
   expectedReleases: ReadonlySet<string> | null;
   access: { clientId: string; clientSecret: string; host: string } | null;
+  /** Signs every request, so a candidate that answers only signed ones (release.md §Candidate gating) answers the scenarios. */
+  selfTest: { key: string; keyId: string } | null;
   probeTenant: string;
 }
 
@@ -35,11 +37,13 @@ export function readHttpEnv(env: Record<string, string | undefined> = process.en
   const accessHost = env.PACKSERVER_ACCESS_HOST?.trim();
   if (Boolean(clientId) !== Boolean(clientSecret)) throw new HttpEnvError("CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET come together");
   if (clientId && !accessHost) throw new HttpEnvError("the Access service token needs PACKSERVER_ACCESS_HOST: it is sent to that host only");
+  const selfTestKey = env.SELFTEST_HMAC_KEY?.trim();
   return {
     baseUrl,
     versionOverride,
     expectedReleases: expected.length > 0 ? new Set(expected) : null,
     access: clientId && clientSecret && accessHost ? { clientId, clientSecret, host: accessHost } : null,
+    selfTest: selfTestKey ? { key: selfTestKey, keyId: env.SELFTEST_KEY_ID?.trim() || "1" } : null,
     probeTenant: env.PACKSERVER_PROBE_TENANT?.trim() || "@probe",
   };
 }

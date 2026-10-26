@@ -6,16 +6,18 @@
 //   node tools/release/promote.mjs release --release <id>
 //   node tools/release/promote.mjs staging
 import { pathToFileURL } from "node:url";
-import { WORKERS, argOf, dbName, opsStore, spawnRunner, wrangler, wranglerOk } from "./common.mjs";
+import { MIRROR_PROPAGATION_MS, WORKERS, argOf, sleepSync, dbName, opsStore, spawnRunner, wrangler, wranglerOk } from "./common.mjs";
 import { changedWorkers, readManifest, update, withState, writeLive } from "./manifest.mjs";
 import { rollbackRelease } from "./rollback.mjs";
 
-export function promote({ run, store, id, root, now = () => new Date().toISOString(), log = console.log }) {
+export function promote({ run, store, id, root, now = () => new Date().toISOString(), log = console.log, sleep = sleepSync }) {
   const manifest = readManifest(store, id);
   if (manifest.state !== "verifying") throw new Error(`release ${id} is ${manifest.state}; only a verifying release promotes`);
   if (!manifest.stages.some((s) => s.name === "verify" && s.ok)) throw new Error(`release ${id} has no passing verify stage; nothing moves`);
   const names = changedWorkers(manifest);
   update(store, id, (m) => withState(m, "rolling", now()));
+  // Traffic must not reach a version that still sees itself as gated.
+  sleep(MIRROR_PROPAGATION_MS);
   const moved = [];
   for (const name of names) {
     const r = wrangler(run, name, ["versions", "deploy", `${manifest.workers[name].version_id}@100`, "--env", "production", "--yes", "--message", `release ${id}`], { root });

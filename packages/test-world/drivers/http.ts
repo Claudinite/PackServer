@@ -1,3 +1,4 @@
+import { SELFTEST_SIGNATURE_HEADER, signSelfTest } from "@packserver/core/selftest";
 import type { WorkerName } from "@packserver/ports";
 import { InfrastructureError } from "../world/errors";
 import type { ApiRequest, ApiResponse, Capability, Driver, McpCredentials } from "./driver";
@@ -15,7 +16,8 @@ const OVERRIDE_HEADER = "Cloudflare-Workers-Version-Overrides";
  */
 export class HttpDriver implements Driver {
   readonly kind = "http" as const;
-  readonly capabilities: ReadonlySet<Capability> = new Set(["mcp"]);
+  /** The self-test answers a caller only with a credential the driver signs with. */
+  readonly capabilities: ReadonlySet<Capability>;
   readonly surfaces: readonly WorkerName[] = ["web"];
   readonly aliasSalt = crypto.randomUUID().slice(0, 8);
   private readonly versions: VersionObserver;
@@ -25,6 +27,7 @@ export class HttpDriver implements Driver {
     private readonly doFetch: Fetch = fetch,
   ) {
     this.versions = new VersionObserver(env.expectedReleases);
+    this.capabilities = new Set<Capability>(env.selfTest ? ["mcp", "selftest"] : ["mcp"]);
   }
 
   get probeTenant(): string {
@@ -39,6 +42,17 @@ export class HttpDriver implements Driver {
       if (this.env.access && url.host === this.env.access.host) {
         headers["CF-Access-Client-Id"] = this.env.access.clientId;
         headers["CF-Access-Client-Secret"] = this.env.access.clientSecret;
+      }
+      if (this.env.selfTest && !req.unsigned) {
+        headers[SELFTEST_SIGNATURE_HEADER] = await signSelfTest({
+          key: this.env.selfTest.key,
+          keyId: req.signAs ?? this.env.selfTest.keyId,
+          method: req.method,
+          host: url.host,
+          path: url.pathname,
+          nowMs: Date.now(),
+          nonce: crypto.randomUUID(),
+        });
       }
       const body = encodeBody(req.body, headers);
       const res = await this.doFetch(url.toString(), { method: req.method, headers, redirect: "manual", ...(body === undefined ? {} : { body }) });

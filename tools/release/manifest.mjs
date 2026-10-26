@@ -13,7 +13,7 @@ import { readJsonc } from "../../infra/lib/plan.mjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { LIVE_POINTER, REPO, WORKERS, argOf, bundleFile, bundleKey, dbName, liveVersion, manifestKey, opsStore, sha256File, spawnRunner, wranglerOk } from "./common.mjs";
+import { LIVE_POINTER, MIRROR_PROPAGATION_MS, sleepSync, REPO, WORKERS, argOf, bundleFile, bundleKey, dbName, liveVersion, manifestKey, opsStore, sha256File, spawnRunner, wranglerOk } from "./common.mjs";
 
 export const KINDS = ["normal", "hotfix", "lifecycle-only", "migration-only", "compat-only", "rollback-deep"];
 export const STATES = ["building", "verifying", "rolling", "live", "finalised", "failed", "rolled_back"];
@@ -65,7 +65,16 @@ export const readManifest = (store, id) => {
   if (!raw) throw new Error(`no manifest for release ${id}`);
   return JSON.parse(raw.toString("utf8"));
 };
-export const writeManifest = (store, manifest) => store.put(manifestKey(manifest.release_id), `${JSON.stringify(manifest, null, 2)}\n`);
+/** The narrowest record a Worker needs to know whether it is the candidate: no digests, no stages. */
+export const candidateRecord = (manifest) => ({
+  release_id: manifest.release_id,
+  state: manifest.state,
+  workers: Object.fromEntries(Object.entries(manifest.workers).map(([name, w]) => [name, { version_id: w.version_id, changed: w.changed === true }])),
+});
+export function writeManifest(store, manifest) {
+  store.put(manifestKey(manifest.release_id), `${JSON.stringify(manifest, null, 2)}\n`);
+  store.mirror?.(`${JSON.stringify(candidateRecord(manifest))}\n`);
+}
 export const liveRecord = (store) => {
   const raw = store.get(LIVE_POINTER);
   return raw ? JSON.parse(raw.toString("utf8")) : { release_id: null };
@@ -123,7 +132,7 @@ function migrationsSince(commit) {
  * Cut a candidate: expand migrations, then one 0% version per Worker whose bundle changed, every
  * bundle copied once into `ops`, and the manifest left in `verifying`. Nothing here moves traffic.
  */
-export function cut({ run, store, digests, bundlesDir, id, commit, now = new Date().toISOString(), root = REPO, gitFn = defaultGit }) {
+export function cut({ run, store, digests, bundlesDir, id, commit, now = new Date().toISOString(), root = REPO, gitFn = defaultGit, sleep = sleepSync }) {
   // A re-run must not erase the rollback target of a release that already moved past verifying.
   const existing = store.get(manifestKey(id));
   if (existing) {
@@ -165,6 +174,8 @@ export function cut({ run, store, digests, bundlesDir, id, commit, now = new Dat
   }
   manifest = withState({ ...manifest, workers }, "verifying", now);
   writeManifest(store, manifest);
+  // Until the gate is visible everywhere the candidate answers unsigned requests, so nothing verifies before it is.
+  sleep(MIRROR_PROPAGATION_MS);
   return manifest;
 }
 

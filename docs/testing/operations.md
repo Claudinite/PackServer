@@ -76,8 +76,8 @@ is the only gate before every Worker goes to 100% (Ariel B7 2026-10-22).
 ### IT-OPS-011 A schema outside the supported range fails the self-test
 - **Covers:** REQ-OPS-011
 - **Runs:** push
-- **Action:** apply migrations to head H+1 where the Worker's range is `H-1..H`; run the full self-test; also run with the head inside the range.
-- **Assert:** the first reports `ok: false` with a check naming the head and the range; the second passes.
+- **Action:** with the Worker's range `min..max`, run the full self-test with the head inside the range; with the head beyond `max` by expand migrations only; with the head beyond `max` including a contract migration; and with the head below `min`.
+- **Assert:** the first two pass; the last two report `ok: false` with a `d1.schema` check whose name carries the head and the range.
 
 ### IT-OPS-012 Recorded invocations never hold a personal, customer-content or secret value in clear
 - **Covers:** REQ-OPS-012
