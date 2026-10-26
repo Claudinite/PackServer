@@ -1,7 +1,7 @@
 import { sha256Hex, type Clock, type D1 } from "@packserver/ports";
 import type { SessionDevice } from "./sessions.ts";
 
-export interface DevicePorts {
+export interface SignInDevicePorts {
   d1: D1;
   clock: Clock;
 }
@@ -10,7 +10,7 @@ export interface DevicePorts {
  * Records the device a sign-in came from. It is new when the person has signed in before from
  * other devices only; a first-ever sign-in is not a surprise to anyone.
  */
-export async function noteSignInDevice(ports: DevicePorts, userId: string, device: SessionDevice): Promise<{ isNew: boolean }> {
+export async function noteSignInDevice(ports: SignInDevicePorts, userId: string, device: SessionDevice): Promise<{ isNew: boolean }> {
   const fingerprint = await sha256Hex(`device:${device.label}|${device.country}`);
   const at = new Date(ports.clock.now()).toISOString();
   const [seen, any] = await ports.d1.batch([
