@@ -1,5 +1,5 @@
 import { objectKey, publicObjectHttpMetadata, type ObjectKind } from "@packserver/core/catalog";
-import { privateEntryKey } from "@packserver/core/access";
+import { privateArchiveKey, privateEntryKey } from "@packserver/core/access";
 import { buildPrivateEntry, buildVersionsDocument, createSigner, encodePublicKey, sha256Hex, signPrivateEntry, signVersionsDocument, utf8, type RegistryKey, type Signer, type VersionRecord } from "@packserver/core/index";
 import { INVENTORY_PARTS, type Attestation, type Capability, type Meta, type PreInstallManifest, type VerificationFacts, type VersionStatus } from "@packserver/schema";
 import type { ApiResponse, Driver, SeedStorage } from "../drivers/driver";
@@ -234,7 +234,7 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
     const write = (kind: ObjectKind, body: Uint8Array | string) =>
       store.packsPublic.put(objectKey(pack.systemName, kind, v.version), body, { httpMetadata: publicObjectHttpMetadata(kind) });
     if (pack.visibility === "private") {
-      await store.packsPrivate.put(`v/${v.id}/pack.tar.zst`, bytesOf(`archive ${pack.systemName}@${v.version}`));
+      await store.packsPrivate.put(privateArchiveKey(v.id), bytesOf(`archive ${pack.systemName}@${v.version}`));
       return;
     }
     await write("archive", bytesOf(`archive ${pack.systemName}@${v.version}`));

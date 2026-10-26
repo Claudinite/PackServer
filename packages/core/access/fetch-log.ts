@@ -27,16 +27,19 @@ function identityOf(caller: Caller): { account: string | null; repository: strin
   return caller.kind === "oidc" ? { account: caller.ownerId, repository: caller.repository } : { account: null, repository: null };
 }
 
-/** Records one read and drops what is past retention, so the 90 days hold without a separate job. */
-export async function recordFetch(ports: FetchLogPorts, record: FetchRecord): Promise<void> {
+/** Records a request's reads in one batch and drops what is past retention, so the 90 days hold without a separate job. */
+export async function recordFetches(ports: FetchLogPorts, records: readonly FetchRecord[]): Promise<void> {
+  if (records.length === 0) return;
   const now = ports.clock.now();
-  const { account, repository } = identityOf(record.caller);
   await ports.d1.batch([
     { sql: "delete from fetch_log where at < ?", params: [now - FETCH_LOG_RETENTION_DAYS * DAY_MS] },
-    {
-      sql: "insert into fetch_log (id, pack_id, version_id, kind, outcome, caller, caller_hash, account_id, repository, at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      params: [ports.rng.uuid(), record.packId, record.versionId ?? null, record.kind, record.outcome, record.caller.kind, record.callerHash ?? null, record.accountId ?? account, repository, now],
-    },
+    ...records.map((record) => {
+      const { account, repository } = identityOf(record.caller);
+      return {
+        sql: "insert into fetch_log (id, pack_id, version_id, kind, outcome, caller, caller_hash, account_id, repository, at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        params: [ports.rng.uuid(), record.packId, record.versionId ?? null, record.kind, record.outcome, record.caller.kind, record.callerHash ?? null, record.accountId ?? account, repository, now],
+      };
+    }),
   ]);
 }
 

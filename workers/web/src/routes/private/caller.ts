@@ -1,4 +1,5 @@
 import { type Caller } from "@packserver/core/access";
+import { CACHE_PRIVATE } from "@packserver/core/catalog";
 import { authenticateDeviceToken } from "@packserver/core/identity";
 import { JwksUnavailable, verifyActionsToken } from "@packserver/core/publishing";
 import { authenticateToken, TOKEN_PREFIX } from "@packserver/core/tokens";
@@ -14,6 +15,7 @@ export type Resolved = { caller: Caller } | { response: Response };
 const invalid = (): Response => {
   const res = refusal("signed-out");
   res.headers.set("www-authenticate", "Bearer");
+  res.headers.set("cache-control", CACHE_PRIVATE);
   return res;
 };
 
@@ -42,7 +44,7 @@ export async function resolveCaller(c: Context<WebEnv>): Promise<Resolved> {
     const { repository_owner_id: ownerId, repository, repository_visibility: visibility } = verified.claims;
     return { caller: { kind: "oidc", ownerId, repository, visibility } };
   } catch (error) {
-    if (error instanceof JwksUnavailable) return { response: Response.json({ error: "unavailable" }, { status: 503, headers: { "cache-control": "private, no-store" } }) };
+    if (error instanceof JwksUnavailable) return { response: Response.json({ error: "unavailable" }, { status: 503, headers: { "cache-control": CACHE_PRIVATE } }) };
     throw error;
   }
 }

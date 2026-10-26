@@ -1,4 +1,4 @@
-import { githubAccountOf, recordFetch, type Caller, type PackRef } from "@packserver/core/access";
+import { githubAccountOf, recordFetches, type FetchRecord, type Caller, type PackRef } from "@packserver/core/access";
 import type { PrincipalKind } from "@packserver/core/telemetry";
 import { principalHash } from "@packserver/ports";
 import type { Context } from "hono";
@@ -21,17 +21,17 @@ export const accountOf = (c: Context<WebEnv>, caller: Caller): Promise<string | 
   return githubAccountOf(runtimeOf(c).ports.d1, caller.userId);
 };
 
-/** One row in the owner's view of who read the pack. */
-export async function logFetch(
+/** The row for one read, for the owner's view of who read the pack. */
+export async function fetchRecord(
   c: Context<WebEnv>,
   caller: Caller,
   pack: Pick<PackRef, "id">,
   what: { kind: "index" | "download"; outcome: "served" | "denied"; versionId?: string },
-): Promise<void> {
+): Promise<FetchRecord> {
   const { ports } = runtimeOf(c);
   const principal = principalOf(caller);
   const key = (await ports.telemetry.keys()).principalKey;
-  await recordFetch(ports, {
+  return {
     packId: pack.id,
     kind: what.kind,
     outcome: what.outcome,
@@ -39,5 +39,8 @@ export async function logFetch(
     callerHash: key === undefined ? undefined : await principalHash(key, principal.kind, principal.id),
     accountId: await accountOf(c, caller),
     ...(what.versionId === undefined ? {} : { versionId: what.versionId }),
-  });
+  };
 }
+
+/** Writes a request's rows; a failure is the log's own and never changes the answer to the read. */
+export const writeFetches = async (c: Context<WebEnv>, records: readonly FetchRecord[]): Promise<void> => recordFetches(runtimeOf(c).ports, records);

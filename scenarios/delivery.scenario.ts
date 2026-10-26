@@ -97,8 +97,9 @@ scenario("IT-DELIV-013 Private responses are never cached; immutable only on con
   expect(await secret.observe({ version: "1.0.0" })).toLookTheSameAs(await nothing.observe({ version: "1.0.0" }));
   expect((await secret.observe({ session: true })).headers["cache-control"]).toBe("private, no-store");
 
-  await world.access.allowAccount(secret, { id: 1001 });
-  const reader = world.member().inActionsOf({ ownerId: 1001, repository: "alice/app", visibility: "private" });
+  const alice = world.access.account("alice");
+  await world.access.allowAccount(secret, alice);
+  const reader = world.member().inActionsOf(world.access.repository(alice, "app"));
   const index = await reader.index({ pack: secret.systemName });
   const archive = await reader.download((await secret.stored("1.0.0")).versionId);
   if (index instanceof NotFound || index instanceof Refusal || archive instanceof NotFound || archive instanceof Held || archive instanceof Refusal) {
@@ -108,7 +109,7 @@ scenario("IT-DELIV-013 Private responses are never cached; immutable only on con
   expect(archive.headers["cache-control"]).toBe("private, no-store");
   expect(archive.headers["content-disposition"]).toContain("attachment");
   expect(archive.headers["x-content-type-options"]).toBe("nosniff");
-  expect((await world.member().inActionsOf({ ownerId: 2002, repository: "mallory/app", visibility: "private" }).observe({ index: { pack: secret.systemName } })).headers["cache-control"]).toBe("private, no-store");
+  expect((await world.member().inActionsOf(world.access.repository(world.access.account("mallory"), "app")).observe({ index: { pack: secret.systemName } })).headers["cache-control"]).toBe("private, no-store");
 }, storage);
 
 // Not covered here: the edge half of IT-DELIV-014 (nosniff on the custom domain, Claudinite/PackServer#142).

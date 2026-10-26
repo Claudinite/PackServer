@@ -1,0 +1,78 @@
+import { oidcConfig } from "@packserver/core/publishing";
+import { TelemetrySink } from "@packserver/core/telemetry/testing";
+import { SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
+import { createFakePorts } from "@packserver/ports/fakes";
+import { describe, expect, it, vi } from "vitest";
+import { createApp } from "../src/app";
+import type { WebRuntime } from "../src/bindings";
+
+vi.mock("../src/routes/private/caller", () => ({
+  resolveCaller: async () => ({ caller: { kind: "oidc", ownerId: "1001", repository: "alice/app", visibility: "private" } }),
+}));
+
+const ARCHIVE = new TextEncoder().encode("the bytes the validator stored");
+const hex = async (bytes: Uint8Array) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((b) => b.toString(16).padStart(2, "0")).join("");
+const VERSION = "0f0f0f0f-0000-4000-8000-000000000001";
+
+async function setup(o: { state?: string; readable?: boolean; stored?: Uint8Array | null } = {}) {
+  const sink = new TelemetrySink();
+  const fakes = createFakePorts({ worker: "web" });
+  fakes.d1.on(/from effective_access/, () => ({ rows: o.readable === false ? [] : [{ id: "p1", scope: "acme", name: "secret" }] }));
+  fakes.d1.on(/fetch_log/, () => ({}));
+  const sha = await hex(ARCHIVE);
+  fakes.d1.on(/from pack_versions v join packs p/, (params) =>
+    params[0] === VERSION ? { rows: [{ state: o.state ?? "active", sha256: sha, version: "1.0.0", pack_id: "p1", name: "secret", scope: "acme" }] } : { rows: [] },
+  );
+  if (o.stored !== null) await fakes.r2.PACKS_PRIVATE?.put(`v/${VERSION}/pack.tar.zst`, o.stored ?? ARCHIVE);
+  const runtime: WebRuntime = {
+    worker: "web", environment: "test", version: { versionId: SHELL_VERSION, releaseId: SHELL_RELEASE }, missingBindings: [], missingSecrets: [],
+    ports: { ...fakes, stats: sink, githubLogin: {} as never }, services: { mcp: {} as Fetcher, publish: {} as Fetcher },
+    config: { oidc: oidcConfig({ ENVIRONMENT: "production" }), fetch, cdnOrigin: undefined, siteOrigins: ["https://registry.test.invalid"] },
+  };
+  const pending: Array<Promise<unknown>> = [];
+  const app = createApp(runtime);
+  const get = async (id: string) => {
+    const res = await app.request(`/api/private/v/${id}`, {}, undefined, { waitUntil: (p: Promise<unknown>) => void pending.push(p), passThroughOnException() {} } as never);
+    await Promise.all(pending);
+    return res;
+  };
+  return { get, sink, fakes, pending };
+}
+
+describe("GET /api/private/v/:versionId", () => {
+  it("answers bytes that do not match the version's sha256 with 503, no bytes, and the hash_mismatch signal", async () => {
+    const { get, sink } = await setup({ stored: new TextEncoder().encode("tampered") });
+    const res = await get(VERSION);
+    expect(res.status).toBe(503);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(await res.text()).not.toContain("tampered");
+    expect(sink.recorded("download.hash_mismatch")).toHaveLength(1);
+    expect(sink.recorded("download.served")).toHaveLength(0);
+  });
+
+  it("serves the bytes when they match", async () => {
+    const { get, sink } = await setup();
+    const res = await get(VERSION);
+    expect(res.status).toBe(200);
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(ARCHIVE);
+    expect(sink.recorded("download.hash_mismatch")).toHaveLength(0);
+  });
+
+  it("answers a removed version 410 with no bytes", async () => {
+    const { get } = await setup({ state: "removed" });
+    const res = await get(VERSION);
+    expect(res.status).toBe(410);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  it("writes the denied-read log after the response, so a denied id costs what an unknown one does", async () => {
+    const denied = await setup({ readable: false });
+    const unknown = await setup();
+    const a = await denied.get(VERSION);
+    const b = await unknown.get("0f0f0f0f-0000-4000-8000-0000000000ff");
+    expect([a.status, await a.text()]).toEqual([b.status, await b.text()]);
+    const logged = (s: Awaited<ReturnType<typeof setup>>) => s.fakes.d1.executed.filter((e) => /insert into fetch_log/.test(e.sql)).length;
+    expect(logged(denied)).toBe(1);
+    expect(logged(unknown)).toBe(0);
+  });
+});

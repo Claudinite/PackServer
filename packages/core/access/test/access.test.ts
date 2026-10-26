@@ -1,7 +1,7 @@
 import { createFakePorts } from "@packserver/ports/fakes";
 import { describe, expect, it } from "vitest";
 import { migratedD1 } from "../../identity/testing.ts";
-import { FETCH_LOG_RETENTION_DAYS, addGrant, isAccountId, listFetches, listGrants, mayRead, readablePacks, recordFetch, removeGrant, type Caller } from "../index.ts";
+import { FETCH_LOG_RETENTION_DAYS, addGrant, isAccountId, listFetches, listGrants, mayRead, readablePacks, recordFetches, removeGrant, type Caller } from "../index.ts";
 
 const DAY = 86_400_000;
 
@@ -76,12 +76,12 @@ describe("IT-PRIV-018 a psr_ grant", () => {
 describe("IT-TELEM-008 the fetch log", () => {
   it("keeps reads by account and repository for 90 days", async () => {
     const { d1, ports, fakes } = setup();
-    await recordFetch(ports, { packId: "p1", kind: "index", outcome: "served", caller: oidc("1001", "private"), callerHash: "h" });
+    await recordFetches(ports, [{ packId: "p1", kind: "index", outcome: "served", caller: oidc("1001", "private"), callerHash: "h" }]);
     fakes.clock.advance((FETCH_LOG_RETENTION_DAYS - 1) * DAY);
-    await recordFetch(ports, { packId: "p1", kind: "download", versionId: "v1", outcome: "served", caller: { kind: "session", userId: "ann" }, callerHash: undefined, accountId: "1001" });
+    await recordFetches(ports, [{ packId: "p1", kind: "download", versionId: "v1", outcome: "served", caller: { kind: "session", userId: "ann" }, callerHash: undefined, accountId: "1001" }]);
     expect((await listFetches(d1, "p1")).map((f) => f.kind)).toEqual(["download", "index"]);
     fakes.clock.advance(2 * DAY);
-    await recordFetch(ports, { packId: "p1", kind: "index", outcome: "denied", caller: oidc("2002", "private"), callerHash: "h2" });
+    await recordFetches(ports, [{ packId: "p1", kind: "index", outcome: "denied", caller: oidc("2002", "private"), callerHash: "h2" }]);
     const left = await listFetches(d1, "p1");
     expect(left.map((f) => f.kind)).toEqual(["index", "download"]);
     expect(left.at(-1)).toMatchObject({ account_id: "1001", repository: null });

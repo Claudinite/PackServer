@@ -1,14 +1,27 @@
-import { mayRead, privateArchiveKey, privateEntryKey, readablePacks, systemName } from "@packserver/core/access";
+import { type FetchRecord, mayRead, privateArchiveKey, privateEntryKey, readablePacks, systemName } from "@packserver/core/access";
 import { objectResponseHeaders, CACHE_PRIVATE } from "@packserver/core/catalog";
 import { sha256Hex } from "@packserver/core/index";
 import { PrivateEntry, type PrivateIndexEnvelope } from "@packserver/schema";
 import { requestTelemetry } from "@packserver/http";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { runtimeOf, type WebEnv } from "../../context";
 import { resolveCaller } from "./caller";
-import { logFetch, principalOf } from "./log";
+import { fetchRecord, principalOf, writeFetches } from "./log";
 
 export const routes = new Hono<WebEnv>();
+
+/**
+ * Runs work after the response is on its way, so a request that is refused takes no longer than
+ * one for something that does not exist. Without an execution context the work is awaited.
+ */
+async function afterResponse(c: Context<WebEnv>, work: () => Promise<void>): Promise<void> {
+  const run = work().catch((error: unknown) => console.error(JSON.stringify({ event: "private.fetch_log_failed", message: error instanceof Error ? error.message : "unknown" })));
+  try {
+    c.executionCtx.waitUntil(run);
+  } catch {
+    await run;
+  }
+}
 
 const NO_STORE = { "cache-control": CACHE_PRIVATE };
 /** The one answer for a pack or version that does not exist and for one the caller may not know exists. */
@@ -29,6 +42,7 @@ routes.get("/private/index", async (c) => {
   const { caller } = resolved;
   const runtime = runtimeOf(c);
   const entries: PrivateEntry[] = [];
+  const records: FetchRecord[] = [];
   const named = c.req.query("pack");
   let packs = await readablePacks(runtime.ports.d1, caller);
   if (named !== undefined) {
@@ -39,16 +53,20 @@ routes.get("/private/index", async (c) => {
   for (const pack of packs) {
     const stored = await runtime.ports.r2.PACKS_PRIVATE?.get(privateEntryKey(pack.id));
     if (!stored) continue;
-    let parsed: ReturnType<typeof PrivateEntry.safeParse>;
+    let parsed: ReturnType<typeof PrivateEntry.safeParse> | undefined;
     try {
       parsed = PrivateEntry.safeParse(JSON.parse(new TextDecoder().decode(stored)));
     } catch {
+      parsed = undefined;
+    }
+    if (!parsed?.success || parsed.data.pack !== systemName(pack)) {
+      requestTelemetry(c).emit("index.entry_skipped", { pack_id: pack.id, reason: parsed === undefined ? "unparsable" : parsed.success ? "wrong_pack" : "invalid" });
       continue;
     }
-    if (!parsed.success || parsed.data.pack !== systemName(pack)) continue;
     entries.push(parsed.data);
-    await logFetch(c, caller, pack, { kind: "index", outcome: "served" });
+    records.push(await fetchRecord(c, caller, pack, { kind: "index", outcome: "served" }));
   }
+  await writeFetches(c, records);
   if (named !== undefined && entries.length === 0) return notFound();
   const envelope: PrivateIndexEnvelope = { private: true, storable: false, entries };
   return Response.json(envelope, { headers: NO_STORE });
@@ -70,7 +88,7 @@ routes.get("/private/v/:versionId", async (c) => {
   if (!row) return notFound();
   const pack = { id: row.pack_id as string, scope: row.scope as string, name: row.name as string };
   if (!(await mayRead(runtime.ports.d1, caller, pack.id))) {
-    await logFetch(c, caller, pack, { kind: "download", outcome: "denied", versionId });
+    await afterResponse(c, async () => writeFetches(c, [await fetchRecord(c, caller, pack, { kind: "download", outcome: "denied", versionId })]));
     return notFound();
   }
   const state = row.state as string;
@@ -84,7 +102,7 @@ routes.get("/private/v/:versionId", async (c) => {
     requestTelemetry(c).emit("download.hash_mismatch", { version_id: versionId });
     return unavailable();
   }
-  await logFetch(c, caller, pack, { kind: "download", outcome: "served", versionId });
+  await writeFetches(c, [await fetchRecord(c, caller, pack, { kind: "download", outcome: "served", versionId })]);
   requestTelemetry(c).download({
     visibility: "private",
     pack: systemName(pack),

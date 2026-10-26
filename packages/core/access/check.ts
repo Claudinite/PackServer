@@ -32,6 +32,7 @@ export async function readablePacks(d1: D1, caller: Caller, only?: string): Prom
   } else {
     const accountId = caller.kind === "oidc" ? caller.ownerId : await githubAccountOf(d1, caller.userId);
     if (accountId === null) return [];
+    // Only the exact claim value "private" counts: "internal" and "public" fail a private_repos_only entry.
     const privateRepo = caller.kind === "oidc" && caller.visibility === "private";
     const gate = caller.kind === "oidc" && !privateRepo ? " and ea.private_repos_only = 0" : "";
     rows = (

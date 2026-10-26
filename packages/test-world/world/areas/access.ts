@@ -3,11 +3,11 @@ import { verifySigned, type RegistryKey } from "@packserver/core/index";
 import { PrivateEntry } from "@packserver/schema";
 import type { Driver } from "../../drivers/driver";
 import { InfrastructureError } from "../errors";
-import { NotFound, Refusal, type Observation } from "../outcomes";
+import type { Observation } from "../outcomes";
 import { seededRegistryKey } from "../packs";
 import { callerOf } from "./users";
 import { createWorldTokens, d1Over, type WorldTokens } from "../tokens";
-import type { Pack, User } from "../types";
+import type { ActionsRepo, Pack, User } from "../types";
 
 /** A GitHub account on a pack's allowlist, by the id GitHub gave it. */
 export interface Account {
@@ -27,33 +27,32 @@ export interface FetchRecordView {
   readonly at: number;
 }
 
-export interface AccessGrantOpts {
-  /** The person who makes the change, through the registry; absent seeds it directly, as the owner's page will one day. */
-  by?: User;
-}
-
 /** The private-pack access verbs and the registry key. */
 export interface AccessVerbs {
+  /** A GitHub account with an id the World allocated, so no two scenarios share one. */
+  account(login: string, o?: Pick<Account, "type" | "privateReposOnly">): Account;
+  /** A repository of an account, as a workflow in it identifies itself. */
+  repository(account: Account, name: string, visibility?: ActionsRepo["visibility"]): ActionsRepo;
   /** The key the registry's documents are signed with, as `keys.json` lists it. */
   registryKey(): Promise<RegistryKey>;
   /** Whether a private entry verifies against the registry key, as cn checks it. */
   verifies(entry: unknown): Promise<boolean>;
-  allowAccount(pack: Pack, account: Account, o?: AccessGrantOpts): Promise<void | Refusal | NotFound>;
-  disallowAccount(pack: Pack, account: Pick<Account, "id">, o?: AccessGrantOpts): Promise<void | Refusal | NotFound>;
-  /** Gives a person the data model's `member` role in the pack's scope, which the interface never names for a person. */
-  seedMember(pack: Pack, user: User): Promise<void>;
+  /** Seeds a grant directly; the owner's access page will make the change through the registry. */
+  allowAccount(pack: Pack, account: Account): Promise<void>;
+  disallowAccount(pack: Pack, account: Pick<Account, "id">): Promise<void>;
   /** The pack's reads the registry logged, newest first. */
   fetches(pack: Pack): Promise<FetchRecordView[]>;
   /** The writes a signed-in person may try on a pack, each as the registry answers it. */
   attemptWrites(user: User, pack: Pack): Promise<Observation[]>;
 }
 
-const GRANTS = (pack: Pack) => `/api/packs/${pack.systemName}/grants`;
-
 export interface AccessModule {
   tokens: WorldTokens;
   access: AccessVerbs;
 }
+
+/** Above the range the World gives its people, so an allocated account never meets one of theirs. */
+let nextAccountId = 6_000_000_000;
 
 export const createAccess = (driver: Driver): AccessModule => {
   const packId = async (pack: Pack): Promise<string> => {
@@ -64,13 +63,6 @@ export const createAccess = (driver: Driver): AccessModule => {
     if (!out) throw new InfrastructureError(`${pack.systemName} was not created in this scenario`);
     return out.id;
   };
-  const answered = (res: { status: number; text: string }, what: string): Refusal | NotFound | undefined => {
-    if (res.status === 404) return new NotFound();
-    if (res.status === 403) return new Refusal("forbidden");
-    if (res.status !== 200 && res.status !== 201) throw new InfrastructureError(`${what}: the registry answered ${res.status}: ${res.text.slice(0, 120)}`);
-    return undefined;
-  };
-
   const rows = async (statement: string, ...params: unknown[]): Promise<Array<Record<string, unknown>>> => {
     if (!driver.storage) throw new InfrastructureError(`the ${driver.kind} driver has no storage seam`);
     const { db } = await driver.storage();
@@ -78,37 +70,21 @@ export const createAccess = (driver: Driver): AccessModule => {
   };
 
   const access: AccessVerbs = {
+    account: (login, o = {}) => ({ id: nextAccountId++, login, ...o }),
+    repository: (account, name, visibility = "private") => ({ ownerId: account.id, repository: `${account.login}/${name}`, visibility }),
     registryKey: seededRegistryKey,
     async verifies(entry) {
       const now = driver.fakes ? await driver.fakes.clock.call<number>("now") : Date.now();
       return (await verifySigned(PrivateEntry, entry, { keys: [await seededRegistryKey()], now: new Date(now) })).ok;
     },
-    async allowAccount(pack, account, o = {}) {
+    async allowAccount(pack, account) {
       const type = account.type ?? "user";
-      if (o.by) {
-        const res = await callerOf(o.by).call({
-          method: "POST",
-          path: GRANTS(pack),
-          json: { account_id: String(account.id), account_type: type, ...(account.privateReposOnly === undefined ? {} : { private_repos_only: account.privateReposOnly }) },
-        });
-        return answered(res, "access.allowAccount");
-      }
       const { db } = await driver.storage!();
       const now = driver.fakes ? await driver.fakes.clock.call<number>("now") : Date.now();
       await addGrant(
         { d1: d1Over(db), clock: { now: () => now }, rng: { float: () => Math.random(), uuid: () => crypto.randomUUID(), bytes: (n) => crypto.getRandomValues(new Uint8Array(n)) } },
         { packId: await packId(pack), accountId: String(account.id), accountType: type, by: null, ...(account.privateReposOnly === undefined ? {} : { privateReposOnly: account.privateReposOnly }) },
       );
-    },
-    async seedMember(pack, user) {
-      const { db } = await driver.storage!();
-      const scope = pack.systemName.slice(1).split("/")[0];
-      const now = driver.fakes ? await driver.fakes.clock.call<number>("now") : Date.now();
-      await db.batch([
-        db
-          .prepare("INSERT OR REPLACE INTO scope_members (scope_id, user_id, role, created_at) VALUES ((SELECT id FROM scopes WHERE name = ?), ?, 'member', ?)")
-          .bind(scope, (await user.account.show()).id, new Date(now).toISOString()),
-      ]);
     },
     async fetches(pack) {
       const id = await packId(pack);
@@ -137,8 +113,7 @@ export const createAccess = (driver: Driver): AccessModule => {
       }
       return out;
     },
-    async disallowAccount(pack, account, o = {}) {
-      if (o.by) return answered(await callerOf(o.by).call({ method: "DELETE", path: `${GRANTS(pack)}/${account.id}` }), "access.disallowAccount");
+    async disallowAccount(pack, account) {
       const { db } = await driver.storage!();
       await removeGrant({ d1: d1Over(db) }, await packId(pack), String(account.id));
     },
