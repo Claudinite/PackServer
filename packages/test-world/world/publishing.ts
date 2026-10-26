@@ -28,6 +28,8 @@ export interface ArchiveOptions {
 export interface ArchiveHandle extends Archive {
   readonly bytes: Uint8Array;
   readonly sha256: string;
+  /** Present when the archive was built without a `version`: the same archive carrying the version it is published as. */
+  readonly asVersion?: (version: string) => ArchiveHandle;
 }
 
 export interface RunMilestone {
@@ -272,7 +274,8 @@ function makeArchive(fixture: string, opts: ArchiveOptions): ArchiveHandle {
     if (opts.padTo > bytes.byteLength) padded.set(skippableFrames(opts.padTo - bytes.byteLength), bytes.byteLength);
     bytes = padded;
   }
-  return { fixture, bytes, sha256: createHash("sha256").update(bytes).digest("hex") };
+  const handle: ArchiveHandle = { fixture, bytes, sha256: createHash("sha256").update(bytes).digest("hex") };
+  return opts.version === undefined ? { ...handle, asVersion: (version) => makeArchive(fixture, { ...opts, version }) } : handle;
 }
 
 const NAME_AT_VERSION = /^@([a-z0-9][a-z0-9._-]*)\/([a-z0-9][a-z0-9._-]*)@(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)$/;
@@ -409,9 +412,10 @@ export function createPublishFlow(driver: Driver, aliases: Aliases, scopes: Pick
       };
     };
 
-    async function stage(archive: ArchiveHandle, nameAtVersion: string, o: PublishOptions = {}) {
+    async function stage(given: ArchiveHandle, nameAtVersion: string, o: PublishOptions = {}) {
       if (o.visibility || o.staged) throw new NotImplemented("publish with visibility or staging");
       const target = parse(nameAtVersion);
+      const archive = given.asVersion?.(target.version) ?? given;
       const uploaded = await upload(target, archive, false);
       if (uploaded instanceof Refusal) throw uploaded;
       return {

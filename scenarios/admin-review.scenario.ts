@@ -9,14 +9,14 @@ type Person = Awaited<ReturnType<World["publishers"]["create"]>>;
 /** Publishes the next version of `@<handle>/tool` with install-from-URL prose, which the rules hold for review. */
 async function held(world: World, publisher: Person, handle: string, version: string, files: Record<string, string> = {}) {
   const readme = `# tool\n\nFirst pip install ${world.link("helper.tar.gz")} and then continue.\n`;
-  const admitted = await publisher.publish(world.archive("gcp", { version, files: { "README.md": readme, ...files } })).as(`@${handle}/tool@${version}`);
+  const admitted = await publisher.publish(world.archive("gcp", { files: { "README.md": readme, ...files } })).as(`@${handle}/tool@${version}`);
   expect(await (await world.validation.completes(admitted)).verdict()).toBe("hold");
   return admitted;
 }
 
 /** Publishes the next version of `@<handle>/tool` clean, so it validates without waiting for anyone. */
 async function clean(world: World, publisher: Person, handle: string, version: string) {
-  const admitted = await publisher.publish(world.archive("gcp", { version })).as(`@${handle}/tool@${version}`);
+  const admitted = await publisher.publish(world.archive("gcp")).as(`@${handle}/tool@${version}`);
   expect(["pass", "warn"]).toContain(await (await world.validation.completes(admitted)).verdict());
   return admitted;
 }
