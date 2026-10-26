@@ -69,6 +69,11 @@ export async function provisionCanaryScope(d1: D1, input: { ownerUserId: string;
   const existing = (await d1.query(`select id, kind from scopes where name = ?`, [name])).rows[0] as { id: string; kind: string } | undefined;
   if (existing && (existing.id !== scopeId || existing.kind !== "org")) throw new Error(`@${name} exists and was not created by this provisioning; it will not be taken over`);
 
+  if (existing) {
+    const owners = (await d1.query(`select user_id from scope_members where scope_id = ? and role = 'owner'`, [scopeId])).rows as Array<{ user_id: string }>;
+    if (owners.some((o) => o.user_id !== input.ownerUserId)) throw new Error(`@${name} is owned by another account; it will not be given a second owner`);
+  }
+
   await d1.batch([
     { sql: `insert or ignore into scopes (id, name, kind, state, created_at) values (?, ?, 'org', 'active', ?)`, params: [scopeId, name, now] },
     { sql: `insert or ignore into scope_members (scope_id, user_id, role, created_at) values (?, ?, 'owner', ?)`, params: [scopeId, input.ownerUserId, now] },

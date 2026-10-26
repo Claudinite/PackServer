@@ -29,7 +29,6 @@ const DROPPED = new RegExp(`\\bdrop\\s+table\\s+(?:if\\s+exists\\s+)?${ident}`, 
 const RENAMED_TO = new RegExp(`\\brename\\s+to\\s+${ident}`, "gi");
 const close = "[`\"\\]]?";
 const REBUILD_RENAME = new RegExp(`^\\s*alter\\s+table\\s+${ident}${close}\\s+rename\\s+to\\s+${ident}${close}\\s*$`, "i");
-const DROP_TABLE = new RegExp(`^\\s*drop\\s+table\\s+(?:if\\s+exists\\s+)?${ident}${close}\\s*$`, "i");
 // Each of these breaks the previous Worker while it still serves against the new schema.
 const UNSAFE = [
   [/\bdrop\s+table\b/i, "DROP TABLE"],
@@ -75,10 +74,11 @@ const STRICT_RENAME = new RegExp(`^alter\\s+table\\s+${NAME_RE}\\s+rename\\s+to\
  * variants are never part of a rebuild.
  */
 function rowKeepingRebuilds(sql) {
-  const stmts = sql.split(";").map(bare).filter(Boolean);
+  const stmts = sql.split(";").map(bare);
   const at = (test, from = 0) => stmts.findIndex((st, i) => i >= from && test(st));
   const existing = new Set();
   const scratch = new Set();
+  const used = new Set();
   stmts.forEach((stmt, i) => {
     const drop = STRICT_DROP.exec(stmt);
     if (!drop) return;
@@ -90,7 +90,10 @@ function rowKeepingRebuilds(sql) {
       const from = STRICT_RENAME.exec(stmts[renamed])[1].toLowerCase();
       const made = at((st) => STRICT_CREATE.exec(st)?.[1].toLowerCase() === from);
       const copied = at((st) => COPY_INTO.exec(st)?.[1].toLowerCase() === from && COPY_INTO.exec(st)[2].toLowerCase() === t, made + 1);
-      if (from.startsWith("__new_") && made !== -1 && made < i && copied !== -1 && copied < i) existing.add(t);
+      if (from.startsWith("__new_") && made !== -1 && made < i && copied !== -1 && copied < i) {
+        existing.add(t);
+        used.add(i).add(renamed);
+      }
       return;
     }
 
@@ -109,11 +112,12 @@ function rowKeepingRebuilds(sql) {
       if (cleared !== -1) {
         existing.add(t);
         scratch.add(s);
+        used.add(i).add(cleared);
         return;
       }
     }
   });
-  return { existing, scratch };
+  return { existing, scratch, used };
 }
 
 /** Drizzle rebuilds a table (create __new_t, copy, drop t, rename) to change a column; that is safe unless a column goes. */
@@ -129,12 +133,7 @@ function rebuildStatements(sql, files, index) {
     if (!before || !after) dropped.push(`${t} (no snapshot to compare)`);
     else for (const c of before[t] ?? []) if (!(after[t] ?? []).includes(c)) dropped.push(`${t}.${c}`);
   }
-  const rest = stmts.filter((s) => {
-    const drop = DROP_TABLE.exec(s);
-    if (drop && STRICT_DROP.test(bare(s)) && (rebuilt.has(drop[1].toLowerCase()) || kept.scratch.has(drop[1].toLowerCase()))) return false;
-    const rename = REBUILD_RENAME.exec(s);
-    return !(rename && /^__new_/i.test(rename[1]) && rebuilt.has(rename[2].toLowerCase()));
-  });
+  const rest = stmts.filter((_, i) => !kept.used.has(i));
   return { rest, dropped, rebuilt };
 }
 

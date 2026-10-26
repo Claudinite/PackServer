@@ -8,7 +8,7 @@ const rulesOf = async (pack: string, ports = fakePorts()) => (await check(pack, 
 
 describe("reserved words and domain labels (IT-PUB-018)", () => {
   it("refuses reserved words and verified domain labels with a suggestion; accepts acme-tools", async () => {
-    for (const name of ["fleet", "local", "global", "canon", "claudinite", "cn", "temp", "admin", "claude", "anthropic"]) {
+    for (const name of ["fleet", "local", "global", "canon", "claudinite", "cn", "temp", "admin", "claude", "anthropic", "probe", "packserver-canary"]) {
       const f = await check(`@z/${name}`);
       expect(f.map((x) => x.rule), name).toEqual(["identity.reserved-word"]);
       expect(f[0]!.hint).toMatch(/Try @z\//);

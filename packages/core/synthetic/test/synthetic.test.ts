@@ -76,6 +76,10 @@ describe("REQ-OPS-001: the synthetic tenant", () => {
     expect(await provisionCanaryScope(d1, { ownerUserId: "u1", nowMs: T0 + HOUR })).toEqual({ scopeId: first.scopeId, created: false });
     expect((await d1.query(`select count(*) as n from scope_members`)).rows).toEqual([{ n: 1 }]);
 
+    await d1.query(`insert into users (id, handle, created_at) values ('u2', 'bob', 'x')`);
+    await expect(provisionCanaryScope(d1, { ownerUserId: "u2", nowMs: T0 + 2 * HOUR })).rejects.toThrow(/second owner/);
+    expect((await d1.query(`select user_id from scope_members`)).rows).toEqual([{ user_id: "u1" }]);
+
     const other = migratedD1().d1;
     await other.query(`insert into users (id, handle, created_at) values ('u1', 'ariel', 'x')`);
     await other.query(`insert into scopes (id, name, kind, state, created_at) values ('s9', 'packserver-canary', 'org', 'active', 'x')`);
