@@ -220,6 +220,61 @@ describe("check-migrations", () => {
     });
   });
 
+  describe("a parent table dropped and created again in the same file", () => {
+    const inPlace =
+      "PRAGMA defer_foreign_keys=ON;\nCREATE TABLE packs_scratch AS SELECT * FROM packs;\nDROP TABLE packs;\nCREATE TABLE packs (id text PRIMARY KEY, name text);\n" +
+      "INSERT INTO packs (id) SELECT id FROM packs_scratch;\nDROP TABLE packs_scratch;";
+    const history = (after: string[]) => ({
+      ...base,
+      "meta/20260101000000_snapshot.json": JSON.stringify({ tables: { packs: { columns: { id: {} } } } }),
+      "20260102000000_foundation_rebuild.sql": inPlace,
+      "meta/20260102000000_snapshot.json": JSON.stringify({ tables: { packs: { columns: Object.fromEntries(after.map((c) => [c, {}])) } } }),
+    });
+
+    it("is accepted as a rebuild when it keeps every column", () => {
+      expect(run(history(["id", "name"]))).toEqual({ ok: true, out: "" });
+    });
+
+    it("needs a contract marker when it loses a column", () => {
+      expect(run(history(["name"])).out).toMatch(/DROP COLUMN packs\.id/);
+    });
+
+    it("is refused outside the foundation area when the table is the foundation's", () => {
+      const r = run({ ...base, "20260102000000_tokens_rebuild.sql": inPlace });
+      expect(r.ok).toBe(false);
+      expect(r.out).toMatch(/foundation tables are altered only by foundation migrations/);
+    });
+
+    const refused = (name: string, sql: string) =>
+      it(`refuses ${name}`, () => {
+        const r = run({ ...base, "20260102000000_foundation_wipe.sql": sql });
+        expect(r.ok).toBe(false);
+        expect(r.out).toMatch(/DROP TABLE|only the first foundation/);
+      });
+    refused("a bare drop and create", "DROP TABLE packs;\nCREATE TABLE packs (id text PRIMARY KEY);");
+    refused("a scratch table that never refills the table", "CREATE TABLE s AS SELECT * FROM packs;\nDROP TABLE packs;\nCREATE TABLE packs (id text PRIMARY KEY);\nDROP TABLE s;");
+    refused("a refill with no scratch copy first", "DROP TABLE packs;\nCREATE TABLE packs (id text PRIMARY KEY);\nCREATE TABLE s (id text);\nINSERT INTO packs SELECT id FROM s;\nDROP TABLE s;");
+    refused("a scratch table left behind", "CREATE TABLE s AS SELECT * FROM packs;\nDROP TABLE packs;\nCREATE TABLE packs (id text PRIMARY KEY);\nINSERT INTO packs SELECT id FROM s;");
+    refused("a copy into the scratch table that comes after the drop", "CREATE TABLE s (id text);\nDROP TABLE packs;\nCREATE TABLE packs (id text PRIMARY KEY);\nINSERT INTO s SELECT id FROM packs;\nINSERT INTO packs SELECT id FROM s;\nDROP TABLE s;");
+    refused("a scratch table dropped and made again before the refill", "CREATE TABLE s AS SELECT * FROM packs;\nDROP TABLE packs;\nDROP TABLE s;\nCREATE TABLE packs (id text PRIMARY KEY);\nCREATE TABLE s (id text);\nINSERT INTO packs SELECT id FROM s;\nDROP TABLE s;");
+    const rebuild = "CREATE TABLE s AS SELECT * FROM packs;\nDROP TABLE packs;\nCREATE TABLE packs (id text PRIMARY KEY);\nINSERT INTO packs SELECT id FROM s;\nDROP TABLE s;\n";
+    refused("a valid rebuild followed by a bare drop", `${rebuild}DROP TABLE packs;`);
+    refused("a valid rebuild followed by a drop and create", `${rebuild}DROP TABLE packs;\nCREATE TABLE packs (id text PRIMARY KEY);`);
+    refused("the IF EXISTS variants", "DROP TABLE IF EXISTS users;\nCREATE TABLE IF NOT EXISTS users (id text PRIMARY KEY);");
+    refused("the IF EXISTS variants around a full sequence", "CREATE TABLE s AS SELECT * FROM packs;\nDROP TABLE IF EXISTS packs;\nCREATE TABLE IF NOT EXISTS packs (id text PRIMARY KEY);\nINSERT INTO packs SELECT id FROM s;\nDROP TABLE s;");
+    refused("the steps out of order", "DROP TABLE packs;\nCREATE TABLE s AS SELECT * FROM packs;\nCREATE TABLE packs (id text PRIMARY KEY);\nINSERT INTO packs SELECT id FROM s;\nDROP TABLE s;");
+    refused("a Drizzle-style rebuild that never copies the rows", "CREATE TABLE `__new_packs` (`id` text);\nDROP TABLE `packs`;\nALTER TABLE `__new_packs` RENAME TO `packs`;");
+
+    it("accepts the create-then-insert way of parking the rows", () => {
+      const sql = "CREATE TABLE s (id text);\nINSERT INTO s SELECT id FROM packs;\nDROP TABLE packs;\nCREATE TABLE packs (id text PRIMARY KEY, name text);\nINSERT INTO packs (id) SELECT id FROM s;\nDROP TABLE s;";
+      expect(run({ ...history(["id", "name"]), "20260102000000_foundation_rebuild.sql": sql }).ok).toBe(true);
+    });
+
+    it("still refuses a plain drop with no table to take its place", () => {
+      expect(run({ ...base, "20260102000000_foundation_drop.sql": "DROP TABLE packs;" }).out).toMatch(/DROP TABLE breaks/);
+    });
+  });
+
   it("passes on the repository's own migrations", () => {
     expect(() => execFileSync("node", [TOOL], { stdio: "pipe" })).not.toThrow();
   });

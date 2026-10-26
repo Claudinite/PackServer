@@ -27,7 +27,7 @@ one-time codes and magic links are a later phase (REQ-ACC-003).
 - coverage: scenario
 
 On first login the new account must choose a unique handle; a handle that is taken or reserved
-(`admin`, `claude`, `anthropic`, `claudinite`, `cn`, `fleet`, `local`, `global`, `canon`, `temp`,
+(`admin`, `claude`, `anthropic`, `claudinite`, `cn`, `fleet`, `local`, `global`, `canon`, `temp`, `probe`, `packserver-canary`,
 the names of verified orgs) is rejected with an inline error. A handle within edit distance 2 of (graded for short names, D58),
 or visually confusable with, a verified scope or a proven domain label is refused the same way
 (REQ-PUB-034); a handle created before a scope became verified is held from publishing new packs

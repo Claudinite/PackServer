@@ -106,9 +106,9 @@ export function createWorld(options: { limit?: number } = {}) {
       db.prepare(`insert into users (id, handle, created_at) values (?, ?, ?)`).run(id, id, new Date(clock.now() - (opts.ageDays ?? 30) * 86_400_000).toISOString());
       return id;
     },
-    scope(name: string, opts: { state?: "active" | "held"; verifiedDomain?: string; members?: Array<[string, string]> } = {}) {
+    scope(name: string, opts: { kind?: "org" | "synthetic"; state?: "active" | "held"; verifiedDomain?: string; members?: Array<[string, string]> } = {}) {
       const id = `scope-${name}`;
-      db.prepare(`insert into scopes (id, name, kind, state, verified_domain, created_at) values (?, ?, 'org', ?, ?, ?)`).run(id, name, opts.state ?? "active", opts.verifiedDomain ?? null, iso());
+      db.prepare(`insert into scopes (id, name, kind, state, verified_domain, created_at) values (?, ?, ?, ?, ?, ?)`).run(id, name, opts.kind ?? "org", opts.state ?? "active", opts.verifiedDomain ?? null, iso());
       for (const [user, role] of opts.members ?? []) db.prepare(`insert into scope_members (scope_id, user_id, role, created_at) values (?, ?, ?, ?)`).run(id, user, role, iso());
       return id;
     },

@@ -3,7 +3,7 @@ import { inList } from "./enum-check";
 import { sql } from "drizzle-orm";
 import { users } from "./users";
 
-export const SCOPE_KINDS = ["user", "org"] as const;
+export const SCOPE_KINDS = ["user", "org", "synthetic"] as const;
 export const SCOPE_STATES = ["active", "held"] as const;
 export const RETIRED_NAME_KINDS = ["scope", "pack", "version"] as const;
 

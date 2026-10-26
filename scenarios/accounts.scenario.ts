@@ -69,7 +69,7 @@ scenario("IT-ACC-002 First login must pick a unique, non-reserved, non-confusabl
   expect(session.landedOn).toContain("step=handle");
 
   await expect(person.chooseHandle(world.alias("taken"))).toBeRefusedSaying("taken");
-  for (const word of RESERVED) await expect(person.chooseHandle(word)).toBeRefusedSaying("reserved");
+  for (const word of [...RESERVED, "probe", "packserver-canary"]) await expect(person.chooseHandle(word)).toBeRefusedSaying("reserved");
   await expect(person.account.show()).resolves.toMatchObject({ handle: null });
 
   await person.chooseHandle(world.alias("fresh"));

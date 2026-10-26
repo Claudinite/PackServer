@@ -5,6 +5,7 @@ import { domainRecheck } from "./domain-recheck";
 import { githubProofLapse } from "./github-proof-lapse";
 import { prune } from "./prune";
 import { rollup } from "./rollup";
+import { syntheticExpiry } from "./synthetic-expiry";
 import { tokenLastUsed } from "./token-last-used";
 import { trending } from "./trending";
 
@@ -15,7 +16,7 @@ export const CRON_DAILY = "0 3 * * *";
 
 /** Each trigger in wrangler.jsonc runs exactly the jobs listed under it. */
 export const CRON_JOBS: Readonly<Record<string, readonly CronJob[]>> = {
-  [CRON_HOURLY]: [rollup, tokenLastUsed, githubProofLapse],
+  [CRON_HOURLY]: [rollup, tokenLastUsed, githubProofLapse, syntheticExpiry],
   [CRON_DAILY]: [prune, domainRecheck, auditHead, auditVerify, trending],
 };
 

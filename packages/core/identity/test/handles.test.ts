@@ -7,7 +7,7 @@ const NOW = "2026-10-23T00:00:00.000Z";
 const none = { taken: false, verifiedNames: [] };
 
 describe("IT-ACC-002 handle rules", () => {
-  it.each(["admin", "claude", "anthropic", "claudinite", "cn", "fleet", "local", "global", "canon", "temp", "Admin", "c1aude", "cl-aude"])(
+  it.each(["admin", "claude", "anthropic", "claudinite", "cn", "fleet", "local", "global", "canon", "temp", "probe", "packserver-canary", "Admin", "c1aude", "cl-aude"])(
     "refuses the reserved name %s",
     (name) => {
       expect(judgeHandle(name, none)).toMatchObject({ ok: false, reason: "reserved" });

@@ -496,7 +496,7 @@ resolve to the same SHA-256.
 
 A pack name that collides with a verified org's domain label or a reserved word (the list of
 REQ-ACC-002: `admin`, `claude`, `anthropic`, `claudinite`, `cn`, `fleet`, `local`, `global`,
-`canon`, `temp`) is refused with a suggestion.
+`canon`, `temp`, `probe`, `packserver-canary`) is refused with a suggestion.
 
 ## REQ-PUB-034 Names near a verified scope or a popular pack are refused or held
 

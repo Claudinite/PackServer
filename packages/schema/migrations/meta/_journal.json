@@ -162,6 +162,13 @@
       "when": 1793051854309,
       "tag": "20261026215734_admin_review",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1793052683550,
+      "tag": "20261026221123_foundation_scopes_kind_synthetic",
+      "breakpoints": true
     }
   ]
 }

@@ -21,7 +21,7 @@ with the WebAuthn helper and need no browser except where a page is the thing un
 - **Covers:** REQ-ACC-002
 - **Runs:** push
 - **Setup:** an existing person with handle `taken`; a verified org `acme` with proven domain `acme.com`; a handle `acmee` created before `acme` became verified.
-- **Action:** a new person signs in for the first time and tries `taken`, `admin`, `claude`, `anthropic`, `claudinite`, `cn`, `fleet`, `local`, `global`, `canon`, `temp`, `acme`, `acrne` (confusable with `acme`), then `fresh`; the holder of `acmee` tries to publish a new pack; the admin clears the hold.
+- **Action:** a new person signs in for the first time and tries `taken`, `admin`, `claude`, `anthropic`, `claudinite`, `cn`, `fleet`, `local`, `global`, `canon`, `temp`, `probe`, `packserver-canary`, `acme`, `acrne` (confusable with `acme`), then `fresh`; the holder of `acmee` tries to publish a new pack; the admin clears the hold.
 - **Assert:** every attempt but `fresh` is refused with an inline error naming the reason; `fresh` is accepted and the account is usable; `acmee` is held from publishing new packs until the admin clears it (IT-ADMIN-007), then publishes.
 
 ### IT-ACC-003 Email codes and magic links expire in 15 minutes and are single-use

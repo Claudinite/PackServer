@@ -19,12 +19,6 @@ export const YOUNG_ACCOUNT_MS = 7 * DAY_MS;
 /** REQ-VAL-017 (D46): this many failed runs in a UTC day queue a publisher's further runs. */
 export const SOFT_RATE_LIMIT_FAILED_RUNS = 10;
 export const SOFT_RATE_LIMIT_INTERVAL_MS = 10 * MINUTE_MS;
-/** REQ-OPS-001: scopes whose publishes skip the prose screen and the human queue, and whose versions expire. */
-export const SYNTHETIC_SCOPES: readonly string[] = ["probe"];
-export const SYNTHETIC_VERSION_TTL_MS = DAY_MS;
-
-export const isSyntheticScope = (scopeName: string): boolean => SYNTHETIC_SCOPES.includes(scopeName);
-
 export type QuotaKind = "new_packs_per_scope" | "new_packs_per_account" | "validation_runs" | "dry_runs" | "versions_per_pack";
 
 /** The UTC day an instant falls in, `YYYY-MM-DD`: the `day` of a `Quota` key. */

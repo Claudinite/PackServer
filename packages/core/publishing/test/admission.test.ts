@@ -1,7 +1,7 @@
 import { sha256Hex } from "../../index/bytes";
 import { describe, expect, it } from "vitest";
 import {
-  capMessage, checkIntegrity, dryRunCap, dryRunStagingKey, hasZstdMagic, isSyntheticScope, isVerifiedPublisher, isYoungAccount, newPackCap, nextRunStart,
+  capMessage, checkIntegrity, dryRunCap, dryRunStagingKey, hasZstdMagic, isVerifiedPublisher, isYoungAccount, newPackCap, nextRunStart,
   nextUtcMidnight, utcDay, MAX_UPLOAD_BYTES, SOFT_RATE_LIMIT_INTERVAL_MS, stagingPrefix,
 } from "../index";
 
@@ -41,10 +41,6 @@ describe("caps", () => {
 
   it("tells a refused publisher the cap and when the count starts again", () => {
     expect(capMessage("dry-runs", 20, Date.UTC(2026, 9, 22, 12))).toBe("dry-runs is capped at 20 a day; the count starts again at 2026-10-23T00:00:00.000Z");
-  });
-
-  it("recognises the synthetic scope by name", () => {
-    expect([isSyntheticScope("probe"), isSyntheticScope("acme")]).toEqual([true, false]);
   });
 });
 

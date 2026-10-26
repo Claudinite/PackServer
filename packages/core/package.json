@@ -24,6 +24,7 @@
     "./tokens": "./tokens/index.ts",
     "./search": "./search/index.ts",
     "./stats": "./stats/index.ts",
+    "./synthetic": "./synthetic/index.ts",
     "./selftest": "./selftest/index.ts",
     "./mail": "./mail/index.ts",
     "./publishing": "./publishing/index.ts",

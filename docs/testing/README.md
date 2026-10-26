@@ -86,8 +86,8 @@ and `weekly` entries run under it. Environment: `PACKSERVER_BASE_URL`, `PACKSERV
 The release and monitoring plans invoke it as `npm run scenarios -- --driver=http --tag=probe-safe`
 and read the JUnit at `reports/scenarios.xml`. What `probe-safe` promises is the `Runs` row above;
 REQ-OPS-001 and 002 make the server side of it a requirement (IT-OPS-001, IT-OPS-002). The probe
-publishes only through the probe repository's trusted-publisher registration (OIDC) or the prober
-Worker's service-binding principal: there are no tokens to hold.
+publishes only through the probe repository's trusted-publisher registration (OIDC): there are no
+tokens to hold.
 
 ### 4.3 `browser`
 

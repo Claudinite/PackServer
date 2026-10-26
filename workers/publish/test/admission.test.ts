@@ -298,7 +298,7 @@ describe("REQ-VAL-017: ten failed runs queue a publisher", () => {
 describe("REQ-OPS-001: a synthetic scope", () => {
   it("is marked for the validator, expires after a day, and is held to the daily caps like any scope", async () => {
     const world = createWorld();
-    world.seed.scope("probe");
+    world.seed.scope("probe", { kind: "synthetic" });
     for (let i = 0; i < 5; i++) expect((await world.publish({ scope: "probe", pack: `p${i}`, version: "1.0.0" })).res.status).toBe(201);
     expect((await world.publish({ scope: "probe", pack: "p5", version: "1.0.0" })).res.status).toBe(403);
     const row = world.db.prepare(`select synthetic, prose_screen, expires_at, created_at from validation_runs limit 1`).get() as { synthetic: number; prose_screen: number; expires_at: string; created_at: string };
@@ -309,12 +309,24 @@ describe("REQ-OPS-001: a synthetic scope", () => {
 
   it("lets a version be published again once its earlier synthetic run has expired, and not before", async () => {
     const world = createWorld();
-    world.seed.scope("probe");
+    world.seed.scope("probe", { kind: "synthetic" });
     expect((await world.publish({ scope: "probe", pack: "p", version: "1.0.0" })).res.status).toBe(201);
     world.clock.advance(DAY - 1);
     expect(await body((await world.publish({ scope: "probe", pack: "p", version: "1.0.0" })).res)).toMatchObject({ reason: "exists" });
     world.clock.advance(1);
     expect((await world.publish({ scope: "probe", pack: "p", version: "1.0.0" })).res.status).toBe(201);
+  });
+});
+
+describe("REQ-OPS-001: kind, not name, makes a scope synthetic", () => {
+  it("leaves an org scope named probe screened, unexpiring and published once", async () => {
+    const world = createWorld();
+    world.seed.scope("probe");
+    expect((await world.publish({ scope: "probe", pack: "p", version: "1.0.0" })).res.status).toBe(201);
+    const row = world.db.prepare(`select synthetic, expires_at from validation_runs limit 1`).get() as { synthetic: number; expires_at: string | null };
+    expect(row).toEqual({ synthetic: 0, expires_at: null });
+    world.clock.advance(DAY);
+    expect(await body((await world.publish({ scope: "probe", pack: "p", version: "1.0.0" })).res)).toMatchObject({ reason: "exists" });
   });
 });
 
