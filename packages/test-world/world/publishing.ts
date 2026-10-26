@@ -124,6 +124,8 @@ export interface PublishOptions {
 export interface PublisherHandle extends ScopeOwner {
   publish(archive: ArchiveHandle): { as(nameAtVersion: string, o?: PublishOptions): Promise<AdmittedVersion> };
   dryRun(archive: ArchiveHandle, o?: { proseScreen?: boolean }): Promise<Run>;
+  /** The upload half of a publish, with the start left for later: what a credential issued earlier can still do. */
+  upload(archive: ArchiveHandle, nameAtVersion: string): Promise<{ start(o?: PublishOptions): Promise<AdmittedVersion> }>;
 }
 
 const SKIPPABLE_OVERHEAD = 8;
@@ -263,22 +265,32 @@ export function createPublishFlow(driver: Driver, aliases: Aliases, scopes: Pick
       };
     };
 
+    async function stage(archive: ArchiveHandle, nameAtVersion: string, o: PublishOptions = {}) {
+      if (o.visibility || o.staged) throw new NotImplemented("publish with visibility or staging");
+      const target = parse(nameAtVersion);
+      const uploaded = await upload(target, archive, false);
+      if (uploaded instanceof Refusal) throw uploaded;
+      return {
+        async start(so: PublishOptions = {}): Promise<AdmittedVersion> {
+          const run = await start(target, "start", so.declaredSha256 ?? archive.sha256, uploaded.credentialId);
+          return new AdmittedVersion(packOf(target), target.version, run, async () => {
+            const rows = await sql("select declared_sha256 from validation_runs where id = ?", [run.id]);
+            return String(rows[0]?.declared_sha256);
+          });
+        },
+      };
+    }
+
     const handle: PublisherHandle = Object.assign(Object.create(person) as ScopeOwner, {
       publish(archive: ArchiveHandle) {
         return {
           async as(nameAtVersion: string, o: PublishOptions = {}): Promise<AdmittedVersion> {
-            if (o.visibility || o.staged) throw new NotImplemented("publish with visibility or staging");
-            const target = parse(nameAtVersion);
-            const uploaded = await upload(target, archive, false);
-            if (uploaded instanceof Refusal) throw uploaded;
-            const run = await start(target, "start", o.declaredSha256 ?? archive.sha256, uploaded.credentialId);
-            return new AdmittedVersion(packOf(target), target.version, run, async () => {
-              const rows = await sql("select declared_sha256 from validation_runs where id = ?", [run.id]);
-              return String(rows[0]?.declared_sha256);
-            });
+            const staged = await stage(archive, nameAtVersion, o);
+            return staged.start({ ...(o.declaredSha256 === undefined ? {} : { declaredSha256: o.declaredSha256 }) });
           },
         };
       },
+      upload: (archive: ArchiveHandle, nameAtVersion: string) => stage(archive, nameAtVersion),
       async dryRun(archive: ArchiveHandle, o: { proseScreen?: boolean } = {}): Promise<Run> {
         const target = { scope, name: `dry-run-${archive.sha256.slice(0, 8)}`, version: "0.0.1" };
         const uploaded = await upload(target, archive, true);

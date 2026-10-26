@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { inList } from "./enum-check";
 import { scopes } from "./scopes";
 import { users } from "./users";
@@ -7,6 +7,8 @@ import { users } from "./users";
 export const CREDENTIAL_SOURCES = ["oidc", "upload"] as const;
 /** How long an uploaded object may wait: a bare dry-run an hour, anything with a draft or a run attached fourteen days. */
 export const STAGING_LIFETIMES = ["dry-run", "draft"] as const;
+/** What puts a pack's next version through the first-publish review (REQ-VAL-038); each kind has its own emitter. */
+export const PUBLISHER_CHANGE_KINDS = ["maintainer-added", "trusted-publisher", "transfer-accepted", "dormant"] as const;
 
 /**
  * A repository, workflow and path allowed to publish one pack. The pack need not exist yet (a
@@ -96,4 +98,43 @@ export const upload_credentials = sqliteTable(
     check("upload_credentials_lifetime_check", sql`${t.lifetime} in (${inList(STAGING_LIFETIMES)})`),
     check("upload_credentials_size_check", sql`${t.size_bytes} is null or ${t.size_bytes} >= 0`),
   ],
+);
+
+/**
+ * A publisher-change event: the validator treats the pack's next version as a first publish while
+ * an unconsumed event exists, and sets `consumed_at` once that version has been staged for approval.
+ */
+export const publisher_changes = sqliteTable(
+  "publisher_changes",
+  {
+    id: text("id").primaryKey(),
+    scope_id: text("scope_id")
+      .notNull()
+      .references(() => scopes.id),
+    /** Without the scope; the pack need not exist yet. */
+    pack_name: text("pack_name").notNull(),
+    kind: text("kind", { enum: PUBLISHER_CHANGE_KINDS }).notNull(),
+    occurred_at: text("occurred_at").notNull(),
+    caused_by: text("caused_by").references(() => users.id),
+    consumed_at: text("consumed_at"),
+  },
+  (t) => [
+    index("publisher_changes_pack_idx").on(t.scope_id, t.pack_name, t.consumed_at),
+    check("publisher_changes_kind_check", sql`${t.kind} in (${inList(PUBLISHER_CHANGE_KINDS)})`),
+  ],
+);
+
+/** Per-pack publishing switches; a pack with no row has every switch at its default. */
+export const pack_publish_settings = sqliteTable(
+  "pack_publish_settings",
+  {
+    scope_id: text("scope_id")
+      .notNull()
+      .references(() => scopes.id),
+    pack_name: text("pack_name").notNull(),
+    /** REQ-PUB-008: web uploads are refused while this is on. */
+    trusted_only: integer("trusted_only", { mode: "boolean" }).notNull().default(false),
+    updated_at: text("updated_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.scope_id, t.pack_name] })],
 );

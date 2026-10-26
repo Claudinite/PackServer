@@ -110,8 +110,15 @@
     {
       "idx": 15,
       "version": "6",
-      "when": 1793024274528,
-      "tag": "20261026141754_scopes_proofs",
+      "when": 1793024018069,
+      "tag": "20261026141338_publisher_changes_publish_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1793024498809,
+      "tag": "20261026142138_scopes_proofs",
       "breakpoints": true
     }
   ]

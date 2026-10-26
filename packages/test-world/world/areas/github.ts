@@ -3,7 +3,7 @@ import type { D1 } from "@packserver/ports";
 import type { Driver } from "../../drivers/driver";
 import { GITHUB_TEST_APP_ID, type FakeFile, type FakeRepo, type RecordedRequest } from "../../fakes/github-app";
 import { createClock } from "../clock";
-import { InfrastructureError, stubModule } from "../errors";
+import { InfrastructureError } from "../errors";
 import { Ignored } from "../outcomes";
 
 export interface GitHubRepoHandle {

@@ -1,3 +1,4 @@
+import { webUploadGate } from "@packserver/core/publishing";
 import { WizardUploadRequest } from "@packserver/schema";
 import { refusal } from "@packserver/http";
 import { Hono } from "hono";
@@ -55,6 +56,8 @@ export function wizardRoutes(runtime: PublishRuntime): Hono {
     const dryRun = request.action === "dry-run" || request.dry_run === true;
 
     if (request.action === "upload-url") {
+      const gate = await webUploadGate(runtime.ports, where.scope.id, packName);
+      if (!gate.ok) return refusal(gate.reason === "trusted-only" ? "trusted-only" : "forbidden", { message: gate.message });
       if (!dryRun) {
         if (await versionTaken(d1, where.scope, packName, request.version, runtime.ports.clock.now())) return refusal("exists", { message: `${request.pack}@${request.version} already exists` });
       }
@@ -74,6 +77,8 @@ export function wizardRoutes(runtime: PublishRuntime): Hono {
     }
 
     if (request.declared_sha256 === undefined) return badRequest("declared_sha256 is required to start");
+    const gate = await webUploadGate(runtime.ports, where.scope.id, packName);
+    if (!gate.ok) return refusal(gate.reason === "trusted-only" ? "trusted-only" : "forbidden", { message: gate.message });
     const lifetime = request.action === "dry-run" ? "dry-run" : "draft";
     const staged = (
       await d1.query(
