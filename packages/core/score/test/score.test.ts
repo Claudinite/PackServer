@@ -292,10 +292,33 @@ describe("copies of canon packs (IT-SCORE-008, registry half)", () => {
     it(`${name} scores the same from the inputs a sandbox hands over as from the tree itself`, () => {
       const tree = readPackDir(join(packsDir, name));
       const args = { capabilities: [], provenance: TRUSTED, linkedPublicRepository: true, publishedAdvisory: false, rulesVersion: RULES_VERSION };
-      const inputs = ScoreInputs.parse(JSON.parse(JSON.stringify(scoreInputsOf(tree))));
+      const inputs = ScoreInputs.parse(JSON.parse(JSON.stringify(scoreInputsOf(tree, RULES_VERSION))));
       expect(scorePack({ tree: treeOfScoreInputs(inputs), ...args })).toEqual(scorePack({ tree, ...args }));
     });
   }
+});
+
+describe("the inputs a sandbox hands over", () => {
+  const long = Array.from({ length: 120 }, (_, i) => `line ${i}`).join("\n");
+  const files = cleanFiles({
+    "skills/commit/SKILL.md": skill("commit", GOOD_DESCRIPTION, "See [deep](deep.md), [long](long.md).\n"),
+    "skills/commit/deep.md": "# Deep\n\nMore in [elsewhere](more.md).\n",
+    "skills/commit/more.md": "# More\n",
+    "skills/commit/long.md": `# Long\n\n${long}\n`,
+    "skills/commit/notes.md": "Copy from C:\\Users\\me\\data and run it.\n",
+    "skills/commit/dated.md": "Use the old API before August 2025.\n",
+  });
+  const args = { capabilities: [], provenance: TRUSTED, linkedPublicRepository: true, publishedAdvisory: false, rulesVersion: RULES_VERSION };
+
+  it("score exactly as the tree does, reference files and other skill documents included", () => {
+    const tree = input(files).tree;
+    const direct = scorePack({ tree, ...args });
+    for (const rule of ["skill-structure.reference-depth", "skill-structure.reference-toc", "skill-structure.windows-paths", "skill-structure.time-sensitive"]) {
+      expect(lostOf(direct, rule), rule).not.toEqual([]);
+    }
+    const inputs = ScoreInputs.parse(JSON.parse(JSON.stringify(scoreInputsOf(tree, RULES_VERSION))));
+    expect(scorePack({ tree: treeOfScoreInputs(inputs), ...args })).toEqual(direct);
+  });
 });
 
 describe("declared checks are counted only when well formed", () => {

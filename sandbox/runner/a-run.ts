@@ -99,7 +99,7 @@ export async function runA(upload: Uint8Array, request: RunRequest, hooks: RunHo
       manifest: statics.manifest as Record<string, unknown> | null,
       urls: statics.urls as unknown as Record<string, unknown>[],
       capabilities,
-      score_inputs: scoreInputsOf(tree),
+      score_inputs: scoreInputsOf(tree, request.rules_version),
       inspectors,
       timings_ms: { extract: extractMs, total },
       error: roundTrip ? null : "canonical re-pack did not round-trip to the validated tree",

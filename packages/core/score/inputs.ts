@@ -1,22 +1,28 @@
-import { z } from "zod";
+import type { ScoreInputs } from "./inputs-schema.ts";
 import type { Tree, TreeFile } from "../canonical/index.ts";
 import { decodeText } from "../validation/engine/files.ts";
 
-/**
- * What the score reads of a tree, taken where the archive is already decompressed so the Worker
- * never decompresses one (REQ-VAL-022): every path and its executable bit, and the text of the few
- * files a rule reads.
- */
-export const ScoreInputs = z.strictObject({
-  files: z.array(z.strictObject({ path: z.string(), executable: z.boolean(), text: z.string().nullable() })),
-});
-export type ScoreInputs = z.infer<typeof ScoreInputs>;
+export { ScoreInputs } from "./inputs-schema.ts";
 
-const READ_PATHS = /^(pack\.json|RULES\.md|declared-checks\.json|skills\/[^/]+\/(SKILL\.md|declared-checks\.json))$/;
+import { scorePack } from "./compute.ts";
 
-export function scoreInputsOf(tree: Tree): ScoreInputs {
+/** What the score reads of a tree, found by scoring it once and noting which files' content the rules touched; a path list kept beside the rules would drift from them. */
+export function scoreInputsOf(tree: Tree, rulesVersion: string): ScoreInputs {
+  const touched = new Set<string>();
+  const watched: Tree = {
+    ...tree,
+    files: tree.files.map((f) =>
+      Object.defineProperty({ ...f }, "content", {
+        get() {
+          touched.add(f.path);
+          return f.content;
+        },
+      }),
+    ),
+  };
+  scorePack({ tree: watched, capabilities: [], provenance: { source: "upload", source_verified: false }, linkedPublicRepository: false, publishedAdvisory: false, rulesVersion });
   return {
-    files: tree.files.map((f) => ({ path: f.path, executable: f.executable, text: READ_PATHS.test(f.path) ? (decodeText(f)?.text ?? null) : null })),
+    files: tree.files.map((f) => ({ path: f.path, executable: f.executable, text: touched.has(f.path) ? (decodeText(f)?.text ?? null) : null })),
   };
 }
 

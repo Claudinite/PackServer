@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { Finding, Sha256 } from "@packserver/schema";
-import { ScoreInputs } from "../../score/inputs.ts";
+import { ScoreInputs } from "../../score/inputs-schema.ts";
 
 /**
  * What the two sandbox containers return and are handed. The registry wrote nothing into a report:
