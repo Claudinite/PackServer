@@ -9,4 +9,6 @@ export const rollup: CronJob = async ({ ports, version }) => {
   const telemetry = createTelemetry({ worker: "admin", releaseId: version.releaseId, versionId: version.versionId, stats: ports.stats, clock: ports.clock, hasher: createHasher({}, ports.clock) });
   telemetry.emit("rollup.completed", { job: "fetches", ran: summary.ran.join(","), objects: summary.objects, skipped: summary.skipped, ignored: summary.ignored, private: summary.privateDownloads, rows: summary.folded, duration_ms: ports.clock.now() - started });
   console.log(JSON.stringify({ at: "cron.rollup", ...summary }));
+  // The public counts are already written; failing the run is how a broken analytics read gets noticed.
+  if (summary.privateError !== undefined) throw new Error(`private download read failed: ${summary.privateError}`);
 };

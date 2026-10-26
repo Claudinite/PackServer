@@ -1,17 +1,17 @@
 import { expect, Held, scenario } from "@packserver/test-world";
-import type { ScenarioOpts, World } from "@packserver/test-world";
+import type { Pack, ScenarioOpts, World } from "@packserver/test-world";
 
 // The Logpush archive is written to the admin Worker's ops bucket and the rollup reads the registry database, both through the storage seam.
 const ROLLUP: ScenarioOpts = { needs: ["fakes", "storage", "clock", "reset"] };
 
-/** A signed-in owner of a private pack of their own, holding a read token: an authenticated principal for a mismatch report. */
-async function principal(world: World, handle: string) {
+/** A signed-in person with a read token for a private pack: their own by default, or another scope's they have been made an owner of. */
+async function holder(world: World, handle: string, secret?: Pack) {
   const owner = await world.users.create({ handle });
   await owner.signIn();
   await owner.mfa.enrol();
-  const secret = await world.packs.public(`@${handle}/secret`, { visibility: "private" });
-  await world.tokens.seedOwner(owner, secret);
-  return owner.tokens.mint({ read: secret });
+  const pack = secret ?? (await world.packs.public(`@${handle}/secret`, { visibility: "private" }));
+  await world.tokens.seedOwner(owner, pack);
+  return { pack, token: await owner.tokens.mint({ read: pack }) };
 }
 
 scenario(
@@ -90,36 +90,46 @@ scenario(
   "IT-TELEM-009 Client mismatch reports never decide anything alone",
   async (world) => {
     const pack = await world.packs.public("@acme/lib", { versions: ["1.0.0", "2.0.0"] });
-    const first = await principal(world, "ann");
-    const second = await principal(world, "bob");
     const held = async (version: string) => (await pack.read({ version })) instanceof Held;
 
-    // One principal reports, then reports again; an anonymous caller reports too.
-    expect((await world.mismatches.report(pack, { token: first })).accepted).toBe(true);
-    expect((await world.mismatches.report(pack, { token: first })).accepted).toBe(true);
+    // Public pack: one principal reports, reports again, an anonymous caller reports.
+    const ann = await holder(world, "ann");
+    const bob = await holder(world, "bob");
+    expect((await world.mismatches.report(pack, { token: ann.token })).accepted).toBe(true);
+    expect((await world.mismatches.report(pack, { token: ann.token })).accepted).toBe(true);
     expect((await world.mismatches.report(pack)).accepted).toBe(true);
     expect(await held("1.0.0")).toBe(false);
     expect(await world.mismatches.listing(pack)).toEqual([{ version: "1.0.0", reports: 3, principals: 1, anonymous: 1, held: null }]);
     expect(await world.mismatches.cases(pack)).toEqual([]);
 
-    // A report that expected some other hash is listed and never counts; neither does a bearer that is not a token.
-    expect((await world.mismatches.report(pack, { token: second, expected: "c".repeat(64) })).accepted).toBe(true);
-    expect((await world.mismatches.report(pack, { body: "not an object" })).accepted).toBe(true);
+    // A report that expected some other hash is listed and never counts.
+    await world.mismatches.report(pack, { token: bob.token, expected: "c".repeat(64) });
+    expect(await world.mismatches.cases(pack)).toEqual([]);
+
+    // The second distinct principal puts the version up for review; client reports on a public pack never hold it.
+    await world.mismatches.report(pack, { token: bob.token });
+    expect(await world.mismatches.cases(pack)).toMatchObject([{ version: "1.0.0", trigger: "review" }]);
+    expect(await world.mismatches.listing(pack)).toMatchObject([{ version: "1.0.0", principals: 2, held: "review" }]);
     expect(await held("1.0.0")).toBe(false);
 
-    // The second distinct principal holds the version and the page signal goes out once.
-    await world.mismatches.report(pack, { token: second });
-    expect(await held("1.0.0")).toBe(true);
-    expect(await world.mismatches.cases(pack)).toMatchObject([{ version: "1.0.0", trigger: "reports" }]);
-    expect(await world.mismatches.listing(pack)).toMatchObject([{ version: "1.0.0", principals: 2, held: "reports" }]);
-    await world.mismatches.report(pack, { token: second });
-    expect(await world.mismatches.cases(pack)).toHaveLength(1);
+    // Private pack: a token that does not cover it is not recorded; covering principals hold it, the second one decides.
+    const secret = ann.pack;
+    const outsider = await holder(world, "dave");
+    await world.mismatches.report(secret, { token: outsider.token });
+    expect(await world.mismatches.listing(secret)).toEqual([]);
+    await world.mismatches.report(secret, { token: ann.token });
+    expect(await world.mismatches.listing(secret)).toMatchObject([{ reports: 1, principals: 1, held: null }]);
+    expect(await world.mismatches.cases(secret)).toEqual([]);
+    const second = await holder(world, "erin", secret);
+    await world.mismatches.report(secret, { token: second.token });
+    expect(await world.mismatches.cases(secret)).toMatchObject([{ version: "1.0.0", trigger: "reports" }]);
+    expect(await world.mismatches.listing(secret)).toMatchObject([{ principals: 2, held: "reports" }]);
 
     // A mismatch the serving Worker saw itself holds the version at once, with no client report.
     expect(await held("2.0.0")).toBe(false);
     expect(await world.mismatches.observedByServer(pack, "2.0.0")).toEqual({ quarantined: true });
     expect(await held("2.0.0")).toBe(true);
-    expect(await world.mismatches.cases(pack)).toMatchObject([{ version: "1.0.0", trigger: "reports" }, { version: "2.0.0", trigger: "server" }]);
+    expect(await world.mismatches.cases(pack)).toMatchObject([{ version: "1.0.0", trigger: "review" }, { version: "2.0.0", trigger: "server" }]);
   },
   ROLLUP,
 );
@@ -129,7 +139,7 @@ scenario(
   async (world) => {
     // The server half: the mismatch cn posts, in the shape and with the headers the engine sends, is accepted and kept.
     const pack = await world.packs.public("@acme/lib");
-    const token = await principal(world, "ann");
+    const { token } = await holder(world, "ann");
     const answer = await world.mismatches.report(pack, { token, observed: "e".repeat(64) });
     expect(answer.accepted).toBe(true);
     expect(await world.mismatches.listing(pack)).toMatchObject([{ version: "1.0.0", reports: 1, principals: 1 }]);

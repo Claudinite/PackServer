@@ -1,5 +1,8 @@
 import type { D1 } from "@packserver/ports";
-import { windowStarts } from "./days";
+import { daysBefore, windowStarts } from "./days";
+
+/** Client mismatch reports are fetch telemetry and are kept as long as it is (REQ-TELEM-008). */
+const REPORT_RETENTION_DAYS = 90;
 
 /** D1 binds at most 100 parameters per statement. */
 const NAMES_PER_QUERY = 90;
@@ -89,7 +92,10 @@ export async function recomputeStats(d1: D1, today: string, computedAt: string):
       params: chunk.flatMap((c) => [c.id, c.distinct, computedAt]),
     });
   }
-  const aged = "pack_id not in (select pack_id from fetch_days where day >= ? and day <= ?)";
+  // Private counts come from a read that can be down; while it has not succeeded lately, an empty window there is unknown, not zero.
+  const { rows: read } = await d1.query("select 1 from rollup_runs where job = 'downloads' and hour >= ? limit 1", [`${daysBefore(today, 1)}T00`]);
+  const privateKnown = read.length > 0;
+  const aged = `pack_id not in (select pack_id from fetch_days where day >= ? and day <= ?)${privateKnown ? "" : " and pack_id in (select id from packs where visibility = 'public')"}`;
   statements.push({
     sql: `update pack_stats set fetches_30d = 0, fetches_7d = 0, fetches_prev_28d = 0, computed_at = ?
             where (fetches_30d <> 0 or fetches_7d <> 0 or fetches_prev_28d <> 0) and ${aged}`,
@@ -103,12 +109,13 @@ export async function recomputeStats(d1: D1, today: string, computedAt: string):
   return counted.length;
 }
 
-/** Drops counted days older than the oldest window and archive markers no listing can reach any more. */
+/** Drops counted days older than the oldest window, archive markers no listing can reach any more and mismatch reports past their retention. */
 export async function pruneFetches(d1: D1, today: string): Promise<void> {
   const { oldest } = windowStarts(today);
   await d1.batch([
     { sql: "delete from fetch_days where day < ?", params: [oldest] },
     { sql: "delete from rollup_runs where hour < ?", params: [`${oldest}T00`] },
     { sql: "delete from rollup_files where processed_at < ?", params: [`${oldest}T00`] },
+    { sql: "delete from hash_mismatch_reports where reported_at < ?", params: [new Date(Date.parse(`${today}T00:00:00Z`) - REPORT_RETENTION_DAYS * 86_400_000).toISOString()] },
   ]);
 }

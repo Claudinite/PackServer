@@ -4,9 +4,10 @@ import { inList } from "./enum-check";
 import { packs } from "./packs";
 import { users } from "./users";
 
-export const FETCH_KINDS = ["public", "private"] as const;
+export const COUNTED_FETCH_KINDS = ["public", "private"] as const;
 export const MISMATCH_KINDS = ["hash", "signature"] as const;
-export const MISMATCH_TRIGGERS = ["reports", "server"] as const;
+/** `reports`: a private pack held by covered reporters; `server`: the registry saw it; `review`: a public pack whose reports await a person. */
+export const MISMATCH_TRIGGERS = ["reports", "server", "review"] as const;
 
 /**
  * One counted fetch: a pack version downloaded by one caller on one UTC day. The caller is a
@@ -23,7 +24,7 @@ export const fetch_days = sqliteTable(
     version: text("version").notNull(),
     /** UTC date, `YYYY-MM-DD`. */
     day: text("day").notNull(),
-    kind: text("kind", { enum: FETCH_KINDS }).notNull(),
+    kind: text("kind", { enum: COUNTED_FETCH_KINDS }).notNull(),
     /** The `/24` or `/48` network, or the hashed principal. */
     caller: text("caller").notNull(),
     weight: integer("weight").notNull(),
@@ -31,7 +32,7 @@ export const fetch_days = sqliteTable(
   (t) => [
     primaryKey({ columns: [t.pack_id, t.version, t.day, t.caller] }),
     index("fetch_days_day_idx").on(t.day),
-    check("fetch_days_kind_check", sql`${t.kind} in (${inList(FETCH_KINDS)})`),
+    check("fetch_days_kind_check", sql`${t.kind} in (${inList(COUNTED_FETCH_KINDS)})`),
     check("fetch_days_weight_check", sql`${t.weight} >= 1`),
   ],
 );
@@ -53,6 +54,8 @@ export const rollup_runs = sqliteTable(
     job: text("job").notNull(),
     /** `YYYY-MM-DDTHH`. */
     hour: text("hour").notNull(),
+    /** The run left objects for the next one, so it does not move the point the next listing resumes from. */
+    capped: integer("capped", { mode: "boolean" }).notNull().default(false),
     files: integer("files").notNull(),
     rows: integer("rows").notNull(),
     completed_at: text("completed_at").notNull(),
@@ -92,7 +95,7 @@ export const hash_mismatch_reports = sqliteTable(
   ],
 );
 
-/** A version held because of a mismatch: what triggered it and whether the page signal went out. */
+/** A version held, or put up for review, because of a mismatch: what triggered it and when the signal went out. */
 export const hash_mismatch_cases = sqliteTable(
   "hash_mismatch_cases",
   {

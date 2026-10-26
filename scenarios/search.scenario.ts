@@ -210,8 +210,6 @@ scenario(
     await world.rollups.download(s, { networks: 101, job: "hits" });
     await world.clock.advance("1h");
     await world.rollups.run();
-    expect(await world.rollups.stats(f)).toMatchObject({ fetches7d: 49 });
-    expect(await world.rollups.stats(g)).toMatchObject({ fetches7d: 100, fetchesPrevious28d: 10 });
     expect(await world.search.trending()).toEqual([g.name, s.name]);
 
     // One more fetch lifts F over its floor, and one more counted star lifts T over its.

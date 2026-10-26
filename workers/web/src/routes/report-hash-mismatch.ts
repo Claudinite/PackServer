@@ -1,5 +1,5 @@
 import { reportMismatch, type MismatchReport } from "@packserver/core/stats";
-import { authenticateToken, TOKEN_PREFIX } from "@packserver/core/tokens";
+import { authenticateToken, grantCovers, TOKEN_PREFIX } from "@packserver/core/tokens";
 import { clientIp, rateLimit, rateLimitClient, readBoundedBody, requestTelemetry } from "@packserver/http";
 import { Hono } from "hono";
 import { runtimeOf, type WebEnv } from "../context";
@@ -28,7 +28,7 @@ function parse(body: unknown): MismatchReport | undefined {
  * the pack exists, the report was kept or the caller was signed in, so the endpoint tells a caller
  * nothing about the registry. Only a valid `psr_` bearer token counts as an authenticated principal,
  * and its owner, not the token, is the principal: a session cookie alone never does, so a page
- * cannot make a visitor vote.
+ * cannot make a visitor vote. A private pack hears only from credentials that cover it.
  */
 report.post(
   "/report/hash-mismatch",
@@ -45,11 +45,14 @@ report.post(
     if (parsed) {
       const presented = BEARER.exec(c.req.header("authorization") ?? "")?.[1];
       const grant = presented?.startsWith(TOKEN_PREFIX) ? await authenticateToken({ d1, clock }, presented, clientIp(c)) : null;
-      const outcome = await reportMismatch({ d1, clock, id: () => rng.uuid() }, parsed, grant?.user_id ?? null);
+      const [, scope = "", name = ""] = /^@([^/]+)\/(.+)$/.exec(parsed.pack) ?? [];
+      const covers = grant !== null && grantCovers(grant, { scope, pack: name });
+      const outcome = await reportMismatch({ d1, clock, id: () => rng.uuid() }, parsed, { id: grant?.user_id ?? null, covers });
       if (outcome.recorded) {
         const telemetry = requestTelemetry(c);
         telemetry.emit("download.hash_mismatch_reported", { pack: parsed.pack, version: parsed.version, kind: parsed.kind, authenticated: grant !== null, principals: outcome.principals });
         if (outcome.quarantined) telemetry.emit("moderation.quarantined", { pack: parsed.pack, version: parsed.version, reason: "hash_mismatch_reports", principals: outcome.principals });
+        if (outcome.reviewOpened) telemetry.emit("moderation.report_received", { pack: parsed.pack, version: parsed.version, reason: "hash_mismatch_review", principals: outcome.principals });
       }
     }
     return c.json(ACCEPTED, 202, { "cache-control": "no-store" });

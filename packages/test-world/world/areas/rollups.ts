@@ -149,12 +149,12 @@ export function createRollups(driver: Driver): RollupsModule {
   };
 
   const idOf = (): (() => string) => () => crypto.randomUUID();
-  // Read once: a held version no longer answers the view this comes from.
-  const hashes = new Map<string, Promise<string>>();
-  const registryHash = (pack: PackHandle, version: string): Promise<string> => {
-    const key = `${pack.systemName}@${version}`;
-    if (!hashes.has(key)) hashes.set(key, pack.version(version).canonicalSha256());
-    return hashes.get(key)!;
+  const registryHash = async (pack: PackHandle, version: string): Promise<string> => {
+    const { rows } = await (await d1()).query(
+      `select pv.sha256 as sha256 from pack_versions pv join packs p on p.id = pv.pack_id join scopes s on s.id = p.scope_id where '@' || s.name || '/' || p.name = ? and pv.version = ?`,
+      [pack.systemName, version],
+    );
+    return String(rows[0]?.sha256);
   };
 
   return {

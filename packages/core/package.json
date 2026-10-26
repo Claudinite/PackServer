@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./access": "./access/index.ts",
     "./audit": "./audit/index.ts",
     "./audit/testing": "./audit/testing.ts",
     "./canonical": "./canonical/index.ts",
@@ -39,6 +40,7 @@
     "@packserver/schema": "workspace:*",
     "@simplewebauthn/server": "catalog:",
     "aws4fetch": "catalog:",
+    "jose": "catalog:",
     "zod": "catalog:"
   }
 }

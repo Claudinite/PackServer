@@ -27,27 +27,30 @@ export interface RollupSummary {
   ignored: number;
   skipped: number;
   packs: number;
-  privateDownloads: "folded" | "not_configured";
+  privateDownloads: "folded" | "not_configured" | "failed";
+  /** Why the private read failed; public counts were still updated. */
+  privateError?: string;
 }
 
-/** Where a job resumes: the day before its last finished run, or the oldest window the first time. */
+/** Where a job resumes: the day before its last run that left nothing behind, or the oldest window the first time. */
 async function sinceDay(d1: D1, job: string, today: string): Promise<string> {
   const oldest = windowStarts(today).oldest;
-  const { rows } = await d1.query("select max(hour) as hour from rollup_runs where job = ?", [job]);
+  const { rows } = await d1.query("select max(hour) as hour from rollup_runs where job = ? and capped = 0", [job]);
   const last = rows[0]?.hour;
   if (typeof last !== "string") return oldest;
   const since = daysBefore(last.slice(0, 10), 1);
   return since < oldest ? oldest : since;
 }
 
-async function pendingObjects(deps: RollupDeps, prefix: string, job: string, since: string, today: string): Promise<string[]> {
+async function pendingObjects(deps: RollupDeps, prefix: string, job: string, since: string, today: string): Promise<{ keys: string[]; capped: boolean }> {
   const keys: string[] = [];
   for (let day = since; day <= today; day = daysBefore(day, -1)) keys.push(...(await deps.ops.list(`${prefix}${compactDay(day)}/`)));
   keys.sort();
-  if (keys.length === 0) return [];
+  if (keys.length === 0) return { keys: [], capped: false };
   const { rows } = await deps.d1.query("select object_key from rollup_files where job = ? and object_key >= ?", [job, keys[0]]);
   const done = new Set(rows.map((r) => String(r.object_key)));
-  return keys.filter((k) => !done.has(k)).slice(0, MAX_OBJECTS_PER_RUN);
+  const pending = keys.filter((k) => !done.has(k));
+  return { keys: pending.slice(0, MAX_OBJECTS_PER_RUN), capped: pending.length > MAX_OBJECTS_PER_RUN };
 }
 
 /**
@@ -62,12 +65,12 @@ export async function runRollup(deps: RollupDeps): Promise<RollupSummary> {
   const nowIso = new Date(now).toISOString();
   const summary: RollupSummary = { hour, ran: [], objects: 0, folded: 0, ignored: 0, skipped: 0, packs: 0, privateDownloads: "not_configured" };
   const finished = new Set((await deps.d1.query("select job from rollup_runs where hour = ?", [hour])).rows.map((r) => String(r.job)));
-  const complete = (job: string, files: number, rows: number) =>
-    deps.d1.query("insert or replace into rollup_runs (job, hour, files, rows, completed_at) values (?, ?, ?, ?, ?)", [job, hour, files, rows, nowIso]);
+  const complete = (job: string, files: number, rows: number, capped = false) =>
+    deps.d1.query("insert or replace into rollup_runs (job, hour, capped, files, rows, completed_at) values (?, ?, ?, ?, ?, ?)", [job, hour, capped ? 1 : 0, files, rows, nowIso]);
 
   for (const { job, prefix, weight } of LOG_JOBS) {
     if (finished.has(job)) continue;
-    const objects = await pendingObjects(deps, prefix, job, await sinceDay(deps.d1, job, today), today);
+    const { keys: objects, capped } = await pendingObjects(deps, prefix, job, await sinceDay(deps.d1, job, today), today);
     let folded = 0;
     for (const key of objects) {
       const bytes = await deps.ops.get(key);
@@ -80,7 +83,7 @@ export async function runRollup(deps: RollupDeps): Promise<RollupSummary> {
       summary.ignored += result.ignored;
       summary.skipped += parsed.skipped;
     }
-    await complete(job, objects.length, folded);
+    await complete(job, objects.length, folded, capped);
     summary.ran.push(job);
     summary.objects += objects.length;
     summary.folded += folded;
@@ -89,15 +92,21 @@ export async function runRollup(deps: RollupDeps): Promise<RollupSummary> {
   if (deps.privateDownloads) {
     summary.privateDownloads = "folded";
     if (!finished.has("downloads")) {
-      const points = await deps.privateDownloads(await sinceDay(deps.d1, "downloads", today));
-      const result = await foldFetches(deps.d1, "private", points.map((p) => ({ pack: p.pack, version: p.version, day: p.day, caller: `principal:${p.principal}`, weight: 1 })));
-      await complete("downloads", 0, result.folded);
-      summary.ran.push("downloads");
-      summary.folded += result.folded;
-      summary.ignored += result.ignored;
+      // A failing analytics read must not stop the public counts below from updating.
+      try {
+        const points = await deps.privateDownloads(await sinceDay(deps.d1, "downloads", today));
+        const result = await foldFetches(deps.d1, "private", points.map((p) => ({ pack: p.pack, version: p.version, day: p.day, caller: `principal:${p.principal}`, weight: 1 })));
+        await complete("downloads", 0, result.folded);
+        summary.ran.push("downloads");
+        summary.folded += result.folded;
+        summary.ignored += result.ignored;
+      } catch (error) {
+        summary.privateDownloads = "failed";
+        summary.privateError = error instanceof Error ? error.message : String(error);
+      }
     }
   }
 
-  if (summary.ran.length > 0) summary.packs = await recomputeStats(deps.d1, today, nowIso);
+  if (summary.ran.length > 0 || summary.privateDownloads === "failed") summary.packs = await recomputeStats(deps.d1, today, nowIso);
   return summary;
 }

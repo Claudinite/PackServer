@@ -281,8 +281,11 @@ granted account and repository on the access page (REQ-PRIV-012), and nobody els
 - source: monitoring §12 (PR #7, `page.hash_mismatch`: two principals reporting one version, or any server-observed mismatch)
 - coverage: scenario
 
-A hash or signature mismatch reported by a client is recorded and shown on the trust dashboard; it
-pages and quarantines only when two distinct authenticated principals report the same version, and a
+A hash or signature mismatch reported by a client is recorded and shown on the trust dashboard. A
+private pack's version is quarantined and paged when two distinct principals whose credentials
+cover that pack report it; an unrelated credential, an anonymous caller and one principal repeating
+itself count for nothing. A public pack's version is never quarantined by client reports, which any
+account can send: two distinct authenticated principals put it up for a person's review. A
 server-observed mismatch quarantines at once regardless of client reports.
 
 The per-pack stats REQ-TELEM-003 and the dashboard REQ-TELEM-005 are in

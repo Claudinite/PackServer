@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { FakeClock, FakeR2 } from "@packserver/ports/fakes";
 import { SqliteD1 } from "../../audit/testing";
 import {
-  HIT_SAMPLE_SCALE, LOG_JOBS, mismatchesOf, observeServerMismatch, packFetchStats, parseLog, pruneFetches, recomputeStats, reportMismatch, runRollup,
+  HIT_SAMPLE_SCALE, MAX_OBJECTS_PER_RUN, LOG_JOBS, mismatchesOf, observeServerMismatch, packFetchStats, parseLog, pruneFetches, recomputeStats, reportMismatch, runRollup,
   type PrivateDownloads,
 } from "../index.ts";
 
@@ -231,6 +231,48 @@ describe("what a pack reports about itself", () => {
   });
 });
 
+describe("a backlog and a failing read", () => {
+  it("drains more objects than one run takes, across runs and days, losing none", async () => {
+    const t = setup();
+    const id = await t.pack("@acme/x");
+    const total = MAX_OBJECTS_PER_RUN + 50;
+    for (let i = 0; i < total; i++) await t.archive("misses", [t.record("@acme/x", "1.0.0", `198.${Math.floor(i / 250)}.${i % 250}.0/24`, START)]);
+    const first = await t.run();
+    expect(first.objects).toBe(MAX_OBJECTS_PER_RUN);
+    t.clock.advance("1d");
+    const second = await t.run();
+    expect(second.objects).toBe(50);
+    expect(await t.stats(id)).toMatchObject({ fetches_30d: total });
+    t.clock.advance("1h");
+    expect((await t.run()).objects).toBe(0);
+  });
+
+  it("still updates public counts when the private read fails, and says so", async () => {
+    const t = setup();
+    const id = await t.pack("@acme/x");
+    await t.archive("misses", [t.record("@acme/x", "1.0.0", "198.51.100.0/24", START)]);
+    const summary = await t.run(async () => {
+      throw new Error("analytics down");
+    });
+    expect(summary).toMatchObject({ privateDownloads: "failed", privateError: "analytics down" });
+    expect(await t.stats(id)).toMatchObject({ fetches_30d: 1 });
+    expect(t.d1.rows("select * from rollup_runs where job = 'downloads'")).toEqual([]);
+  });
+
+  it("does not turn a private pack's window to zero while the private read has not succeeded", async () => {
+    const t = setup();
+    const priv = await t.pack("@acme/secret", { visibility: "private" });
+    const open = await t.pack("@acme/open");
+    await t.d1.query("insert into pack_stats (pack_id, fetches_30d, fetches_7d, fetches_prev_28d, computed_at) values (?, 5, 5, 0, 'x'), (?, 5, 5, 0, 'x')", [priv, open]);
+    await recomputeStats(t.d1, "2026-10-26", "now");
+    expect(await t.stats(open)).toMatchObject({ fetches_30d: 0 });
+    expect(await t.stats(priv)).toMatchObject({ fetches_30d: 5 });
+    await t.run(async () => []);
+    await recomputeStats(t.d1, "2026-10-26", "now");
+    expect(await t.stats(priv)).toMatchObject({ fetches_30d: 0 });
+  });
+});
+
 describe("mismatch reports", () => {
   const report = (over: Partial<Parameters<typeof reportMismatch>[1]> = {}) => ({ pack: "@acme/x", version: "1.0.0", kind: "hash" as const, expected: HASH, observed: OTHER, ...over });
   const deps = (t: ReturnType<typeof setup>) => {
@@ -238,60 +280,86 @@ describe("mismatch reports", () => {
     return { d1: t.d1, clock: t.clock, id: () => `r${++n}` };
   };
   const state = async (t: ReturnType<typeof setup>) => String(t.d1.rows("select state from pack_versions")[0]?.state);
-  const user = (t: ReturnType<typeof setup>, id: string) =>
-    t.d1.query("insert into users (id, handle, created_at) values (?, ?, 'x')", [id, id]);
+  const user = (t: ReturnType<typeof setup>, id: string) => t.d1.query("insert into users (id, handle, created_at) values (?, ?, 'x')", [id, id]);
+  const by = (id: string, covers = true) => ({ id, covers });
+  const anonymous = { id: null, covers: false };
 
-  it("lists every report and acts only when two distinct authenticated principals have reported", async () => {
+  it("never quarantines a public version on client reports; two distinct principals open a review", async () => {
     const t = setup();
     await t.pack("@acme/x");
     await user(t, "u1");
     await user(t, "u2");
     const d = deps(t);
-    expect(await reportMismatch(d, report(), "u1")).toEqual({ recorded: true, principals: 1, quarantined: false });
-    expect(await reportMismatch(d, report(), "u1")).toEqual({ recorded: true, principals: 1, quarantined: false });
-    expect(await reportMismatch(d, report(), null)).toEqual({ recorded: true, principals: 1, quarantined: false });
-    expect(await state(t)).toBe("active");
+    expect(await reportMismatch(d, report(), by("u1", false))).toEqual({ recorded: true, principals: 1, quarantined: false, reviewOpened: false });
+    expect(await reportMismatch(d, report(), by("u1", false))).toMatchObject({ principals: 1, reviewOpened: false });
+    expect(await reportMismatch(d, report(), anonymous)).toMatchObject({ recorded: true, principals: 1 });
     expect(await mismatchesOf(t.d1, "@acme/x")).toEqual([{ version: "1.0.0", reports: 3, principals: 1, anonymous: 1, held: null }]);
-    expect(await reportMismatch(d, report(), "u2")).toEqual({ recorded: true, principals: 2, quarantined: true });
-    expect(await state(t)).toBe("quarantined");
-    expect(await mismatchesOf(t.d1, "@acme/x")).toMatchObject([{ reports: 4, principals: 2, held: "reports" }]);
-    expect(await reportMismatch(d, report(), "u2")).toMatchObject({ quarantined: false });
+    expect(await reportMismatch(d, report(), by("u2", false))).toEqual({ recorded: true, principals: 2, quarantined: false, reviewOpened: true });
+    expect(await state(t)).toBe("active");
+    expect(await mismatchesOf(t.d1, "@acme/x")).toMatchObject([{ reports: 4, principals: 2, held: "review" }]);
+    expect(await reportMismatch(d, report(), by("u2", false))).toMatchObject({ reviewOpened: false });
     expect(t.d1.rows("select * from hash_mismatch_cases")).toHaveLength(1);
   });
 
-  it("does not count reports that expected some other hash, name a private pack or are no mismatch", async () => {
+  it("holds a private version only for two principals whose credentials cover it", async () => {
+    const t = setup();
+    await t.pack("@acme/secret", { visibility: "private" });
+    for (const u of ["u1", "u2", "u3"]) await user(t, u);
+    const d = deps(t);
+    const secret = (over = {}) => report({ pack: "@acme/secret", ...over });
+    expect(await reportMismatch(d, secret(), by("u3", false))).toEqual({ recorded: false, principals: 0, quarantined: false, reviewOpened: false });
+    expect(await reportMismatch(d, secret(), anonymous)).toMatchObject({ recorded: false });
+    expect(await reportMismatch(d, secret(), by("u1"))).toMatchObject({ recorded: true, principals: 1, quarantined: false });
+    expect(await state(t)).toBe("active");
+    expect(await reportMismatch(d, secret(), by("u2"))).toMatchObject({ principals: 2, quarantined: true, reviewOpened: false });
+    expect(await state(t)).toBe("quarantined");
+    expect(await mismatchesOf(t.d1, "@acme/secret")).toMatchObject([{ reports: 2, principals: 2, held: "reports" }]);
+    expect(await reportMismatch(d, secret(), by("u2"))).toMatchObject({ quarantined: false });
+    expect(t.d1.rows("select * from hash_mismatch_cases")).toHaveLength(1);
+  });
+
+  it("does not count reports that expected some other hash or are no mismatch", async () => {
     const t = setup();
     await t.pack("@acme/x");
-    await t.pack("@acme/secret", { visibility: "private" });
     await user(t, "u1");
     await user(t, "u2");
     const d = deps(t);
-    await reportMismatch(d, report({ expected: OTHER, observed: "c".repeat(64) }), "u1");
-    expect(await reportMismatch(d, report({ expected: OTHER, observed: "c".repeat(64) }), "u2")).toMatchObject({ recorded: true, principals: 0, quarantined: false });
-    expect(await reportMismatch(d, report({ pack: "@acme/secret" }), "u1")).toEqual({ recorded: false, principals: 0, quarantined: false });
-    expect(await reportMismatch(d, report({ pack: "@acme/ghost" }), "u1")).toMatchObject({ recorded: false });
-    expect(await reportMismatch(d, report({ version: "9.9.9" }), "u1")).toMatchObject({ recorded: false });
-    expect(await reportMismatch(d, report({ observed: HASH }), "u1")).toMatchObject({ recorded: false });
-    expect(await state(t)).toBe("active");
+    await reportMismatch(d, report({ expected: OTHER, observed: "c".repeat(64) }), by("u1"));
+    expect(await reportMismatch(d, report({ expected: OTHER, observed: "c".repeat(64) }), by("u2"))).toMatchObject({ recorded: true, principals: 0, reviewOpened: false });
+    expect(await reportMismatch(d, report({ pack: "@acme/ghost" }), by("u1"))).toMatchObject({ recorded: false });
+    expect(await reportMismatch(d, report({ version: "9.9.9" }), by("u1"))).toMatchObject({ recorded: false });
+    expect(await reportMismatch(d, report({ observed: HASH }), by("u1"))).toMatchObject({ recorded: false });
+    expect(t.d1.rows("select * from hash_mismatch_cases")).toEqual([]);
   });
 
   it("does not move a version that is already withdrawn", async () => {
     const t = setup();
     await t.pack("@acme/x", { state: "removed" });
+    expect(await observeServerMismatch(deps(t), { pack: "@acme/x", version: "1.0.0" })).toEqual({ quarantined: false });
+    expect(await state(t)).toBe("removed");
+  });
+
+  it("quarantines at once for a mismatch the registry saw itself, and turns an open review into that hold", async () => {
+    const t = setup();
+    await t.pack("@acme/x");
     await user(t, "u1");
     await user(t, "u2");
     const d = deps(t);
-    await reportMismatch(d, report(), "u1");
-    expect(await reportMismatch(d, report(), "u2")).toMatchObject({ principals: 2, quarantined: false });
-    expect(await state(t)).toBe("removed");
-    expect(await observeServerMismatch(d, { pack: "@acme/x", version: "1.0.0" })).toEqual({ quarantined: false });
-  });
-
-  it("quarantines at once for a mismatch the registry saw itself", async () => {
-    const t = setup();
-    await t.pack("@acme/x");
-    expect(await observeServerMismatch(deps(t), { pack: "@acme/x", version: "1.0.0" })).toEqual({ quarantined: true });
+    await reportMismatch(d, report(), by("u1"));
+    await reportMismatch(d, report(), by("u2"));
+    expect(await observeServerMismatch(d, { pack: "@acme/x", version: "1.0.0" })).toEqual({ quarantined: true });
     expect(await state(t)).toBe("quarantined");
     expect(t.d1.rows("select trigger from hash_mismatch_cases")).toEqual([{ trigger: "server" }]);
+  });
+
+  it("drops reports past their retention", async () => {
+    const t = setup();
+    await t.pack("@acme/x");
+    const d = deps(t);
+    await reportMismatch(d, report(), anonymous);
+    t.clock.advance("91d");
+    await reportMismatch(d, report(), anonymous);
+    await pruneFetches(t.d1, new Date(t.clock.now()).toISOString().slice(0, 10));
+    expect(t.d1.rows("select count(*) as n from hash_mismatch_reports")).toEqual([{ n: 1 }]);
   });
 });

@@ -46,7 +46,8 @@ Areas and their signals:
 
 - **download**: `served`, `hash_mismatch` (server-observed), `hash_mismatch_reported` (client).
 - **index**: `served`, `signed`, `root_signed`, `verify_failed`, `verify_failed_reported`,
-  `key_changed`, `stale`, `stale_reported`, `rollback_reported`.
+  `key_changed`, `stale`, `stale_reported`, `rollback_reported`, `entry_skipped` (a private
+  entry the Worker could not parse or that names another pack).
 - **search**: `query`, `degraded`, `vectorize_error`. **mcp**: `call`, `auth_rejected`.
   **oauth**: `flow`.
 - **publish**: `received`, `oidc_exchanged`, `oidc_rejected`, `provenance_mismatch`,
@@ -181,7 +182,7 @@ Pages (Pushover, to Ariel only):
 |---|---|---|
 | `page.read_path_burn` | tier 1 or 2 burn on adopt/fetch, update check, search or MCP | controller rolls back if a rollout is in progress |
 | `page.site_down_external` | witness fails 2 consecutive probes | status page kept honest |
-| `page.hash_mismatch` | any server-observed mismatch, or two principals reporting one version | version quarantined, cache key purged |
+| `page.hash_mismatch` | any server-observed mismatch, or two principals whose credentials cover a private pack reporting one version (two principals reporting a public one open a review, no page) | version quarantined, cache key purged |
 | `page.index_signature` | prober-observed verification failure after one automatic regeneration | one regeneration attempted |
 | `page.index_stale` | the served root is older than 10 min after a promotion, or than 24 h at any time | one regeneration attempted |
 | `page.index_key_changed` | `index.signed` with an unexpected key id | nothing (a scheduled rotation must not be undone automatically) |

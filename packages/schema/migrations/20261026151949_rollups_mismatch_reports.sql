@@ -20,7 +20,7 @@ CREATE TABLE `hash_mismatch_cases` (
 	`paged_at` text NOT NULL,
 	PRIMARY KEY(`pack_id`, `version`),
 	FOREIGN KEY (`pack_id`) REFERENCES `packs`(`id`) ON UPDATE no action ON DELETE no action,
-	CONSTRAINT "hash_mismatch_cases_trigger_check" CHECK("hash_mismatch_cases"."trigger" in ('reports', 'server'))
+	CONSTRAINT "hash_mismatch_cases_trigger_check" CHECK("hash_mismatch_cases"."trigger" in ('reports', 'server', 'review'))
 );
 --> statement-breakpoint
 CREATE TABLE `hash_mismatch_reports` (
@@ -55,6 +55,7 @@ CREATE TABLE `rollup_files` (
 CREATE TABLE `rollup_runs` (
 	`job` text NOT NULL,
 	`hour` text NOT NULL,
+	`capped` integer DEFAULT false NOT NULL,
 	`files` integer NOT NULL,
 	`rows` integer NOT NULL,
 	`completed_at` text NOT NULL,

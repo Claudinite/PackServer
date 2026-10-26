@@ -11,6 +11,7 @@ export {
   type MismatchListing,
   type MismatchOutcome,
   type MismatchReport,
+  type Reporter,
 } from "./mismatch.ts";
 export { packFetchStats, type PackFetchStats } from "./read.ts";
 export { MAX_OBJECTS_PER_RUN, runRollup, type PrivateDownloads, type RollupDeps, type RollupSummary } from "./rollup.ts";
