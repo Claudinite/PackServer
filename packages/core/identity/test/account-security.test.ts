@@ -154,15 +154,52 @@ describe("recovery that can be stopped and re-checked", () => {
     expect(await requestRecovery(t.ports, "a@example.test")).toMatchObject({ kind: "opened" });
   });
 
-  it("audits the opening before it is written and the approval only once it has taken effect", async () => {
+  it("audits the opening and the approval before they are written", async () => {
     const t = setup();
     const seen: number[] = [];
     const count = () => Number((t.db.prepare("select count(*) as n from recovery_requests").get() as { n: number }).n);
     const opened = (await requestRecovery(t.ports, "a@example.test", async () => void seen.push(count()))) as { id: string };
     t.fakes.clock.advance(RECOVERY_DELAY_MS);
     const state = () => (t.db.prepare("select state from recovery_requests").get() as { state: string }).state;
-    await approveRecovery(t.ports, opened.id, "admin", async () => void seen.push(state() === "approved" ? -1 : -2));
+    await approveRecovery(t.ports, opened.id, "admin", async () => void seen.push(state() === "pending" ? -1 : -2));
     expect(seen).toEqual([0, -1]);
+  });
+
+  const stateOf = (t: ReturnType<typeof setup>) => (t.db.prepare("select state from recovery_requests").get() as { state: string }).state;
+  const failing = async () => {
+    throw new Error("audit queue down");
+  };
+
+  it("writes nothing when the approval's audit fails, and the request can still be approved", async () => {
+    const t = setup();
+    const { id } = await open(t);
+    t.fakes.clock.advance(RECOVERY_DELAY_MS);
+    await expect(approveRecovery(t.ports, id, "admin", failing)).rejects.toThrow("audit queue down");
+    expect(stateOf(t)).toBe("pending");
+    expect(await approveRecovery(t.ports, id, "admin")).toEqual({ ok: true, user_id: "u1" });
+  });
+
+  it("writes nothing when the completion's audit fails, and the link still works", async () => {
+    const t = setup();
+    const { id } = await open(t);
+    t.fakes.clock.advance(RECOVERY_DELAY_MS);
+    await approveRecovery(t.ports, id, "admin");
+    const link = (await requestRecovery(t.ports, "a@example.test")) as { token: string };
+    await expect(completeRecovery(t.ports, link.token, failing)).rejects.toThrow("audit queue down");
+    expect(stateOf(t)).toBe("approved");
+    expect(await completeRecovery(t.ports, link.token)).toEqual({ user_id: "u1" });
+  });
+
+  it("writes nothing when the cancel's audit fails, audits only an open recovery, and can be retried", async () => {
+    const t = setup();
+    const audited: string[] = [];
+    expect(await cancelRecoveries(t.ports, "u1", async (u) => void audited.push(u))).toBe(0);
+    expect(audited).toEqual([]);
+    await open(t);
+    await expect(cancelRecoveries(t.ports, "u1", failing)).rejects.toThrow("audit queue down");
+    expect(stateOf(t)).toBe("pending");
+    expect(await cancelRecoveries(t.ports, "u1", async (u) => void audited.push(u))).toBe(1);
+    expect(audited).toEqual(["u1"]);
   });
 
   /** Lets a passkey land between the check and the conditional update, as a second request could. */
@@ -178,18 +215,18 @@ describe("recovery that can be stopped and re-checked", () => {
     } as typeof t.ports.d1,
   });
 
-  it("refuses an approval that loses the race to a new passkey, and audits nothing", async () => {
+  it("refuses an approval that loses the race to a new passkey", async () => {
     const t = setup();
     const { id } = await open(t);
     t.fakes.clock.advance(RECOVERY_DELAY_MS);
     const audited: string[] = [];
     const result = await approveRecovery(racing(t, /set state = 'approved'/), id, "admin", async (u) => void audited.push(u));
     expect(result).toEqual({ ok: false, reason: "no_longer_eligible" });
-    expect(audited).toEqual([]);
-    expect((t.db.prepare("select state from recovery_requests").get() as { state: string }).state).toBe("pending");
+    expect(audited).toEqual(["u1"]);
+    expect(stateOf(t)).toBe("pending");
   });
 
-  it("refuses a completion that loses the race to a new passkey, and audits nothing", async () => {
+  it("refuses a completion that loses the race to a new passkey", async () => {
     const t = setup();
     const { id } = await open(t);
     t.fakes.clock.advance(RECOVERY_DELAY_MS);
@@ -197,8 +234,8 @@ describe("recovery that can be stopped and re-checked", () => {
     const link = (await requestRecovery(t.ports, "a@example.test")) as { token: string };
     const audited: string[] = [];
     expect(await completeRecovery(racing(t, /set state = 'completed'/), link.token, async (u) => void audited.push(u))).toBeNull();
-    expect(audited).toEqual([]);
-    expect((t.db.prepare("select state from recovery_requests").get() as { state: string }).state).toBe("approved");
+    expect(audited).toEqual(["u1"]);
+    expect(stateOf(t)).toBe("approved");
   });
 });
 
