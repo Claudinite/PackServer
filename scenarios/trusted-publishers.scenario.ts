@@ -28,8 +28,9 @@ scenario("IT-PUB-001 Register a trusted publisher; a pending name is reserved 14
   expect(reserved.pending).toBe(true);
   await expect(world.trusted.list("@acme/new", p)).resolves.toMatchObject([{ id: reserved.id, pending: true, repository: "acme/packs", workflow: WORKFLOW }]);
 
-  await expect(world.trusted.webUpload("@acme/new", m)).toBeRefusedSaying("reserved");
-  await expect(world.trusted.webUpload("@z/new", z)).resolves.toBe("allowed");
+  await expect(m.publish(world.archive("gcp", { version: "1.0.0" })).as("@acme/new@1.0.0")).toBeRefusedSaying("reserved");
+  expect(await world.ci.staging.objects("acme")).toEqual([]);
+  await z.publish(world.archive("gcp", { version: "1.0.0" })).as("@z/new@1.0.0");
   await expect(world.trusted.register("@acme/another", { by: p, repo, workflow: WORKFLOW, path: "packs/another" })).toBeRefused("quota");
   await expect(world.trusted.register("@acme/new", { by: m, repo, workflow: WORKFLOW, path: "packs/new" })).toBeRefused("forbidden");
 
@@ -40,7 +41,7 @@ scenario("IT-PUB-001 Register a trusted publisher; a pending name is reserved 14
   await p.signIn();
   await m.signIn();
   await expect(world.trusted.list("@acme/new", p)).resolves.toEqual([]);
-  await expect(world.trusted.webUpload("@acme/new", m)).resolves.toBe("allowed");
+  await m.publish(world.archive("gcp", { version: "1.0.0" })).as("@acme/new@1.0.0");
 });
 
 scenario("IT-PUB-002 Changing a trusted publisher needs an assertion and emails every owner", async (world) => {
@@ -87,12 +88,10 @@ scenario("IT-PUB-008 Trusted-publishing-only refuses web uploads", async (world)
   const repo = world.ci.repo("acme/packs", { id: 5150, ownerId: 1001 });
   await world.trusted.register("@acme/gcp", { by: p, repo, workflow: WORKFLOW, environment: "release", path: "packs/gcp" });
 
-  await expect(world.trusted.webUpload("@acme/gcp", m)).resolves.toBe("allowed");
   await world.trusted.setOnly("@acme/gcp", true, p);
-  await expect(world.trusted.webUpload("@acme/gcp", m)).toBeRefused("trusted-only");
+  await expect(m.publish(world.archive("gcp", { version: "2.0.0" })).as("@acme/gcp@2.0.0")).toBeRefused("trusted-only");
   await expect(world.trusted.setOnly("@acme/gcp", false, m)).rejects.toMatchObject({ reason: "forbidden" });
   await expect(world.trusted.setOnly("@acme/gcp", false, p, { assertion: "none" })).rejects.toMatchObject({ reason: "step-up" });
-  await expect(world.trusted.webUpload("@acme/gcp", m)).toBeRefused("trusted-only");
   expect(await world.ci.staging.objects("acme")).toEqual([]);
 
   const run = world.ci.workflow({ repo, environment: "release", ref: "refs/tags/gcp/9.0.0" });
@@ -101,7 +100,7 @@ scenario("IT-PUB-008 Trusted-publishing-only refuses web uploads", async (world)
 
   const before = world.mail.inbox(p).all().length;
   await world.trusted.setOnly("@acme/gcp", false, p);
-  await expect(world.trusted.webUpload("@acme/gcp", m)).resolves.toBe("allowed");
+  await m.publish(world.archive("gcp", { version: "2.0.0" })).as("@acme/gcp@2.0.0");
   expect(world.mail.inbox(p).all().length).toBe(before + 1);
   expect(world.mail.inbox(p).latest().text).toContain("turned off");
 });

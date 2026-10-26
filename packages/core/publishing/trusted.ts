@@ -94,6 +94,8 @@ export async function listPublishers(ports: Pick<TrustedPorts, "d1" | "clock">, 
   return rows.map(toView);
 }
 
+const CAP_MESSAGE = `A scope holds at most ${PENDING_CAP} pending registrations; wait for one to lapse or publish a pack.`;
+
 export type RegisterRefusal = { ok: false; reason: "invalid" | "cap" | "exists" | "not-found"; message: string };
 
 const eventStatement = (ports: TrustedPorts, scopeId: string, packName: string, userId: string, guard: { id: string }) => ({
@@ -109,7 +111,7 @@ const eventStatement = (ports: TrustedPorts, scopeId: string, packName: string, 
  */
 export async function registerPublisher(
   ports: TrustedPorts,
-  request: { scope: Scope; packName: string; userId: string; input: PublisherInput },
+  request: { scope: Scope; packName: string; userId: string; input: PublisherInput; beforeWrite?: () => Promise<void> },
 ): Promise<{ ok: true; publisher: PublisherView } | RegisterRefusal> {
   const { scope, packName, userId } = request;
   const normal = normalizePublisher(request.input, packName);
@@ -131,6 +133,12 @@ export async function registerPublisher(
   );
   if (same.length > 0) return { ok: false, reason: "exists", message: "That repository, workflow, environment and path are already registered for this pack." };
 
+  if (pending) {
+    const { rows: held } = await ports.d1.query("select count(*) as n from trusted_publishers where scope_id = ? and pending_until is not null and pending_until > ?", [scope.id, now]);
+    if (Number(held[0]?.n) >= PENDING_CAP) return { ok: false, reason: "cap", message: CAP_MESSAGE };
+  }
+  await request.beforeWrite?.();
+
   const id = newId(ports);
   const pendingUntil = pending ? new Date(ports.clock.now() + PENDING_NAME_MS).toISOString() : null;
   const [inserted] = await ports.d1.batch([
@@ -145,7 +153,7 @@ export async function registerPublisher(
     },
     eventStatement(ports, scope.id, packName, userId, { id }),
   ]);
-  if (inserted!.meta.changes === 0) return { ok: false, reason: "cap", message: `A scope holds at most ${PENDING_CAP} pending registrations; wait for one to lapse or publish a pack.` };
+  if (inserted!.meta.changes === 0) return { ok: false, reason: "cap", message: CAP_MESSAGE };
   const { rows } = await ports.d1.query(`select ${COLUMNS} from trusted_publishers where id = ?`, [id]);
   return { ok: true, publisher: toView(rows[0]!) };
 }
@@ -153,7 +161,7 @@ export async function registerPublisher(
 /** Changes one registration of the pack, and emits the publisher-change event. */
 export async function changePublisher(
   ports: TrustedPorts,
-  request: { scope: Scope; packName: string; userId: string; id: string; patch: Partial<PublisherInput> },
+  request: { scope: Scope; packName: string; userId: string; id: string; patch: Partial<PublisherInput>; beforeWrite?: () => Promise<void> },
 ): Promise<{ ok: true; before: PublisherView; publisher: PublisherView } | RegisterRefusal> {
   const { scope, packName, userId } = request;
   const found = (await listPublishers(ports, scope.id, packName)).find((p) => p.id === request.id);
@@ -167,6 +175,7 @@ export async function changePublisher(
   if (!normal.ok) return { ok: false, reason: "invalid", message: normal.message };
   const v = normal.value;
   const now = iso(ports);
+  await request.beforeWrite?.();
   await ports.d1.batch([
     {
       sql: `update trusted_publishers set repository = ?, repository_id = ?, repository_owner_id = ?, workflow = ?, environment = ?, path = ?, refs = ?, events = ?, updated_at = ? where id = ?`,
@@ -183,9 +192,10 @@ export async function settlePending(d1: D1, scopeId: string, packName: string): 
   await d1.query("update trusted_publishers set pending_until = null where scope_id = ? and pack_name = ? and pending_until is not null", [scopeId, packName]);
 }
 
-export async function setTrustedOnly(ports: Pick<TrustedPorts, "d1" | "clock">, scopeId: string, packName: string, on: boolean): Promise<boolean> {
+export async function setTrustedOnly(ports: Pick<TrustedPorts, "d1" | "clock">, scopeId: string, packName: string, on: boolean, beforeWrite?: () => Promise<void>): Promise<boolean> {
   const { rows } = await ports.d1.query("select 1 from packs where scope_id = ? and name = ?", [scopeId, packName]);
   if (rows.length === 0) return false;
+  await beforeWrite?.();
   await ports.d1.query(
     `insert into pack_publish_settings (scope_id, pack_name, trusted_only, updated_at) values (?, ?, ?, ?)
      on conflict (scope_id, pack_name) do update set trusted_only = excluded.trusted_only, updated_at = excluded.updated_at`,

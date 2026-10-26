@@ -122,3 +122,42 @@ describe("webUploadGate and owners", () => {
     expect(await ownerAddresses(t.d1, "s1")).toEqual(["p@x.test", "q@x.test"]);
   });
 });
+
+describe("beforeWrite (the audit entry) runs after validation and before the write", () => {
+  it("is not called for a refused attempt, and runs once ahead of an accepted one", async () => {
+    const t = setup();
+    let calls = 0;
+    const beforeWrite = async () => {
+      calls++;
+    };
+    const register = (packName: string, input: Partial<PublisherInput> = {}) => registerPublisher(t.ports, { scope: t.scope, packName, userId: "u1", input: { ...INPUT, ...input }, beforeWrite });
+
+    expect(await register("new", { events: ["issue_comment"] })).toMatchObject({ ok: false, reason: "invalid" });
+    expect(calls).toBe(0);
+    const added = await register("new");
+    expect(added).toMatchObject({ ok: true });
+    expect(calls).toBe(1);
+    expect(await register("new")).toMatchObject({ ok: false, reason: "exists" });
+    expect(calls).toBe(1);
+    if (!added.ok) throw new Error("setup");
+
+    const change = (id: string, patch: Partial<PublisherInput>) => changePublisher(t.ports, { scope: t.scope, packName: "new", userId: "u1", id, patch, beforeWrite });
+    expect(await change("missing", { workflow: "x.yml" })).toMatchObject({ reason: "not-found" });
+    expect(await change(added.publisher.id, { workflow: "/x" })).toMatchObject({ reason: "invalid" });
+    expect(calls).toBe(1);
+    expect(await change(added.publisher.id, { workflow: "x.yml" })).toMatchObject({ ok: true });
+    expect(calls).toBe(2);
+
+    expect(await setTrustedOnly(t.ports, "s1", "absent", true, beforeWrite)).toBe(false);
+    expect(calls).toBe(2);
+  });
+
+  it("does not run for a registration refused at the cap", async () => {
+    const t = setup();
+    for (let i = 0; i < PENDING_CAP; i++) await t.register(`p${i}`);
+    let calls = 0;
+    const out = await registerPublisher(t.ports, { scope: t.scope, packName: "extra", userId: "u1", input: INPUT, beforeWrite: async () => void calls++ });
+    expect(out).toMatchObject({ ok: false, reason: "cap" });
+    expect(calls).toBe(0);
+  });
+});

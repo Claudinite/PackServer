@@ -1,6 +1,6 @@
 import { sendNotice } from "@packserver/core/mail";
 import {
-  changePublisher, listPublishers, ownerAddresses, registerPublisher, setTrustedOnly, webUploadGate, type PublisherInput, type PublisherView,
+  changePublisher, listPublishers, ownerAddresses, registerPublisher, setTrustedOnly, type PublisherInput, type PublisherView,
 } from "@packserver/core/publishing";
 import { HELD_ACTION_NAMES } from "@packserver/core/identity";
 import { loadScope } from "@packserver/core/scopes";
@@ -102,12 +102,14 @@ routes.post("/trusted-publishers/:scope/:name", sensitive(HELD_ACTION_NAMES.trus
   if (missing) return badRequest(`${missing}: required.`);
   const userId = c.get("session")!.record.user_id;
   const ports = scopePorts(c);
-  const out = await registerPublisher(ports, { scope: t.scope, packName: t.packName, userId, input: input as PublisherInput });
+  const out = await registerPublisher(ports, {
+    scope: t.scope, packName: t.packName, userId, input: input as PublisherInput,
+    beforeWrite: () => recordAudit(c, userId, "trusted_publisher.changed", targetOf(c), { change: "added" }, t.scope.id),
+  });
   if (!out.ok) {
     if (out.reason === "invalid") return badRequest(out.message);
     return refusal(out.reason === "cap" ? "quota" : "exists", { status: out.reason === "cap" ? 429 : 409, message: out.message });
   }
-  await recordAudit(c, userId, "trusted_publisher.changed", targetOf(c), { change: "added" }, t.scope.id);
   await tellOwners(c, t.scope.id, "added", `@${t.scope.name}/${t.packName}`, describe(out.publisher));
   return ok(c, { publisher: out.publisher }, 201);
 });
@@ -117,8 +119,9 @@ async function setOnly(c: Context<WebEnv>, on: boolean): Promise<Response> {
   if (!t) return notFound();
   const who = await standing(c, { scope: t.scope.name, need: "owner", resource: t.visibility });
   if (who instanceof Response) return who;
-  if (!(await setTrustedOnly(scopePorts(c), t.scope.id, t.packName, on))) return notFound();
-  await recordAudit(c, c.get("session")!.record.user_id, "trusted_publisher.changed", targetOf(c), { change: on ? "trusted-only-on" : "trusted-only-off" }, t.scope.id);
+  const userId = c.get("session")!.record.user_id;
+  const change = on ? "trusted-only-on" : "trusted-only-off";
+  if (!(await setTrustedOnly(scopePorts(c), t.scope.id, t.packName, on, () => recordAudit(c, userId, "trusted_publisher.changed", targetOf(c), { change }, t.scope.id)))) return notFound();
   if (!on) await tellOwners(c, t.scope.id, "changed", `@${t.scope.name}/${t.packName}`, "trusted-publishing-only turned off, so web uploads are allowed again");
   return ok(c, { trusted_only: on });
 }
@@ -138,20 +141,10 @@ routes.put("/trusted-publishers/:scope/:name/:id", sensitive(HELD_ACTION_NAMES.t
   const input = inputFrom(await jsonBody(c));
   if (typeof input === "string") return badRequest(input);
   const userId = c.get("session")!.record.user_id;
-  const out = await changePublisher(scopePorts(c), { scope: t.scope, packName: t.packName, userId, id: c.req.param("id") ?? "", patch: input });
+  const out = await changePublisher(scopePorts(c), { scope: t.scope, packName: t.packName, userId, id: c.req.param("id") ?? "", patch: input,
+    beforeWrite: () => recordAudit(c, userId, "trusted_publisher.changed", targetOf(c), { change: "changed" }, t.scope.id),
+  });
   if (!out.ok) return out.reason === "not-found" ? notFound() : badRequest(out.message);
-  await recordAudit(c, userId, "trusted_publisher.changed", targetOf(c), { change: "changed" }, t.scope.id);
   await tellOwners(c, t.scope.id, "changed", `@${t.scope.name}/${t.packName}`, describe(out.publisher, out.before));
   return ok(c, { publisher: out.publisher });
-});
-
-/** Whether the signed-in person may start a web upload for this pack name; the admission step asks the same question. */
-routes.post("/trusted-publishers/:scope/:name/web-upload", signedInPost(), async (c) => {
-  const t = await target(c);
-  if (!t) return notFound();
-  const who = await standing(c, { scope: t.scope.name, need: "maintainer", resource: t.visibility });
-  if (who instanceof Response) return who;
-  const gate = await webUploadGate(scopePorts(c), t.scope.id, t.packName);
-  if (gate.ok) return ok(c, { allowed: true });
-  return refusal(gate.reason === "trusted-only" ? "trusted-only" : "forbidden", { message: gate.message });
 });
