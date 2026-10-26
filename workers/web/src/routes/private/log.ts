@@ -42,5 +42,5 @@ export async function fetchRecord(
   };
 }
 
-/** Writes a request's rows; a failure is the log's own and never changes the answer to the read. */
+/** Writes a request's rows; callers run it through `afterResponse`, which keeps a failure from reaching the read. */
 export const writeFetches = async (c: Context<WebEnv>, records: readonly FetchRecord[]): Promise<void> => recordFetches(runtimeOf(c).ports, records);

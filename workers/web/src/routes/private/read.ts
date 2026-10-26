@@ -1,4 +1,4 @@
-import { type FetchRecord, mayRead, privateArchiveKey, privateEntryKey, readablePacks, systemName } from "@packserver/core/access";
+import { type PackRef, mayRead, privateArchiveKey, privateEntryKey, readablePacks, systemName } from "@packserver/core/access";
 import { objectResponseHeaders, CACHE_PRIVATE } from "@packserver/core/catalog";
 import { sha256Hex } from "@packserver/core/index";
 import { PrivateEntry, type PrivateIndexEnvelope } from "@packserver/schema";
@@ -11,8 +11,8 @@ import { fetchRecord, principalOf, writeFetches } from "./log";
 export const routes = new Hono<WebEnv>();
 
 /**
- * Runs work after the response is on its way, so a request that is refused takes no longer than
- * one for something that does not exist. Without an execution context the work is awaited.
+ * Runs the fetch-log write after the response is on its way. A failure is logged and never changes
+ * the answer to the read. Without an execution context the work is awaited.
  */
 async function afterResponse(c: Context<WebEnv>, work: () => Promise<void>): Promise<void> {
   const run = work().catch((error: unknown) => console.error(JSON.stringify({ event: "private.fetch_log_failed", message: error instanceof Error ? error.message : "unknown" })));
@@ -42,7 +42,7 @@ routes.get("/private/index", async (c) => {
   const { caller } = resolved;
   const runtime = runtimeOf(c);
   const entries: PrivateEntry[] = [];
-  const records: FetchRecord[] = [];
+  const served: PackRef[] = [];
   const named = c.req.query("pack");
   let packs = await readablePacks(runtime.ports.d1, caller);
   if (named !== undefined) {
@@ -64,9 +64,9 @@ routes.get("/private/index", async (c) => {
       continue;
     }
     entries.push(parsed.data);
-    records.push(await fetchRecord(c, caller, pack, { kind: "index", outcome: "served" }));
+    served.push(pack);
   }
-  await writeFetches(c, records);
+  await afterResponse(c, async () => writeFetches(c, await Promise.all(served.map((pack) => fetchRecord(c, caller, pack, { kind: "index", outcome: "served" })))));
   if (named !== undefined && entries.length === 0) return notFound();
   const envelope: PrivateIndexEnvelope = { private: true, storable: false, entries };
   return Response.json(envelope, { headers: NO_STORE });
@@ -102,7 +102,7 @@ routes.get("/private/v/:versionId", async (c) => {
     requestTelemetry(c).emit("download.hash_mismatch", { version_id: versionId });
     return unavailable();
   }
-  await writeFetches(c, [await fetchRecord(c, caller, pack, { kind: "download", outcome: "served", versionId })]);
+  await afterResponse(c, async () => writeFetches(c, [await fetchRecord(c, caller, pack, { kind: "download", outcome: "served", versionId })]));
   requestTelemetry(c).download({
     visibility: "private",
     pack: systemName(pack),

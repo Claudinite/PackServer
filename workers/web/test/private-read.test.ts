@@ -14,11 +14,20 @@ const ARCHIVE = new TextEncoder().encode("the bytes the validator stored");
 const hex = async (bytes: Uint8Array) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((b) => b.toString(16).padStart(2, "0")).join("");
 const VERSION = "0f0f0f0f-0000-4000-8000-000000000001";
 
-async function setup(o: { state?: string; readable?: boolean; stored?: Uint8Array | null } = {}) {
+async function setup(o: { state?: string; readable?: boolean; stored?: Uint8Array | null; failLog?: boolean; hold?: boolean } = {}) {
   const sink = new TelemetrySink();
   const fakes = createFakePorts({ worker: "web" });
   fakes.d1.on(/from effective_access/, () => ({ rows: o.readable === false ? [] : [{ id: "p1", scope: "acme", name: "secret" }] }));
-  fakes.d1.on(/fetch_log/, () => ({}));
+  const gate = { release: () => {}, held: Promise.resolve() };
+  if (o.hold) gate.held = new Promise<void>((resolve) => (gate.release = resolve));
+  fakes.d1.on(/fetch_log/, () => {
+    if (o.failLog) throw new Error("d1 is down");
+    return {};
+  });
+  if (o.hold) {
+    const query = fakes.d1.query.bind(fakes.d1);
+    fakes.d1.query = async (sql, params) => (/fetch_log/.test(sql) ? gate.held.then(() => query(sql, params)) : query(sql, params));
+  }
   const sha = await hex(ARCHIVE);
   fakes.d1.on(/from pack_versions v join packs p/, (params) =>
     params[0] === VERSION ? { rows: [{ state: o.state ?? "active", sha256: sha, version: "1.0.0", pack_id: "p1", name: "secret", scope: "acme" }] } : { rows: [] },
@@ -31,12 +40,14 @@ async function setup(o: { state?: string; readable?: boolean; stored?: Uint8Arra
   };
   const pending: Array<Promise<unknown>> = [];
   const app = createApp(runtime);
+  const ctx = { waitUntil: (p: Promise<unknown>) => void pending.push(p), passThroughOnException() {} } as never;
   const get = async (id: string) => {
-    const res = await app.request(`/api/private/v/${id}`, {}, undefined, { waitUntil: (p: Promise<unknown>) => void pending.push(p), passThroughOnException() {} } as never);
+    const res = await app.request(`/api/private/v/${id}`, {}, undefined, ctx);
     await Promise.all(pending);
     return res;
   };
-  return { get, sink, fakes, pending };
+  const getWithoutSettling = (id: string) => app.request(`/api/private/v/${id}`, {}, undefined, ctx);
+  return { get, getWithoutSettling, sink, fakes, pending, gate, app, calls: () => pending.length };
 }
 
 describe("GET /api/private/v/:versionId", () => {
@@ -65,7 +76,7 @@ describe("GET /api/private/v/:versionId", () => {
     expect(res.headers.get("cache-control")).toBe("private, no-store");
   });
 
-  it("writes the denied-read log after the response, so a denied id costs what an unknown one does", async () => {
+  it("answers a denied id as it answers an unknown one, and logs the denial", async () => {
     const denied = await setup({ readable: false });
     const unknown = await setup();
     const a = await denied.get(VERSION);
@@ -74,5 +85,41 @@ describe("GET /api/private/v/:versionId", () => {
     const logged = (s: Awaited<ReturnType<typeof setup>>) => s.fakes.d1.executed.filter((e) => /insert into fetch_log/.test(e.sql)).length;
     expect(logged(denied)).toBe(1);
     expect(logged(unknown)).toBe(0);
+  });
+
+  it("hands the log write to waitUntil: the response returns while the write is still unresolved", async () => {
+    for (const readable of [true, false]) {
+      const t = await setup({ hold: true, readable });
+      const res = await t.getWithoutSettling(readable ? VERSION : "0f0f0f0f-0000-4000-8000-0000000000ff");
+      expect(res.status).toBe(readable ? 200 : 404);
+      const inserted = () => t.fakes.d1.executed.filter((e) => /insert into fetch_log/.test(e.sql)).length;
+      expect(inserted()).toBe(0);
+      if (readable) {
+        expect(t.pending.length).toBeGreaterThan(0);
+        t.gate.release();
+        await Promise.all(t.pending);
+        expect(inserted()).toBe(1);
+      }
+    }
+    const denied = await setup({ hold: true, readable: false });
+    const res = await denied.getWithoutSettling(VERSION);
+    expect(res.status).toBe(404);
+    expect(denied.pending).toHaveLength(2);
+    denied.gate.release();
+    await Promise.all(denied.pending);
+    expect(denied.fakes.d1.executed.filter((e) => /insert into fetch_log/.test(e.sql))).toHaveLength(1);
+  });
+
+  it("still serves the read when the log write fails, and reports the failure", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const t = await setup({ failLog: true });
+      const res = await t.get(VERSION);
+      expect(res.status).toBe(200);
+      expect(new Uint8Array(await res.arrayBuffer())).toEqual(ARCHIVE);
+      expect(errors.mock.calls.some(([line]) => String(line).includes("private.fetch_log_failed"))).toBe(true);
+    } finally {
+      errors.mockRestore();
+    }
   });
 });
