@@ -16,6 +16,7 @@
       "vars": {
         "WORKER": "mcp",
         "ENVIRONMENT": "test",
+        "CDN_ORIGIN": "https://packs.test.invalid",
         "EMBEDDING_MODEL": "@cf/baai/bge-m3",
         "EMBEDDING_DIMENSIONS": "1024",
         "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
@@ -41,6 +42,10 @@
         }
       ],
       "r2_buckets": [
+        {
+          "binding": "PACKS_PUBLIC",
+          "bucket_name": "packs-public-test"
+        },
         {
           "binding": "PACKS_PRIVATE",
           "bucket_name": "packs-private-test"
@@ -75,7 +80,7 @@
           "name": "RATE_LIMIT",
           "namespace_id": "3002",
           "simple": {
-            "limit": 60,
+            "limit": 12,
             "period": 60
           }
         }
@@ -105,6 +110,7 @@
       "vars": {
         "WORKER": "mcp",
         "ENVIRONMENT": "staging",
+        "CDN_ORIGIN": "https://packs-staging.claudinite.com",
         "EMBEDDING_MODEL": "@cf/baai/bge-m3",
         "EMBEDDING_DIMENSIONS": "1024"
       },
@@ -127,6 +133,10 @@
         }
       ],
       "r2_buckets": [
+        {
+          "binding": "PACKS_PUBLIC",
+          "bucket_name": "packs-public-staging"
+        },
         {
           "binding": "PACKS_PRIVATE",
           "bucket_name": "packs-private-staging"
@@ -219,6 +229,7 @@
       "vars": {
         "WORKER": "mcp",
         "ENVIRONMENT": "production",
+        "CDN_ORIGIN": "https://packs.claudinite.com",
         "EMBEDDING_MODEL": "@cf/baai/bge-m3",
         "EMBEDDING_DIMENSIONS": "1024"
       },
@@ -241,6 +252,10 @@
         }
       ],
       "r2_buckets": [
+        {
+          "binding": "PACKS_PUBLIC",
+          "bucket_name": "packs-public"
+        },
         {
           "binding": "PACKS_PRIVATE",
           "bucket_name": "packs-private"
