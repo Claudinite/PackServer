@@ -1,6 +1,7 @@
 import {
-  applicationOf, checkDomainProof, domainProofsOf, githubProofOf, proveGithubOrg, scopeMfaPolicy, startDomainProof,
+  applicationOf, checkDomainProof, domainProofsOf, githubProofOf, proveGithubOrg, startDomainProof,
 } from "@packserver/core/scopes";
+import { scopeMfaPolicy } from "@packserver/core/identity";
 import { refusal, requireSession } from "@packserver/http";
 import { Hono, type Context } from "hono";
 import type { WebEnv } from "../../context";

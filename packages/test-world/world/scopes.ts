@@ -86,7 +86,7 @@ export interface VerificationView {
   };
   github: { org: string; method: "app" | "admin"; endsAt: string | null } | null;
   application: ApplicationView;
-  mfa: "off" | "mfa" | "passkeys";
+  mfa: "none" | "mfa" | "passkey";
 }
 
 export interface OrgHandle extends Org {
@@ -98,6 +98,8 @@ export interface OrgHandle extends Org {
   setRole(user: User, role: ScopeRole, o?: Sensitive): Promise<void>;
   remove(who: User | Invitation, o?: Sensitive): Promise<void>;
   delete(o?: Sensitive): Promise<void>;
+  /** What everyone acting for the organisation must have enrolled. */
+  requireMfa(policy: "none" | "mfa" | "passkey", o?: Sensitive): Promise<void>;
   people(): Promise<PeopleView | NotFound>;
   /** The people list as the site answers it, for asserting on its words. */
   peopleObservation(): Promise<Observation>;
@@ -111,8 +113,6 @@ export interface OrgHandle extends Org {
   /** Applies for Verified Publisher; the review that decides it is the admin's. */
   applyVerified(o?: Sensitive): Promise<ApplicationView>;
   verification(): Promise<VerificationView | NotFound>;
-  /** Makes everyone acting for the organisation need MFA or passkeys, as the accounts area's setting will once it lands. */
-  requireMfa(policy: "mfa" | "passkeys" | "off"): Promise<void>;
   /** Gives the organisation a proof and, when asked, the Verified Publisher label, as the owners of those areas will. */
   seedProof(facts: { domain?: string; githubOrg?: string; verifiedPublisher?: boolean }): Promise<void>;
 }
@@ -261,6 +261,9 @@ export function createScopeVerbs(driver: Driver, aliases: Aliases): ScopeVerbs {
       async delete(o) {
         done(await call("DELETE", "", "org.delete", o), "org.delete");
       },
+      async requireMfa(policy, o) {
+        done(await call("POST", "/mfa-policy", "org.mfa-policy", o, { policy }), "org.requireMfa");
+      },
       async people() {
         const res = await call("GET", "/people", null);
         if (res.status === 404) return new NotFound();
@@ -321,7 +324,7 @@ export function createScopeVerbs(driver: Driver, aliases: Aliases): ScopeVerbs {
           domain: { proven: { domain: string; method: "txt" | "well-known" | null; transferred_at: string | null } | null; pending: Array<{ domain: string; token: string }> };
           github: { org: string; method: "app" | "admin"; ends_at: string | null } | null;
           application: ApplicationWire;
-          mfa: "off" | "mfa" | "passkeys";
+          mfa: "none" | "mfa" | "passkey";
         };
         return {
           org: b.org,
@@ -333,16 +336,6 @@ export function createScopeVerbs(driver: Driver, aliases: Aliases): ScopeVerbs {
           application: applicationView(b.application),
           mfa: b.mfa,
         };
-      },
-      async requireMfa(policy) {
-        const store = await driver.storage?.();
-        if (!store) throw new InfrastructureError(`the ${driver.kind} driver has no storage seam`);
-        const now = new Date(driver.fakes ? await driver.fakes.clock.call("now") : Date.now()).toISOString();
-        await store.db.batch([
-          store.db
-            .prepare("insert into scope_policies (scope_id, mfa, updated_at) select id, ?, ? from scopes where name = ? on conflict (scope_id) do update set mfa = excluded.mfa, updated_at = excluded.updated_at")
-            .bind(policy, now, system),
-        ]);
       },
       async seedProof(facts) {
         const store = await driver.storage?.();

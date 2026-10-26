@@ -8,11 +8,11 @@ scenario(
   "IT-SCOPE-010 Verified Publisher needs a proof, scope-wide MFA and a review; no subscription",
   async (world) => {
     const githubOrg = world.alias("fifthgh");
-    const p1 = await world.publishers.create({ handle: "p1" });
+    const p1 = await world.publishers.create({ handle: "p1", mfa: "passkey" });
     const p2 = await world.publishers.create({ handle: "p2" });
-    const p3 = await world.publishers.create({ handle: "p3" });
-    const p4 = await world.publishers.create({ handle: "p4" });
-    const p5 = await world.publishers.create({ handle: "p5", githubOrgs: [{ id: 7005, login: githubOrg, role: "admin" }] });
+    const p3 = await world.publishers.create({ handle: "p3", mfa: "passkey" });
+    const p4 = await world.publishers.create({ handle: "p4", mfa: "passkey" });
+    const p5 = await world.publishers.create({ handle: "p5", mfa: "passkey", githubOrgs: [{ id: 7005, login: githubOrg, role: "admin" }] });
     const noProof = await p1.orgs.create("noproof");
     const noMfa = await p2.orgs.create("nomfa");
     const noReview = await p3.orgs.create("noreview");
@@ -71,7 +71,7 @@ scenario(
 scenario(
   "IT-SCOPE-018 A Verified Publisher application is visible while pending and explained when denied",
   async (world) => {
-    const p = await world.publishers.create({ handle: "p" });
+    const p = await world.publishers.create({ handle: "p", mfa: "passkey" });
     const q = await world.publishers.create({ handle: "q" });
     const w = await world.publishers.create({ handle: "w" });
     const acme = await p.orgs.create("acme");
@@ -83,7 +83,7 @@ scenario(
       challenge.publishTxt();
       await org.checkDomain(challenge);
     }
-    await acme.requireMfa("passkeys");
+    await acme.requireMfa("passkey");
 
     await expect(beta.applyVerified()).toBeRefusedSaying("require MFA scope-wide");
     await expect(world.orgs.get("acme", w).applyVerified()).toBeRefused("forbidden");

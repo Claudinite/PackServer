@@ -50,14 +50,6 @@ CREATE TABLE `scope_disputes` (
 --> statement-breakpoint
 CREATE UNIQUE INDEX `scope_disputes_pair_unique` ON `scope_disputes` (`scope_id`,`claimant_scope_id`);--> statement-breakpoint
 CREATE INDEX `scope_disputes_scope_idx` ON `scope_disputes` (`scope_id`,`state`);--> statement-breakpoint
-CREATE TABLE `scope_policies` (
-	`scope_id` text PRIMARY KEY NOT NULL,
-	`mfa` text DEFAULT 'off' NOT NULL,
-	`updated_at` text NOT NULL,
-	FOREIGN KEY (`scope_id`) REFERENCES `scopes`(`id`) ON UPDATE no action ON DELETE no action,
-	CONSTRAINT "scope_policies_mfa_check" CHECK("scope_policies"."mfa" in ('off', 'mfa', 'passkeys'))
-);
---> statement-breakpoint
 ALTER TABLE `vp_applications` ADD `decided_by` text REFERENCES users(id);--> statement-breakpoint
 ALTER TABLE `vp_applications` ADD `denial_reason` text;--> statement-breakpoint
 ALTER TABLE `vp_applications` ADD `renewable_at` text;--> statement-breakpoint

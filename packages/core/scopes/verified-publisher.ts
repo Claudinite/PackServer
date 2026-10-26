@@ -1,16 +1,8 @@
 import type { D1 } from "@packserver/ports";
 import type { ScopeRow } from "./access.ts";
+import { scopeMfaPolicy } from "../identity/mfa-policy.ts";
 import { iso, newId } from "./personal.ts";
 import { announceProofChange, isoOf, notifyOwners, RENEWAL_WAIT_MS, settingsUrl, type ProofPorts } from "./proofs/context.ts";
-
-export type MfaPolicy = "off" | "mfa" | "passkeys";
-
-/** The scope-wide requirement for everyone acting for the scope (REQ-ACC-018); the setting is the accounts area's. */
-export async function scopeMfaPolicy(d1: D1, scopeId: string): Promise<MfaPolicy> {
-  const { rows } = await d1.query("select mfa from scope_policies where scope_id = ?", [scopeId]);
-  const value = rows[0]?.mfa;
-  return value === "mfa" || value === "passkeys" ? value : "off";
-}
 
 export type ApplicationState = "none" | "pending" | "approved" | "rejected" | "revoked";
 
@@ -49,7 +41,7 @@ export async function applicationOf(d1: D1, scopeId: string): Promise<Applicatio
 async function missingConditions(d1: D1, scopeId: string, proofs: { verified_domain: string | null; verified_github_org: string | null }): Promise<Array<"proof" | "mfa">> {
   const missing: Array<"proof" | "mfa"> = [];
   if (!proofs.verified_domain && !proofs.verified_github_org) missing.push("proof");
-  if ((await scopeMfaPolicy(d1, scopeId)) === "off") missing.push("mfa");
+  if ((await scopeMfaPolicy(d1, scopeId)) === "none") missing.push("mfa");
   return missing;
 }
 

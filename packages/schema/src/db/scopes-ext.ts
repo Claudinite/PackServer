@@ -16,7 +16,6 @@ export const DOMAIN_CHALLENGE_STATES = ["pending", "proven", "lapsed", "moved"] 
 export const DOMAIN_PROOF_METHODS = ["txt", "well-known"] as const;
 export const GITHUB_PROOF_METHODS = ["app", "admin"] as const;
 export const VP_PROOF_BASES = ["domain", "github"] as const;
-export const SCOPE_MFA_POLICIES = ["off", "mfa", "passkeys"] as const;
 export const SCOPE_DISPUTE_STATES = ["open", "resolved"] as const;
 
 /**
@@ -167,19 +166,6 @@ export const github_org_proofs = sqliteTable(
     uniqueIndex("github_org_proofs_org_unique").on(t.org_id),
     check("github_org_proofs_method_check", sql`${t.method} in (${inList(GITHUB_PROOF_METHODS)})`),
   ],
-);
-
-/** Who may act for a scope; the setting itself belongs to the accounts area, the verification application only reads it. */
-export const scope_policies = sqliteTable(
-  "scope_policies",
-  {
-    scope_id: text("scope_id")
-      .primaryKey()
-      .references(() => scopes.id),
-    mfa: text("mfa", { enum: SCOPE_MFA_POLICIES }).notNull().default("off"),
-    updated_at: text("updated_at").notNull(),
-  },
-  (t) => [check("scope_policies_mfa_check", sql`${t.mfa} in (${inList(SCOPE_MFA_POLICIES)})`)],
 );
 
 /**

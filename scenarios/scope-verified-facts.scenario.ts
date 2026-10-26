@@ -7,7 +7,7 @@ const NEEDS: ScenarioOpts = { needs: ["fakes", "storage", "reset"] };
 scenario(
   "IT-VAL-041 A scope's verification facts follow its proofs and its status; the registry applies no policy (facts source)",
   async (world) => {
-    const p = await world.publishers.create({ handle: "p" });
+    const p = await world.publishers.create({ handle: "p", mfa: "passkey" });
     const q = await world.publishers.create({ handle: "q" });
     const verified = await p.orgs.create("verified");
     const plain = await q.orgs.create("plain");
@@ -32,12 +32,12 @@ scenario(
 scenario(
   "IT-PAY-018 Nothing is charged: applying for Verified Publisher proceeds with no payment (verification half)",
   async (world) => {
-    const p = await world.publishers.create({ handle: "p" });
+    const p = await world.publishers.create({ handle: "p", mfa: "passkey" });
     const o = await p.orgs.create("o");
     const challenge = await o.verifyDomain("o.example");
     challenge.publishTxt();
     await o.checkDomain(challenge);
-    await o.requireMfa("passkeys");
+    await o.requireMfa("passkey");
 
     const application = await o.applyVerified();
     expect(application).toMatchObject({ state: "pending" });
@@ -55,7 +55,7 @@ scenario(
   "JT-007 Verified Publisher application: pending, denied with a reason, renewed, approved, marked (proof half)",
   async (world) => {
     const acmeGh = world.alias("acmegh");
-    const p = await world.publishers.create({ handle: "p", githubOrgs: [{ id: 7001, login: acmeGh, role: "admin" }] });
+    const p = await world.publishers.create({ handle: "p", mfa: "passkey", githubOrgs: [{ id: 7001, login: acmeGh, role: "admin" }] });
     const q = await world.publishers.create({ handle: "q" });
     const w = await world.publishers.create({ handle: "w", githubOrgs: [{ id: 7002, login: world.alias("betagh"), role: "admin" }] });
     const acme = await p.orgs.create("acme");

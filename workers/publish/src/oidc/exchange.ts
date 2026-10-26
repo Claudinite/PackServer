@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { PublishRuntime } from "../bindings";
 import { badRequest, readJson, unavailable } from "../respond";
-import { issueCredential, TokenAlreadyUsed } from "../upload/credentials";
+import { issueCredential, PublishingFrozen, TokenAlreadyUsed } from "../upload/credentials";
 import { JwksUnavailable } from "./jwks";
 import { verifyActionsToken } from "./verify";
 
@@ -133,6 +133,7 @@ export function oidcRoutes(runtime: PublishRuntime): Hono {
       });
     } catch (error) {
       if (error instanceof TokenAlreadyUsed) return refusal("oidc.invalid", { message: "token already used" });
+      if (error instanceof PublishingFrozen) return refusal("forbidden", { message: "publishing for this scope is paused while an account recovery is under review" });
       throw error;
     }
     return Response.json(

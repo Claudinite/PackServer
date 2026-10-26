@@ -1,7 +1,7 @@
 import { analyticsAppendedPoints, ecdsaSigner, rekorTransparency, s3AuditBucket, type AppendedPoints, type AuditBucket } from "@packserver/core/audit";
 import { analyticsStats, createIsolateTelemetry } from "@packserver/http";
 import {
-  accessPort, cryptoRng, d1Port, dohDns, kvPort, mailPort, queuePort, r2Port, r2ReadPort, readSecret, systemClock, wellKnownPort, workerRuntime, workflowPort,
+  accessPort, clockFrom, cryptoRng, d1Port, dohDns, kvPort, mailPort, queuePort, r2Port, r2ReadPort, readSecret, systemClock, wellKnownPort, workerRuntime, workflowPort,
   type SendEmailBinding, type WorkerRuntime,
 } from "@packserver/ports/cloudflare";
 import type { Ports, R2, R2Read, Transparency } from "@packserver/ports";
@@ -23,6 +23,8 @@ export interface Env {
   SITE_ORIGINS: string;
   VALIDATE_PACK: Workflow;
   ACCESS?: Fetcher;
+  /** The test world's clock, bound only under `env.test`. */
+  CLOCK?: Fetcher;
   REQUEST_OUTCOMES: AnalyticsEngineDataset;
   DOMAIN_EVENTS: AnalyticsEngineDataset;
   SELFTEST_HMAC_KEY: string | SecretsStoreSecret;
@@ -102,7 +104,7 @@ const isolateTelemetry = createIsolateTelemetry();
 export function createRuntime(env: Env): AdminRuntime {
   const telemetryKv = kvPort(env.TELEMETRY_KV);
   const base = workerRuntime("admin", env, {
-    clock: systemClock,
+    clock: clockFrom(env.ENVIRONMENT, env.CLOCK),
     rng: cryptoRng,
     d1: d1Port(env.DB),
     kv: { TELEMETRY_KV: telemetryKv },

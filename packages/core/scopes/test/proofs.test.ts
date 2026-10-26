@@ -422,7 +422,7 @@ describe("the grace runs from when the App stopped counting (REQ-SCOPE-009)", ()
 
 describe("Verified Publisher application (REQ-SCOPE-010, REQ-SCOPE-018)", () => {
   const policy = (w: ReturnType<typeof world>, scopeId: string, mfa: string) =>
-    w.db.exec(`insert into scope_policies (scope_id, mfa, updated_at) values ('${scopeId}', '${mfa}', '${new Date(T0).toISOString()}')`);
+    w.db.exec(`insert into scope_mfa_policies (scope_id, policy, set_by, set_at) values ('${scopeId}', '${mfa === "passkeys" ? "passkey" : mfa}', 'u1', '${new Date(T0).toISOString()}')`);
 
   it("names every missing condition and asks for nothing else", async () => {
     const w = world();
@@ -460,9 +460,9 @@ describe("Verified Publisher application (REQ-SCOPE-010, REQ-SCOPE-018)", () => 
     expect(await decideApplication(w.ports, applied.application.id, "admin", { kind: "approve" })).toMatchObject({ ok: false, reason: "missing_conditions" });
     expect((await applicationOf(w.d1, acme.id)).state).toBe("pending");
     w.db.exec("update scopes set verified_domain = 'acme.com' where name = 'acme'");
-    w.db.exec(`update scope_policies set mfa = 'off' where scope_id = '${acme.id}'`);
+    w.db.exec(`update scope_mfa_policies set policy = 'none' where scope_id = '${acme.id}'`);
     expect(await decideApplication(w.ports, applied.application.id, "admin", { kind: "approve" })).toMatchObject({ ok: false, reason: "missing_conditions" });
-    w.db.exec(`update scope_policies set mfa = 'mfa' where scope_id = '${acme.id}'`);
+    w.db.exec(`update scope_mfa_policies set policy = 'mfa' where scope_id = '${acme.id}'`);
     expect(await decideApplication(w.ports, applied.application.id, "admin", { kind: "approve" })).toMatchObject({ ok: true });
 
     w.db.exec("update scopes set verified_domain = null where name = 'acme'");
