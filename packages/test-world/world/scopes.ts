@@ -32,6 +32,8 @@ export interface ProfileView {
   verifiedDomain: string | null;
   verifiedGithubOrg: string | null;
   verifiedPublisher: boolean;
+  /** Approved once, but no proof stands now. */
+  verifiedPublisherLapsed: boolean;
   /** Set while the domain proof came from a domain another scope held within the previous year. */
   verifiedDomainTransferredAt: string | null;
   held: boolean;
@@ -201,7 +203,7 @@ export function createScopeVerbs(driver: Driver, aliases: Aliases): ScopeVerbs {
     if (res.status === 404) return new NotFound();
     if (res.status !== 200) throw new InfrastructureError(`profile ${name}: ${res.status} ${res.text.slice(0, 120)}`);
     const b = parse(res) as {
-      name: string; kind: "user" | "org"; verified_domain: string | null; verified_github_org: string | null; verified_publisher: boolean;
+      name: string; kind: "user" | "org"; verified_domain: string | null; verified_github_org: string | null; verified_publisher: boolean; verified_publisher_lapsed: boolean;
       verified_domain_transferred_at: string | null; held: boolean; disputed: { domain: string; since: string } | null;
       mark: { kind: "domain" | "github" | "unproven"; text: string; hover_label: string | null }; packs: string[];
     };
@@ -211,6 +213,7 @@ export function createScopeVerbs(driver: Driver, aliases: Aliases): ScopeVerbs {
       verifiedDomain: b.verified_domain,
       verifiedGithubOrg: b.verified_github_org,
       verifiedPublisher: b.verified_publisher,
+      verifiedPublisherLapsed: b.verified_publisher_lapsed,
       verifiedDomainTransferredAt: b.verified_domain_transferred_at,
       held: b.held,
       disputed: b.disputed,
@@ -392,7 +395,9 @@ export function createScopeVerbs(driver: Driver, aliases: Aliases): ScopeVerbs {
     },
     async approve(target) {
       const { id } = await applicationIdOf(target.name);
-      failed("review.approve", await decideApplication(await proofPortsOf(driver), id, await adminId(), { kind: "approve" }));
+      const decided = await decideApplication(await proofPortsOf(driver), id, await adminId(), { kind: "approve" });
+      if (!decided.ok && decided.reason === "missing_conditions") throw new Refusal("forbidden", { message: aliases.unalias(decided.message) });
+      failed("review.approve", decided);
     },
     async deny(target, reason) {
       const { id } = await applicationIdOf(target.name);

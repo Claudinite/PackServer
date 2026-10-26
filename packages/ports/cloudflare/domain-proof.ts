@@ -8,6 +8,16 @@ const TIMEOUT_MS = 5000;
 const TXT = 16;
 const HOST = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 
+/** A host a URL parser would read as an address, or one it would rewrite, is not a name to ask for a file. */
+function isPlainName(host: string): boolean {
+  if (!HOST.test(host) || /^(0x[0-9a-f]*|[0-9]+)$/.test(host.slice(host.lastIndexOf(".") + 1))) return false;
+  try {
+    return new URL(`https://${host}`).hostname === host;
+  } catch {
+    return false;
+  }
+}
+
 /** A TXT answer's `data` is one or more quoted strings that a resolver joins back into one value. */
 function txtValue(data: string): string {
   const quoted = [...data.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) => m[1]!.replace(/\\(.)/g, "$1"));
@@ -56,11 +66,14 @@ async function readCapped(response: Response, cap: number): Promise<string | nul
   return new TextDecoder().decode(bytes);
 }
 
-/** The domain proof's one HTTPS fetch: that host, that path, no redirect followed, a small body (REQ-SCOPE-017). */
+/**
+ * The domain proof's one HTTPS fetch: that host, that path, no redirect followed, a small body (REQ-SCOPE-017).
+ * A name that resolves to a private address is left to Workers' egress, which does not reach private networks.
+ */
 export function wellKnownPort(fetcher: typeof fetch = fetch): WellKnown {
   return {
     async authFile(host): Promise<AuthFileAnswer> {
-      if (!HOST.test(host) || /^[0-9.]+$/.test(host)) return { status: "absent", reason: "unreachable" };
+      if (!isPlainName(host)) return { status: "absent", reason: "unreachable" };
       let response: Response;
       try {
         response = await fetcher(`https://${host}${AUTH_FILE_PATH}`, { redirect: "manual", signal: AbortSignal.timeout(TIMEOUT_MS), headers: { accept: "text/plain" } });

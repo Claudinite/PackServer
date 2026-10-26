@@ -288,7 +288,9 @@ describe("profiles (REQ-SCOPE-015)", () => {
     w.db.exec(`insert into vp_applications (id, scope_id, state, applied_by, applied_at) values ('a1', '${org.id}', 'pending', 'u1', '${iso}')`);
     expect(await loadProfile(w.d1, "acme")).toMatchObject({ packs: ["@acme/live"], verified_publisher: false });
     w.db.exec("update vp_applications set state = 'approved'");
-    expect(await loadProfile(w.d1, "acme")).toMatchObject({ verified_publisher: true, mark: { hover_label: null, kind: "unproven" } });
+    expect(await loadProfile(w.d1, "acme")).toMatchObject({ verified_publisher: false, verified_publisher_lapsed: true, mark: { hover_label: null, kind: "unproven" } });
+    w.db.exec("update scopes set verified_domain = 'acme.com' where name = 'acme'");
+    expect(await loadProfile(w.d1, "acme")).toMatchObject({ verified_publisher: true, verified_publisher_lapsed: false });
     expect(await loadProfile(w.d1, "nobody")).toBeNull();
   });
 });

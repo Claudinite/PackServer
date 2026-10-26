@@ -56,6 +56,20 @@ describe("judgeDomain (REQ-SCOPE-005)", () => {
     expect(judgeDomain("acme.co.uk")).toEqual({ ok: true, domain: "acme.co.uk" });
     expect(judgeDomain("acme.github.io")).toEqual({ ok: true, domain: "acme.github.io" });
   });
+  it("follows the Public Suffix List, wildcard and exception rules included", () => {
+    for (const suffix of ["readthedocs.io", "blogspot.com", "gitbook.io", "pythonanywhere.com", "s3.eu-west-1.amazonaws.com", "foo.compute.amazonaws.com", "bar.kobe.jp", "xn--p1ai"]) {
+      expect(judgeDomain(suffix), suffix).toMatchObject({ ok: false, reason: "public_suffix" });
+    }
+    expect(judgeDomain("city.kobe.jp")).toEqual({ ok: true, domain: "city.kobe.jp" });
+    expect(judgeDomain("me.readthedocs.io")).toEqual({ ok: true, domain: "me.readthedocs.io" });
+    expect([registrableLabel("me.readthedocs.io"), registrableLabel("x.blogspot.com"), registrableLabel("a.bar.kobe.jp"), registrableLabel("www.city.kobe.jp")]).toEqual(["me", "x", "a", "city"]);
+  });
+
+  it("refuses every spelling of an IP address and converts a Unicode name to punycode", () => {
+    for (const bad of ["0x7f.1", "0x7f.0.0.1", "127.1", "2130706433", "017700000001.1", "1.2.3.4", "[::1]"]) expect(judgeDomain(bad), bad).toMatchObject({ ok: false, reason: "format" });
+    expect(judgeDomain("bücher.de")).toEqual({ ok: true, domain: "xn--bcher-kva.de" });
+  });
+
   it("names the label registered under the suffix", () => {
     expect([registrableLabel("docs.acme.com"), registrableLabel("acme.co.uk"), registrableLabel("acme.com")]).toEqual(["acme", "acme", "acme"]);
   });
@@ -281,14 +295,16 @@ describe("a domain proof holds a colliding name and never takes it (REQ-SCOPE-01
 });
 
 describe("GitHub organisation proof (REQ-SCOPE-008, REQ-SCOPE-009)", () => {
+  const ORG_IDS: Record<string, number> = { acme: 101, gamma: 102, beta: 103, gone: 104, other: 105, susp: 106 };
+  const orgId = (login: string): number => ORG_IDS[login.toLowerCase()]!;
   const install = (w: ReturnType<typeof world>, id: number, login: string, sender: string, status = "active", uninstalled: string | null = null) =>
     w.db.exec(
       `insert into github_installations (installation_id, account_id, account_login, account_type, sender_login, repository_selection, status, installed_at, uninstalled_at, updated_at)
-       values (${id}, ${id}, '${login}', 'Organization', '${sender}', 'all', '${status}', '${new Date(T0).toISOString()}', ${uninstalled ? `'${uninstalled}'` : "null"}, '${new Date(T0).toISOString()}')`,
+       values (${id}, ${orgId(login)}, '${login}', 'Organization', '${sender}', 'all', '${status}', '${new Date(T0).toISOString()}', ${uninstalled ? `'${uninstalled}'` : "null"}, '${new Date(T0).toISOString()}')`,
     );
   const github = (w: ReturnType<typeof world>, userId: string, login: string, adminOf: string[]) => {
     w.db.exec(`insert into identities (id, user_id, provider, provider_user_id, login, created_at) values ('i-${userId}', '${userId}', 'github', 'gh-${userId}', '${login}', '${new Date(T0).toISOString()}')`);
-    for (const org of adminOf) w.db.exec(`insert into github_org_admins (user_id, github_org_id, github_org_login, observed_at) values ('${userId}', 'o-${org}', '${org}', '${new Date(T0).toISOString()}')`);
+    for (const org of adminOf) w.db.exec(`insert into github_org_admins (user_id, github_org_id, github_org_login, observed_at) values ('${userId}', '${orgId(org)}', '${org}', '${new Date(T0).toISOString()}')`);
   };
 
   it("accepts an App installed by an owner and an owner's sign-in, and refuses an installer who is not an owner", async () => {
@@ -305,6 +321,8 @@ describe("GitHub organisation proof (REQ-SCOPE-008, REQ-SCOPE-009)", () => {
     const beta = await w.org("u3", "betaorg");
     const gamma = await w.org("u2", "gammaorg");
 
+    expect(await proveGithubOrg(w.ports, beta, "u3", { org: "acme", method: "app" })).toMatchObject({ ok: false, reason: "not_org_admin" });
+    expect((await loadScope(w.d1, "betaorg"))!.verified_github_org).toBeNull();
     expect(await proveGithubOrg(w.ports, acme, "u1", { org: "acme", method: "app" })).toEqual({ ok: true, org: "Acme", method: "app" });
     expect(await proveGithubOrg(w.ports, beta, "u3", { org: "BETA", method: "admin" })).toEqual({ ok: true, org: "beta", method: "admin" });
     expect(await proveGithubOrg(w.ports, gamma, "u2", { org: "gamma", method: "app" })).toMatchObject({ ok: false, reason: "installer_not_owner" });
@@ -319,7 +337,7 @@ describe("GitHub organisation proof (REQ-SCOPE-008, REQ-SCOPE-009)", () => {
     const w = world();
     await w.person("u1", "ann");
     await w.person("u2", "bob");
-    github(w, "u1", "ann-gh", ["acme"]);
+    github(w, "u1", "ann-gh", ["acme", "other"]);
     github(w, "u2", "bob-gh", ["acme"]);
     const a = await w.org("u1", "one");
     const b = await w.org("u2", "two");
@@ -352,7 +370,7 @@ describe("GitHub organisation proof (REQ-SCOPE-008, REQ-SCOPE-009)", () => {
     expect(w.mail.inbox("ann@example.test").map((m) => m.subject).sort()).toEqual(["GitHub App removed from acme", "GitHub App removed from beta"]);
     expect(w.mail.inbox("ann@example.test")[0]!.text).toContain("2026-10-31");
 
-    w.db.exec("update github_installations set status = 'active', uninstalled_at = null where installation_id = 3");
+    install(w, 33, "beta", "ann-gh");
     w.advance(7 * DAY - 1000);
     expect(await sweepGithubProofs(w.ports)).toMatchObject({ revoked: 0, restored: 1 });
     expect((await loadScope(w.d1, "acme"))!.verified_github_org).toBe("acme");
@@ -361,6 +379,24 @@ describe("GitHub organisation proof (REQ-SCOPE-008, REQ-SCOPE-009)", () => {
     expect((await loadScope(w.d1, "acme"))!.verified_github_org).toBeNull();
     expect((await loadScope(w.d1, "betaorg"))!.verified_github_org).toBe("beta");
     expect((await loadScope(w.d1, "signed"))!.verified_github_org).toBe("gone");
+  });
+});
+
+describe("a suspended App starts the same grace (REQ-SCOPE-009)", () => {
+  it("alerts, then removes the proof 7 days after the suspension", async () => {
+    const w = world();
+    await w.person("u1", "ann");
+    w.db.exec(`insert into identities (id, user_id, provider, provider_user_id, login, created_at) values ('i1', 'u1', 'github', 'gh1', 'ann-gh', '${new Date(T0).toISOString()}')`);
+    w.db.exec(`insert into github_org_admins (user_id, github_org_id, github_org_login, observed_at) values ('u1', '106', 'susp', '${new Date(T0).toISOString()}')`);
+    w.db.exec(`insert into github_installations (installation_id, account_id, account_login, account_type, sender_login, repository_selection, status, installed_at, updated_at) values (7, 106, 'susp', 'Organization', 'ann-gh', 'all', 'active', '${new Date(T0).toISOString()}', '${new Date(T0).toISOString()}')`);
+    const org = await w.org("u1", "suspended");
+    await proveGithubOrg(w.ports, org, "u1", { org: "susp", method: "app" });
+    w.advance(DAY);
+    w.db.exec(`update github_installations set status = 'suspended', updated_at = '${new Date(w.at()).toISOString()}'`);
+    expect(await sweepGithubProofs(w.ports)).toEqual({ alerted: 1, revoked: 0, restored: 0 });
+    w.advance(7 * DAY);
+    expect(await sweepGithubProofs(w.ports)).toMatchObject({ revoked: 1 });
+    expect((await loadScope(w.d1, "suspended"))!.verified_github_org).toBeNull();
   });
 });
 
@@ -389,6 +425,30 @@ describe("Verified Publisher application (REQ-SCOPE-010, REQ-SCOPE-018)", () => 
     expect(await pendingApplications(w.d1)).toMatchObject([{ scope: "good", applied_by: "ann", basis: "domain" }]);
     expect(await pendingApplicationsFor(w.d1, "u1")).toMatchObject([{ scope: "good" }]);
     expect((await verificationFacts(w.d1, ok.id))!.verified).toBe(false);
+  });
+
+  it("refuses to approve once a condition has lapsed, and suspends an approved status whose proof lapses", async () => {
+    const w = world();
+    await w.person("u1", "ann");
+    await w.person("admin", "root");
+    const acme = await w.org("u1", "acme");
+    await w.prove(acme, "acme.com");
+    policy(w, acme.id, "mfa");
+    const applied = (await applyForVerified(w.ports, await w.fresh("acme"), "u1")) as { ok: true; application: { id: string } };
+
+    w.db.exec("update scopes set verified_domain = null where name = 'acme'");
+    expect(await decideApplication(w.ports, applied.application.id, "admin", { kind: "approve" })).toMatchObject({ ok: false, reason: "missing_conditions" });
+    expect((await applicationOf(w.d1, acme.id)).state).toBe("pending");
+    w.db.exec("update scopes set verified_domain = 'acme.com' where name = 'acme'");
+    w.db.exec(`update scope_policies set mfa = 'off' where scope_id = '${acme.id}'`);
+    expect(await decideApplication(w.ports, applied.application.id, "admin", { kind: "approve" })).toMatchObject({ ok: false, reason: "missing_conditions" });
+    w.db.exec(`update scope_policies set mfa = 'mfa' where scope_id = '${acme.id}'`);
+    expect(await decideApplication(w.ports, applied.application.id, "admin", { kind: "approve" })).toMatchObject({ ok: true });
+
+    w.db.exec("update scopes set verified_domain = null where name = 'acme'");
+    expect(await verificationFacts(w.d1, acme.id)).toMatchObject({ verified: false, verified_lapsed: true });
+    w.db.exec("update scopes set verified_domain = 'acme.com' where name = 'acme'");
+    expect(await verificationFacts(w.d1, acme.id)).toMatchObject({ verified: true, verified_lapsed: false });
   });
 
   it("explains a denial to every owner, allows renewal after 30 days, and grants and revokes", async () => {

@@ -153,7 +153,9 @@ export const github_org_proofs = sqliteTable(
     scope_id: text("scope_id")
       .primaryKey()
       .references(() => scopes.id),
-    /** Lower-cased GitHub login of the organisation. */
+    /** GitHub's numeric organisation id, which survives a rename; the proof is kept unique on it. */
+    org_id: text("org_id").notNull(),
+    /** Lower-cased login of the organisation as last seen, for display. */
     org_login: text("org_login").notNull(),
     method: text("method", { enum: GITHUB_PROOF_METHODS }).notNull(),
     installation_id: integer("installation_id"),
@@ -162,7 +164,7 @@ export const github_org_proofs = sqliteTable(
     alerted_at: text("alerted_at"),
   },
   (t) => [
-    uniqueIndex("github_org_proofs_org_unique").on(t.org_login),
+    uniqueIndex("github_org_proofs_org_unique").on(t.org_id),
     check("github_org_proofs_method_check", sql`${t.method} in (${inList(GITHUB_PROOF_METHODS)})`),
   ],
 );

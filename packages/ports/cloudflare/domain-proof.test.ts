@@ -42,7 +42,7 @@ describe("wellKnownPort (REQ-SCOPE-017)", () => {
     expect(await wellKnownPort(answering(new Error("boom"))).authFile("acme.com")).toEqual({ status: "absent", reason: "unreachable" });
     expect(await wellKnownPort(answering(new Response("", { status: 500 }))).authFile("acme.com")).toEqual({ status: "absent", reason: "unreachable" });
     const fetcher = answering();
-    for (const host of ["acme.com/evil", "user@acme.com", "acme.com:8443", "127.0.0.1", "localhost", "acme.com?x=1", ""]) {
+    for (const host of ["acme.com/evil", "user@acme.com", "acme.com:8443", "127.0.0.1", "0x7f.1", "0x7f.0.0.1", "127.1", "2130706433", "017700000001.1", "localhost", "acme.com?x=1", ""]) {
       expect(await wellKnownPort(fetcher).authFile(host)).toEqual({ status: "absent", reason: "unreachable" });
     }
     expect(fetcher).not.toHaveBeenCalled();

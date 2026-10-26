@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "0bfe4fe3-89a3-4086-8dad-bef19fd36530",
+  "id": "b8537601-dd3b-4e98-9aae-05b8719b23e0",
   "prevId": "7cc5b332-397a-4f47-ba05-dfbca91bec02",
   "tables": {
     "credentials": {
@@ -1096,6 +1096,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "org_login": {
           "name": "org_login",
           "type": "text",
@@ -1136,7 +1143,7 @@
         "github_org_proofs_org_unique": {
           "name": "github_org_proofs_org_unique",
           "columns": [
-            "org_login"
+            "org_id"
           ],
           "isUnique": true
         }

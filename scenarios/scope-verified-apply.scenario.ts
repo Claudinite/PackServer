@@ -45,6 +45,23 @@ scenario(
     for (const org of [noProof, noMfa, noReview]) await expect(world.profiles.profile(org)).resolves.toMatchObject({ verifiedPublisher: false });
     await expect(noReview.verification()).resolves.toMatchObject({ application: { state: "pending" } });
 
+    world.dns.remove("noreview.com");
+    world.dns.remove("bydomain.com");
+    await world.clock.advance("30d");
+    await world.cron.run("domain-rechecks");
+    await world.clock.advance("30d");
+    await world.cron.run("domain-rechecks");
+    await p3.signIn();
+    await expect(world.verifiedPublishers.approve(noReview)).toBeRefusedSaying("no longer meets the conditions");
+    await expect(noReview.verification()).resolves.toMatchObject({ application: { state: "pending" } });
+    await expect(world.profiles.profile(byDomain)).resolves.toMatchObject({ verifiedPublisher: false, verifiedPublisherLapsed: true, verifiedDomain: null });
+
+    await p4.signIn();
+    const again = await byDomain.verifyDomain("bydomain.com");
+    again.publishTxt();
+    await byDomain.checkDomain(again);
+    await expect(world.profiles.profile(byDomain)).resolves.toMatchObject({ verifiedPublisher: true, verifiedPublisherLapsed: false });
+
     const calls = await world.recorder.invocations({ kind: "http" });
     expect(calls.filter((c) => /polar|stripe|paddle|payment|checkout/i.test(c.target))).toEqual([]);
   },

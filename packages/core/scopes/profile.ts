@@ -10,6 +10,8 @@ export interface Profile {
   verified_domain: string | null;
   verified_github_org: string | null;
   verified_publisher: boolean;
+  /** Approved once, but no proof stands now: shown as lapsed until one is restored. */
+  verified_publisher_lapsed: boolean;
   /** Set while the domain proof came from a domain another scope held within the previous year (REQ-SCOPE-007). */
   verified_domain_transferred_at: string | null;
   /** A held name cannot publish until an admin decides the dispute that holds it. */
@@ -43,6 +45,7 @@ export async function loadProfile(d1: D1, name: string): Promise<Profile | null>
     verified_domain: scope.verified_domain,
     verified_github_org: scope.verified_github_org,
     verified_publisher,
+    verified_publisher_lapsed: facts?.verified_lapsed === true,
     verified_domain_transferred_at: facts?.verified_domain_transferred_at ?? null,
     held: scope.state === "held",
     disputed,

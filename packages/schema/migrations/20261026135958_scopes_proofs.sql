@@ -23,6 +23,7 @@ CREATE INDEX `domain_challenges_scope_idx` ON `domain_challenges` (`scope_id`,`s
 CREATE INDEX `domain_challenges_domain_idx` ON `domain_challenges` (`domain`,`ended_at`);--> statement-breakpoint
 CREATE TABLE `github_org_proofs` (
 	`scope_id` text PRIMARY KEY NOT NULL,
+	`org_id` text NOT NULL,
 	`org_login` text NOT NULL,
 	`method` text NOT NULL,
 	`installation_id` integer,
@@ -32,7 +33,7 @@ CREATE TABLE `github_org_proofs` (
 	CONSTRAINT "github_org_proofs_method_check" CHECK("github_org_proofs"."method" in ('app', 'admin'))
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `github_org_proofs_org_unique` ON `github_org_proofs` (`org_login`);--> statement-breakpoint
+CREATE UNIQUE INDEX `github_org_proofs_org_unique` ON `github_org_proofs` (`org_id`);--> statement-breakpoint
 CREATE TABLE `scope_disputes` (
 	`id` text PRIMARY KEY NOT NULL,
 	`scope_id` text NOT NULL,

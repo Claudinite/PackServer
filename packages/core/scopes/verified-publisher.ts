@@ -45,6 +45,17 @@ export async function applicationOf(d1: D1, scopeId: string): Promise<Applicatio
   };
 }
 
+/** What a Verified Publisher still lacks: a live proof, and MFA required scope-wide (REQ-SCOPE-010). */
+async function missingConditions(d1: D1, scopeId: string, proofs: { verified_domain: string | null; verified_github_org: string | null }): Promise<Array<"proof" | "mfa">> {
+  const missing: Array<"proof" | "mfa"> = [];
+  if (!proofs.verified_domain && !proofs.verified_github_org) missing.push("proof");
+  if ((await scopeMfaPolicy(d1, scopeId)) === "off") missing.push("mfa");
+  return missing;
+}
+
+const needs = (missing: Array<"proof" | "mfa">): string =>
+  missing.map((m) => (m === "proof" ? "prove a domain or a GitHub organisation" : "require MFA scope-wide")).join(" and ");
+
 export type ApplyResult =
   | { ok: true; application: ApplicationView }
   | { ok: false; reason: "not_org" | "missing_conditions" | "pending" | "verified" | "renew_later"; message: string; missing?: Array<"proof" | "mfa">; renewable_at?: string };
@@ -62,13 +73,8 @@ export async function applyForVerified(ports: ProofPorts, scope: ScopeRow, userI
     return { ok: false, reason: "renew_later", renewable_at: current.renewable_at, message: `The application was denied; it can be renewed from ${current.renewable_at.slice(0, 10)}.` };
   }
 
-  const missing: Array<"proof" | "mfa"> = [];
-  if (!scope.verified_domain && !scope.verified_github_org) missing.push("proof");
-  if ((await scopeMfaPolicy(ports.d1, scope.id)) === "off") missing.push("mfa");
-  if (missing.length > 0) {
-    const parts = missing.map((m) => (m === "proof" ? "prove a domain or a GitHub organisation" : "require MFA scope-wide"));
-    return { ok: false, reason: "missing_conditions", missing, message: `To apply, first ${parts.join(" and ")}.` };
-  }
+  const missing = await missingConditions(ports.d1, scope.id, scope);
+  if (missing.length > 0) return { ok: false, reason: "missing_conditions", missing, message: `To apply, first ${needs(missing)}.` };
 
   const id = newId(ports);
   try {
@@ -84,7 +90,7 @@ export async function applyForVerified(ports: ProofPorts, scope: ScopeRow, userI
 
 export type DecisionResult =
   | { ok: true; scope: string }
-  | { ok: false; reason: "unknown" | "not_pending" | "reason_required"; message: string };
+  | { ok: false; reason: "unknown" | "not_pending" | "reason_required" | "missing_conditions"; message: string };
 
 type Decision = { kind: "approve" } | { kind: "deny"; reason: string };
 
@@ -97,6 +103,14 @@ export async function decideApplication(ports: ProofPorts, applicationId: string
   if (!found) return { ok: false, reason: "unknown", message: "No such application." };
   const scopeId = String(found.scope_id);
   const name = String(found.name);
+  if (decision.kind === "approve") {
+    const proofs = (await ports.d1.query("select verified_domain, verified_github_org from scopes where id = ?", [scopeId])).rows[0];
+    const missing = await missingConditions(ports.d1, scopeId, {
+      verified_domain: (proofs?.verified_domain as string | null | undefined) ?? null,
+      verified_github_org: (proofs?.verified_github_org as string | null | undefined) ?? null,
+    });
+    if (missing.length > 0) return { ok: false, reason: "missing_conditions", message: `${name} no longer meets the conditions: it must ${needs(missing)}.` };
+  }
   const nowMs = ports.clock.now();
   const changed = await ports.d1.query(
     `update vp_applications set state = ?, decided_at = ?, decided_by = ?, denial_reason = ?, renewable_at = ? where id = ? and state = 'pending'`,
@@ -158,6 +172,8 @@ export async function pendingApplicationsFor(d1: D1, userId: string): Promise<Ar
 
 export interface VerificationFacts {
   verified: boolean;
+  /** Approved, but the last proof has lapsed: the status is suspended, not revoked, until a proof is restored. */
+  verified_lapsed: boolean;
   verified_domain: string | null;
   verified_github_org: string | null;
   /** Set while the domain proof came from a domain another scope held within the previous year (REQ-SCOPE-007). */
@@ -176,8 +192,11 @@ export async function verificationFacts(d1: D1, scopeId: string): Promise<Verifi
   ]);
   const row = scope!.rows[0];
   if (!row) return null;
+  const hasProof = Boolean(row.verified_domain) || Boolean(row.verified_github_org);
+  const isApproved = approved!.rows.length > 0;
   return {
-    verified: approved!.rows.length > 0,
+    verified: isApproved && hasProof,
+    verified_lapsed: isApproved && !hasProof,
     verified_domain: (row.verified_domain as string | null) ?? null,
     verified_github_org: (row.verified_github_org as string | null) ?? null,
     verified_domain_transferred_at: (transfer!.rows[0]?.transferred_at as string | null | undefined) ?? null,

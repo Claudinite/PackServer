@@ -13,6 +13,7 @@ export interface GitHubRepoHandle {
 export interface GitHubInstallation {
   readonly id: number;
   readonly account: string;
+  readonly accountId?: number;
 }
 
 /** A delivery the registry acknowledged: what it did with it. */
@@ -45,6 +46,8 @@ export interface InstallOptions {
   by?: string;
   type?: "Organization" | "User";
   installationId?: number;
+  /** GitHub's numeric id of the account; a reinstall keeps it while the installation id changes. */
+  accountId?: number;
   repositories?: "all" | "selected";
 }
 
@@ -85,6 +88,8 @@ export interface GitHubModule {
     repo(slug: string, o?: { id?: number; private?: boolean }): GitHubRepoHandle;
     installApp(account: string, o?: InstallOptions): Promise<GitHubInstallation>;
     uninstallApp(installation: GitHubInstallation): Promise<Delivered | IgnoredDelivery>;
+    /** GitHub suspends the installation: the App stops working for the account but is not removed. */
+    suspendApp(installation: GitHubInstallation): Promise<Delivered | IgnoredDelivery>;
     /** Delivers the `issues` webhook GitHub sends when this issue changes state. */
     issueState(repo: string, number: number, state: "open" | "closed", o?: IssueStateOptions): Promise<Delivered | IgnoredDelivery>;
     webhook(event: string, o?: WebhookOptions): Promise<Delivered | IgnoredDelivery>;
@@ -117,13 +122,13 @@ export function createGitHub(driver: Driver): GitHubModule {
   };
   let installations = 100;
 
-  const account = (login: string, type: "Organization" | "User" = "Organization") => ({ login, id: 1000 + login.length, type });
+  const account = (login: string, type: "Organization" | "User" = "Organization", id = 1000 + login.length) => ({ login, id, type });
   const installationPayload = (action: string, id: number, login: string, o: InstallOptions & { appId?: number } = {}) => ({
     action,
     installation: {
       id,
       app_id: o.appId ?? Number(GITHUB_TEST_APP_ID),
-      account: account(login, o.type),
+      account: account(login, o.type, o.accountId),
       repository_selection: o.repositories ?? "all",
     },
     sender: { login: o.by ?? login },
@@ -174,9 +179,11 @@ export function createGitHub(driver: Driver): GitHubModule {
         const id = o.installationId ?? ++installations;
         const delivered = await deliver("installation", installationPayload("created", id, login, o));
         if (delivered instanceof Ignored || delivered.result !== "applied") throw new InfrastructureError(`the installation of ${login} was not applied`);
-        return { id, account: login };
+        return o.accountId === undefined ? { id, account: login } : { id, account: login, accountId: o.accountId };
       },
-      uninstallApp: (installation) => deliver("installation", installationPayload("deleted", installation.id, installation.account)),
+      uninstallApp: (installation) => deliver("installation", installationPayload("deleted", installation.id, installation.account, installation.accountId === undefined ? {} : { accountId: installation.accountId })),
+      suspendApp: (installation) =>
+        deliver("installation", installationPayload("suspend", installation.id, installation.account, installation.accountId === undefined ? {} : { accountId: installation.accountId })),
       issueState(repo, number, issueState, o = {}) {
         const handle = app().repo(repo, o.private === undefined ? {} : { private: o.private });
         return deliver(

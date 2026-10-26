@@ -68,14 +68,15 @@ scenario(
       const beta = await s.orgs.create("beta");
       const gamma = await n.orgs.create("gamma");
 
-      await world.github.installApp(acmeGh, { by: world.alias("g") });
-      await world.github.installApp(gammaGh, { by: world.alias("n") });
+      await world.github.installApp(acmeGh, { by: world.alias("g"), accountId: 7001 });
+      await world.github.installApp(gammaGh, { by: world.alias("n"), accountId: 7003 });
 
+      await expect(beta.verifyGitHub(acmeGh, "app")).toBeRefusedSaying("owner of");
       await expect(acme.verifyGitHub(acmeGh, "app")).resolves.toMatchObject({ org: "acmegh", method: "app" });
       await expect(beta.verifyGitHub(betaGh, "admin")).resolves.toMatchObject({ org: "betagh", method: "admin" });
       await expect(gamma.verifyGitHub(gammaGh, "app")).toBeRefusedSaying("not an owner");
       await expect(gamma.verifyGitHub(gammaGh, "admin")).toBeRefusedSaying("owner");
-      await expect(beta.verifyGitHub(acmeGh, "admin")).toBeRefusedSaying("already holds");
+      await expect(beta.verifyGitHub(acmeGh, "app")).toBeRefusedSaying("owner of");
 
       await expect(world.profiles.profile(acme)).resolves.toMatchObject({ verifiedGithubOrg: "acmegh", mark: { kind: "github", text: `● github.com/acmegh` } });
       await expect(world.profiles.profile(beta)).resolves.toMatchObject({ verifiedGithubOrg: "betagh" });
@@ -110,7 +111,7 @@ scenario(
       const acmeGh = world.alias("acmegh");
       const g = await world.publishers.create({ handle: "g", githubOrgs: [{ id: 7001, login: acmeGh, role: "admin" }] });
       const acme = await g.orgs.create("acme");
-      const installation = await world.github.installApp(acmeGh, { by: world.alias("g") });
+      const installation = await world.github.installApp(acmeGh, { by: world.alias("g"), accountId: 7001 });
       await acme.verifyGitHub(acmeGh, "app");
 
       await world.github.uninstallApp(installation);
@@ -132,20 +133,35 @@ scenario(
       const acmeGh = world.alias("secondgh");
       const h = await world.publishers.create({ handle: "h", githubOrgs: [{ id: 7009, login: acmeGh, role: "admin" }] });
       const acme = await h.orgs.create("second");
-      const installation = await world.github.installApp(acmeGh, { by: world.alias("h"), installationId: 4201 });
+      const installation = await world.github.installApp(acmeGh, { by: world.alias("h"), accountId: 7009 });
       await acme.verifyGitHub(acmeGh, "app");
 
       await world.github.uninstallApp(installation);
       await world.cron.run("github-proof-lapse");
       await world.clock.advance("3d");
       await h.signIn();
-      await world.github.installApp(acmeGh, { by: world.alias("h"), installationId: 4201 });
+      const again = await world.github.installApp(acmeGh, { by: world.alias("h"), accountId: 7009 });
+      expect(again.id).not.toBe(installation.id);
       await world.cron.run("github-proof-lapse");
       await expect(acme.verification()).resolves.toMatchObject({ github: { org: "secondgh", endsAt: null } });
 
       await world.clock.advance("30d");
       await world.cron.run("github-proof-lapse");
       await expect(world.profiles.profile(acme)).resolves.toMatchObject({ verifiedGithubOrg: "secondgh" });
+    }
+    {
+      const orgGh = world.alias("thirdgh");
+      const t = await world.publishers.create({ handle: "t3", githubOrgs: [{ id: 7011, login: orgGh, role: "admin" }] });
+      const third = await t.orgs.create("third");
+      const installation = await world.github.installApp(orgGh, { by: world.alias("t3"), accountId: 7011 });
+      await third.verifyGitHub(orgGh, "app");
+
+      await world.github.suspendApp(installation);
+      await world.cron.run("github-proof-lapse");
+      expect(world.mail.inbox(t).all().filter((m) => m.subject.startsWith("GitHub App removed"))).toHaveLength(1);
+      await world.clock.advance("7d1h");
+      await world.cron.run("github-proof-lapse");
+      await expect(world.profiles.profile(third)).resolves.toMatchObject({ verifiedGithubOrg: null });
     }
     await expectNoWrites(world);
   },
