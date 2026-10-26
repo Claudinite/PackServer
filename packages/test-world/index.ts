@@ -3,7 +3,7 @@ export { InfrastructureError, NotImplemented } from "./world/errors";
 export { Refusal, NotFound, Ignored, Held } from "./world/outcomes";
 export { accepted, archiveBytes, type CiRepo, type CiWorkflow, type Presigned, type Staged, type StagedObject, type UploadCredential } from "./world/ci-workflow";
 export type * from "./world/types";
-export type { PackBody, VersionBody, Read } from "./world/packs";
+export type { PackBody, PackHandle, VersionBody, Read } from "./world/packs";
 export type { OrgHandle, PeopleView, ProfileView, TransferHandle, Invitation, ScopeRole, DomainChallenge, DomainCheck, GithubProof, ApplicationView, ApplicationState, VerificationView, ReviewModule } from "./world/scopes";
 export type { DnsModule } from "./world/proofs";
 export type { ScopeOwner } from "./world/areas/scopes";

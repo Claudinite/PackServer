@@ -1,11 +1,11 @@
 import { expect, Held, scenario } from "@packserver/test-world";
-import type { Pack, ScenarioOpts, World } from "@packserver/test-world";
+import type { PackHandle, ScenarioOpts, World } from "@packserver/test-world";
 
 // The Logpush archive is written to the admin Worker's ops bucket and the rollup reads the registry database, both through the storage seam.
 const ROLLUP: ScenarioOpts = { needs: ["fakes", "storage", "clock", "reset"] };
 
 /** A signed-in person with a read token for a private pack: their own by default, or another scope's they have been made an owner of. */
-async function holder(world: World, handle: string, secret?: Pack) {
+async function holder(world: World, handle: string, secret?: PackHandle) {
   const owner = await world.users.create({ handle });
   await owner.signIn();
   await owner.mfa.enrol();
