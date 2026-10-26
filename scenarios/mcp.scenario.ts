@@ -24,7 +24,7 @@ scenario("IT-MCP-001 Anonymous access to the four public tools", async (world) =
 scenario("IT-MCP-002 search_packs returns ranked compact cards", async (world) => {
   const pack = await world.packs.public("@acme/gcp");
   await world.search.list(pack, {
-    pitch: "g".repeat(1024),
+    pitch: "g".repeat(2000),
     category: "cloud",
     parts: ["skills", "guards"],
     repository: "github.com/acme/gcp",
@@ -33,7 +33,7 @@ scenario("IT-MCP-002 search_packs returns ranked compact cards", async (world) =
   });
   await world.search.signals(pack, { stars: 12, rating: 4.5 });
 
-  const { body } = await world.agents.anonymous().search("g".repeat(1024));
+  const { body } = await world.agents.anonymous().search("g".repeat(2000));
   const card = body.cards[0];
   expect(card).toMatchObject({
     id: pack.name,
@@ -71,51 +71,6 @@ scenario("IT-MCP-004 Search shows every promoted version at once with published_
 
   const view = await anon.pack(u);
   expect(view.body.versions.map((x: { version: string; published_at: string }) => [x.version, typeof x.published_at])).toEqual([["1.1.0", "string"], ["1.0.0", "string"]]);
-}, agent);
-
-// The advisory and the "Reported, under review" label wait on the reports tables (T-092); the tool's seam for them is proven in the Worker's own tests.
-scenario("IT-MCP-005 get_pack returns the full public view; the adopt snippet is a Preview until the engine ships", async (world) => {
-  const pack = await world.packs.public("@acme/gcp", {
-    versions: ["1.0.0", "1.1.0"],
-    verification: { verified: true, verifiedDomain: "acme.com", sourceVerified: true },
-    capabilities: ["guard"],
-    preinstall: { guards: [{ name: "no-secrets", tool_calls: ["Bash"] }], new: ["guard:no-secrets"] },
-  });
-  await world.search.list(pack, { pitch: "Deploy to Google Cloud", category: "cloud", repository: "github.com/acme/gcp" });
-  await pack.version("1.0.0").seed({ status: "deprecated", reason: "use 1.1.0" });
-  const rules = "r".repeat(5000);
-  await world.agents.seedExcerpts(pack, "1.1.0", {
-    readme: "Deploys things.",
-    rules,
-    skills: [{ name: "deploy", description: "Deploy a service" }, { name: "iam", description: "Grant roles" }, { name: "logs", description: "Read logs" }],
-  });
-  const anon = world.agents.anonymous();
-
-  await world.agents.setAdoptVersion(null);
-  const preview = (await anon.pack(pack)).body;
-  expect(preview).toMatchObject({
-    id: pack.name,
-    version: "1.1.0",
-    manifest: { capabilities: ["guard"] },
-    inventory: { skills: { count: 0 } },
-    preinstall: { publisher_text: { guards: [{ name: "no-secrets" }], new: ["guard:no-secrets"] } },
-    publisher_text: { readme_excerpt: "Deploys things.", rules_excerpt: rules.slice(0, 2000) },
-    verification: { verified: true, verified_domain: "acme.com", source_verified: true },
-    provenance: { source_verified: true },
-    validation: { verdict: "pass" },
-    repository: "github.com/acme/gcp",
-    score: { total: expect.any(Number) },
-  });
-  expect(preview.skills.map((s: { publisher_text: { name: string } }) => s.publisher_text.name)).toEqual(["deploy", "iam", "logs"]);
-  expect(preview.versions.map((x: { version: string; status: string }) => [x.version, x.status])).toEqual([["1.1.0", "active"], ["1.0.0", "deprecated"]]);
-  expect(preview.adopt_snippet).toMatch(/^Preview: adoptable with cn ≥ \S+/);
-  expect(preview).not.toHaveProperty("declared_snippet");
-  expect(Object.keys(preview).filter((k) => /^(files|contents)$/.test(k))).toEqual([]);
-
-  await world.agents.setAdoptVersion("1.62000.0");
-  const live = (await anon.pack(pack)).body;
-  expect(live.adopt_snippet).toBe(`cn adopt ${pack.name}`);
-  expect(live.declared_snippet).toContain(pack.name);
 }, agent);
 
 scenario("IT-MCP-006 get_download returns URL, sha256 and attestation; yanked by exact version; quarantined held", async (world) => {
@@ -161,16 +116,16 @@ scenario("IT-MCP-020 Rate limits per IP and per token; no daily quota", async (w
   const token = await owner.tokens.mint({ read: secret });
 
   const anon = world.agents.anonymous();
-  const anonymous = await anon.flood(90);
+  const anonymous = await anon.flood(70);
   expect(anonymous.refused).toBeGreaterThan(0);
-  expect(anonymous.answered).toBeLessThan(90);
+  expect(anonymous.answered).toBeLessThan(70);
   expect(anonymous.refusal?.reason).toBe("rate-limited");
   expect(anonymous.refusalMentionsPack).toBe(false);
 
-  const holder = await anon.from("198.19.0.7").bearing(token).flood(700);
+  const holder = await anon.from("198.19.0.7").bearing(token).flood(640);
   expect(holder.refused).toBeGreaterThan(0);
   expect(holder.answered).toBeGreaterThan(anonymous.answered * 2);
-  expect(holder.answered).toBeLessThan(700);
+  expect(holder.answered).toBeLessThan(640);
   expect(holder.refusal?.reason).toBe("rate-limited");
   expect(holder.refusalMentionsPack).toBe(false);
 

@@ -78,7 +78,7 @@ function outside(value: unknown, needle: string, path: string, inside: boolean):
 }
 
 /** Calls in flight at once during a burst: enough to finish a few hundred inside the minute the limit counts. */
-const BURST_WIDTH = 25;
+const BURST_WIDTH = 50;
 
 /** Every agent starts at an address of its own, so one scenario's calls never spend another's minute. */
 function freshAddress(): string {
@@ -138,7 +138,7 @@ export function createAgents(driver: Driver, aliases: Aliases): AgentsModule {
                 method: "POST",
                 path: "/mcp",
                 headers: { accept: "application/json, text/event-stream", ...(bearer ? { authorization: `Bearer ${bearer}` } : {}) },
-                body: { jsonrpc: "2.0", id: sent + i + 1, method: "tools/call", params: { name: "list_categories", arguments: {} } },
+                body: { jsonrpc: "2.0", id: sent + i + 1, method: "ping" },
               }),
             ),
           );

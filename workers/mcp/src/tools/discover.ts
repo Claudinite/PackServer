@@ -6,9 +6,11 @@ import { categories, search } from "../search";
 import { answer, describe, failure, unavailable } from "./result";
 
 /** The pitch is the publisher's text: it leaves the card for `publisher_text`, the rest is the registry's. */
+export const PITCH_LIMIT = 1024;
+
 export function mcpCard(card: PackCard) {
   const { pitch, ...rest } = card;
-  return { ...rest, publisher_text: { pitch } };
+  return { ...rest, publisher_text: { pitch: pitch.slice(0, PITCH_LIMIT) } };
 }
 
 export function registerDiscovery(server: McpServer, runtime: McpRuntime): void {

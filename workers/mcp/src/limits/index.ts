@@ -21,12 +21,12 @@ async function withinIpLimit(runtime: McpRuntime, c: Context): Promise<boolean> 
   return (await limiterOf(runtime).limit({ key: `mcp:ip:${rateLimitClient(c)}` })).success;
 }
 
-/** A token holder is refused only when every slot is spent; the starting slot is random so load spreads evenly. */
-async function withinTokenLimit(runtime: McpRuntime, grant: TokenGrant): Promise<boolean> {
+/** Spends one unit from any of `TOKEN_SLOTS` keys under `prefix`; the starting slot is random so load spreads evenly. */
+async function withinSlots(runtime: McpRuntime, prefix: string): Promise<boolean> {
   const limiter = limiterOf(runtime);
   const start = crypto.getRandomValues(new Uint32Array(1))[0] as number;
   for (let i = 0; i < TOKEN_SLOTS; i++) {
-    const { success } = await limiter.limit({ key: `mcp:token:${grant.id}:${(start + i) % TOKEN_SLOTS}` });
+    const { success } = await limiter.limit({ key: `${prefix}:${(start + i) % TOKEN_SLOTS}` });
     if (success) return true;
   }
   return false;
@@ -34,20 +34,23 @@ async function withinTokenLimit(runtime: McpRuntime, grant: TokenGrant): Promise
 
 function unauthorised(c: Context): Response {
   const res = Response.json({ error: "unauthorized" }, { status: 401, headers: { "cache-control": "no-store" } });
-  res.headers.set("www-authenticate", `Bearer resource_metadata="${new URL(c.req.url).origin}/.well-known/oauth-protected-resource/mcp"`);
+  res.headers.set("www-authenticate", `Bearer resource_metadata="${new URL(c.req.url).origin}/.well-known/oauth-protected-resource/mcp", scope="packs:read"`);
   return res;
 }
 
 /**
  * Who is calling and whether they may call now. Only a `psr_` read token is understood here; any other
  * bearer, a third party's included, gets the same 401 as a wrong token and is counted against the address.
+ * An address is limited before any token lookup, so one over its limit cannot drive database reads.
  */
 export async function admit(runtime: McpRuntime, c: Context): Promise<Caller | Response> {
-  const presented = BEARER.exec(c.req.header("authorization") ?? "")?.[1];
-  if (c.req.header("authorization") !== undefined && presented === undefined) return (await withinIpLimit(runtime, c)) ? unauthorised(c) : rateLimited();
-  if (presented === undefined) return (await withinIpLimit(runtime, c)) ? { kind: "anonymous" } : rateLimited();
+  const header = c.req.header("authorization");
+  const presented = BEARER.exec(header ?? "")?.[1];
+  if (header === undefined) return (await withinIpLimit(runtime, c)) ? { kind: "anonymous" } : rateLimited();
 
-  const grant = presented.startsWith(TOKEN_PREFIX) ? await authenticateToken({ d1: runtime.ports.d1, clock: runtime.tokenClock }, presented, clientIp(c)) : null;
+  if (!(await withinSlots(runtime, `mcp:ip-bearer:${rateLimitClient(c)}`))) return rateLimited();
+  const grant =
+    presented?.startsWith(TOKEN_PREFIX) === true ? await authenticateToken({ d1: runtime.ports.d1, clock: runtime.tokenClock }, presented, clientIp(c)) : null;
   if (!grant) return (await withinIpLimit(runtime, c)) ? unauthorised(c) : rateLimited();
-  return (await withinTokenLimit(runtime, grant)) ? { kind: "token", grant } : rateLimited();
+  return (await withinSlots(runtime, `mcp:token:${grant.id}`)) ? { kind: "token", grant } : rateLimited();
 }

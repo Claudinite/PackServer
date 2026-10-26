@@ -150,7 +150,8 @@ describe("get_pack", () => {
     expect(body.publisher_text.rules_excerpt).toBe("r".repeat(2000));
     expect(body.skills).toEqual([{ publisher_text: { name: "deploy", description: MARKER } }]);
     expect(Object.keys(body)).not.toContain("files");
-    expect(body.signals).toMatchObject({ verified_adoptions: null, declaring_repositories: null });
+    expect(body.signals).toMatchObject({ stars: null, fetches_30d: null, verified_adoptions: null, declaring_repositories: null });
+    expect(body.manifest).toEqual({ capabilities: ["guard"], requires: [] });
   });
 
   it("carries advisories and the review label from their sources, and null while unwired", async () => {
@@ -197,6 +198,26 @@ describe("get_download", () => {
 });
 
 describe("limits", () => {
+  it("counts an invalid read token against its address, so the address cannot probe without end", async () => {
+    const { app } = await build({ limit: 5 });
+    const statuses: number[] = [];
+    for (let i = 0; i < 8; i++) statuses.push((await rpc(app, "tools/list", undefined, { authorization: "Bearer psr_forged" })).status);
+    expect(statuses).toEqual([401, 401, 401, 401, 401, 429, 429, 429]);
+    expect((await rpc(app, "tools/list")).status).toBe(429);
+  });
+
+  it("does not look a token up for an address over its limit", async () => {
+    const { app, d1 } = await build({ limit: 1 });
+    let lookups = 0;
+    const query = d1.query.bind(d1);
+    d1.query = async (sql: string, params?: unknown[]) => {
+      if (/read_tokens/.test(sql)) lookups++;
+      return query(sql, params);
+    };
+    for (let i = 0; i < 60; i++) await rpc(app, "tools/list", undefined, { authorization: "Bearer psr_forged" });
+    expect(lookups).toBeLessThanOrEqual(10);
+  });
+
   it("refuses an address after its limit with a rate-limit answer, and not another address", async () => {
     const { app } = await build({ limit: 5 });
     const statuses: number[] = [];
@@ -211,7 +232,7 @@ describe("limits", () => {
     for (const bearer of ["ghp_thirdparty", "psr_unknown"]) {
       const res = await rpc(app, "tools/list", undefined, { authorization: `Bearer ${bearer}` });
       expect(res.status).toBe(401);
-      expect(res.headers.get("www-authenticate")).toMatch(/^Bearer resource_metadata="[^"]+\/\.well-known\/oauth-protected-resource\/mcp"$/);
+      expect(res.headers.get("www-authenticate")).toMatch(/^Bearer resource_metadata="[^"]+\/\.well-known\/oauth-protected-resource\/mcp", scope="packs:read"$/);
     }
   });
 });
