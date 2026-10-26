@@ -88,10 +88,16 @@ scenario("IT-SCOPE-013 An org that owns packs cannot be deleted", async (world) 
   const w = await world.publishers.create({ handle: "w" });
   const org = await p.orgs.create("acme");
   const target = await w.orgs.create("target");
+  const spare = await p.orgs.create("spare");
   const pack = await world.packs.public("@acme/gcp");
 
   await expect(org.delete()).toBeRefusedSaying("@acme/gcp");
   await expect(org.delete({ assertion: "none" })).toBeRefused("step-up");
+  const forSpare = await p.assertionFor({ action: "org.delete", target: world.alias("spare") });
+  await expect(org.delete({ assertion: forSpare })).toBeRefused("step-up");
+  await expect(spare.delete({ assertion: await p.assertionFor("org.delete") })).toBeRefused("step-up");
+  await expect(world.profiles.profile(spare)).resolves.toMatchObject({ name: "spare" });
+  await spare.delete();
   await expect(world.profiles.profile(org)).resolves.toMatchObject({ name: "acme" });
 
   const offer = await world.transfers.offer(pack, { to: target, by: p });
@@ -115,6 +121,8 @@ scenario("IT-SCOPE-014 A transfer is an offer only an owner makes and the receiv
 
   await expect(world.transfers.offer(first, { to: target, by: m })).toBeRefused("forbidden");
   await expect(world.transfers.offer(first, { to: target, by: p, assertion: "none" })).toBeRefused("step-up");
+  const forFirst = await p.assertionFor({ action: "pack.transfer", target: first.systemName.slice(1) });
+  await expect(world.transfers.offer(second, { to: other, by: p, assertion: forFirst })).toBeRefused("step-up");
   const offer = await world.transfers.offer(first, { to: target, by: p });
   const lapsing = await world.transfers.offer(second, { to: other, by: p });
   await expect(world.profiles.profile(source)).resolves.toMatchObject({ packs: ["@source/first", "@source/second"] });
@@ -122,6 +130,7 @@ scenario("IT-SCOPE-014 A transfer is an offer only an owner makes and the receiv
 
   await expect(offer.accept(p)).toBeRefused("forbidden");
   await expect(offer.accept(w, { assertion: "none" })).toBeRefused("step-up");
+  await expect(offer.accept(w, { assertion: await w.assertionFor("pack.transfer.accept") })).toBeRefused("step-up");
   await offer.accept(w);
   await expect(world.profiles.profile(source)).resolves.toMatchObject({ packs: ["@source/second"] });
   await expect(world.profiles.profile(target)).resolves.toMatchObject({ packs: ["@target/first"] });

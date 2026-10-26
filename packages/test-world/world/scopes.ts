@@ -90,7 +90,7 @@ export interface ScopeVerbs {
 }
 
 /** Every sensitive verb makes its own assertion; the negatives replace or remove it. */
-const assertionHeaders = (by: User, action: string, o?: Sensitive): Promise<Record<string, string>> => callerOf(by).assertionHeaders(action, o);
+const assertionHeaders = (by: User, action: string, target: string, o?: Sensitive): Promise<Record<string, string>> => callerOf(by).assertionHeaders(action, o, target);
 
 export function createScopeVerbs(driver: Driver, aliases: Aliases): ScopeVerbs {
   const parse = (res: ApiResponse): Record<string, unknown> => JSON.parse(aliases.unalias(res.text)) as Record<string, unknown>;
@@ -141,8 +141,8 @@ export function createScopeVerbs(driver: Driver, aliases: Aliases): ScopeVerbs {
       if (!acting) throw new InfrastructureError(`org ${name}: say who acts on it with .as(user)`);
       return acting;
     };
-    const call = async (method: string, path: string, action: string | null, o?: Sensitive, json?: unknown) => {
-      const headers = action ? await assertionHeaders(as(), action, o) : {};
+    const call = async (method: string, path: string, action: string | null, o?: Sensitive, json?: unknown, target = system) => {
+      const headers = action ? await assertionHeaders(as(), action, target, o) : {};
       return callerOf(as()).call({ method, path: `/api/orgs/${system}${path}`, ...(json === undefined ? {} : { json }), headers });
     };
     const self: OrgHandle = {
@@ -164,11 +164,12 @@ export function createScopeVerbs(driver: Driver, aliases: Aliases): ScopeVerbs {
         };
       },
       async setRole(user, role, o) {
-        done(await call("POST", `/people/${aliases.alias(user.handle)}/role`, "org.set-role", o, { role }), "org.setRole");
+        done(await call("POST", `/people/${aliases.alias(user.handle)}/role`, "org.set-role", o, { role }, `${system}/${aliases.alias(user.handle)}`), "org.setRole");
       },
       async remove(who, o) {
         const path = "handle" in who ? `/people/${aliases.alias(who.handle)}` : `/invitations/${who.id}`;
-        done(await call("DELETE", path, "org.remove", o), "org.remove");
+        const bound = "handle" in who ? `${system}/${aliases.alias(who.handle)}` : `${system}/invitations/${who.id}`;
+        done(await call("DELETE", path, "org.remove", o, undefined, bound), "org.remove");
       },
       async delete(o) {
         done(await call("DELETE", "", "org.delete", o), "org.delete");
@@ -215,7 +216,7 @@ export function createScopeVerbs(driver: Driver, aliases: Aliases): ScopeVerbs {
   return {
     orgs: {
       async create(by, name, o) {
-        const headers = await assertionHeaders(by, "org.create", o);
+        const headers = await assertionHeaders(by, "org.create", aliases.alias(name), o);
         const res = await callerOf(by).call({ method: "POST", path: "/api/orgs", json: { name: aliases.alias(name) }, headers });
         done(res, "org.create");
         return org(name, by);
@@ -240,7 +241,7 @@ export function createScopeVerbs(driver: Driver, aliases: Aliases): ScopeVerbs {
       },
       async tryOffer(pack, o) {
         const { scope, name } = splitPack(pack);
-        const headers = await assertionHeaders(o.by, "pack.transfer", o);
+        const headers = await assertionHeaders(o.by, "pack.transfer", `${scope}/${name}`, o);
         const res = await callerOf(o.by).call({
           method: "POST",
           path: `/api/scopes/${scope}/packs/${name}/transfer`,
@@ -253,7 +254,7 @@ export function createScopeVerbs(driver: Driver, aliases: Aliases): ScopeVerbs {
           id: body.transfer.id,
           pack: pack.systemName,
           accept: async (by, accept) => {
-            const headers = await assertionHeaders(by, "pack.transfer.accept", accept);
+            const headers = await assertionHeaders(by, "pack.transfer.accept", body.transfer.id, accept);
             done(await callerOf(by).call({ method: "POST", path: `/api/transfers/${body.transfer.id}/accept`, json: {}, headers }), "pack.transfer.accept");
           },
         };

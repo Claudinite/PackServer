@@ -87,7 +87,7 @@ export interface TokenActor {
   send(req: { method: string; path: string; session?: Session | undefined; json?: unknown; headers?: Record<string, string> }): Promise<ApiResponse>;
   formHeaders(session: Session | undefined): Promise<Record<string, string>>;
   session(): Session | undefined;
-  assertionHeaders(action: string, o?: Sensitive): Promise<Record<string, string>>;
+  assertionHeaders(action: string, o?: Sensitive, target?: string): Promise<Record<string, string>>;
   refused(res: ApiResponse, what: string): Refusal;
   aliases: Aliases;
 }
@@ -103,9 +103,9 @@ const observe = (res: ApiResponse): Observation => ({
 export function createUserTokens(actor: TokenActor): UserTokens {
   return {
     async mint(opts) {
-      const assertion = await actor.assertionHeaders(MINT_ACTION, opts);
-      const session = actor.session();
       const target = opts.read ? { pack: opts.read.systemName } : opts.readScope ? { scope: `@${actor.aliases.alias(opts.readScope)}` } : {};
+      const assertion = await actor.assertionHeaders(MINT_ACTION, opts, target.pack ?? target.scope ?? "");
+      const session = actor.session();
       const res = await actor.send({
         method: "POST",
         path: "/api/tokens",

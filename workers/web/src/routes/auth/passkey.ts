@@ -132,7 +132,8 @@ routes.post("/auth/passkey/enrol/verify", requireSession(), sessionCsrf<WebEnv>(
   await recordAudit(c, userId, "factor.added", undefined, { kind: "passkey" });
   const credential = await saveCredential(ports, registration, { label: asText(body.label, MAX_LABEL) ?? null, hold_until: hold });
   const codes = first ? await replaceRecoveryCodes(ports, userId) : undefined;
-  if (!first && (await isPublishingCapable(runtime.ports.d1, userId))) {
+  // REQ-ACC-005: an account that can publish and gains a factor, the first included, tells every verified address.
+  if (await isPublishingCapable(runtime.ports.d1, userId)) {
     await notifyUser(c, userId, "factor-added", { factor: "passkey", securityUrl: securityUrlOf(c), lockApplies: hold !== null });
   }
 

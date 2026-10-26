@@ -154,7 +154,7 @@ export interface CallRequest {
 export interface Caller {
   call(req: CallRequest): Promise<ApiResponse>;
   /** The headers a sensitive request carries for the action, as `assertion` asks; the person enrols a first passkey when there is none. */
-  assertionHeaders(action: string, o?: Sensitive): Promise<Record<string, string>>;
+  assertionHeaders(action: string, o?: Sensitive, target?: string): Promise<Record<string, string>>;
 }
 
 export function callerOf(user: User): Caller {
@@ -193,7 +193,7 @@ class Person implements User {
       send: (req) => this.send(req),
       formHeaders: (session) => this.formHeaders(session),
       session: () => this.view,
-      assertionHeaders: (action, o) => this.assertionHeaders(action, o),
+      assertionHeaders: (action, o, target) => this.assertionHeaders(action, o, target),
       refused: refusal,
       aliases: ctx.aliases,
     });
@@ -339,9 +339,9 @@ class Person implements User {
     return this.send({ ...rest, session, headers: { ...(await this.formHeaders(session, faults)), ...headers } });
   }
 
-  async assertionHeaders(action: string, o: Sensitive = {}): Promise<Record<string, string>> {
+  async assertionHeaders(action: string, o: Sensitive = {}, target = ""): Promise<Record<string, string>> {
     if (o.assertion !== "none" && (await this.mfa.passkeys()).length === 0) await this.mfa.enrol();
-    return (await this.presented({ action, target: "" }, o)).headers;
+    return (await this.presented({ action, target }, o)).headers;
   }
 
   /** The action and target an assertion is made for; a verb's own name goes in `action`. */

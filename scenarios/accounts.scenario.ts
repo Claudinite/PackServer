@@ -227,6 +227,14 @@ scenario("IT-ACC-005 A first passkey enrols freely; every further factor is a se
   await expect(u.mfa.passkeys()).resolves.toHaveLength(2);
   expect(await u.mfa.regenerateCodes()).toHaveLength(10);
 
+  const early = await world.users.create({ seedScope: "early" });
+  await early.signIn();
+  const noticed = () => world.mail.inbox(early).all().filter((m) => /factor/i.test(m.subject)).length;
+  expect(noticed()).toBe(0);
+  const lone = await early.mfa.enrol();
+  expect(noticed()).toBe(1);
+  expect((await early.mfa.passkeys()).find((k) => k.id === lone.id)!.heldUntil).toBeNull();
+
   const addresses = [`${world.alias("p")}-two@example.test`];
   const p = await world.users.create({ mfa: "passkey", seedScope: "pscope", moreEmails: addresses });
   await p.signIn();
