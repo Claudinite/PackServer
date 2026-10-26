@@ -71,12 +71,20 @@ describe("accepted uploads (IT-VAL-033, IT-VAL-051)", () => {
 });
 
 describe("optional inspectors", () => {
-  it("is skipped, and says so, while the capability module is absent", async () => {
-    const { inspectors, skipped } = await loadOptionalInspectors();
-    expect(inspectors).toEqual([]);
-    expect(skipped).toEqual([{ name: "@packserver/core/capabilities", note: "module not present in this image" }]);
+  const ABSENT = "@packserver/core/not-yet-merged-inspector";
+
+  it("is skipped, and says so, while an inspector module is absent", async () => {
+    const { inspectors, skipped } = await loadOptionalInspectors([ABSENT]);
+    expect(inspectors.map((i) => i.name)).toEqual(["capabilities"]);
+    expect(skipped).toEqual([{ name: ABSENT, note: "module not present in this image" }]);
     const { report } = await runA(fixtureArchive("gcp"), REQUEST, { ...hooks, skippedInspectors: skipped });
-    expect(report.inspectors).toEqual([{ name: "@packserver/core/capabilities", status: "skipped", note: "module not present in this image" }]);
+    expect(report.inspectors).toEqual([{ name: ABSENT, status: "skipped", note: "module not present in this image" }]);
+  });
+
+  it("always carries the capability inspector from core, bound statically", async () => {
+    const { inspectors, skipped } = await loadOptionalInspectors();
+    expect(skipped).toEqual([]);
+    expect(inspectors.map((i) => i.name)).toEqual(["capabilities"]);
   });
 
   it("does not hide a module that exists but is broken", async () => {

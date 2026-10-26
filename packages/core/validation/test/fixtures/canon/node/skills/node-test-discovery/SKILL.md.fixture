@@ -1,0 +1,12 @@
+---
+name: node-test-discovery
+description: Wiring a `node --test` invocation so it actually finds the suite. Loaded for any edit of a workflow or package.json test script.
+metadata:
+  body: guidelines
+  usage:
+    expect: triggered
+  force-load-on-file-edits-paths:
+    - ".github/workflows/**"
+    - "package.json"
+    - "*/package.json"
+---

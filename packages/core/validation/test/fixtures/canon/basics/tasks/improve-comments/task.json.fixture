@@ -1,0 +1,18 @@
+{
+  "id": "improve-comments",
+  "description": "Reads a slice of the repository's code as comments, deletes the ones that restate the code, corrects the ones that drifted, and adds the why only a reader's guess carried.",
+  "trigger": "schedule",
+  "preconditions": [
+    "schedule:at-most-weekly",
+    "substantive-change",
+    "commits-outside:.claudinite/shared/"
+  ],
+  "expected_outcome": "amend_existing_or_create_new_pr",
+  "automerge": [
+    "comment-only-changes",
+    "readme-changes"
+  ],
+  "agent_model": "opus",
+  "agent_instructions": "task.md",
+  "agent_execution_timeout": 1800
+}

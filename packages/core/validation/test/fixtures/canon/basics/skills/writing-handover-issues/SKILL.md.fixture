@@ -1,0 +1,10 @@
+---
+name: writing-handover-issues
+description: How to write a task list a person will execute. Use when filing or editing an issue that asks a human to click, set, register or copy something.
+metadata:
+  body: workflow
+  usage:
+    expect: triggered
+  force-load-on-tool-calls:
+    - 'mcp__github__issue_write.body /- \[ \]/'
+---
