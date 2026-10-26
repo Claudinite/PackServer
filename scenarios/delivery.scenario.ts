@@ -1,5 +1,5 @@
 import { expect, scenario, type ScenarioOpts } from "@packserver/test-world";
-import { Refusal } from "@packserver/test-world";
+import { Held, NotFound, Refusal } from "@packserver/test-world";
 import type { PackBody } from "@packserver/test-world";
 
 const storage: ScenarioOpts = { needs: ["storage"] };
@@ -96,6 +96,20 @@ scenario("IT-DELIV-013 Private responses are never cached; immutable only on con
   expect(await secret.observe()).toLookTheSameAs(await nothing.observe());
   expect(await secret.observe({ version: "1.0.0" })).toLookTheSameAs(await nothing.observe({ version: "1.0.0" }));
   expect((await secret.observe({ session: true })).headers["cache-control"]).toBe("private, no-store");
+
+  const alice = world.access.account("alice");
+  await world.access.allowAccount(secret, alice);
+  const reader = world.member().inActionsOf(world.access.repository(alice, "app"));
+  const index = await reader.index({ pack: secret.systemName });
+  const archive = await reader.download((await secret.stored("1.0.0")).versionId);
+  if (index instanceof NotFound || index instanceof Refusal || archive instanceof NotFound || archive instanceof Held || archive instanceof Refusal) {
+    throw new Error("the allowlisted repository was refused");
+  }
+  expect(index.headers["cache-control"]).toBe("private, no-store");
+  expect(archive.headers["cache-control"]).toBe("private, no-store");
+  expect(archive.headers["content-disposition"]).toContain("attachment");
+  expect(archive.headers["x-content-type-options"]).toBe("nosniff");
+  expect((await world.member().inActionsOf(world.access.repository(world.access.account("mallory"), "app")).observe({ index: { pack: secret.systemName } })).headers["cache-control"]).toBe("private, no-store");
 }, storage);
 
 // Not covered here: the edge half of IT-DELIV-014 (nosniff on the custom domain, Claudinite/PackServer#142).
@@ -225,4 +239,19 @@ scenario("IT-PAGE-002 The public view shows verification facts, capabilities, so
   const u = await upload.version("1.0.0").detail();
   expect(u.provenance).toEqual({ source: "upload", source_verified: false });
   expect(u.verification.source_verified).toBe(false);
+
+  // The page shows the same facts: source, tree verification, both hashes, the new mark, and warnings by category with the full report linked.
+  await world.search.list(trusted, { pitch: "Trusted", category: "cloud", parts: ["guards"] });
+  await world.search.list(upload, { pitch: "Uploaded", category: "other", parts: ["skills"] });
+  await trusted.seedWarnings("1.1.0", { byCategory: { license: 1, text: 2 }, validationRun: "run-trusted" });
+  const seen = await trusted.page();
+  const plain = await upload.page();
+  if (seen instanceof NotFound || plain instanceof NotFound) throw new Error("a pack page was not found");
+  for (const shown of ["Repository acme/packs", "b".repeat(40), "Published with trusted publishing", "The source tree was verified", stored.canonicalSha256, stored.uploadSha256, "rules 2026.10.1", "License 1", "Text 2", "New: guard:no-secrets"]) {
+    expect(seen.trust).toContain(shown);
+  }
+  expect(seen.manifest).toContain("new in 1.1.0");
+  expect(seen.links.some((l) => l.text === "Full report")).toBe(true);
+  expect(plain.trust).toContain("Published by upload; no source was verified");
+  expect(plain.trust).toContain("Warnings are unavailable right now");
 }, storage);

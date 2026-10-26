@@ -2,11 +2,10 @@ import { isContractMigration } from "@packserver/core/selftest";
 import { SCHEMA_MAX, SCHEMA_MIN } from "@packserver/schema/range";
 import type { Driver, StorageAccess } from "../../drivers/driver";
 import { InfrastructureError, stubModule } from "../errors";
+import { createCron, type CronJob } from "../proofs";
 import type { Admin, Notification } from "../types";
 
-export type CronJob =
-  | "domain-rechecks" | "stats-rollup" | "staging-expiry" | "rescan" | "domain-drift"
-  | "adoption-scan" | "audit-head" | "audit-verify" | "activity-prune";
+export type { CronJob };
 
 export interface MigrationHeadOptions {
   /** What the migration past the compiled range is: an expand (the default) or a contract, which an older build cannot serve. */
@@ -43,7 +42,7 @@ const stores = (driver: Driver): StorageAccess => {
 export function createAdmin(driver: Driver, onDispose: (undo: () => Promise<void>) => void): AdminModule {
   return {
     admins: stubModule("admins"),
-    cron: stubModule("cron"),
+    cron: createCron(driver),
     database: {
       supportedRange: () => ({ min: Number(SCHEMA_MIN), max: Number(SCHEMA_MAX) }),
       async setMigrationHead(n, o = {}) {

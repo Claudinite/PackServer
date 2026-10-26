@@ -1,3 +1,4 @@
+import { oidcConfig } from "@packserver/core/publishing";
 import { csrfTokenFor } from "@packserver/http";
 import { SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
 import { createFakePorts, FakeRateLimit } from "@packserver/ports/fakes";
@@ -22,7 +23,7 @@ function setup() {
     missingSecrets: [],
     ports: { ...fakes, d1, rateLimits: { RATE_LIMIT: new FakeRateLimit(fakes.clock, 60, 60_000) }, githubLogin: {} as never },
     services: { mcp: {} as Fetcher, publish: {} as Fetcher },
-    config: { cdnOrigin: undefined, siteOrigins: [ORIGIN] },
+    config: { oidc: oidcConfig({ ENVIRONMENT: "production" }), fetch, cdnOrigin: undefined, siteOrigins: [ORIGIN] },
   };
   const app = createApp(runtime);
   const post = (path: string, body: Record<string, string>, headers: Record<string, string> = {}) =>

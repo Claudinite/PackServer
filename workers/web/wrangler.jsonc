@@ -18,6 +18,8 @@
         "ENVIRONMENT": "test",
         "CDN_ORIGIN": "https://packs.test.invalid",
         "SITE_ORIGINS": "http://web.internal",
+        "OIDC_ISSUER": "https://oidc.test",
+        "OIDC_JWKS_URL": "https://oidc.test/.well-known/jwks",
         "TURNSTILE_SECRET": "1x0000000000000000000000000000000AA",
         "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
         "GITHUB_APP_CLIENT_ID": "fake-github-client-id",
@@ -96,6 +98,10 @@
           {
             "binding": "AUDIT_QUEUE",
             "queue": "audit-test"
+          },
+          {
+            "binding": "REINDEX_QUEUE",
+            "queue": "reindex-test"
           }
         ]
       },
@@ -228,6 +234,10 @@
           {
             "binding": "AUDIT_QUEUE",
             "queue": "audit-staging"
+          },
+          {
+            "binding": "REINDEX_QUEUE",
+            "queue": "reindex-staging"
           }
         ]
       },
@@ -364,6 +374,10 @@
           {
             "binding": "AUDIT_QUEUE",
             "queue": "audit"
+          },
+          {
+            "binding": "REINDEX_QUEUE",
+            "queue": "reindex"
           }
         ]
       },

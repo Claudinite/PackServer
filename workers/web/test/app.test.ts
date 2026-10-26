@@ -1,3 +1,4 @@
+import { oidcConfig } from "@packserver/core/publishing";
 import { SqliteD1 } from "@packserver/core/audit/testing";
 import { describeWorkerShell, dummyEnv, expectTelemetryWired, expectPortsMatchTrustTable, SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
 import { CANDIDATE_MIRROR_KEY } from "@packserver/ports";
@@ -15,7 +16,7 @@ const runtime = (missingBindings: string[] = []): WebRuntime => ({
   missingSecrets: [],
   ports: { ...fakes, githubLogin: { authorizeUrl: async () => "", profile: async () => { throw new Error("not used"); } } },
   services: { mcp: {} as Fetcher, publish: {} as Fetcher },
-    config: { cdnOrigin: "https://packs.test.invalid", siteOrigins: ["https://registry.test.invalid"] },
+    config: { oidc: oidcConfig({ ENVIRONMENT: "production" }), fetch, cdnOrigin: "https://packs.test.invalid", siteOrigins: ["https://registry.test.invalid"] },
 });
 
 describeWorkerShell({

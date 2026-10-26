@@ -26,6 +26,7 @@ import {
 // (tools/check-bindings.mjs), so this is the one place a binding's own API is spoken.
 
 export * from "./email-service";
+export * from "./domain-proof";
 
 export const EMBEDDING_MODEL = "@cf/baai/bge-m3";
 export const EMBEDDING_DIMENSIONS = 1024;

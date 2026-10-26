@@ -46,7 +46,8 @@ Areas and their signals:
 
 - **download**: `served`, `hash_mismatch` (server-observed), `hash_mismatch_reported` (client).
 - **index**: `served`, `signed`, `root_signed`, `verify_failed`, `verify_failed_reported`,
-  `key_changed`, `stale`, `stale_reported`, `rollback_reported`.
+  `key_changed`, `stale`, `stale_reported`, `rollback_reported`, `entry_skipped` (a private
+  entry the Worker could not parse or that names another pack).
 - **search**: `query`, `degraded`, `vectorize_error`. **mcp**: `call`, `auth_rejected`.
   **oauth**: `flow`.
 - **publish**: `received`, `oidc_exchanged`, `oidc_rejected`, `provenance_mismatch`,

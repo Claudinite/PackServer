@@ -1,10 +1,12 @@
 import { objectKey, publicObjectHttpMetadata, type ObjectKind } from "@packserver/core/catalog";
-import { buildVersionsDocument, createSigner, sha256Hex, signVersionsDocument, utf8, type Signer, type VersionRecord } from "@packserver/core/index";
+import { privateArchiveKey, privateEntryKey } from "@packserver/core/access";
+import { buildPrivateEntry, buildVersionsDocument, createSigner, encodePublicKey, sha256Hex, signPrivateEntry, signVersionsDocument, utf8, type RegistryKey, type Signer, type VersionRecord } from "@packserver/core/index";
 import { INVENTORY_PARTS, type Attestation, type Capability, type Meta, type PreInstallManifest, type VerificationFacts, type VersionStatus } from "@packserver/schema";
 import type { ApiResponse, Driver, SeedStorage } from "../drivers/driver";
 import type { Aliases } from "./alias";
 import { InfrastructureError, NotImplemented } from "./errors";
 import { Held, NotFound, Refusal, type Observation } from "./outcomes";
+import { viewOfPackPage, type PackPageView } from "./page-view";
 import type { Pack, Verification, Version } from "./types";
 
 export interface PublicPackOptions {
@@ -14,6 +16,10 @@ export interface PublicPackOptions {
   verification?: { verified?: boolean; verifiedDomain?: string; verifiedGithubOrg?: string; sourceVerified?: boolean };
   capabilities?: Capability[];
   preinstall?: Partial<PreInstallManifest>;
+  /** The score `meta.json` and the version row carry; the default is 80 with no parts. */
+  score?: Pick<Meta["score"], "total" | "parts">;
+  /** How many of each inventory part `meta.json` counts; the default is none. */
+  inventory?: Partial<Record<(typeof INVENTORY_PARTS)[number], number>>;
 }
 
 export interface StateChange {
@@ -73,12 +79,21 @@ export interface PackHandle extends Pack {
   /** The public view: a body, `NotFound`, `Held` for a quarantined exact version, or a refusal. */
   read(o?: ReadOptions): Promise<Read | NotFound | Held | Refusal>;
   observe(o?: ReadOptions): Promise<Observation>;
+  /**
+   * The pack's page as an anonymous visitor (or, with `session`, a signed-in one) reads it. The page needs the pack's
+   * search listing, so seed one with `search.list` first.
+   */
+  page(tab?: "overview" | "contents" | "versions", o?: ReadOptions): Promise<PackPageView | NotFound>;
+  /** The README and files the validator will publish beside `meta.json` for the Contents tab. */
+  seedContents(version: string, contents: { readme?: string | null; files?: Array<{ path: string; text: string }> }): Promise<void>;
+  /** The warning counts by category the validator writes into the version's `meta.json`, and the run that counted them. */
+  seedWarnings(version: string, warnings: { byCategory: Record<string, number>; validationRun?: string }): Promise<void>;
   /** Gives the pack's scope a proof: every version's verification facts change, no object does. */
   seedProof(facts: { verified: boolean; verifiedDomain?: string; verifiedGithubOrg?: string }): Promise<void>;
   /** Moves every seeded version to `removed`, as a deleted pack looks to the registry. */
   seedRemoved(): Promise<void>;
   /** The bytes and ids the seed wrote, for assertions that look at stored objects. */
-  stored(version: string): Promise<{ canonicalSha256: string; uploadSha256: string; keys: Record<ObjectKind, string>; objects: Array<{ kind: ObjectKind; key: string; size: number; contentType?: string; contentDisposition?: string; cacheControl?: string }> }>;
+  stored(version: string): Promise<{ versionId: string; canonicalSha256: string; uploadSha256: string; keys: Record<ObjectKind, string>; objects: Array<{ kind: ObjectKind; key: string; size: number; contentType?: string; contentDisposition?: string; cacheControl?: string }> }>;
 }
 
 export interface HashAnswer {
@@ -108,6 +123,7 @@ interface SeededVersion {
   canonicalSha256: string;
   uploadSha256: string;
   size: number;
+  warnings?: { byCategory: Record<string, number>; run?: string };
 }
 interface SeededPack {
   name: string;
@@ -117,9 +133,19 @@ interface SeededPack {
   visibility: "public" | "private";
   options: PublicPackOptions;
   versions: Map<string, SeededVersion>;
+  /** The pack's row id, which keys its private entry. */
+  rowId: string;
+  /** The serial of the next private entry written for the pack. */
+  entrySerial?: number;
 }
 
 const SIGNER_SEED = new Uint8Array(32).fill(5);
+const SIGNER_KID = "2026-10";
+
+/** The key the seeded documents are signed with, as the registry would publish it. */
+export async function seededRegistryKey(): Promise<RegistryKey> {
+  return { kid: SIGNER_KID, public_key: await encodePublicKey(SIGNER_SEED), status: "active" };
+}
 const RULES_VERSION = "2026.10.1";
 const MIN_ENGINE = "1.0.0";
 
@@ -139,7 +165,7 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
     }
     return (storagePromise ??= driver.storage());
   };
-  const sign = (): Promise<Signer> => (signer ??= createSigner({ kid: "2026-10", seed: SIGNER_SEED }));
+  const sign = (): Promise<Signer> => (signer ??= createSigner({ kid: SIGNER_KID, seed: SIGNER_SEED }));
 
   const nowMs = async (): Promise<number> => (driver.fakes ? driver.fakes.clock.call<number>("now") : Date.now());
 
@@ -194,20 +220,21 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
     const provenance: Meta["provenance"] = sourceVerified
       ? { source: "oidc", repository: `${pack.scope}/packs`, repository_id: 1234, commit: "b".repeat(40), ref: "refs/tags/v1", event: "push", workflow_run: "1", path: `packs/${pack.packName}`, source_verified: true }
       : { source: "upload", source_verified: false };
-    const inventory = Object.fromEntries(INVENTORY_PARTS.map((p) => [p, { count: 0, names: [], tokens: null }])) as unknown as Meta["inventory"];
+    const inventory = Object.fromEntries(INVENTORY_PARTS.map((p) => [p, { count: pack.options.inventory?.[p] ?? 0, names: [], tokens: null }])) as unknown as Meta["inventory"];
     const preinstall: PreInstallManifest = { ...EMPTY_PREINSTALL, ...pack.options.preinstall };
-    const meta: Meta = {
+    const meta: Meta & { warnings?: Record<string, number>; validation_run?: string } = {
       pack: pack.systemName,
       version: v.version,
       inventory,
       capabilities: pack.options.capabilities ?? [],
       preinstall,
       url_inventory: [],
-      score: { total: 80, parts: [], cap: null },
+      score: { total: pack.options.score?.total ?? 80, parts: pack.options.score?.parts ?? [], cap: null },
       rules_version: RULES_VERSION,
       verification: facts,
       provenance,
       diff_summary: { previous_version: null, files_added: 0, files_removed: 0, files_changed: 0, new_capabilities: [] },
+      ...(v.warnings ? { warnings: v.warnings.byCategory, ...(v.warnings.run ? { validation_run: v.warnings.run } : {}) } : {}),
     };
     const attestation: Attestation & { signature: string } = {
       pack: pack.systemName,
@@ -223,7 +250,7 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
     const write = (kind: ObjectKind, body: Uint8Array | string) =>
       store.packsPublic.put(objectKey(pack.systemName, kind, v.version), body, { httpMetadata: publicObjectHttpMetadata(kind) });
     if (pack.visibility === "private") {
-      await store.packsPrivate.put(`v/${v.id}/pack.tar.zst`, bytesOf(`archive ${pack.systemName}@${v.version}`));
+      await store.packsPrivate.put(privateArchiveKey(v.id), bytesOf(`archive ${pack.systemName}@${v.version}`));
       return;
     }
     await write("archive", bytesOf(`archive ${pack.systemName}@${v.version}`));
@@ -232,8 +259,41 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
     await write("meta", JSON.stringify(meta));
   }
 
+  /** The validator's work, done by the seed: one signed entry per private pack, re-signed at every change. */
+  async function writePrivateEntry(pack: SeededPack): Promise<void> {
+    const store = await storage();
+    const facts = pack.options.verification ?? {};
+    const serial = pack.entrySerial ?? 1;
+    pack.entrySerial = serial + 1;
+    const unsigned = buildPrivateEntry({
+      serial,
+      now: new Date(await nowMs()),
+      pack: pack.systemName,
+      versions: [...pack.versions.values()].map((v) => ({
+        version_id: v.id,
+        version: v.version,
+        sha256: v.canonicalSha256,
+        size: v.size,
+        published_at: v.publishedAt,
+        status: v.status,
+        ...(v.status !== "active" ? { reason: v.reason ?? v.status } : {}),
+        ...(v.security !== undefined ? { security: v.security } : {}),
+        min_engine_version: MIN_ENGINE,
+        requires: [],
+        source_commit: null,
+        preinstall: { ...EMPTY_PREINSTALL, ...pack.options.preinstall },
+        verified: facts.verified ?? false,
+        verified_domain: facts.verifiedDomain ?? null,
+        verified_github_org: facts.verifiedGithubOrg ?? null,
+        source_verified: facts.sourceVerified ?? false,
+      })),
+    });
+    const signed = await signPrivateEntry(unsigned, await sign());
+    await store.packsPrivate.put(privateEntryKey(pack.rowId), signed.bytes);
+  }
+
   async function writeHistory(pack: SeededPack): Promise<void> {
-    if (pack.visibility === "private") return;
+    if (pack.visibility === "private") return writePrivateEntry(pack);
     const store = await storage();
     const facts = pack.options.verification ?? {};
     const records: VersionRecord[] = [...pack.versions.values()].map((v) => ({
@@ -267,7 +327,7 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
         .prepare(
           "INSERT OR REPLACE INTO pack_versions (id, pack_id, version, state, sha256, upload_sha256, size_bytes, published_at, verified, verified_domain, verified_github_org, source_verified, min_engine_version, requires, source_commit, score, score_rules_version, report_key) VALUES (?, (SELECT p.id FROM packs p JOIN scopes s ON s.id = p.scope_id WHERE s.name = ? AND p.name = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
-        .bind(v.id, pack.scope, pack.packName, v.version, v.status, v.canonicalSha256, v.uploadSha256, v.size, v.publishedAt, facts.verified ? 1 : 0, facts.verifiedDomain ?? null, facts.verifiedGithubOrg ?? null, facts.sourceVerified ? 1 : 0, MIN_ENGINE, "[]", null, 80, RULES_VERSION, `reports/${v.id}.json`),
+        .bind(v.id, pack.scope, pack.packName, v.version, v.status, v.canonicalSha256, v.uploadSha256, v.size, v.publishedAt, facts.verified ? 1 : 0, facts.verifiedDomain ?? null, facts.verifiedGithubOrg ?? null, facts.sourceVerified ? 1 : 0, MIN_ENGINE, "[]", null, pack.options.score?.total ?? 80, RULES_VERSION, `reports/${v.id}.json`),
     ]);
   }
 
@@ -293,7 +353,7 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
     const { scope, pack: packName } = splitName(name);
     const visibility = options.visibility ?? "public";
     const systemScope = aliases.alias(scope);
-    const pack: SeededPack = { name, systemName: `@${systemScope}/${packName}`, scope: systemScope, packName, visibility, options, versions: new Map() };
+    const pack: SeededPack = { name, systemName: `@${systemScope}/${packName}`, scope: systemScope, packName, visibility, options, versions: new Map(), rowId: crypto.randomUUID() };
     const { db } = await storage();
     const created = new Date(await nowMs()).toISOString();
     const facts = options.verification ?? {};
@@ -303,7 +363,7 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
         .bind(crypto.randomUUID(), systemScope, facts.verifiedDomain ?? null, facts.verifiedGithubOrg ?? null, created),
       db
         .prepare("INSERT INTO packs (id, scope_id, name, visibility, created_at) VALUES (?, (SELECT id FROM scopes WHERE name = ?), ?, ?, ?)")
-        .bind(crypto.randomUUID(), systemScope, packName, visibility, created),
+        .bind(pack.rowId, systemScope, packName, visibility, created),
     ]);
     seeded.set(name, pack);
     for (const version of options.versions ?? ["1.0.0"]) await seedVersion(pack, version);
@@ -404,6 +464,23 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
       async observe(o) {
         return observation(await get(pathFor(pack.systemName, o?.version), headersFor(o)));
       },
+      async page(tab = "overview", o) {
+        const path = `/packs/${pack.systemName}${tab === "overview" ? "" : `/${tab}`}${o?.version ? `?version=${o.version}` : ""}`;
+        const res = await get(path, headersFor(o));
+        if (res.status === 404) return new NotFound();
+        return viewOfPackPage(res.status, aliases.unalias(res.text), { "cache-control": res.headers.get("cache-control") ?? "" });
+      },
+      async seedContents(version, contents) {
+        if (!pack.versions.has(version)) throw new InfrastructureError(`${pack.name}@${version} was not seeded`);
+        const { packsPublic } = await storage();
+        await packsPublic.put(`${pack.systemName}/${version}/contents.json`, JSON.stringify({ readme: contents.readme ?? null, files: contents.files ?? [] }));
+      },
+      async seedWarnings(version, seed) {
+        const v = pack.versions.get(version);
+        if (!v) throw new InfrastructureError(`${pack.name}@${version} was not seeded`);
+        v.warnings = { byCategory: seed.byCategory, ...(seed.validationRun ? { run: seed.validationRun } : {}) };
+        await writeObjects(pack, v);
+      },
       async seedProof(facts) {
         pack.options = { ...pack.options, verification: { ...pack.options.verification, ...facts } };
         const { db } = await storage();
@@ -435,7 +512,7 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
           const head = await store.packsPublic.head(keys[kind]);
           if (head) objects.push({ kind, key: keys[kind], size: head.size, ...head.httpMetadata });
         }
-        return { canonicalSha256: v.canonicalSha256, uploadSha256: v.uploadSha256, keys, objects };
+        return { versionId: v.id, canonicalSha256: v.canonicalSha256, uploadSha256: v.uploadSha256, keys, objects };
       },
     };
     return self;
@@ -446,7 +523,7 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
     private: notYet("packs.private") as PacksModule["private"],
     nonexistent(name) {
       const { scope, pack } = splitName(name);
-      return handle({ name, systemName: `@${aliases.alias(scope)}/${pack}`, scope: aliases.alias(scope), packName: pack, visibility: "public", options: {}, versions: new Map() });
+      return handle({ name, systemName: `@${aliases.alias(scope)}/${pack}`, scope: aliases.alias(scope), packName: pack, visibility: "public", options: {}, versions: new Map(), rowId: "" });
     },
     get(name) {
       const pack = seeded.get(name);

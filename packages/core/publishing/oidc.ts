@@ -20,6 +20,7 @@ export const ActionsClaims = z.object({
   repository: z.string().min(1),
   repository_id: z.string().min(1),
   repository_owner_id: z.string().min(1),
+  repository_visibility: z.string().optional(),
   ref: z.string().min(1),
   ref_protected: z.string(),
   job_workflow_ref: z.string().min(1),
@@ -121,4 +122,23 @@ export function chooseRegistration(
     if (!nearest || verdict.claims.length < nearest.claims.length) nearest = verdict;
   }
   return nearest ? { ok: false, reason: nearest.reason, categories: nearest.categories } : null;
+}
+
+export interface OidcConfig {
+  issuer: string;
+  jwksUrl: string;
+  audience: string;
+}
+
+/**
+ * GitHub's issuer, always, outside `env.test`: a production Worker has no way to be told
+ * another, so a token from a test issuer is refused as a wrong issuer before any key is fetched.
+ */
+export function oidcConfig(env: { ENVIRONMENT: string; OIDC_ISSUER?: string | undefined; OIDC_JWKS_URL?: string | undefined }): OidcConfig {
+  const test = env.ENVIRONMENT === "test" && env.OIDC_ISSUER !== undefined && env.OIDC_JWKS_URL !== undefined;
+  return {
+    issuer: test ? env.OIDC_ISSUER! : GITHUB_OIDC_ISSUER,
+    jwksUrl: test ? env.OIDC_JWKS_URL! : GITHUB_OIDC_JWKS_URL,
+    audience: OIDC_AUDIENCE,
+  };
 }

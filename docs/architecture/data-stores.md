@@ -10,7 +10,7 @@ is charged in v1.
 | R2 `audit-log` (bucket-locked, 2 years) | Audit events as hash-chained NDJSON batches | Append via Queue consumer with an object-only S3 token | Incident review | Yes |
 | D1 `recent_activity` | 90 days of audit events per user and scope | Alongside the queue message | Security page, org audit view | No (copy) |
 | R2 `packs-staging` | Uploads awaiting validation, one key per upload credential | Presigned PUT by the uploader | Validator, once or twice | No (14 days with a draft or a run; dry-runs 1 hour) |
-| R2 `packs-public` | Canonical archives, `.sha256`, attestations, `meta.json`, `versions.json`, rendered READMEs, `index/v1/*` | Validator only; versioned keys and scope indexes written once at content-addressed keys; the root rewritten by `RootCoordinator` | CDN cache hits | Yes, for bytes |
+| R2 `packs-public` | Canonical archives, `.sha256`, attestations, `meta.json` (with `warnings`, the counts of warning findings by category, and the optional `validation_run` id the pack page links to), `contents.json` per version (`{readme, files[{path, text}]}`, the text the site renders on the Contents tab and as the README), `versions.json`, `index/v1/*` | Validator only; versioned keys and scope indexes written once at content-addressed keys; the root rewritten by `RootCoordinator` | CDN cache hits | Yes, for bytes |
 | R2 `packs-private` | Private archives, `meta.json` and the signed per-pack private index entries | Validator only | Through a Worker after an access check | Yes, for bytes |
 | R2 `validation-reports` | Full reports, sandbox output, prose-screen numbers when a model ran (calibration only) | Once per run | Dashboard, admin | Yes |
 | R2 `ops` | Release manifests, N-1 bundles with their digests, the `cn-releases/<version>.tgz` mirror the engine's release workflow fills (REQ-VAL-032), Logpush archive (90 days request records truncated to `ClientNetwork` by the Transformer, 30 days firewall events) | CI, the engine's release workflow, Logpush | Release pipeline, validator, rollups, gate judge | No |
@@ -63,7 +63,7 @@ CDN, and a key that embeds the upload credential's id cannot overwrite another u
 `packs-public` is written once per version at an immutable key; scope indexes are written once at
 their content hash and only the root is rewritten, by one writer. `packs-private` has no custom
 domain and no public index; its private index entries are signed fragments the serving Worker
-returns as-is (REQ-PRIV-020). Reports can quote private content, so they stay out of D1 and the
+returns as-is (REQ-PRIV-020), at `private-index/<pack id>.json`; archives sit at `v/<version id>/pack.tar.zst`. Reports can quote private content, so they stay out of D1 and the
 public bucket; D1 keeps the summary and the report key. The `validation-reports` prose-screen
 numbers are never rendered anywhere. The prune cadences are in
 [overview.md](overview.md) §Scheduled work.
