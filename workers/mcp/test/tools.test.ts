@@ -202,7 +202,7 @@ describe("limits", () => {
   it("counts an invalid read token against its address, so the address cannot probe without end", async () => {
     const { app } = await build({ limit: 5 });
     const statuses: number[] = [];
-    for (let i = 0; i < 8; i++) statuses.push((await rpc(app, "tools/list", undefined, { authorization: "Bearer psr_forged" })).status);
+    for (let i = 0; i < 8; i++) statuses.push((await rpc(app, "tools/list", undefined, { authorization: `Bearer psr_${"ab".repeat(32)}` })).status);
     expect(statuses).toEqual([401, 401, 401, 401, 401, 429, 429, 429]);
     expect((await rpc(app, "tools/list")).status).toBe(429);
   });
@@ -230,7 +230,7 @@ describe("limits", () => {
       if (/read_tokens/.test(sql)) lookups++;
       return query(sql, params);
     };
-    for (let i = 0; i < 60; i++) await rpc(app, "tools/list", undefined, { authorization: "Bearer psr_forged" });
+    for (let i = 0; i < 60; i++) await rpc(app, "tools/list", undefined, { authorization: `Bearer psr_${"ab".repeat(32)}` });
     expect(lookups).toBeLessThanOrEqual(10);
   });
 
