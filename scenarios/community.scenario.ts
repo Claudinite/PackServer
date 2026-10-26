@@ -16,7 +16,7 @@ async function packWith(world: World, name: string, opts: { versions?: string[];
   const owner = await person(world);
   const maintainer = await person(world);
   await world.reports.seedRole(pack, owner, "owner");
-  await world.reports.seedRole(pack, maintainer, "publisher");
+  await world.reports.seedRole(pack, maintainer, "maintainer");
   return { pack, owner, maintainer };
 }
 

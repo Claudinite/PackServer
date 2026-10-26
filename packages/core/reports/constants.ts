@@ -1,4 +1,4 @@
-import { ATTACHMENT_DISPOSITIONS, BUG_TYPES, REPORT_KINDS, REPORT_ROUTES, REPORT_STATUSES, SEVERITIES } from "@packserver/schema/db";
+import { ATTACHMENT_DISPOSITIONS, BUG_TYPES, REPORT_KINDS, REPORT_ROUTES, REPORT_STATUSES, SCOPE_ROLES, SEVERITIES, type ScopeRole } from "@packserver/schema/db";
 
 export { ATTACHMENT_DISPOSITIONS, BUG_TYPES, REPORT_KINDS, REPORT_ROUTES, REPORT_STATUSES, SEVERITIES };
 export type ReportKind = (typeof REPORT_KINDS)[number];
@@ -20,7 +20,7 @@ export const UPLOADER_DAILY_BYTES = 25 * 1024 * 1024;
 export const ATTACHMENT_CEILING_BYTES = 500 * 1024 * 1024;
 export const SIMILAR_LIMIT = 5;
 
-/** The data model's roles that publish and yank, which the UI calls maintainers (REQ-PUB-022); owners and admins also hold them. */
-export const MAINTAINER_ROLES = ["owner", "admin", "publisher"] as const;
+/** Every scope role holds maintainer standing (REQ-PUB-022); owners hold it too. */
+export const MAINTAINER_ROLES: readonly ScopeRole[] = SCOPE_ROLES;
 /** Who is reminded before a disclosure timer ends. */
-export const REMINDER_ROLES = ["owner", "admin"] as const;
+export const REMINDER_ROLES: readonly ScopeRole[] = ["owner"];

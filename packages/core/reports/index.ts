@@ -1,5 +1,5 @@
 export { advisoriesFor, hasPublishedAdvisory, publishAdvisory, type Advisory, type PublishResult } from "./advisories.ts";
-export { findPublicPack, standingOn, isOwnerOrAdmin, type PackRef, type Standing } from "./access.ts";
+export { findPublicPack, standingOn, isScopeOwner, type PackRef, type Standing } from "./access.ts";
 export { classifyAttachment, safeFileName, type AttachmentRefusal, type AttachmentVerdict } from "./attachments.ts";
 export { attachmentsOf, discardStaleAttachments, loadAttachment, saveAttachment, type AttachmentMeta, type SaveAttachment, type StoredAttachment } from "./attachment-store.ts";
 export * from "./constants.ts";

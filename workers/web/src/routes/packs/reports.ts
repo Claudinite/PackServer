@@ -1,5 +1,5 @@
 import {
-  advisoriesFor, fileReport, findPublicPack, IssueLinkInput, isOwnerOrAdmin, linkIssue, listInbox, listIssues, listOwn, loadAttachment, readReport, ReportInput,
+  advisoriesFor, fileReport, findPublicPack, IssueLinkInput, isScopeOwner, linkIssue, listInbox, listIssues, listOwn, loadAttachment, readReport, ReportInput,
   saveAttachment, setSecurityContact, setStatus, similarIssues, standingOn, StatusInput,
   MAX_ATTACHMENT_BYTES, type PackRef, type Principal, type ReportPorts,
 } from "@packserver/core/reports";
@@ -96,7 +96,7 @@ routes.get("/packs/:scope/:name/reports/similar", async (c) => {
   return c.json({ similar: await similarIssues(portsOf(c), pack, title) }, 200, NO_STORE);
 });
 
-/** The publisher's inbox, security reports included. */
+/** The maintainers' inbox, security reports included. */
 routes.get("/packs/:scope/:name/reports", requireSession(), async (c) => {
   const pack = await packOf(c);
   const inbox = pack ? await listInbox(portsOf(c), pack, principalOf(c)) : null;
@@ -177,7 +177,7 @@ routes.put("/packs/:scope/:name/security-contact", requireSession(), csrfGuard, 
   const pack = await packOf(c);
   if (!pack) return notFound();
   const ports = portsOf(c);
-  if (!(await isOwnerOrAdmin(ports.d1, pack, userId(c)))) {
+  if (!(await isScopeOwner(ports.d1, pack, userId(c)))) {
     return (await standingOn(ports.d1, pack, principalOf(c))) === "maintainer" ? refusal("forbidden", { message: "Only owners set the security contact." }) : notFound();
   }
   const body = (await c.req.json().catch(() => null)) as { email?: unknown } | null;

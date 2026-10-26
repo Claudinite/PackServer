@@ -74,7 +74,7 @@ describe("status", () => {
   it("is set by maintainers only, and the reporter is told once per change", async () => {
     const f = await fixture();
     const ann = await f.user("ann");
-    const maria = await f.user("maria", "publisher");
+    const maria = await f.user("maria", "maintainer");
     const outsider = await f.user("zed");
     const { report } = await filed(f, ann, bug());
 
@@ -92,11 +92,23 @@ describe("status", () => {
   });
 });
 
+describe("scope maintainers", () => {
+  it("a scope's maintainer member reads the inbox and sets status, which an owner-only reading of the roles would refuse", async () => {
+    const f = await fixture();
+    const ann = await f.user("ann");
+    const mia = await f.user("mia", "maintainer");
+    const { report } = await filed(f, ann, bug());
+
+    expect(await listInbox(f.ports, f.pack, asUser(mia))).toMatchObject({ reports: [expect.objectContaining({ id: report.id })] });
+    expect(await setStatus(f.ports, report.id, asUser(mia), { status: "acknowledged" })).toMatchObject({ ok: true });
+  });
+});
+
 describe("security reports", () => {
   it("are private to the reporter, maintainers and registry security", async () => {
     const f = await fixture();
     const ann = await f.user("ann");
-    const maria = await f.user("maria", "publisher");
+    const maria = await f.user("maria", "maintainer");
     const zed = await f.user("zed");
     const { report } = await filed(f, ann, security());
     expect(await setStatus(f.ports, report.id, asUser(zed), { status: "acknowledged" })).toMatchObject({ ok: false, reason: "not_found" });
@@ -154,7 +166,7 @@ describe("the disclosure timer", () => {
     const f = await fixture();
     const ann = await f.user("ann");
     const olga = await f.user("olga", "owner");
-    await f.user("maria", "publisher");
+    await f.user("maria", "maintainer");
     const first = await filed(f, ann, security());
     const second = await filed(f, ann, security({ title: "Second" }));
 

@@ -116,7 +116,7 @@ export async function listIssues(ports: ReportPorts, pack: PackRef): Promise<Rep
   return viewsOf(ports, rows);
 }
 
-/** The publisher's inbox: everything filed against the pack, security reports included. Null for anyone who is not a maintainer or registry security. */
+/** The maintainers' inbox: everything filed against the pack, security reports included. Null for anyone who is not a maintainer or registry security. */
 export async function listInbox(ports: ReportPorts, pack: PackRef, principal: Principal): Promise<{ reports: ReportView[]; needs_security_contact: boolean } | null> {
   if ((await standingOn(ports.d1, pack, principal)) === "none") return null;
   const { rows } = await ports.d1.query(`select ${REPORT_COLUMNS} ${REPORT_FROM} where r.pack_id = ? order by r.created_at desc, r.id limit ?`, [pack.id, LIST_LIMIT]);

@@ -51,7 +51,7 @@ export async function ownersOf(d1: D1, scopeId: string): Promise<string[]> {
   return rows.map((r) => String(r.user_id));
 }
 
-export async function isOwnerOrAdmin(d1: D1, pack: Pick<PackRef, "scope_id">, userId: string): Promise<boolean> {
+export async function isScopeOwner(d1: D1, pack: Pick<PackRef, "scope_id">, userId: string): Promise<boolean> {
   const role = await roleOf(d1, pack.scope_id, userId);
-  return role !== null && (REMINDER_ROLES as readonly string[]).includes(role);
+  return role !== null && role === "owner";
 }

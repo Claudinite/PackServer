@@ -4,9 +4,10 @@ import type { ApiResponse, Driver, SeedStorage } from "../../drivers/driver";
 import type { Aliases } from "../alias";
 import { InfrastructureError } from "../errors";
 import { NotFound, Refusal, type RefusalReason } from "../outcomes";
+import type { ScopeRole } from "../scopes";
 import type { Pack, User } from "../types";
 
-export type Role = "owner" | "admin" | "publisher" | "member";
+export type Role = ScopeRole;
 
 export interface AttachmentDraft {
   name: string;

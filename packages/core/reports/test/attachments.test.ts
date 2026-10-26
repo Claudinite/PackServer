@@ -90,7 +90,7 @@ describe("notice delivery", () => {
   it("sends queued notices through the mail port and marks them, skipping people with no address", async () => {
     const f = await fixture();
     const ann = await f.user("ann");
-    const maria = await f.user("maria", "publisher");
+    const maria = await f.user("maria", "maintainer");
     const ghost = "user-ghost";
     await f.d1.query("insert into users (id, handle, created_at) values (?, 'ghost', 'x')", [ghost]);
     const result = await fileReport(f.ports, f.pack, ghost, bug(), null);
