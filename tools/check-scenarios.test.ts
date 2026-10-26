@@ -129,6 +129,19 @@ describe("checkGate", () => {
     expect(checkGate(base, world({ "scenarios/a.scenario.ts": `// note\n${good}` }), "").problems).toEqual([]);
   });
 
+  it("leaves the scenarios already in a file alone when another is appended to it", () => {
+    const appended = `${good}
+scenario("IT-ACC-002 Handle", async (world) => {
+  expect(await (await world.visitor()).signUp()).toBeSignedIn();
+});
+`;
+    const r = checkGate(base, world({ "scenarios/a.scenario.ts": appended }), "");
+    expect(r.problems).toEqual([]);
+    expect(r.notes).toContain("new scenario IT-ACC-002");
+    const helper = `${good}const helper = 1;\n`;
+    expect(checkGate(base, world({ "scenarios/a.scenario.ts": helper }), "").problems).toHaveLength(1);
+  });
+
   it("refuses a changed scenario with no requirement change", () => {
     const r = checkGate(base, world({ "scenarios/a.scenario.ts": edited }), "");
     expect(r.problems).toHaveLength(1);
