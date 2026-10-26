@@ -77,6 +77,11 @@ export const WizardUploadRequest = z.object({
   action: z.enum(["upload-url", "start", "dry-run"]),
   declared_sha256: Sha256.optional(),
   principal_id: z.string().min(1),
+  /** A dry-run upload: staged under the dry-run prefix and never promotable. */
+  dry_run: z.boolean().optional(),
+  prose_screen: z.boolean().optional(),
+  /** The upload credential a start belongs to, when the person has staged several for one version. */
+  credential_id: z.string().min(1).optional(),
 });
 export const WizardUploadResponse = z.discriminatedUnion("ok", [
   z.object({
