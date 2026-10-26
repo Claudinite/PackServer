@@ -49,5 +49,8 @@ export async function standing(
   const decision = await authorize(c.get("runtime").ports.d1, { ...input, userId: c.get("session")?.record.user_id });
   if (decision.kind === "allow") return decision;
   if (decision.kind === "not_found") return notFound();
+  if (decision.kind === "mfa_required") {
+    return refusal("mfa-required", { message: `@${decision.scope} requires everyone acting for it to have a passkey. Enrol one in Account > Security.` });
+  }
   return refusal("forbidden", { message: input.need === "owner" ? "Only an owner can do this." : "Only the scope's owners and maintainers can do this." });
 }

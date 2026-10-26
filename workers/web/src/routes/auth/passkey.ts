@@ -1,6 +1,6 @@
 import {
   beginRegistration, credentialsOf, type AuthenticationResponseJSON, type RegistrationResponseJSON, finishAuthentication, beginAuthentication, finishRegistration, FACTOR_ACTIONS, hasPasskey, holdUntilFor,
-  isPublishingCapable, recoveryStatus, replaceRecoveryCodes, rotateSession, safeReturnTarget, saveCredential,
+  cancelRecoveries, isPublishingCapable, recoveryStatus, replaceRecoveryCodes, rotateSession, safeReturnTarget, saveCredential,
 } from "@packserver/core/identity";
 import {
   consume, csrfTokenFor, idempotency, rateLimited, refusal, requireAssertion, requireSession, sessionCaller, sessionCookie, sessionCsrf, turnstile,
@@ -132,6 +132,7 @@ routes.post("/auth/passkey/enrol/verify", requireSession(), sessionCsrf<WebEnv>(
   await recordAudit(c, userId, "factor.added", undefined, { kind: "passkey" });
   const credential = await saveCredential(ports, registration, { label: asText(body.label, MAX_LABEL) ?? null, hold_until: hold });
   const codes = first ? await replaceRecoveryCodes(ports, userId) : undefined;
+  await cancelRecoveries(ports, userId);
   // REQ-ACC-005: an account that can publish and gains a factor, the first included, tells every verified address.
   if (await isPublishingCapable(runtime.ports.d1, userId)) {
     await notifyUser(c, userId, "factor-added", { factor: "passkey", securityUrl: securityUrlOf(c), lockApplies: hold !== null });

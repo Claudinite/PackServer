@@ -29,7 +29,7 @@ routes.get("/auth/session", requireSession(), async (c) => {
   );
 });
 
-/** The caller's live sessions. Revoking one is the session-management task's. */
+/** The caller's live sessions; revoking one is in sessions.ts. */
 routes.get("/auth/sessions", requireSession(), async (c) => {
   const live = c.get("session")!;
   const sessions = await listSessions(sessionPorts(c.get("runtime")), live.record.user_id, live.sid_hash);

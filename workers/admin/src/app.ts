@@ -6,6 +6,7 @@ import { routes as applications } from "./applications";
 import { routes as internal } from "./internal";
 import { routes as moderation } from "./moderation";
 import { routes as queue } from "./queue";
+import { recoveryRoutes } from "./queue/recoveries";
 import { routes as reports } from "./reports";
 import { selfTestChecks } from "./selftest";
 
@@ -26,6 +27,7 @@ export function createApp(runtime: AdminRuntime, options: AppOptions = {}): Hono
     selfTestAllowed: options.selfTestAllowed,
   });
   for (const page of [access, queue, applications, reports, moderation]) app.route("/", page);
+  app.route("/", recoveryRoutes(runtime));
   app.route("/internal", internal);
   return app;
 }
