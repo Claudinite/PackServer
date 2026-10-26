@@ -15,6 +15,7 @@ function copyRepo(): string {
   const dir = mkdtempSync(join(tmpdir(), "bindings-"));
   dirs.push(dir);
   cpSync(join(REPO, "packages/ports/trust-table.json"), join(dir, "packages/ports/trust-table.json"), { recursive: true });
+  cpSync(join(REPO, "packages/ports/test-fakes.json"), join(dir, "packages/ports/test-fakes.json"));
   cpSync(join(REPO, "workers"), join(dir, "workers"), {
     recursive: true,
     filter: (src) => !/node_modules|\.wrangler|\/test(\/|$)/.test(src),

@@ -1,0 +1,57 @@
+# Rolls the live release back to the incumbent its manifest records: `wrangler rollback <incumbent>`
+# per Worker in reverse release order (docs/operations/release.md §Rollback). The environment
+# has no reviewer by design; the admin app's roll-back tap dispatches this workflow.
+name: rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Why the release is being rolled back
+        type: string
+        required: true
+      release:
+        description: Release id to roll back. Default is the live release; pass the id explicitly for a release whose promote failed. Going back past a rollback is a rollback-deep release (docs/operations/release.md), not this workflow
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  WRANGLER_SEND_METRICS: "false"
+
+concurrency:
+  group: rollback
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: production-rollback
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: roll back
+        env:
+          REASON: ${{ inputs.reason }}
+          RELEASE: ${{ inputs.release }}
+        run: node tools/release/rollback.mjs --reason "$REASON" --release "$RELEASE"
