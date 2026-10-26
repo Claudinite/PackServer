@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "7304d5d2-1016-45e5-a55d-273f3c011f71",
+  "id": "8e72c9d5-ed4d-4c3f-8f5c-fb78848d506a",
   "prevId": "c8bd1b64-9cbe-4d0f-b99d-90a8068c32b2",
   "tables": {
     "credentials": {
@@ -2523,702 +2523,6 @@
         }
       }
     },
-    "advisories": {
-      "name": "advisories",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "pack_id": {
-          "name": "pack_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "report_id": {
-          "name": "report_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "summary": {
-          "name": "summary",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "severity": {
-          "name": "severity",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "fixed_in": {
-          "name": "fixed_in",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "published_at": {
-          "name": "published_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "advisories_report_unique": {
-          "name": "advisories_report_unique",
-          "columns": [
-            "report_id"
-          ],
-          "isUnique": true
-        },
-        "advisories_pack_idx": {
-          "name": "advisories_pack_idx",
-          "columns": [
-            "pack_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "advisories_pack_id_packs_id_fk": {
-          "name": "advisories_pack_id_packs_id_fk",
-          "tableFrom": "advisories",
-          "tableTo": "packs",
-          "columnsFrom": [
-            "pack_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "advisories_report_id_reports_id_fk": {
-          "name": "advisories_report_id_reports_id_fk",
-          "tableFrom": "advisories",
-          "tableTo": "reports",
-          "columnsFrom": [
-            "report_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "advisory_versions": {
-      "name": "advisory_versions",
-      "columns": {
-        "advisory_id": {
-          "name": "advisory_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "pack_id": {
-          "name": "pack_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "version": {
-          "name": "version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "advisory_versions_pack_idx": {
-          "name": "advisory_versions_pack_idx",
-          "columns": [
-            "pack_id",
-            "version"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "advisory_versions_advisory_id_advisories_id_fk": {
-          "name": "advisory_versions_advisory_id_advisories_id_fk",
-          "tableFrom": "advisory_versions",
-          "tableTo": "advisories",
-          "columnsFrom": [
-            "advisory_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "advisory_versions_pack_id_packs_id_fk": {
-          "name": "advisory_versions_pack_id_packs_id_fk",
-          "tableFrom": "advisory_versions",
-          "tableTo": "packs",
-          "columnsFrom": [
-            "pack_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "advisory_versions_advisory_id_version_pk": {
-          "columns": [
-            "advisory_id",
-            "version"
-          ],
-          "name": "advisory_versions_advisory_id_version_pk"
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "pack_security_contacts": {
-      "name": "pack_security_contacts",
-      "columns": {
-        "pack_id": {
-          "name": "pack_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "email": {
-          "name": "email",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "pack_security_contacts_pack_id_packs_id_fk": {
-          "name": "pack_security_contacts_pack_id_packs_id_fk",
-          "tableFrom": "pack_security_contacts",
-          "tableTo": "packs",
-          "columnsFrom": [
-            "pack_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "report_attachment_chunks": {
-      "name": "report_attachment_chunks",
-      "columns": {
-        "attachment_id": {
-          "name": "attachment_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "seq": {
-          "name": "seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "data": {
-          "name": "data",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "report_attachment_chunks_attachment_id_report_attachments_id_fk": {
-          "name": "report_attachment_chunks_attachment_id_report_attachments_id_fk",
-          "tableFrom": "report_attachment_chunks",
-          "tableTo": "report_attachments",
-          "columnsFrom": [
-            "attachment_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "report_attachment_chunks_attachment_id_seq_pk": {
-          "columns": [
-            "attachment_id",
-            "seq"
-          ],
-          "name": "report_attachment_chunks_attachment_id_seq_pk"
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "report_attachments": {
-      "name": "report_attachments",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "report_id": {
-          "name": "report_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "uploader_id": {
-          "name": "uploader_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "content_type": {
-          "name": "content_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "disposition": {
-          "name": "disposition",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "size_bytes": {
-          "name": "size_bytes",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "sha256": {
-          "name": "sha256",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "report_attachments_report_idx": {
-          "name": "report_attachments_report_idx",
-          "columns": [
-            "report_id"
-          ],
-          "isUnique": false
-        },
-        "report_attachments_uploader_idx": {
-          "name": "report_attachments_uploader_idx",
-          "columns": [
-            "uploader_id",
-            "created_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "report_attachments_report_id_reports_id_fk": {
-          "name": "report_attachments_report_id_reports_id_fk",
-          "tableFrom": "report_attachments",
-          "tableTo": "reports",
-          "columnsFrom": [
-            "report_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "report_attachments_uploader_id_users_id_fk": {
-          "name": "report_attachments_uploader_id_users_id_fk",
-          "tableFrom": "report_attachments",
-          "tableTo": "users",
-          "columnsFrom": [
-            "uploader_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "report_attachments_disposition_check": {
-          "name": "report_attachments_disposition_check",
-          "value": "\"report_attachments\".\"disposition\" in ('inline', 'attachment')"
-        },
-        "report_attachments_size_check": {
-          "name": "report_attachments_size_check",
-          "value": "\"report_attachments\".\"size_bytes\" >= 0 and \"report_attachments\".\"size_bytes\" <= 5242880"
-        }
-      }
-    },
-    "report_notices": {
-      "name": "report_notices",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "recipient": {
-          "name": "recipient",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "data": {
-          "name": "data",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "sent_at": {
-          "name": "sent_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "report_notices_unsent_idx": {
-          "name": "report_notices_unsent_idx",
-          "columns": [
-            "sent_at",
-            "created_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "reports": {
-      "name": "reports",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "pack_id": {
-          "name": "pack_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "reporter_id": {
-          "name": "reporter_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "version": {
-          "name": "version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "severity": {
-          "name": "severity",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "repro": {
-          "name": "repro",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "environment": {
-          "name": "environment",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'open'"
-        },
-        "fixed_in": {
-          "name": "fixed_in",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "route": {
-          "name": "route",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "issue_repository": {
-          "name": "issue_repository",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "issue_url": {
-          "name": "issue_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "disclosure_deadline": {
-          "name": "disclosure_deadline",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "reminder_sent_at": {
-          "name": "reminder_sent_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "expired_at": {
-          "name": "expired_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "reports_pack_idx": {
-          "name": "reports_pack_idx",
-          "columns": [
-            "pack_id",
-            "kind",
-            "created_at"
-          ],
-          "isUnique": false
-        },
-        "reports_reporter_idx": {
-          "name": "reports_reporter_idx",
-          "columns": [
-            "reporter_id",
-            "created_at"
-          ],
-          "isUnique": false
-        },
-        "reports_deadline_idx": {
-          "name": "reports_deadline_idx",
-          "columns": [
-            "kind",
-            "disclosure_deadline"
-          ],
-          "isUnique": false
-        },
-        "reports_issue_url_unique": {
-          "name": "reports_issue_url_unique",
-          "columns": [
-            "issue_url"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {
-        "reports_pack_id_packs_id_fk": {
-          "name": "reports_pack_id_packs_id_fk",
-          "tableFrom": "reports",
-          "tableTo": "packs",
-          "columnsFrom": [
-            "pack_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "reports_reporter_id_users_id_fk": {
-          "name": "reports_reporter_id_users_id_fk",
-          "tableFrom": "reports",
-          "tableTo": "users",
-          "columnsFrom": [
-            "reporter_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "reports_kind_check": {
-          "name": "reports_kind_check",
-          "value": "\"reports\".\"kind\" in ('bug', 'security')"
-        },
-        "reports_status_check": {
-          "name": "reports_status_check",
-          "value": "\"reports\".\"status\" in ('open', 'acknowledged', 'fixed', 'wont_fix', 'duplicate')"
-        },
-        "reports_type_check": {
-          "name": "reports_type_check",
-          "value": "\"reports\".\"type\" is null or \"reports\".\"type\" in ('crash', 'wrong_behaviour', 'docs', 'compatibility', 'other')"
-        },
-        "reports_severity_check": {
-          "name": "reports_severity_check",
-          "value": "\"reports\".\"severity\" in ('low', 'medium', 'high', 'critical')"
-        },
-        "reports_route_check": {
-          "name": "reports_route_check",
-          "value": "\"reports\".\"route\" in ('github_issue', 'inbox', 'security_contact', 'registry_security')"
-        },
-        "reports_timer_check": {
-          "name": "reports_timer_check",
-          "value": "(\"reports\".\"kind\" = 'security') = (\"reports\".\"disclosure_deadline\" is not null)"
-        }
-      }
-    },
     "assertion_failures": {
       "name": "assertion_failures",
       "columns": {
@@ -3575,6 +2879,384 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
+    },
+    "sandbox_usage": {
+      "name": "sandbox_usage",
+      "columns": {
+        "day": {
+          "name": "day",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "minutes": {
+          "name": "minutes",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "validation_milestones": {
+      "name": "validation_milestones",
+      "columns": {
+        "run_id": {
+          "name": "run_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "step": {
+          "name": "step",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "detail": {
+          "name": "detail",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "at": {
+          "name": "at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "validation_milestones_run_id_validation_runs_id_fk": {
+          "name": "validation_milestones_run_id_validation_runs_id_fk",
+          "tableFrom": "validation_milestones",
+          "tableTo": "validation_runs",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "validation_milestones_run_id_seq_pk": {
+          "columns": [
+            "run_id",
+            "seq"
+          ],
+          "name": "validation_milestones_run_id_seq_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "validation_milestones_outcome_check": {
+          "name": "validation_milestones_outcome_check",
+          "value": "\"validation_milestones\".\"outcome\" in ('ok', 'fail', 'skipped')"
+        }
+      }
+    },
+    "validation_runs": {
+      "name": "validation_runs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scope_id": {
+          "name": "scope_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "pack_name": {
+          "name": "pack_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "principal": {
+          "name": "principal",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "credential_id": {
+          "name": "credential_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "staging_key": {
+          "name": "staging_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "declared_sha256": {
+          "name": "declared_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "size_bytes": {
+          "name": "size_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "prose_screen": {
+          "name": "prose_screen",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "synthetic": {
+          "name": "synthetic",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "verdict": {
+          "name": "verdict",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "queued_reason": {
+          "name": "queued_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "start_after": {
+          "name": "start_after",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "dispatched_at": {
+          "name": "dispatched_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "dispatch_attempts": {
+          "name": "dispatch_attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "workflow_instance_id": {
+          "name": "workflow_instance_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "report_key": {
+          "name": "report_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "counted_new_pack": {
+          "name": "counted_new_pack",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "validation_runs_credential_unique": {
+          "name": "validation_runs_credential_unique",
+          "columns": [
+            "credential_id"
+          ],
+          "isUnique": true
+        },
+        "validation_runs_version_idx": {
+          "name": "validation_runs_version_idx",
+          "columns": [
+            "scope_id",
+            "pack_name",
+            "version"
+          ],
+          "isUnique": false
+        },
+        "validation_runs_principal_idx": {
+          "name": "validation_runs_principal_idx",
+          "columns": [
+            "principal",
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "validation_runs_status_idx": {
+          "name": "validation_runs_status_idx",
+          "columns": [
+            "status"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "validation_runs_scope_id_scopes_id_fk": {
+          "name": "validation_runs_scope_id_scopes_id_fk",
+          "tableFrom": "validation_runs",
+          "tableTo": "scopes",
+          "columnsFrom": [
+            "scope_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "validation_runs_kind_check": {
+          "name": "validation_runs_kind_check",
+          "value": "\"validation_runs\".\"kind\" in ('publish', 'dry-run')"
+        },
+        "validation_runs_source_check": {
+          "name": "validation_runs_source_check",
+          "value": "\"validation_runs\".\"source\" in ('oidc', 'upload')"
+        },
+        "validation_runs_status_check": {
+          "name": "validation_runs_status_check",
+          "value": "\"validation_runs\".\"status\" in ('queued', 'running', 'finished')"
+        },
+        "validation_runs_verdict_check": {
+          "name": "validation_runs_verdict_check",
+          "value": "\"validation_runs\".\"verdict\" is null or \"validation_runs\".\"verdict\" in ('pass', 'warn', 'hold', 'fail', 'error')"
+        },
+        "validation_runs_queue_reason_check": {
+          "name": "validation_runs_queue_reason_check",
+          "value": "\"validation_runs\".\"queued_reason\" is null or \"validation_runs\".\"queued_reason\" in ('soft-rate-limit', 'sandbox-budget')"
+        },
+        "validation_runs_size_check": {
+          "name": "validation_runs_size_check",
+          "value": "\"validation_runs\".\"size_bytes\" >= 0"
+        }
+      }
     }
   },
   "views": {},
