@@ -8,3 +8,4 @@ export type { OrgHandle, PeopleView, ProfileView, TransferHandle, Invitation, Sc
 export type { ScopeOwner } from "./world/areas/scopes";
 export type { ListingSeed, SignalsSeed, Filters as SearchFilters, Results as SearchResults, ResultCard } from "./world/areas/search";
 export type { Run, RunView, RunMilestone } from "./world/publishing";
+export type { PublisherChangeEvent, RegistrationFields, TrustedRegistration } from "./world/trusted-publishers";

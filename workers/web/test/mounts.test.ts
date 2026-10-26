@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 // The §2.8 mounts feature tasks fill without touching index.ts: each is a stub module exporting a Hono router.
 const MOUNTS = [
@@ -12,6 +12,11 @@ const MOUNTS = [
 ];
 
 describe("web mounts", () => {
+  // The first import transforms the whole route module graph, which takes seconds; paying it here keeps each test to the export check.
+  beforeAll(async () => {
+    await Promise.all(MOUNTS.map((path) => import(/* @vite-ignore */ path)));
+  }, 60_000);
+
   it.each(MOUNTS)("%s exports a router", async (path) => {
     const mod = (await import(/* @vite-ignore */ path)) as { routes?: unknown };
     expect(mod.routes).toBeInstanceOf(Hono);
