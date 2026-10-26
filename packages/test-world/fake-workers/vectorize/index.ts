@@ -28,6 +28,8 @@ export default class FakeVectorize extends WorkerEntrypoint {
   async fetch(request: Request): Promise<Response> {
     return handleControl(request, {
       reset: () => index.items.clear(),
+      upsert: ({ items }: { items: Parameters<FakeVectorize["upsert"]>[0] }) => this.upsert(items),
+      remove: ({ ids }: { ids: string[] }) => this.deleteByIds(ids),
       ids: () => [...index.items.keys()].sort(),
     });
   }

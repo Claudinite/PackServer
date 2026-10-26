@@ -1,4 +1,5 @@
 import type { Tree } from "../../canonical/index.ts";
+import type { Promoted } from "../manifest/preinstall.ts";
 
 /** Lookups the static rules need; each is injected so the rules stay pure. */
 export interface StaticRulePorts {
@@ -21,5 +22,7 @@ export interface StaticRuleInput {
   pack: string;
   /** The newest version already published for this pack, if any. */
   newestVersion: string | null;
+  /** The capabilities and manifest of the previous promoted version, when there is one. */
+  previous?: Promoted | null;
   rulesVersion: string;
 }

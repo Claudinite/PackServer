@@ -16,11 +16,12 @@ async function vectorOf(text: string): Promise<number[]> {
   const norm = Math.sqrt(raw.reduce((n, x) => n + x * x, 0));
   return raw.map((x) => x / norm);
 }
-const state = { calls: [] as number[], cost: 0 };
+const state = { calls: [] as number[], cost: 0, spent: false };
 
 /** Stands in for Workers AI `bge-m3`: a hash becomes a unit vector, a recorded table overrides it. */
 export default class FakeAi extends WorkerEntrypoint {
   async embed(texts: string[]): Promise<number[][]> {
+    if (state.spent) throw new Error("the day's model budget is spent");
     state.calls.push(texts.length);
     state.cost += texts.length * COST_PER_TEXT;
     return Promise.all(texts.map(async (t) => table.get(t) ?? (await vectorOf(t))));
@@ -31,8 +32,11 @@ export default class FakeAi extends WorkerEntrypoint {
       reset: () => {
         state.calls = [];
         state.cost = 0;
+        state.spent = false;
         table.clear();
       },
+      spend: ({ spent }: { spent: boolean }) => void (state.spent = spent),
+      embed: ({ texts }: { texts: string[] }) => this.embed(texts),
       remember: ({ text, vector }: { text: string; vector: number[] }) => void table.set(text, vector),
       calls: () => state.calls,
       cost: () => state.cost,

@@ -1,0 +1,10 @@
+{
+  "web": {},
+  "mcp": {"AI": "fake-ai", "VECTORIZE": "fake-vectorize"},
+  "publish": {},
+  "github": {},
+  "validator": {"AI": "fake-ai", "VECTORIZE": "fake-vectorize", "SANDBOX_A": "fake-sandbox-a", "SANDBOX_B": "fake-sandbox-b"},
+  "admin": {"ACCESS": "fake-access"},
+  "judge": {"ACCESS": "fake-access"},
+  "prober": {}
+}

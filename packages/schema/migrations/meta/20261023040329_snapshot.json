@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "42414507-a24d-464b-8f78-1ad0090d18ab",
+  "id": "6e44d7f2-f9db-4039-9fb3-b1261b607be2",
   "prevId": "dfb9ec22-371e-4d05-a3c3-596d1170c19b",
   "tables": {
     "credentials": {
@@ -927,49 +927,14 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "read_tokens": {
-      "name": "read_tokens",
+    "trusted_publishers": {
+      "name": "trusted_publishers",
       "columns": {
         "id": {
           "name": "id",
           "type": "text",
           "primaryKey": true,
           "notNull": true,
-          "autoincrement": false
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "token_hash": {
-          "name": "token_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "hint": {
-          "name": "hint",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "label": {
-          "name": "label",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
           "autoincrement": false
         },
         "scope_id": {
@@ -979,15 +944,78 @@
           "notNull": true,
           "autoincrement": false
         },
-        "pack_id": {
-          "name": "pack_id",
+        "pack_name": {
+          "name": "pack_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "repository_id": {
+          "name": "repository_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "repository_owner_id": {
+          "name": "repository_owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "repository": {
+          "name": "repository",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "workflow": {
+          "name": "workflow",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "environment": {
+          "name": "environment",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "cidr": {
-          "name": "cidr",
+        "path": {
+          "name": "path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "refs": {
+          "name": "refs",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "events": {
+          "name": "events",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "pending_until": {
+          "name": "pending_until",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_by": {
+          "name": "created_by",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -1000,68 +1028,35 @@
           "notNull": true,
           "autoincrement": false
         },
-        "expires_at": {
-          "name": "expires_at",
+        "updated_at": {
+          "name": "updated_at",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "last_used_at": {
-          "name": "last_used_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "revoked_at": {
-          "name": "revoked_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "revoked_reason": {
-          "name": "revoked_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         }
       },
       "indexes": {
-        "read_tokens_hash_unique": {
-          "name": "read_tokens_hash_unique",
+        "trusted_publishers_pack_idx": {
+          "name": "trusted_publishers_pack_idx",
           "columns": [
-            "token_hash"
+            "scope_id",
+            "pack_name"
           ],
-          "isUnique": true
+          "isUnique": false
         },
-        "read_tokens_user_idx": {
-          "name": "read_tokens_user_idx",
+        "trusted_publishers_repository_idx": {
+          "name": "trusted_publishers_repository_idx",
           "columns": [
-            "user_id"
+            "repository_id"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "read_tokens_user_id_users_id_fk": {
-          "name": "read_tokens_user_id_users_id_fk",
-          "tableFrom": "read_tokens",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "read_tokens_scope_id_scopes_id_fk": {
-          "name": "read_tokens_scope_id_scopes_id_fk",
-          "tableFrom": "read_tokens",
+        "trusted_publishers_scope_id_scopes_id_fk": {
+          "name": "trusted_publishers_scope_id_scopes_id_fk",
+          "tableFrom": "trusted_publishers",
           "tableTo": "scopes",
           "columnsFrom": [
             "scope_id"
@@ -1072,12 +1067,224 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "read_tokens_pack_id_packs_id_fk": {
-          "name": "read_tokens_pack_id_packs_id_fk",
-          "tableFrom": "read_tokens",
-          "tableTo": "packs",
+        "trusted_publishers_created_by_users_id_fk": {
+          "name": "trusted_publishers_created_by_users_id_fk",
+          "tableFrom": "trusted_publishers",
+          "tableTo": "users",
           "columnsFrom": [
-            "pack_id"
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "upload_credentials": {
+      "name": "upload_credentials",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "secret_hash": {
+          "name": "secret_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scope_id": {
+          "name": "scope_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "pack_name": {
+          "name": "pack_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "trusted_publisher_id": {
+          "name": "trusted_publisher_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "claims": {
+          "name": "claims",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "oidc_jti": {
+          "name": "oidc_jti",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "staging_key": {
+          "name": "staging_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "lifetime": {
+          "name": "lifetime",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "issued_at": {
+          "name": "issued_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "used_at": {
+          "name": "used_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "size_bytes": {
+          "name": "size_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "uploaded_at": {
+          "name": "uploaded_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "object_expires_at": {
+          "name": "object_expires_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "released_at": {
+          "name": "released_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "upload_credentials_secret_hash_unique": {
+          "name": "upload_credentials_secret_hash_unique",
+          "columns": [
+            "secret_hash"
+          ],
+          "isUnique": true
+        },
+        "upload_credentials_staging_key_unique": {
+          "name": "upload_credentials_staging_key_unique",
+          "columns": [
+            "staging_key"
+          ],
+          "isUnique": true
+        },
+        "upload_credentials_oidc_jti_unique": {
+          "name": "upload_credentials_oidc_jti_unique",
+          "columns": [
+            "oidc_jti"
+          ],
+          "isUnique": true
+        },
+        "upload_credentials_scope_idx": {
+          "name": "upload_credentials_scope_idx",
+          "columns": [
+            "scope_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "upload_credentials_scope_id_scopes_id_fk": {
+          "name": "upload_credentials_scope_id_scopes_id_fk",
+          "tableFrom": "upload_credentials",
+          "tableTo": "scopes",
+          "columnsFrom": [
+            "scope_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "upload_credentials_trusted_publisher_id_trusted_publishers_id_fk": {
+          "name": "upload_credentials_trusted_publisher_id_trusted_publishers_id_fk",
+          "tableFrom": "upload_credentials",
+          "tableTo": "trusted_publishers",
+          "columnsFrom": [
+            "trusted_publisher_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "upload_credentials_user_id_users_id_fk": {
+          "name": "upload_credentials_user_id_users_id_fk",
+          "tableFrom": "upload_credentials",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
           ],
           "columnsTo": [
             "id"
@@ -1089,13 +1296,17 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
-        "read_tokens_kind_check": {
-          "name": "read_tokens_kind_check",
-          "value": "\"read_tokens\".\"kind\" in ('read')"
+        "upload_credentials_source_check": {
+          "name": "upload_credentials_source_check",
+          "value": "\"upload_credentials\".\"source\" in ('oidc', 'upload')"
         },
-        "read_tokens_revoke_reason_check": {
-          "name": "read_tokens_revoke_reason_check",
-          "value": "\"read_tokens\".\"revoked_reason\" is null or \"read_tokens\".\"revoked_reason\" in ('owner', 'leak-reported')"
+        "upload_credentials_lifetime_check": {
+          "name": "upload_credentials_lifetime_check",
+          "value": "\"upload_credentials\".\"lifetime\" in ('dry-run', 'draft')"
+        },
+        "upload_credentials_size_check": {
+          "name": "upload_credentials_size_check",
+          "value": "\"upload_credentials\".\"size_bytes\" is null or \"upload_credentials\".\"size_bytes\" >= 0"
         }
       }
     },

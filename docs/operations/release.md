@@ -212,7 +212,7 @@ environment, and a fresh passkey sign-in.
 | Risk | Answer |
 |---|---|
 | Bad release breaks update checks and downloads | Cache hits run no Worker; indexes `max-age=60, stale-while-revalidate=300, stale-if-error=86400`, content-addressed scope indexes `immutable`; cn keeps its last good index; members keep what they vendored |
-| D1 degraded | Pack pages render from R2 `meta.json`; search falls back to cached results or Vectorize with `degraded: true`; public `get_download` needs only R2; writes 503 with `Retry-After` |
+| D1 degraded | Pack pages render from R2 `meta.json`; search answers `503` with `degraded: true` (only D1 knows a pack's current visibility, so neither Vectorize nor a cached result set answers); public `get_download` needs only R2; writes 503 with `Retry-After` |
 | KV degraded | Anonymous reads untouched; signed-in pages and publishing 503; MCP fails open for public reads and closed for writes; JWKS falls back to a direct fetch |
 | Access down | Only admin, staging, the canary host and `/__selftest` depend on it; the self-test has the HMAC path; moderation waits; no release verifies until it returns |
 | Turnstile fails to load | Stricter per-IP rate limit instead of refusal |

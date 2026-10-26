@@ -1,4 +1,5 @@
 import { expectedBindings, TRUST_TABLE, type WorkerName } from "@packserver/ports";
+import testFakes from "@packserver/ports/test-fakes" with { type: "json" };
 import { expect, it, describe } from "vitest";
 import { baseSecurityHeaders, NON_HTML_CSP } from "@packserver/ui/headers";
 import { VERSION_HEADER } from "./version";
@@ -78,7 +79,7 @@ export const SHELL_VERSION = "version-test";
 
 /** An `env` with every binding the trust table gives the Worker, as an empty object that is never called; under `env.test` a fake Worker's binding is a service binding. */
 export function dummyEnv(worker: WorkerName, environment = "test"): Record<string, unknown> {
-  const fakes = environment === "test" ? Object.keys(TRUST_TABLE[worker].fakes) : [];
+  const fakes = environment === "test" ? Object.keys((testFakes as Record<string, Record<string, string>>)[worker] ?? {}) : [];
   const env: Record<string, unknown> = Object.fromEntries(expectedBindings(worker).map((name) => [name, fakes.includes(name) ? { fetch: () => {} } : {}]));
   env.WORKER = worker;
   env.ENVIRONMENT = environment;
@@ -107,9 +108,11 @@ export function expectPortsMatchTrustTable(
 }
 
 /** Every Worker reads the hash keys and `telemetry_mode` through its own bindings, and nothing else. */
+type TelemetryRuntime = { ports: { telemetry: { keys(): Promise<unknown>; mode(): Promise<unknown> } } };
+
 export async function expectTelemetryWired(
   worker: WorkerName,
-  createRuntime: (env: never) => { ports: { telemetry: { keys(): Promise<unknown>; mode(): Promise<unknown> } } },
+  createRuntime: (env: never) => TelemetryRuntime | Promise<TelemetryRuntime>,
 ): Promise<void> {
   const asked: string[] = [];
   const env = {
@@ -118,7 +121,7 @@ export async function expectTelemetryWired(
     PRINCIPAL_HASH_KEY: { get: async () => "principal-key" },
     TELEMETRY_KV: { get: async (key: string) => (asked.push(key), "economy") },
   };
-  const { telemetry } = createRuntime(env as never).ports;
+  const { telemetry } = (await createRuntime(env as never)).ports;
   expect(await telemetry.keys()).toEqual({ ipMaster: "ip-key", principalKey: "principal-key" });
   expect(await telemetry.mode()).toBe("economy");
   expect(asked).toEqual(["telemetry_mode"]);

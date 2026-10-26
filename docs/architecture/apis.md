@@ -21,14 +21,16 @@ Notable endpoints:
 | `POST /api/tokens/leak` | Leak report, full token only (REQ-PUB-032) |
 | `GET /api/private/index` | The signed per-pack private entries the caller may read, after the OIDC, session or `psr_` check (REQ-PRIV-016, REQ-PRIV-020) |
 | `GET /api/private/v/<opaque version id>` | Streamed private archive or 5-minute presigned URL; the id is the one the private entry names, so no pack name reaches a log (REQ-DELIV-007) |
-| `GET /api/search?q=…` | Site search; delegates to `mcp`'s search over a service binding |
+| `GET /api/search?q=…` | Site search and browse (no `q`): `category`, `part`, `verified`, `verified_domains`, `has_repository`, `sort` (score, stars, rating, recent, fetches), `limit`, `offset`; delegates to `mcp`'s search over a service binding |
+| `GET /api/categories`, `GET /api/trending` | The fixed category list with counts; the Trending rail's packs (REQ-COMM-014); both delegate to `mcp` |
 
 ## Publishing (`publish`)
 
 | Path | Purpose |
 |---|---|
-| `POST /api/oidc/exchange` | GitHub OIDC token in, 15-minute pack-scoped upload credential out |
+| `POST /api/oidc/exchange` | GitHub OIDC token in (body `{token, pack, version, job}`, the job being `$GITHUB_JOB` because the token carries none), 15-minute single-use pack-scoped upload credential out |
 | `POST /api/publish/@scope/name/<version>/upload-url` | One presigned single-object PUT into `packs-staging` at `staging/<scope>/<name>/<version>/<credential_id>.tar.zst` |
+| `POST /api/publish/@scope/name/<version>/uploaded` | The upload-complete callback: the Worker checks the staged object's size and deletes it if over the cap |
 | `POST /api/publish/@scope/name/<version>` | Start validation with the declared SHA-256 |
 | `GET /api/publish/runs/<run_id>` | Live progress and the report |
 | `POST /api/dry-run` | Dry-run validation (REQ-VAL-043) |
@@ -76,7 +78,8 @@ caller as data inside a field, never as instructions (REQ-SEARCH-023).
 
 Search merges FTS5 BM25 with Vectorize nearest neighbours filtered by category, part, visibility and
 verification, and re-ranks by text relevance × pack score × category match × engine compatibility.
-On D1 failure the tool answers from Vectorize or a cached result set with `degraded: true`.
+On D1 failure the tool answers `503` (only D1 knows who may still be found, so Vectorize alone never answers); when the
+model budget is spent it answers by keyword alone with `degraded: true`, and a query's embedding is cached for 24 hours.
 
 ## CDN objects (`packs.claudinite.com`)
 
