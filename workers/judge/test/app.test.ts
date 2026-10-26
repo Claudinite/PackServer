@@ -1,19 +1,12 @@
-import { describeWorkerShell, dummyEnv, expectTelemetryWired, expectPortsMatchTrustTable, SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
+import { describeWorkerShell, dummyEnv, expectTelemetryWired, expectPortsMatchTrustTable } from "@packserver/http/testing";
 import { createFakePorts } from "@packserver/ports/fakes";
 import { describe, expect, it } from "vitest";
+import { runtimeWith } from "./support";
 import { createApp } from "../src/app";
 import { createRuntime, type Env, type JudgeRuntime } from "../src/bindings";
 
 const fakes = createFakePorts({ worker: "judge" });
-const runtime = (missingBindings: string[] = []): JudgeRuntime => ({
-  worker: "judge",
-  environment: "test",
-  version: { versionId: SHELL_VERSION, releaseId: SHELL_RELEASE },
-  missingBindings,
-  missingSecrets: [],
-  ports: fakes,
-  services: { admin: {} as Fetcher },
-});
+const runtime = (missingBindings: string[] = []): JudgeRuntime => ({ ...runtimeWith(fakes), missingBindings });
 
 describeWorkerShell({
   worker: "judge",
