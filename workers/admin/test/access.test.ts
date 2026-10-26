@@ -62,3 +62,13 @@ describe("admin test environment", () => {
     expect(wrangler.env["test"]?.vars["ADMIN_IDENTITIES"]?.split(",")).toContain(email);
   });
 });
+
+describe("admin identity set", () => {
+  it("is the variable the zone's Access application is built from", () => {
+    const wrangler = JSON.parse(readFileSync(join(import.meta.dirname, "../wrangler.jsonc"), "utf8")) as { env: Record<string, { vars: Record<string, string> }> };
+    const zone = readFileSync(join(import.meta.dirname, "../../../infra/zone/lib/access.mjs"), "utf8");
+    const name = /envVars\.(ACCESS_ADMIN_EMAILS)\b/.exec(zone)?.[1];
+    expect(name).toBeDefined();
+    for (const env of ["staging", "production"]) expect(wrangler.env[env]?.vars["ADMIN_IDENTITIES"]).toBe(name);
+  });
+});

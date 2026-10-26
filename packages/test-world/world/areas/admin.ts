@@ -120,6 +120,8 @@ export interface AdminModule {
     promoted(version: Version): Promise<void>;
     /** Records that the latest completed weekly scan found `repositories` public repositories declaring the pack. */
     declaredBy(pack: { systemName: string }, repositories: number): Promise<void>;
+    /** Makes the version's pack private, in the way the publisher's visibility setting will once publishing can set it. */
+    makePrivate(version: Version): Promise<void>;
     /** The publisher's appeal against a rejection, in the way the publish Worker will record it once it lands. */
     appeal(version: Version, note: string): Promise<void>;
   };
@@ -365,6 +367,9 @@ export function createAdmin(driver: Driver, onDispose: (undo: () => Promise<void
           "insert or ignore into pack_versions (id, pack_id, version, state, sha256, size_bytes, published_at, verified, source_verified) values (?, ?, ?, 'active', ?, ?, ?, 0, 0)",
           [`pv-${String(pack.id)}-${String(run.version)}`, pack.id, run.version, run.canonical_sha256 ?? "0".repeat(64), run.size_bytes, at],
         );
+      },
+      async makePrivate(version) {
+        await sqlOf()("update packs set visibility = 'private' where (scope_id, name) = (select scope_id, pack_name from validation_runs where id = ?)", [runIdOf(version)]);
       },
       async declaredBy(pack, repositories) {
         const sql = sqlOf();

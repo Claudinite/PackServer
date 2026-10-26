@@ -150,6 +150,36 @@ describe("a decision on a held version", () => {
     expect((await f.d1.query("select count(*) as n from review_decisions")).rows[0]!.n).toBe(0);
   });
 
+  it("heals on a retry of the same decision when the audit write failed after the row", async () => {
+    const f = fixture();
+    await scope(f, "a");
+    const id = await hold(f, "a");
+    const audit = f.ports.audit;
+    let failing = true;
+    const flaky: AdminPorts = { ...f.ports, audit: async (...args) => { if (failing) throw new Error("audit queue down"); return audit(...args); } };
+    await expect(decideHeld(flaky, id, ADMIN, { kind: "quarantine_publisher", reason: "again" })).rejects.toThrow("audit queue down");
+    expect((await f.d1.query("select state from scopes where id = 's-a'")).rows[0]!.state).toBe("held");
+    expect(f.auditQueue.messages).toHaveLength(0);
+    failing = false;
+    expect(await decideHeld(flaky, id, ADMIN, { kind: "quarantine_publisher", reason: "again" })).toMatchObject({ ok: true });
+    expect(f.auditQueue.messages).toHaveLength(1);
+    expect(f.workflows.events).toHaveLength(1);
+    expect(f.mail.inbox("a@example.test")).toHaveLength(0);
+    expect(await decideHeld(f.ports, id, ADMIN, { kind: "approve" })).toMatchObject({ ok: false, reason: "already_decided" });
+  });
+
+  it("decides only a finished, non-synthetic publish run", async () => {
+    const f = fixture();
+    await scope(f, "a");
+    const synthetic = await hold(f, "a");
+    const probe = await hold(f, "a", { version: "1.0.1" });
+    const running = await hold(f, "a", { version: "1.0.2" });
+    await f.seed("update validation_runs set synthetic = 1 where id = ?", [synthetic]);
+    await f.seed("update validation_runs set kind = 'dry-run' where id = ?", [probe]);
+    await f.seed("update validation_runs set status = 'running' where id = ?", [running]);
+    for (const id of [synthetic, probe, running]) expect(await decideHeld(f.ports, id, ADMIN, { kind: "approve" })).toMatchObject({ ok: false, reason: "not_held" });
+  });
+
   it("sends a rejection's reason to the owners, and an approval nothing", async () => {
     const f = fixture();
     await scope(f, "a");

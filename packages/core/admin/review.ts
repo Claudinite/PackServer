@@ -120,12 +120,13 @@ interface RunRow {
   widening: boolean;
   verdict: string | null;
   workflow_instance_id: string | null;
+  decidable: boolean;
 }
 
 async function loadRun(ports: Ports, runId: string): Promise<RunRow | null> {
   const r = (
     await ports.d1.query(
-      `select r.id, r.scope_id, r.pack_name, r.version, r.report_key, r.canonical_key, r.widening, r.verdict, r.workflow_instance_id, s.name as scope
+      `select r.id, r.scope_id, r.pack_name, r.version, r.report_key, r.canonical_key, r.widening, r.verdict, r.workflow_instance_id, r.kind, r.synthetic, r.status, s.name as scope
        from validation_runs r join scopes s on s.id = r.scope_id where r.id = ?`,
       [runId],
     )
@@ -142,6 +143,7 @@ async function loadRun(ports: Ports, runId: string): Promise<RunRow | null> {
         widening: r.widening === 1 || r.widening === true,
         verdict: (r.verdict as string | null) ?? null,
         workflow_instance_id: (r.workflow_instance_id as string | null) ?? null,
+        decidable: r.kind === "publish" && !r.synthetic && r.status === "finished",
       }
     : null;
 }
@@ -222,22 +224,28 @@ async function sendEvent(ports: AdminPorts, instance: string | null, payload: un
 export async function decideHeld(ports: AdminPorts, runId: string, admin: AdminIdentity, decision: ReviewDecision): Promise<ReviewResult> {
   const run = await loadRun(ports, runId);
   if (!run) return { ok: false, reason: "unknown", message: "No such run." };
-  if (run.verdict !== "hold") return { ok: false, reason: "not_held", message: "The run is not held for review." };
+  if (run.verdict !== "hold" || !run.decidable) return { ok: false, reason: "not_held", message: "The run is not held for review." };
   const reason = decision.kind === "approve" ? null : (decision.reason ?? "").trim() || null;
   if (decision.kind === "reject" && !reason) return { ok: false, reason: "reason_required", message: "A rejection needs a reason." };
   if (reason && reason.length > MAX_REASON) return { ok: false, reason: "reason_too_long", message: `A reason is at most ${MAX_REASON} characters.` };
   const pack = `@${run.scope}/${run.pack_name}`;
   const at = iso(ports);
-  const written = await ports.d1.query("insert or ignore into review_decisions (run_id, decision, reason, decided_by, decided_at) values (?, ?, ?, ?, ?)", [
-    runId, decision.kind, reason, admin.email, at,
-  ]);
-  if (written.meta.changes === 0) return { ok: false, reason: "already_decided", message: "The run is already decided." };
-  if (decision.kind === "quarantine_publisher") await ports.d1.query("update scopes set state = 'held' where id = ?", [run.scope_id]);
+  const statements = [
+    { sql: "insert or ignore into review_decisions (run_id, decision, reason, decided_by, decided_at) values (?, ?, ?, ?, ?)", params: [runId, decision.kind, reason, admin.email, at] },
+    ...(decision.kind === "quarantine_publisher"
+      ? [{ sql: "update scopes set state = 'held' where id = ? and exists (select 1 from review_decisions where run_id = ? and decision = 'quarantine_publisher')", params: [run.scope_id, runId] }]
+      : []),
+  ];
+  const [inserted] = await ports.d1.batch(statements);
+  const recorded = (await ports.d1.query("select decision, decided_by, event_sent_at from review_decisions where run_id = ?", [runId])).rows[0];
+  if (!recorded || recorded.decision !== decision.kind) return { ok: false, reason: "already_decided", message: "The run is already decided." };
+  // The same verdict again is a retry of a step that may have stopped part way, so each step after the row runs again.
   await ports.audit(actorOf(admin), "admin.action", `version:${pack}@${run.version}`, { detail: { verb: `review.${decision.kind}` } });
 
-  if (await sendEvent(ports, run.workflow_instance_id, { run_id: runId, decision: decision.kind })) {
+  if (recorded.event_sent_at === null && (await sendEvent(ports, run.workflow_instance_id, { run_id: runId, decision: decision.kind }))) {
     await ports.d1.query("update review_decisions set event_sent_at = ? where run_id = ?", [iso(ports), runId]);
   }
+  if (inserted?.meta.changes === 0) return { ok: true, pack, version: run.version };
   const appealUrl = `https://${new URL(ports.siteOrigin).host}/validation/${runId}`;
   if (decision.kind === "reject") await notifyOwners(ports, run.scope_id, "pack-actioned", { pack: `${pack}@${run.version}`, action: "rejected after review", reason: reason!, appealUrl });
   if (decision.kind === "quarantine_publisher") {

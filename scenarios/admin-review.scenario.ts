@@ -130,7 +130,9 @@ scenario("IT-ADMIN-006 Admins see full reports and prose-screen results without 
 scenario("IT-ADMIN-009 Admin reads of private content are audited", async (world) => {
   const admin = await world.admins.create();
   const publisher = await world.publishers.create({ handle: "priv" });
-  const waiting = await held(world, publisher, "priv", "1.0.0");
+  await world.admins.promoted(await clean(world, publisher, "priv", "1.0.0"));
+  const waiting = await held(world, publisher, "priv", "1.1.0");
+  await world.admins.makePrivate(waiting);
   const pack = await world.packs.public("@acme/gcp", { versions: ["1.0.0"] });
   const reporter = await world.users.create();
   await reporter.signIn();
@@ -142,9 +144,9 @@ scenario("IT-ADMIN-009 Admin reads of private content are audited", async (world
   await admin.reports.proseScreen(waiting);
   await admin.reports.security(filed);
   const reads = await admin.audit();
-  expect(reads.map((r) => r.verb).sort()).toEqual(["read.prose-screen", "read.report", "read.validation-report", "read.validation-report"]);
+  expect(reads.map((r) => r.verb).sort()).toEqual(["read.private-pack", "read.prose-screen", "read.report", "read.validation-report"]);
   for (const read of reads) expect(read).toMatchObject({ action: "admin.action", actor: admin.email });
-  expect(reads.map((r) => r.target?.split(":")[1]).sort()).toEqual(["prose-screen", "report", "validation-report", "validation-report"]);
+  expect(reads.map((r) => r.target?.split(":")[1]).sort()).toEqual(["private-pack", "prose-screen", "report", "validation-report"]);
 
   await world.agents.anonymous().pack(pack);
   await admin.queue.list();

@@ -85,7 +85,8 @@ export function jwtAccessIdentity(options: JwtAccessOptions): AccessIdentity {
           algorithms: ["RS256"],
           ...(options.now ? { currentDate: new Date(options.now()) } : {}),
         });
-        const email = typeof payload.email === "string" ? payload.email : typeof payload.common_name === "string" ? payload.common_name : "";
+        if (typeof payload.email !== "string" || !payload.email) throw new Error("the assertion names no person");
+        const email = payload.email;
         const aud = Array.isArray(payload.aud) ? payload.aud : payload.aud ? [payload.aud] : [];
         return { email, sub: String(payload.sub ?? ""), aud, ...(payload.exp === undefined ? {} : { exp: payload.exp }) };
       } catch (error) {
