@@ -65,6 +65,9 @@ export class MemoryAuditBucket implements AuditBucket {
 const MIGRATIONS = join(import.meta.dirname, "../../schema/migrations");
 
 /** The real schema on SQLite behind the D1 port, with a switch for an outage. */
+/** What a Cloudflare D1 statement accepts; the fake refuses more so a query that would fail in production fails here. */
+const D1_MAX_BOUND_PARAMETERS = 100;
+
 export class SqliteD1 implements D1 {
   readonly db = new DatabaseSync(":memory:");
   down = false;
@@ -75,6 +78,7 @@ export class SqliteD1 implements D1 {
   }
   async query(sql: string, params: unknown[] = []): Promise<D1Result> {
     if (this.down) throw new Error("D1 unavailable");
+    if (params.length > D1_MAX_BOUND_PARAMETERS) throw new Error(`D1 allows at most ${D1_MAX_BOUND_PARAMETERS} bound parameters, got ${params.length}`);
     const stmt = this.db.prepare(sql);
     const args = params as Array<string | number | null>;
     if (/^\s*select/i.test(sql)) return { rows: stmt.all(...args) as Array<Record<string, unknown>>, meta: { changes: 0, last_row_id: null } };

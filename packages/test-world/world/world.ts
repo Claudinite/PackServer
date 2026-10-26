@@ -10,6 +10,7 @@ import { createMember } from "./areas/member";
 import { createModeration } from "./areas/moderation";
 import { createOperator } from "./areas/operator";
 import { createReportsModule } from "./areas/reports";
+import { createRollups } from "./areas/rollups";
 import { createPublishing } from "./areas/publishing";
 import { createRecoveries } from "./areas/recovery";
 import { createScopes } from "./areas/scopes";
@@ -61,6 +62,7 @@ export function createWorld(driver: Driver, title: string) {
     ...createAuditModule(driver),
     ...createSearch(driver, aliases),
     ...createTelemetry(),
+    ...createRollups(driver),
     ...ci,
     ...createTrustedPublishers(driver, aliases),
     operator: createOperator(driver),
