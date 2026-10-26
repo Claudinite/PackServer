@@ -23,6 +23,7 @@ import { createCi } from "./ci-workflow";
 import { InfrastructureError } from "./errors";
 import { createMail } from "./mail";
 import { createPlatform } from "./platform";
+import { createDns } from "./proofs";
 import { createTrustedPublishers } from "./trusted-publishers";
 import { filterInvocations, type InvocationFilter, type InvocationView, type RecorderView } from "./recorder";
 
@@ -50,11 +51,12 @@ export function createWorld(driver: Driver, title: string) {
     ...createCommunity(),
     ...createModeration(),
     ...createReportsModule(driver, aliases),
-    ...createAdmin(),
+    ...createAdmin(driver),
     ...createRecoveries(driver),
     ...createMember(driver),
     ...createAgents(driver, aliases),
     ...createGitHub(driver),
+    dns: createDns(driver, aliases),
     ...createAuditModule(driver),
     ...createSearch(driver, aliases),
     ...createTelemetry(),

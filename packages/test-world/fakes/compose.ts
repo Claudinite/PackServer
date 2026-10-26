@@ -2,6 +2,7 @@ import type { TestHarness } from "wrangler";
 import { createFakePorts, type FakePorts } from "@packserver/ports/fakes";
 import type { AScript } from "../fake-workers/sandbox/scripts";
 import type { BScript } from "../fake-workers/sandbox/scripts";
+import { FakeDomains } from "./dns";
 import { FakeGithubOidc } from "./github-oidc";
 import { FakeGitHubLogin } from "./github-login";
 import { FakeGithubApp } from "./github-app";
@@ -57,6 +58,7 @@ const WORKER_FOR: Record<keyof FakeWorkers, string> = {
 export class WorldFakes {
   readonly net = new Net();
   readonly githubApp = new FakeGithubApp();
+  readonly domains = new FakeDomains();
   ports: FakePorts = createFakePorts();
   readonly githubLogin = new FakeGitHubLogin();
   readonly workers: Partial<FakeWorkers> = {};
@@ -84,6 +86,7 @@ export class WorldFakes {
       this.net.use(this.oidc.handler);
       this.net.use(this.stagingS3.handler);
     }
+    this.net.use(this.domains.handler);
     this.net.use(this.githubLogin.handler);
     this.net.use(this.githubApp.handler());
     this.net.freeze();
@@ -111,6 +114,7 @@ export class WorldFakes {
     this.stagingS3?.reset();
     await this.oidc?.reset();
     this.githubApp.reset();
+    this.domains.reset();
     this.ports = createFakePorts();
     this.githubLogin.reset();
     await Promise.all(Object.values(this.workers).map((w) => w.call("reset")));

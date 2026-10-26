@@ -21,6 +21,7 @@ function setup() {
       r2: { PACKS_STAGING: fakes.r2["PACKS_STAGING"]!, VALIDATION_REPORTS: fakes.r2["VALIDATION_REPORTS"]!, OPS_BUCKET: fakes.r2["OPS_BUCKET"]! },
     },
     services: {},
+    config: { siteOrigin: "https://registry.test" },
   } satisfies AdminRuntime;
   return { fakes, d1, auditBucket, runtime };
 }

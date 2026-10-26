@@ -250,6 +250,7 @@ describe("port inventory", () => {
     await p.proseScreen.screen({ nonce: "n", chunks: [{ id: "1", text: "t" }] });
     await p.mail.send({ to: "a@b.example", subject: "s", text: "t" });
     await p.dns.resolveTxt("example.com");
+    await p.wellKnown.authFile("example.com");
     await p.turnstile.verify("tok", "198.51.100.7");
     await p.access.verify(assertion);
     p.stats.write({ name: "n", blobs: ["b"], doubles: [1], index: "i" });
