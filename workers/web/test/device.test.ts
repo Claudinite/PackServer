@@ -28,13 +28,13 @@ function setup() {
   const post = (path: string, body: Record<string, string>, headers: Record<string, string> = {}) =>
     app.request(`${ORIGIN}${path}`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", ...headers }, body: new URLSearchParams(body) });
   const sessionPorts: SessionPorts = { kv: fakes.kv.SESSIONS_KV!, d1, clock: fakes.clock, rng: fakes.rng };
-  const personAt = async (id: string, ip: string) => {
+  const personAt = async (id: string, ip: string, withEmail = true) => {
     db.exec(`insert into users (id, created_at) values ('${id}', '2026-10-22T00:00:00.000Z')`);
-    db.exec(`insert into user_emails (user_id, address, source, created_at) values ('${id}', '${id}@example.test', 'github', '2026-10-22T00:00:00.000Z')`);
+    if (withEmail) db.exec(`insert into user_emails (user_id, address, source, created_at) values ('${id}', '${id}@example.test', 'github', '2026-10-22T00:00:00.000Z')`);
     const live = await createSession(sessionPorts, { user_id: id, device: { label: "Firefox on Linux", country: "NO" } });
     const csrf = await csrfTokenFor(live);
-    return (path: string, fields: Record<string, string>) =>
-      post(path, fields, { origin: ORIGIN, cookie: `__Host-session=${live.sid}`, "x-csrf-token": csrf, "cf-connecting-ip": ip });
+    return (path: string, fields: Record<string, string>, from = ip) =>
+      post(path, fields, { origin: ORIGIN, cookie: `__Host-session=${live.sid}`, "x-csrf-token": csrf, "cf-connecting-ip": from });
   };
   const ask = async () => (await (await post("/api/auth/device", {})).json()) as { device_code: string; user_code: string };
   return { app, post, fakes, personAt, ask };
@@ -92,12 +92,43 @@ describe("IT-PRIV-017 device code endpoints", () => {
     expect(mails[0]!.subject).toContain("New sign-in");
   });
 
+  it("refuses an approval, with a page and not an error, when the notice cannot be sent", async () => {
+    const { personAt, ask, fakes, post } = setup();
+    const ann = await personAt("ann", "198.51.100.1");
+    const code = await ask();
+    fakes.mail.send = async () => {
+      throw new Error("mail is down");
+    };
+    const res = await ann("/api/auth/device/decision", { user_code: code.user_code, decision: "approve" });
+    expect(res.status).toBe(503);
+    expect(await res.text()).toContain("did not approve it");
+    const poll = await post("/api/auth/device/token", { grant_type: DEVICE_GRANT_TYPE, device_code: code.device_code });
+    expect(((await poll.json()) as { error: string }).error).toBe("authorization_pending");
+  });
+
+  it("approves an account that has no address, without a notice", async () => {
+    const { personAt, ask, fakes } = setup();
+    const ann = await personAt("ann", "198.51.100.1", false);
+    const code = await ask();
+    expect((await ann("/api/auth/device/decision", { user_code: code.user_code, decision: "approve" })).status).toBe(200);
+    expect(fakes.mail.sent).toHaveLength(0);
+  });
+
+  it("tells the person how long the laptop stays signed in", async () => {
+    const { personAt, ask } = setup();
+    const ann = await personAt("ann", "198.51.100.1");
+    const code = await ask();
+    expect(await (await ann("/api/auth/device/verify", { user_code: code.user_code })).text()).toContain("only while this browser session lasts");
+  });
+
   it("spends the account's budget on decisions as on lookups", async () => {
     const { personAt, ask } = setup();
     const ann = await personAt("ann", "198.51.100.1");
     const code = await ask();
     let refused = 0;
-    for (let i = 0; i < 12; i++) if ((await ann("/api/auth/device/decision", { user_code: code.user_code, decision: "deny" })).status === 429) refused++;
+    for (let i = 0; i < 12; i++) {
+      if ((await ann("/api/auth/device/decision", { user_code: code.user_code, decision: "deny" }, `198.51.100.${i + 10}`)).status === 429) refused++;
+    }
     expect(refused).toBeGreaterThan(0);
   });
 

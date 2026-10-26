@@ -94,7 +94,7 @@ routes.get("/auth/device/grant", async (c) => {
 
 const escape = (text: string) => text.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
-function page(c: Context<WebEnv>, title: string, body: string, status: 200 | 400 | 404 = 200) {
+function page(c: Context<WebEnv>, title: string, body: string, status: 200 | 400 | 404 | 503 = 200) {
   const nonce = (c as unknown as Context).get("cspNonce") as string;
   return c.html(
     `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">` +
@@ -137,7 +137,7 @@ routes.post("/auth/device/verify", requireSession(), sessionCsrf<WebEnv>(siteOri
     "Allow cn to read your private packs?",
     `<p>A request from <strong>${escape(regionName(request.country))}</strong> asks to sign in as you. If that is not you, deny it.</p>` +
       `<p>This lets <code>cn</code> read the private packs you are allowed to read. It cannot publish, change your account or manage tokens, ` +
-      `and it stops working when this sign-in ends.</p>` +
+      `and it stays signed in only while this browser session lasts: signing out here, or a sensitive action on the web such as adding a passkey, ends it.</p>` +
       `<form method="post" action="/api/auth/device/decision"><input type="hidden" name="csrf" value="${csrf}">` +
       `<input type="hidden" name="user_code" value="${escape(String(typed))}">` +
       `<button type="submit" name="decision" value="approve">Allow</button> <button type="submit" name="decision" value="deny">Deny</button></form>`,
@@ -156,13 +156,18 @@ routes.post("/auth/device/decision", requireSession(), sessionCsrf<WebEnv>(siteO
   if (approve) {
     const request = await describeDeviceRequest(ports, typed);
     if (request) {
-      // The email is the person's tripwire for a code they were talked into entering; no email, no approval.
-      await notifyUser(c, live.record.user_id, "new-device-sign-in", {
-        device: "cn on a laptop (device-code sign-in)",
-        location: regionName(request.country),
-        at: new Date(ports.clock.now()).toISOString(),
-        securityUrl: securityUrlOf(c),
-      });
+      // The email is the person's tripwire for a code they were talked into entering. A send that fails
+      // refuses the approval; an account with no address has nobody to tell and is approved without a notice.
+      try {
+        await notifyUser(c, live.record.user_id, "new-device-sign-in", {
+          device: "cn on a laptop (device-code sign-in)",
+          location: regionName(request.country),
+          at: new Date(ports.clock.now()).toISOString(),
+          securityUrl: securityUrlOf(c),
+        });
+      } catch {
+        return page(c, "Could not send the confirmation email", "<p>Nothing was connected. We could not email you about this sign-in, so we did not approve it. Try again in a minute.</p>", 503);
+      }
     }
     done = request !== null && (await approveDeviceRequest(ports, typed, live));
   } else {

@@ -127,7 +127,20 @@ describe("IT-PRIV-017 device code", () => {
 
   it("lets exactly one of two simultaneous polls collect an approved code", async () => {
     const { ports, started } = await approved();
-    const polls = await Promise.all([pollDeviceCode(ports, started.device_code), pollDeviceCode(ports, started.device_code)]);
+    // Both polls read the approved row before either collects it, as two Workers would.
+    let readers = 0;
+    let release!: () => void;
+    const bothRead = new Promise<void>((resolve) => (release = resolve));
+    const racing: typeof ports.d1 = {
+      ...ports.d1,
+      query: async (sql, params) => {
+        const result = await ports.d1.query(sql, params);
+        if (/^select state, expires_at/.test(sql) && ++readers === 2) release();
+        if (/^select state, expires_at/.test(sql)) await bothRead;
+        return result;
+      },
+    };
+    const polls = await Promise.all([pollDeviceCode({ ...ports, d1: racing }, started.device_code), pollDeviceCode({ ...ports, d1: racing }, started.device_code)]);
     expect(polls.filter((p) => p.kind === "granted")).toHaveLength(1);
     const { rows } = await ports.d1.query("select count(*) as n from device_tokens", []);
     expect(rows[0]!.n).toBe(1);
