@@ -25,6 +25,10 @@ export const review_decisions = sqliteTable(
     decided_at: text("decided_at").notNull(),
     /** Set once a waiting workflow instance accepted the event. */
     event_sent_at: text("event_sent_at"),
+    /** Set once the decision's audit entry is written; a retry by the deciding admin completes a missing one. */
+    audited_at: text("audited_at"),
+    /** Set once the owners were told, where the decision tells them anything. */
+    notified_at: text("notified_at"),
   },
   (t) => [check("review_decisions_decision_check", sql`${t.decision} in (${inList(REVIEW_DECISIONS)})`)],
 );

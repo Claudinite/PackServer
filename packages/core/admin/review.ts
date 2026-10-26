@@ -217,6 +217,20 @@ async function sendEvent(ports: AdminPorts, instance: string | null, payload: un
   }
 }
 
+type DecisionStep = "audited_at" | "event_sent_at" | "notified_at";
+
+/** Runs `step` once across retries: the first caller to set the column does the work, and a step that throws gives the claim back. */
+async function claimed(ports: AdminPorts, runId: string, column: DecisionStep, step: () => Promise<unknown>, quiet = false): Promise<void> {
+  const won = await ports.d1.query(`update review_decisions set ${column} = ? where run_id = ? and ${column} is null`, [iso(ports), runId]);
+  if (won.meta.changes === 0) return;
+  try {
+    await step();
+  } catch (error) {
+    await ports.d1.query(`update review_decisions set ${column} = null where run_id = ?`, [runId]);
+    if (!quiet) throw error;
+  }
+}
+
 /**
  * Records the decision first: the row, not the event, is what a run decided while no instance waits resumes from
  * (REQ-VAL-013). The event only wakes an instance that is waiting.
@@ -233,28 +247,31 @@ export async function decideHeld(ports: AdminPorts, runId: string, admin: AdminI
   const statements = [
     { sql: "insert or ignore into review_decisions (run_id, decision, reason, decided_by, decided_at) values (?, ?, ?, ?, ?)", params: [runId, decision.kind, reason, admin.email, at] },
     ...(decision.kind === "quarantine_publisher"
-      ? [{ sql: "update scopes set state = 'held' where id = ? and exists (select 1 from review_decisions where run_id = ? and decision = 'quarantine_publisher')", params: [run.scope_id, runId] }]
+      ? [{ sql: "update scopes set state = 'held' where id = ? and exists (select 1 from review_decisions where run_id = ? and decision = 'quarantine_publisher' and audited_at is null)", params: [run.scope_id, runId] }]
       : []),
   ];
-  const [inserted] = await ports.d1.batch(statements);
-  const recorded = (await ports.d1.query("select decision, decided_by, event_sent_at from review_decisions where run_id = ?", [runId])).rows[0];
-  if (!recorded || recorded.decision !== decision.kind) return { ok: false, reason: "already_decided", message: "The run is already decided." };
-  // The same verdict again is a retry of a step that may have stopped part way, so each step after the row runs again.
-  await ports.audit(actorOf(admin), "admin.action", `version:${pack}@${run.version}`, { detail: { verb: `review.${decision.kind}` } });
+  await ports.d1.batch(statements);
+  const recorded = (await ports.d1.query("select decision, decided_by from review_decisions where run_id = ?", [runId])).rows[0];
+  if (!recorded || recorded.decision !== decision.kind || recorded.decided_by !== admin.email) return { ok: false, reason: "already_decided", message: "The run is already decided." };
 
-  if (recorded.event_sent_at === null && (await sendEvent(ports, run.workflow_instance_id, { run_id: runId, decision: decision.kind }))) {
-    await ports.d1.query("update review_decisions set event_sent_at = ? where run_id = ?", [iso(ports), runId]);
-  }
-  if (inserted?.meta.changes === 0) return { ok: true, pack, version: run.version };
+  // Each step after the row is claimed before it runs, so a retry of a step that stopped part way finishes it and concurrent retries do not repeat it.
+  await claimed(ports, runId, "audited_at", () => ports.audit(actorOf(admin), "admin.action", `version:${pack}@${run.version}`, { detail: { verb: `review.${decision.kind}` } }));
+  await claimed(ports, runId, "event_sent_at", async () => {
+    if (!(await sendEvent(ports, run.workflow_instance_id, { run_id: runId, decision: decision.kind }))) throw new Error("no waiting instance took the event");
+  }, true);
   const appealUrl = `https://${new URL(ports.siteOrigin).host}/validation/${runId}`;
-  if (decision.kind === "reject") await notifyOwners(ports, run.scope_id, "pack-actioned", { pack: `${pack}@${run.version}`, action: "rejected after review", reason: reason!, appealUrl });
+  if (decision.kind === "reject") {
+    await claimed(ports, runId, "notified_at", () => notifyOwners(ports, run.scope_id, "pack-actioned", { pack: `${pack}@${run.version}`, action: "rejected after review", reason: reason!, appealUrl }));
+  }
   if (decision.kind === "quarantine_publisher") {
-    await notifyOwners(ports, run.scope_id, "pack-actioned", {
-      pack: `${pack}@${run.version}`,
-      action: "held, and publishing under this name is suspended",
-      reason: reason ?? "An admin suspended publishing under this name after review.",
-      appealUrl,
-    });
+    await claimed(ports, runId, "notified_at", () =>
+      notifyOwners(ports, run.scope_id, "pack-actioned", {
+        pack: `${pack}@${run.version}`,
+        action: "held, and publishing under this name is suspended",
+        reason: reason ?? "An admin suspended publishing under this name after review.",
+        appealUrl,
+      }),
+    );
   }
   return { ok: true, pack, version: run.version };
 }

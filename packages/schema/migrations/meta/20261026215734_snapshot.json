@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "46fa16bc-9c26-4000-9b1c-61cc2d27e5f5",
+  "id": "ba32606f-3e53-4e69-92a2-8b52bc08006f",
   "prevId": "ab4960b1-384f-4901-b2bd-01ccf6fad7a9",
   "tables": {
     "credentials": {
@@ -6153,6 +6153,20 @@
         },
         "event_sent_at": {
           "name": "event_sent_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "audited_at": {
+          "name": "audited_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "notified_at": {
+          "name": "notified_at",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

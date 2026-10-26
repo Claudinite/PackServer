@@ -35,7 +35,7 @@ describe("hosts and configuration", () => {
   it("reads no policy from a value that is missing or still a placeholder", () => {
     const set = { ACCESS_AUDIENCE: "aud-1", ADMIN_IDENTITIES: "a@example.test, B@example.test", ADMIN_HOSTS: "h.example.test" };
     expect(policyFrom(set)).toEqual({ audience: "aud-1", identities: ["a@example.test", "b@example.test"], hosts: ["h.example.test"] });
-    for (const broken of [{ ACCESS_AUDIENCE: "ADMIN_ACCESS_AUDIENCE" }, { ADMIN_IDENTITIES: "ACCESS_ADMIN_EMAILS" }, { ADMIN_HOSTS: "" }, { ACCESS_AUDIENCE: undefined }]) {
+    for (const broken of [{ ACCESS_AUDIENCE: "ADMIN_ACCESS_AUDIENCE" }, { ADMIN_IDENTITIES: "ADMIN_EMAILS" }, { ADMIN_HOSTS: "" }, { ACCESS_AUDIENCE: undefined }]) {
       expect(policyFrom({ ...set, ...broken })).toBeNull();
     }
   });

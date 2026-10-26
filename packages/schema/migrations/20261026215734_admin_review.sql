@@ -19,5 +19,7 @@ CREATE TABLE `review_decisions` (
 	`decided_by` text NOT NULL,
 	`decided_at` text NOT NULL,
 	`event_sent_at` text,
+	`audited_at` text,
+	`notified_at` text,
 	CONSTRAINT "review_decisions_decision_check" CHECK("review_decisions"."decision" in ('approve', 'reject', 'quarantine_publisher'))
 );

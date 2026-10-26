@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { isPlaceholder, policyFrom } from "@packserver/core/admin";
 import { MemoryAuditBucket } from "@packserver/core/audit/testing";
 import { SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
 import { createFakePorts } from "@packserver/ports/fakes";
@@ -63,12 +64,13 @@ describe("admin test environment", () => {
   });
 });
 
-describe("admin identity set", () => {
-  it("is the variable the zone's Access application is built from", () => {
+describe("admin Access configuration outside the test environment", () => {
+  it("holds placeholders in staging and production, which admit nobody until real values are set", () => {
     const wrangler = JSON.parse(readFileSync(join(import.meta.dirname, "../wrangler.jsonc"), "utf8")) as { env: Record<string, { vars: Record<string, string> }> };
-    const zone = readFileSync(join(import.meta.dirname, "../../../infra/zone/lib/access.mjs"), "utf8");
-    const name = /envVars\.(ACCESS_ADMIN_EMAILS)\b/.exec(zone)?.[1];
-    expect(name).toBeDefined();
-    for (const env of ["staging", "production"]) expect(wrangler.env[env]?.vars["ADMIN_IDENTITIES"]).toBe(name);
+    for (const env of ["staging", "production"]) {
+      const vars = wrangler.env[env]!.vars;
+      expect(policyFrom({ ACCESS_AUDIENCE: vars["ACCESS_AUDIENCE"], ADMIN_IDENTITIES: vars["ADMIN_IDENTITIES"], ADMIN_HOSTS: vars["ADMIN_HOSTS"] }), env).toBeNull();
+      expect(isPlaceholder(vars["ACCESS_TEAM_DOMAIN"]), env).toBe(true);
+    }
   });
 });

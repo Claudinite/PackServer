@@ -164,8 +164,41 @@ describe("a decision on a held version", () => {
     expect(await decideHeld(flaky, id, ADMIN, { kind: "quarantine_publisher", reason: "again" })).toMatchObject({ ok: true });
     expect(f.auditQueue.messages).toHaveLength(1);
     expect(f.workflows.events).toHaveLength(1);
-    expect(f.mail.inbox("a@example.test")).toHaveLength(0);
+    expect(f.mail.inbox("a@example.test")).toHaveLength(1);
+    expect(f.mail.inbox("a@example.test")[0]!.text).toContain("suspended");
     expect(await decideHeld(f.ports, id, ADMIN, { kind: "approve" })).toMatchObject({ ok: false, reason: "already_decided" });
+  });
+
+  it("does nothing more on a repeat once every step is done, however many run at once", async () => {
+    const f = fixture();
+    await scope(f, "a");
+    const id = await hold(f, "a");
+    const decision = { kind: "reject", reason: "Not ours to run" } as const;
+    const results = await Promise.all([1, 2, 3].map(() => decideHeld(f.ports, id, ADMIN, decision)));
+    expect(results.every((r) => r.ok)).toBe(true);
+    await decideHeld(f.ports, id, ADMIN, decision);
+    expect(f.auditQueue.messages).toHaveLength(1);
+    expect(f.workflows.events).toHaveLength(1);
+    expect(f.mail.inbox("a@example.test")).toHaveLength(1);
+  });
+
+  it("gives another admin repeating the same verdict no audit entry", async () => {
+    const f = fixture();
+    await scope(f, "a");
+    const id = await hold(f, "a");
+    await decideHeld(f.ports, id, ADMIN, { kind: "approve" });
+    expect(await decideHeld(f.ports, id, { email: "other@example.test", sub: "admin-2" }, { kind: "approve" })).toMatchObject({ ok: false, reason: "already_decided" });
+    expect(f.auditQueue.messages).toHaveLength(1);
+  });
+
+  it("does not hold a scope again that was cleared after the decision completed", async () => {
+    const f = fixture();
+    await scope(f, "a");
+    const id = await hold(f, "a");
+    await decideHeld(f.ports, id, ADMIN, { kind: "quarantine_publisher" });
+    await f.seed("update scopes set state = 'active' where id = 's-a'");
+    await decideHeld(f.ports, id, ADMIN, { kind: "quarantine_publisher" });
+    expect((await f.d1.query("select state from scopes where id = 's-a'")).rows[0]!.state).toBe("active");
   });
 
   it("decides only a finished, non-synthetic publish run", async () => {
