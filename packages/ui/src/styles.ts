@@ -146,7 +146,7 @@ details.more summary { cursor: pointer; color: var(--grey-2); }
 .tools li { padding: 4px 0; }
 .snippet { background: var(--grey-5); border-radius: 6px; padding: ${g(1)} ${g(2)}; margin-top: ${g(1)}; user-select: all; }
 .rules { width: 100%; border-collapse: collapse; margin-top: ${g(2)}; }
-.rules td { padding: 4px ${g(2)} 4px 0; vertical-align: top; }
+.rules td { padding: 4px ${g(2)} 4px 0; vertical-align: top; overflow-wrap: anywhere; }
 .rules tr:target td { background: var(--grey-5); }
 .rules .cls { color: var(--grey-2); white-space: nowrap; }
 .prices { list-style: none; margin: ${g(3)} 0; padding: 0; display: flex; flex-direction: column; gap: ${g(3)}; }

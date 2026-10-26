@@ -26,7 +26,7 @@ export function PackCardRow(props: { card: Card }) {
       <div class="meta">
         <ShapeGlyph counts={counts} />
         <ScoreRing score={card.score} parts={card.score_parts.map((p) => ({ name: titleCase(p.part), score: p.points, max: p.weight }))} />
-        <HoverCard label={card.rating === null ? <span class="rating muted">—</span> : <span class="rating"><b>{card.rating.toFixed(1)}</b></span>}>
+        <HoverCard align="right" label={card.rating === null ? <span class="rating muted">—</span> : <span class="rating"><b>{card.rating.toFixed(1)}</b></span>}>
           <ul>
             <li>{fetchesLine(card.fetches_30d)}</li>
             <li class="muted">{card.stars} {card.stars === 1 ? "star" : "stars"}</li>
