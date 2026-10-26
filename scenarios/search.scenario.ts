@@ -183,17 +183,14 @@ scenario("IT-COMM-010 A published advisory, a failed newest validation or an abu
   expect((await ask(world, query)).ids).toEqual(original);
 }, storage);
 
-const ROLLUP: ScenarioOpts = { needs: ["storage", "fakes", "clock", "reset"] };
-
-const listedPack = async (world: World, name: string) => {
-  const pack = await world.packs.public(name);
-  await world.search.list(pack, { pitch: `Pack ${name}`, category: "workflow" });
-  return pack;
-};
-
 scenario(
   "IT-COMM-014 Trending ranks by recent growth; 50 fetches and 5 stars are the floor, and the rail hides until a pack qualifies",
   async (world) => {
+    const listedPack = async (world: World, name: string) => {
+      const pack = await world.packs.public(name);
+      await world.search.list(pack, { pitch: `Pack ${name}`, category: "workflow" });
+      return pack;
+    };
     const [g, s, f, t] = [await listedPack(world, "@acme/g"), await listedPack(world, "@acme/s"), await listedPack(world, "@acme/f"), await listedPack(world, "@acme/t")];
     // Counted stars are another job's; they are seeded, and the rollup must leave them alone.
     await world.search.signals(g, { starsBefore: 1, starsLast7d: 6 });
@@ -225,7 +222,8 @@ scenario(
     await world.rollups.run();
     expect(await world.search.trending()).toEqual(expect.arrayContaining([f.name, t.name]));
   },
-  ROLLUP,
+  // The archive is written to the admin Worker's ops bucket and the rollup reads the registry database, both through the storage seam.
+  { needs: ["storage", "fakes", "clock", "reset"] },
 );
 
 scenario("IT-MCP-016 Removed or private packs leave semantic search", async (world) => {
