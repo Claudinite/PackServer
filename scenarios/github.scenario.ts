@@ -2,7 +2,6 @@ import { expect, scenario } from "@packserver/test-world";
 import type { ScenarioOpts, World } from "@packserver/test-world";
 
 const NEEDS: ScenarioOpts = { needs: ["fakes", "storage"] };
-const PROOF_NEEDS: ScenarioOpts = { needs: ["fakes", "storage", "reset"] };
 const COMMIT_FILES = {
   "packs/gcp/pack.json": '{"name":"gcp"}',
   "packs/gcp/bin/run.sh": { content: "#!/bin/sh\n", executable: true },
@@ -86,7 +85,7 @@ scenario(
     }
     await expectNoWrites(world);
   },
-  PROOF_NEEDS,
+  { needs: ["fakes", "storage", "reset"] },
 );
 
 scenario(
@@ -150,7 +149,7 @@ scenario(
     }
     await expectNoWrites(world);
   },
-  PROOF_NEEDS,
+  { needs: ["fakes", "storage", "reset"] },
 );
 
 scenario(
