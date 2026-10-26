@@ -367,6 +367,16 @@ scenario("IT-ACC-002 b", async () => {});
     expect(unparsed).toBeNull();
   });
 
+  it("reads a slash after a postfix operator or a property named like a keyword as division", () => {
+    const source = `let i = 0; const a = i++ / 2 + "/";
+const b = size.of / 2 + "/";
+scenario("IT-ACC-001 a", async () => {});
+`;
+    const { scenarios, unparsed } = scanScenarios("x", source);
+    expect(scenarios.map((s) => s.id)).toEqual(["IT-ACC-001"]);
+    expect(unparsed).toBeNull();
+  });
+
   it("reports a file it cannot read to the end instead of stopping quietly", () => {
     const r = checkTree(world({ "scenarios/a.scenario.ts": `${good}scenario("IT-ACC-002 Handle", async () => {\n` }));
     expect(r.problems.some((p) => p.includes("scenarios/a.scenario.ts:6") && p.includes("could not be read"))).toBe(true);

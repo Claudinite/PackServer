@@ -129,8 +129,9 @@ export function loadSpecs(src) {
 function startsRegex(code) {
   const before = code.trimEnd();
   if (before === "") return true;
+  if (/(?:\+\+|--)$/.test(before)) return false;
   if ("(,=:[!&|?{};+-*%<>~^".includes(before.at(-1))) return true;
-  return /\b(return|typeof|case|in|of|void|delete|throw|new|yield|await)$/.test(before);
+  return /(?<!\.\s*)\b(return|typeof|case|in|of|void|delete|throw|new|yield|await)$/.test(before);
 }
 
 /** The offset just past a regular expression literal starting at `start`, or -1 when none closes on its line. */
