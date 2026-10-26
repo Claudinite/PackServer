@@ -104,8 +104,8 @@ land. The end-to-end paths are [JT-001](journeys.md), [JT-005](journeys.md) and
 ### IT-DELIV-021 Anyone can verify an archive by hash
 - **Covers:** REQ-DELIV-021
 - **Runs:** push, probe-safe
-- **Action:** `GET /api/verify/<canonical>`, `/<upload>`, `/<random>`, `/<a private pack's hash>` anonymously; 100 calls from one IP.
-- **Assert:** canonical answers `canonical`, the version and its status; upload answers `upload`; random and the private hash answer `unknown` identically; the burst is rate-limited after the limit.
+- **Action:** `GET /api/verify/<canonical>`, `/<upload>`, `/<random>`, `/<a private pack's hash>` anonymously; 121 calls from one IP, more than two rate-limit windows can absorb.
+- **Assert:** canonical answers `canonical`, the version and its status; upload answers `upload`; random and the private hash answer `unknown` identically; the first refusal in the burst is a rate-limit refusal.
 
 ## What cn does with it
 
