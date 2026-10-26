@@ -54,6 +54,10 @@
           {
             "binding": "NOTIFY_QUEUE",
             "queue": "notify-test"
+          },
+          {
+            "binding": "AUDIT_QUEUE",
+            "queue": "audit-test"
           }
         ]
       },
@@ -131,7 +135,7 @@
           "zone_name": "claudinite.com"
         },
         {
-          "pattern": "registry-staging.claudinite.com/api/dry-run/*",
+          "pattern": "registry-staging.claudinite.com/api/dry-run*",
           "zone_name": "claudinite.com"
         }
       ],
@@ -168,6 +172,10 @@
           {
             "binding": "NOTIFY_QUEUE",
             "queue": "notify-staging"
+          },
+          {
+            "binding": "AUDIT_QUEUE",
+            "queue": "audit-staging"
           }
         ]
       },
@@ -277,7 +285,7 @@
           "zone_name": "claudinite.com"
         },
         {
-          "pattern": "registry.claudinite.com/api/dry-run/*",
+          "pattern": "registry.claudinite.com/api/dry-run*",
           "zone_name": "claudinite.com"
         },
         {
@@ -289,7 +297,7 @@
           "zone_name": "claudinite.com"
         },
         {
-          "pattern": "registry-canary.claudinite.com/api/dry-run/*",
+          "pattern": "registry-canary.claudinite.com/api/dry-run*",
           "zone_name": "claudinite.com"
         }
       ],
@@ -326,6 +334,10 @@
           {
             "binding": "NOTIFY_QUEUE",
             "queue": "notify"
+          },
+          {
+            "binding": "AUDIT_QUEUE",
+            "queue": "audit"
           }
         ]
       },

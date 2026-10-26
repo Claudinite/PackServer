@@ -1,5 +1,5 @@
 import { base64url } from "jose";
-import { CREDENTIAL_TTL_MS, objectExpiry, stagingKey, type StagingLifetime } from "@packserver/core/publishing";
+import { CREDENTIAL_TTL_MS, dryRunStagingKey, objectExpiry, stagingKey, type StagingLifetime } from "@packserver/core/publishing";
 import type { Clock, D1, Rng } from "@packserver/ports";
 
 export const CREDENTIAL_PREFIX = "psu_";
@@ -11,6 +11,8 @@ export interface CredentialRow {
   scope: string;
   pack_name: string;
   version: string;
+  user_id: string | null;
+  trusted_publisher_id: string | null;
   staging_key: string;
   lifetime: StagingLifetime;
   expires_at: string;
@@ -55,7 +57,7 @@ export async function issueCredential(ports: { d1: D1; rng: Rng; clock: Clock },
   const now = ports.clock.now();
   const issuedAt = new Date(now).toISOString();
   const expiresAt = new Date(now + CREDENTIAL_TTL_MS).toISOString();
-  const key = stagingKey(request.scope.name, request.packName, request.version, id);
+  const key = (request.lifetime === "dry-run" ? dryRunStagingKey : stagingKey)(request.scope.name, request.packName, request.version, id);
   try {
     await ports.d1.query(
       `insert into upload_credentials (id, secret_hash, source, scope_id, pack_name, version, trusted_publisher_id, user_id, claims, oidc_jti, staging_key, lifetime, issued_at, expires_at)
@@ -77,6 +79,16 @@ export type Lookup =
   | { ok: true; credential: CredentialRow }
   | { ok: false; why: "unknown" | "expired" | "wrong-pack" };
 
+/** The credential a bearer secret names, whatever it is bound to. */
+export async function credentialBySecret(ports: { d1: D1 }, secret: string): Promise<CredentialRow | null> {
+  const { rows } = await ports.d1.query(
+    `select c.id, c.source, c.scope_id, s.name as scope, c.pack_name, c.version, c.user_id, c.trusted_publisher_id, c.staging_key, c.lifetime, c.expires_at, c.used_at, c.uploaded_at, c.size_bytes
+     from upload_credentials c join scopes s on s.id = c.scope_id where c.secret_hash = ?`,
+    [await hashSecret(secret)],
+  );
+  return (rows[0] as unknown as CredentialRow | undefined) ?? null;
+}
+
 /** The credential a bearer secret names, if it is bound to this pack and version and still within its 15 minutes. */
 export async function lookupCredential(
   ports: { d1: D1; clock: Clock },
@@ -84,12 +96,7 @@ export async function lookupCredential(
   bound: { scope: string; packName: string; version: string },
   options: { allowExpired?: boolean } = {},
 ): Promise<Lookup> {
-  const { rows } = await ports.d1.query(
-    `select c.id, c.source, c.scope_id, s.name as scope, c.pack_name, c.version, c.staging_key, c.lifetime, c.expires_at, c.used_at, c.uploaded_at, c.size_bytes
-     from upload_credentials c join scopes s on s.id = c.scope_id where c.secret_hash = ?`,
-    [await hashSecret(secret)],
-  );
-  const row = rows[0] as unknown as CredentialRow | undefined;
+  const row = await credentialBySecret(ports, secret);
   if (!row) return { ok: false, why: "unknown" };
   if (row.scope !== bound.scope || row.pack_name !== bound.packName || row.version !== bound.version) return { ok: false, why: "wrong-pack" };
   if (!options.allowExpired && ports.clock.now() >= Date.parse(row.expires_at)) return { ok: false, why: "expired" };
