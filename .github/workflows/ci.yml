@@ -220,6 +220,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:infra
 
+  # Files are dealt to shards by recorded duration (packages/test-world/shard-weights.json), not by
+  # a hash of their path.
   scenarios:
     needs: changes
     if: needs.changes.outputs.code == 'true'

@@ -53,6 +53,8 @@ export class InProcessDriver implements Driver {
   private harness!: WorldHarness;
   private readonly versions = new VersionObserver(new Set([HARNESS_RELEASE]));
   private logCursor = 0;
+  /** True from `start()` until the first `reset()`: a session that has served nothing needs no restart to be empty. */
+  private pristine = false;
   fakes!: WorldFakes;
 
   constructor(private readonly options: HarnessOptions = {}) {}
@@ -69,6 +71,7 @@ export class InProcessDriver implements Driver {
     this.fakes = new WorldFakes(this.harness.server, this.harness.fakes);
     this.fakes.net.listen();
     this.baseUrl = (await this.harness.server.listen()).url;
+    this.pristine = true;
   }
 
   http = {
@@ -163,7 +166,8 @@ export class InProcessDriver implements Driver {
   }
 
   async reset(): Promise<void> {
-    await this.harness.server.reset();
+    if (!this.pristine) await this.harness.server.reset();
+    this.pristine = false;
     await this.migrate();
     this.harness.server.clearLogs();
     this.logCursor = 0;
