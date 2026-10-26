@@ -226,16 +226,19 @@ describe("linking", () => {
 describe("deletion", () => {
   it("removes trusted publishers of the personal scope, pending ones and the credentials that name them included", async () => {
     const { ports, db } = setup();
+    db.exec(`insert into scopes (id, name, kind, state, created_at) values ('s2', 'bob', 'user', 'active', '${NOW}')`);
+    db.exec(`insert into scope_members (scope_id, user_id, role, created_at) values ('s2', 'u2', 'owner', '${NOW}')`);
     db.exec(`insert into trusted_publishers (id, scope_id, pack_name, repository_id, repository_owner_id, repository, workflow, path, refs, events, pending_until, created_at, updated_at)
              values ('tp1', 's1', 'gcp', '1', '2', 'ann/gcp', 'w.yml', 'p', '[]', '[]', '2099-01-01T00:00:00.000Z', '${NOW}', '${NOW}'),
-                    ('tp2', 'o1', 'org-pack', '1', '2', 'acme/x', 'w.yml', 'p', '[]', '[]', null, '${NOW}', '${NOW}')`);
+                    ('tp2', 'o1', 'org-pack', '1', '2', 'acme/x', 'w.yml', 'p', '[]', '[]', null, '${NOW}', '${NOW}'),
+                    ('tp3', 's2', 'bob-pack', '1', '2', 'bob/x', 'w.yml', 'p', '[]', '[]', null, '${NOW}', '${NOW}')`);
     db.exec(`insert into upload_credentials (id, secret_hash, source, scope_id, pack_name, version, trusted_publisher_id, staging_key, lifetime, issued_at, expires_at)
              values ('uc1', 'h', 'oidc', 's1', 'gcp', '1.0.0', 'tp1', 'k', 'draft', '${NOW}', '${NOW}')`);
     expect(await checkDeletable(ports.d1, "u1")).toMatchObject({ ok: false });
     db.exec("delete from scope_members where scope_id = 'o1' and user_id = 'u1'");
     db.exec(`insert into scope_members (scope_id, user_id, role, created_at) values ('o1', 'u2', 'owner', '${NOW}') on conflict do update set role = 'owner'`);
     expect(await deleteAccount(ports, "u1")).toEqual({ ok: true });
-    expect(db.prepare("select id from trusted_publishers").all()).toEqual([{ id: "tp2" }]);
+    expect(db.prepare("select id from trusted_publishers").all()).toEqual([{ id: "tp2" }, { id: "tp3" }]);
     expect(db.prepare("select trusted_publisher_id as t from upload_credentials").get()).toEqual({ t: null });
   });
 

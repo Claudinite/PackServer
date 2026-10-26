@@ -118,7 +118,7 @@ is the only gate before every Worker goes to 100% (Ariel B7 2026-10-22).
 - **Runs:** push
 - **Action:** the fake GitHub code search returns settings files from 7 public repos declaring `@acme/gcp` (two pinned to `1.0.0`), and one fewer than last week; run the scan; run it with the fake returning slowly past 10 minutes, then again.
 - **Faked:** GitHub code search, clock.
-- **Assert:** the pack shows 7 declaring repositories labelled "approximate, weekly", the pinned versions and one dropped declaration, and the count feeds the page, ranking and Trending inputs; the slow run stops at 10 minutes and the next resumes from the cursor; the queries are split by pack id and repository creation date; every GitHub request used the read-only public token and none targeted a private repository endpoint.
+- **Assert:** the pack shows 7 declaring repositories labelled "approximate, weekly", the pinned versions and one dropped declaration, and the count feeds the page, ranking and Trending inputs; the slow run stops at 10 minutes and the next resumes from the cursor; the queries are split by pack id (and by file size where a pack matches more than the search returns); a declaration whose source is not the registry is not counted; every GitHub request used the read-only public token and none targeted a private repository endpoint.
 
 ### IT-TELEM-008 Fetch telemetry is kept 90 days and never identifies a repository publicly
 - **Covers:** REQ-TELEM-008

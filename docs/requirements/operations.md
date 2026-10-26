@@ -254,7 +254,7 @@ github Worker searches public repositories through GitHub code search for Claudi
 and records, per pack, the number of repositories declaring it, the versions pinned and the
 declarations dropped since the previous scan; a run stops after 10 minutes and the next one resumes
 from its saved cursor; it uses a read-only public-repository token and splits its queries by pack id
-and repository creation date to stay within code-search limits. The counts feed the declaring-repo
+and, where a pack still matches too many files, by file size to stay within code-search limits; entries whose source is not the registry are not counted. The counts feed the declaring-repo
 count on the pack page, ranking and Trending (REQ-COMM-014), and are labelled "approximate,
 weekly" wherever shown, since code search indexes default branches only and answers at most 1,000
 results per query.

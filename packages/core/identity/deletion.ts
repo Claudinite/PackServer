@@ -42,7 +42,6 @@ export async function deleteAccount(ports: SessionPorts & { d1: D1; clock: Clock
     { sql: "update recovery_requests set state = 'cancelled', link_hash = null, cancel_hash = null where user_id = ? and state in ('pending', 'approved')", params: [userId] },
     { sql: "delete from device_codes where user_id = ?", params: [userId] },
     { sql: "delete from device_tokens where user_id = ?", params: [userId] },
-    // TODO(T-035, #175): also delete the pending trusted-publisher table's rows (name reservations) for the personal scopes below.
     { sql: `update upload_credentials set trusted_publisher_id = null where trusted_publisher_id in (select id from trusted_publishers where scope_id in (${PERSONAL_SCOPES}))`, params: [userId] },
     { sql: `delete from trusted_publishers where scope_id in (${PERSONAL_SCOPES})`, params: [userId] },
     { sql: "insert or ignore into retired_names (kind, name, retired_at) select 'scope', handle, ? from users where id = ? and handle is not null", params: [at, userId] },

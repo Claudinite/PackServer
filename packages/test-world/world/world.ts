@@ -23,6 +23,7 @@ import { createCi } from "./ci-workflow";
 import { InfrastructureError } from "./errors";
 import { createMail } from "./mail";
 import { createPlatform } from "./platform";
+import { createTrustedPublishers } from "./trusted-publishers";
 import { filterInvocations, type InvocationFilter, type InvocationView, type RecorderView } from "./recorder";
 
 /** One per scenario: owns the driver handle, the clock, the recorder view, the aliases and the area modules. */
@@ -57,6 +58,7 @@ export function createWorld(driver: Driver, title: string) {
     ...createSearch(driver, aliases),
     ...createTelemetry(),
     ...ci,
+    ...createTrustedPublishers(driver, aliases),
     operator: createOperator(driver),
     clock: createClock(driver),
     mail: createMail(driver),
