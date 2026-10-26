@@ -45,7 +45,7 @@ const MIGRATION_BINDING = "DB";
  */
 export class InProcessDriver implements Driver {
   readonly kind = "inprocess" as const;
-  static readonly CAPABILITIES: readonly Capability[] = ["fakes", "clock", "reset", "recorder", "mcp", "storage"];
+  static readonly CAPABILITIES: readonly Capability[] = ["fakes", "clock", "reset", "recorder", "mcp", "storage", "selftest"];
   readonly capabilities: ReadonlySet<Capability> = new Set(InProcessDriver.CAPABILITIES);
   ui?: UiActions;
   /** Where the running harness listens, for a browser to reach it. */

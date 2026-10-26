@@ -2,7 +2,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { renderRange } from "../scripts/gen-range.mjs";
+import { isContractMigration } from "../../core/selftest/schema-range.ts";
+import { CONTRACT_NAME, renderRange } from "../scripts/gen-range.mjs";
 
 const dirs = [];
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })));
@@ -27,5 +28,23 @@ describe("IT-OPS-011 range generation", () => {
 
   it("requires the newest expand, not the contract, when the head is a contract", () => {
     expect(range({ [A]: "x", [B]: "x", [C]: `-- contract-of: ${B}\nx` })).toEqual(["20260102000000", "20260103000000"]);
+  });
+});
+
+describe("IT-OPS-011 how a build recognises a contract", () => {
+  // The self-test judges a database ahead of its build by names alone, so the build's reading and the checker's must agree.
+  it.each([
+    "20261026000000_search_contract_drop.sql",
+    "20261026000000_search_contract.sql",
+    "20261026000000_search_old_contract.sql",
+    "20261026000000_search_old_contract_columns.sql",
+    "20261026000000_contract_contract.sql",
+    "20261026000000_contract_table.sql",
+    "20261026000000_contracts_table.sql",
+    "20261026000000_search_subcontract.sql",
+    "20261026000000_search_index.sql",
+    "junk.sql",
+  ])("reads %s the same way in the build and in the checker", (name) => {
+    expect(isContractMigration(name)).toBe(CONTRACT_NAME.test(name));
   });
 });

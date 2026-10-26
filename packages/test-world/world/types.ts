@@ -245,6 +245,8 @@ export interface Visitor {
   get(path: string): Promise<Observation>;
   /** A sign-in request naming a provider. */
   signInWith(provider: string): Promise<Observation>;
+  /** What a Worker's self-test answers a caller with no credential: the shape of a path that does not exist, and nothing more. */
+  selfTest(o?: { worker?: string }): Promise<NotFound | Observation>;
 }
 
 export interface Agent {

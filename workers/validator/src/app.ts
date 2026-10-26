@@ -1,4 +1,4 @@
-import { createShell, type WorkerShellOptions } from "@packserver/http";
+import { createShell, selfTestAccess, type WorkerShellOptions } from "@packserver/http";
 import type { Hono } from "hono";
 import type { ValidatorRuntime } from "./bindings";
 import { selfTestChecks } from "./selftest";
@@ -18,6 +18,7 @@ export function createApp(runtime: ValidatorRuntime, options: AppOptions = {}): 
     telemetry: runtime.ports.telemetry,
     checks: () => selfTestChecks(runtime),
     selfTestAllowed: options.selfTestAllowed,
+    selfTest: selfTestAccess(runtime),
   });
   app.post("/internal/runs", startRoute(runtime));
   return app;

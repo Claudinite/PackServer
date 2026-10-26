@@ -26,7 +26,8 @@ defaults:
 
 env:
   WRANGLER_SEND_METRICS: "false"
-  # Flipped to "true" by T-110 when the self-test endpoint exists; until then verify runs probe-safe only.
+  # The self-test stage of verify. Off until the SELFTEST_HMAC_KEY environment secrets exist (#158); even when "true" it
+  # skips with a logged reason while the key is absent.
   VERIFY_SELFTEST: "false"
 
 # One deploy at a time; a newer merge waits instead of cancelling a deploy that is mid-flight.
@@ -124,6 +125,7 @@ jobs:
           PACKSERVER_ACCESS_HOST: registry-staging.claudinite.com
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          SELFTEST_HMAC_KEY: ${{ secrets.SELFTEST_HMAC_KEY }}
         run: pnpm exec vitest run --project scenarios --passWithNoTests --reporter=default --reporter=junit --outputFile.junit=reports/scenarios.xml
       - if: always() && steps.configured.outputs.yes == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

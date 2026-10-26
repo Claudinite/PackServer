@@ -1,4 +1,4 @@
-import { createShell, type WorkerShellOptions } from "@packserver/http";
+import { createShell, selfTestAccess, type WorkerShellOptions } from "@packserver/http";
 import type { Hono } from "hono";
 import type { McpRuntime } from "./bindings";
 import { routes as searchRoutes } from "./search";
@@ -19,6 +19,7 @@ export function createApp(runtime: McpRuntime, options: AppOptions = {}): Hono {
     telemetry: runtime.ports.telemetry,
     checks: () => selfTestChecks(runtime),
     selfTestAllowed: options.selfTestAllowed,
+    selfTest: selfTestAccess(runtime),
   });
   app.route("/internal", searchRoutes(runtime));
   app.route("/", mcpRoutes(runtime, options));

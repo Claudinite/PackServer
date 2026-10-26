@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createPublicKey, createPrivateKey, sign, verify } from "node:crypto";
-import { kidFor, nextKid, main, generateSigningKey } from "./secrets.mjs";
+import { kidFor, nextKid, main, generateSigningKey, setGithubSecret } from "./secrets.mjs";
 
 function fakeCloudflare({ existing = [], failList = false, failCreateOn, accounts = [{ id: "acct" }], flaky = 0, networkFlaky = 0 } = {}) {
   let flakyLeft = flaky;
@@ -95,6 +95,36 @@ describe("secrets.mjs", () => {
     expect(r.code).toBe(2);
     expect(r.err).toContain("CF_BOOTSTRAP_TOKEN");
     expect(cf.calls).toEqual([]);
+  });
+
+  it("copies the new self-test key to the GitHub environment when asked, without printing it", async () => {
+    const cf = fakeCloudflare();
+    const sent = [];
+    const r = await run(["--env", "staging", "--set-github-secret"], ENV, { fetch: cf.fetch, setGithubSecret: (x) => sent.push(x) });
+    expect(r.code).toBe(0);
+    const stored = cf.created.find((c) => c.name === "STAGING_SELFTEST_HMAC_KEY");
+    expect(sent).toEqual([{ environment: "staging", name: "SELFTEST_HMAC_KEY", value: stored.value }]);
+    expect(r.out + r.err).not.toContain(stored.value);
+    expect(r.out).toContain("set GitHub environment secret SELFTEST_HMAC_KEY in staging");
+  });
+
+  it("tells the person to delete the stored key and re-run when gh fails, since the value is gone", () => {
+    const path = process.env.PATH;
+    process.env.PATH = "/nonexistent";
+    try {
+      expect(() => setGithubSecret({ environment: "staging", name: "SELFTEST_HMAC_KEY", value: "v" })).toThrow(/delete SELFTEST_HMAC_KEY from Secrets Store and re-run/);
+    } finally {
+      process.env.PATH = path;
+    }
+  });
+
+  it("says so when the self-test key has no GitHub copy, and does not claim one for a key it cannot read back", async () => {
+    const without = await run(["--env", "production"], ENV, { fetch: fakeCloudflare().fetch });
+    expect(without.out).toContain("--set-github-secret");
+    const sent = [];
+    const kept = await run(["--env", "production", "--set-github-secret", "--skip-existing"], ENV, { fetch: fakeCloudflare({ existing: ["SELFTEST_HMAC_KEY"] }).fetch, setGithubSecret: (x) => sent.push(x) });
+    expect(sent).toEqual([]);
+    expect(kept.err).toContain("cannot be read back");
   });
 
   it("dry-run lists names and needs neither env nor network", async () => {

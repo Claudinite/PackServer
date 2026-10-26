@@ -5,19 +5,26 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readConfigs } from "../../infra/lib/plan.mjs";
 import { TEST_STRINGS } from "../test-strings.mjs";
 import { layOutIncumbent } from "../build-n-minus-1.mjs";
-import { REPO, WORKERS, bundleKey, manifestKey, opsStore, sha256 } from "./common.mjs";
+import { isCandidate } from "../../packages/http/src/candidate-gating";
+import { CANDIDATE_MIRROR_KEY as TS_MIRROR_KEY } from "../../packages/ports/src/release-keys";
+import { CANDIDATE_MIRROR_KEY, MIRROR_PROPAGATION_MS, REPO, WORKERS, bundleKey, manifestKey, opsStore, sha256 } from "./common.mjs";
 import { changedWorkers, classifyMigrations, containerChanges, cut, liveRecord, liveRelease, newManifest, readManifest, releaseId, update, withStage, withState, writeLive, writeManifest } from "./manifest.mjs";
 import { promote } from "./promote.mjs";
 import { defaultTarget, rollbackRelease } from "./rollback.mjs";
-import { grepBundles, signSelftest, verifyCandidate } from "./verify.mjs";
+import { grepBundles, selftestPlan, signSelftest, verifyCandidate } from "./verify.mjs";
 
 const NAMES = WORKERS.map((w) => w.name);
 const quiet = () => {};
+const noSleep = () => {};
 
 function memoryStore() {
   const objects = new Map();
   return {
     objects,
+    mirrored: [],
+    mirror(body) {
+      this.mirrored.push(JSON.parse(body));
+    },
     get: (k) => (objects.has(k) ? Buffer.from(objects.get(k)) : null),
     put: (k, b) => void objects.set(k, Buffer.from(b)),
     putOnce(k, b) {
@@ -111,7 +118,7 @@ describe("cut", () => {
   it("uploads every Worker at 0% on a first release, records incumbents, copies bundles once, and leaves the release verifying", () => {
     const store = memoryStore();
     const { run, calls } = fakeWrangler();
-    const m = cut({ run, store, digests: digestsOf(defaultBundle), bundlesDir: tracked(bundlesDir()), id: "1.0.0+aaaaaaa", commit: "a".repeat(40), now: "t" });
+    const m = cut({ sleep: noSleep, run, store, digests: digestsOf(defaultBundle), bundlesDir: tracked(bundlesDir()), id: "1.0.0+aaaaaaa", commit: "a".repeat(40), now: "t" });
     expect(m.state).toBe("verifying");
     expect(changedWorkers(m)).toEqual(NAMES);
     expect(m.workers.web).toMatchObject({ version_id: "new-web", incumbent: { version_id: "old-web" }, changed: true });
@@ -124,14 +131,45 @@ describe("cut", () => {
     expect(readManifest(store, "1.0.0+aaaaaaa").state).toBe("verifying");
   });
 
+  it("mirrors the candidate record where Workers without a read on ops look, and the record names exactly the changed versions", () => {
+    const store = memoryStore();
+    const { run } = fakeWrangler();
+    cut({ sleep: noSleep, run, store, digests: digestsOf(defaultBundle), bundlesDir: tracked(bundlesDir()), id: "1.0.0+aaaaaaa", commit: "a".repeat(40), now: "t" });
+    const record = store.mirrored.at(-1);
+    expect(record).toMatchObject({ release_id: "1.0.0+aaaaaaa", state: "verifying" });
+    expect(isCandidate(record, "web", "new-web", "1.0.0+aaaaaaa")).toBe(true);
+    expect(isCandidate(record, "web", "old-web", "1.0.0+aaaaaaa")).toBe(false);
+    expect(Object.keys(record.workers.web).sort()).toEqual(["changed", "version_id"]);
+    expect(TS_MIRROR_KEY).toBe(CANDIDATE_MIRROR_KEY);
+  });
+
+  it("waits out the mirror's propagation after the final write, before cut returns", () => {
+    const store = memoryStore();
+    const events = [];
+    const mirror = store.mirror.bind(store);
+    store.mirror = (body) => (events.push(`mirror:${JSON.parse(body).state}`), mirror(body));
+    cut({ run: fakeWrangler().run, store, digests: digestsOf(defaultBundle), bundlesDir: tracked(bundlesDir()), id: "1.0.0+aaaaaaa", commit: "a".repeat(40), now: "t", sleep: (ms) => events.push(`sleep:${ms}`) });
+    expect(events.at(-2)).toBe("mirror:verifying");
+    expect(events.at(-1)).toBe(`sleep:${MIRROR_PROPAGATION_MS}`);
+    expect(MIRROR_PROPAGATION_MS).toBeGreaterThanOrEqual(130_000);
+  });
+
+  it("stops gating the moment the release leaves verifying", () => {
+    const store = memoryStore();
+    const { run } = fakeWrangler();
+    const m = cut({ sleep: noSleep, run, store, digests: digestsOf(defaultBundle), bundlesDir: tracked(bundlesDir()), id: "1.0.0+aaaaaaa", commit: "a".repeat(40), now: "t" });
+    update(store, m.release_id, (x) => withState(x, "rolling", "t2"));
+    expect(isCandidate(store.mirrored.at(-1), "web", "new-web", "1.0.0+aaaaaaa")).toBe(false);
+  });
+
   it("uploads only Workers whose bundle digest moved", () => {
     const store = memoryStore();
-    const first = cut({ run: fakeWrangler().run, store, digests: digestsOf(defaultBundle), bundlesDir: tracked(bundlesDir()), id: "1.0.0+aaaaaaa", commit: "a".repeat(40), now: "t" });
+    const first = cut({ sleep: noSleep, run: fakeWrangler().run, store, digests: digestsOf(defaultBundle), bundlesDir: tracked(bundlesDir()), id: "1.0.0+aaaaaaa", commit: "a".repeat(40), now: "t" });
     writeManifest(store, { ...first, state: "live", commit: "HEAD" });
     writeLive(store, first.release_id);
     const next = (w) => (w === "mcp" ? "// mcp changed" : defaultBundle(w));
     const { run, calls } = fakeWrangler({ bundle: next });
-    const m = cut({ run, store, digests: digestsOf(next), bundlesDir: tracked(bundlesDir(next)), id: "1.0.1+bbbbbbb", commit: "b".repeat(40), now: "t" });
+    const m = cut({ sleep: noSleep, run, store, digests: digestsOf(next), bundlesDir: tracked(bundlesDir(next)), id: "1.0.1+bbbbbbb", commit: "b".repeat(40), now: "t" });
     expect(changedWorkers(m)).toEqual(["mcp"]);
     expect(calls.filter((c) => c.args[1] === "upload").map((c) => c.worker)).toEqual(["mcp"]);
     expect(m.workers.web.changed).toBe(false);
@@ -141,24 +179,24 @@ describe("cut", () => {
 
   it("refuses an upload that is not the bundle that was built and grepped", () => {
     const { run } = fakeWrangler({ bundle: () => "// something else" });
-    expect(() => cut({ run, store: memoryStore(), digests: digestsOf(defaultBundle), bundlesDir: tracked(bundlesDir()), id: "1.0.0+aaaaaaa", commit: "a".repeat(40), now: "t" })).toThrow(/not the one built/);
+    expect(() => cut({ sleep: noSleep, run, store: memoryStore(), digests: digestsOf(defaultBundle), bundlesDir: tracked(bundlesDir()), id: "1.0.0+aaaaaaa", commit: "a".repeat(40), now: "t" })).toThrow(/not the one built/);
   });
 
   it("does not cut a release id whose manifest has moved past verifying, and can re-cut one still verifying", () => {
     const store = memoryStore();
     const args = (s) => ({ run: fakeWrangler().run, store: s, digests: digestsOf(defaultBundle), bundlesDir: tracked(bundlesDir()), id: "1.0.0+aaaaaaa", commit: "a".repeat(40), now: "t" });
-    const first = cut(args(store));
-    expect(cut(args(store)).state).toBe("verifying");
+    const first = cut({ sleep: noSleep, ...args(store) });
+    expect(cut({ sleep: noSleep, ...args(store) }).state).toBe("verifying");
     for (const state of ["rolling", "live"]) {
       writeManifest(store, { ...first, state });
-      expect(() => cut(args(store))).toThrow(new RegExp(`already exists and is ${state}`));
+      expect(() => cut({ sleep: noSleep, ...args(store) })).toThrow(new RegExp(`already exists and is ${state}`));
     }
     expect(readManifest(store, "1.0.0+aaaaaaa").state).toBe("live");
   });
 
   it("refuses when sandbox files or a Worker's containers config moved since the incumbent", () => {
     const store = memoryStore();
-    const first = cut({ run: fakeWrangler().run, store, digests: digestsOf(defaultBundle), bundlesDir: tracked(bundlesDir()), id: "1.0.0+aaaaaaa", commit: "a".repeat(40), now: "t" });
+    const first = cut({ sleep: noSleep, run: fakeWrangler().run, store, digests: digestsOf(defaultBundle), bundlesDir: tracked(bundlesDir()), id: "1.0.0+aaaaaaa", commit: "a".repeat(40), now: "t" });
     writeManifest(store, { ...first, state: "live", commit: "HEAD" });
     writeLive(store, first.release_id);
     const next = { run: fakeWrangler().run, store, digests: digestsOf(defaultBundle), bundlesDir: tracked(bundlesDir()), id: "1.0.1+bbbbbbb", commit: "b".repeat(40), now: "t" };
@@ -168,10 +206,10 @@ describe("cut", () => {
       const text = current(args[1].split(":")[1]);
       return containers && args[1].includes("validator") ? text.replaceAll('"max_instances": 10', '"max_instances": 99') : text;
     };
-    expect(() => cut({ ...next, gitFn: git("sandbox/image-a/Dockerfile\n", false) })).toThrow(/sandbox\/image-a\/Dockerfile changed/);
-    expect(() => cut({ ...next, gitFn: git("", true) })).toThrow(/validator\/wrangler.jsonc env.production.containers changed/);
+    expect(() => cut({ sleep: noSleep, ...next, gitFn: git("sandbox/image-a/Dockerfile\n", false) })).toThrow(/sandbox\/image-a\/Dockerfile changed/);
+    expect(() => cut({ sleep: noSleep, ...next, gitFn: git("", true) })).toThrow(/validator\/wrangler.jsonc env.production.containers changed/);
     expect(readManifest(store, "1.0.0+aaaaaaa").state).toBe("live");
-    expect(cut({ ...next, gitFn: git("", false) }).state).toBe("verifying");
+    expect(cut({ sleep: noSleep, ...next, gitFn: git("", false) }).state).toBe("verifying");
   });
 
   it("tolerates a Worker added since the incumbent", () => {
@@ -186,7 +224,7 @@ describe("cut", () => {
   it("never overwrites a bundle key", () => {
     const store = memoryStore();
     store.put(bundleKey("1.0.0+aaaaaaa", "validator"), "different");
-    expect(() => cut({ run: fakeWrangler().run, store, digests: digestsOf(defaultBundle), bundlesDir: tracked(bundlesDir()), id: "1.0.0+aaaaaaa", commit: "a".repeat(40), now: "t" })).toThrow(/already exists/);
+    expect(() => cut({ sleep: noSleep, run: fakeWrangler().run, store, digests: digestsOf(defaultBundle), bundlesDir: tracked(bundlesDir()), id: "1.0.0+aaaaaaa", commit: "a".repeat(40), now: "t" })).toThrow(/already exists/);
   });
 });
 
@@ -209,15 +247,23 @@ describe("verify", () => {
 
   beforeEach(() => void (answer.seen.length = 0));
 
+  it("skips the self-test stage with a reason unless it is switched on and the key is configured", () => {
+    expect(selftestPlan({ SELFTEST_HMAC_KEY: "k" })).toEqual({ run: false, reason: expect.stringContaining("VERIFY_SELFTEST") });
+    expect(selftestPlan({ VERIFY_SELFTEST: "true" })).toEqual({ run: false, reason: expect.stringContaining("SELFTEST_HMAC_KEY") });
+    expect(selftestPlan({ VERIFY_SELFTEST: "true", SELFTEST_HMAC_KEY: "k" })).toEqual({ run: true });
+  });
+
   it("self-tests callees first with the override, then runs probe-safe pinned to the candidate, and records both", async () => {
     const store = verifyingRelease();
     const probes = [];
-    const ok = await verifyCandidate({ run: (c, a, o) => (probes.push(o.env), { status: 0, stdout: "", stderr: "" }), store, id, env: { CF_ACCESS_CLIENT_ID: "i", CF_ACCESS_CLIENT_SECRET: "s" }, fetchFn: answer(), runSelftest: true, log: quiet });
+    const ok = await verifyCandidate({ run: (c, a, o) => (probes.push(o.env), { status: 0, stdout: "", stderr: "" }), store, id, env: { CF_ACCESS_CLIENT_ID: "i", CF_ACCESS_CLIENT_SECRET: "s", SELFTEST_HMAC_KEY: "hmac", SELFTEST_KEY_ID: "3" }, fetchFn: answer(), runSelftest: true, log: quiet });
     expect(ok).toBe(true);
     expect(answer.seen.map((s) => new URL(s.url).host)).toEqual(WORKERS.map((w) => w.host ?? "registry-canary.claudinite.com"));
     expect(answer.seen[0].init.headers["Cloudflare-Workers-Version-Overrides"]).toContain('validator="new-validator"');
     expect(probes[0]).toMatchObject({ PACKSERVER_EXPECTED_RELEASE: id, TEST_DRIVER: "http", PACKSERVER_BASE_URL: "https://registry-canary.claudinite.com" });
     expect(probes[0].PACKSERVER_VERSION_OVERRIDE).toContain('web="new-web"');
+    expect(probes[0]).toMatchObject({ SELFTEST_HMAC_KEY: "hmac", SELFTEST_KEY_ID: "3" });
+    expect(answer.seen.every((s) => /^t=\d+, n=[0-9a-f-]+, k=3, v1=[0-9a-f]{64}$/.test(s.init.headers["X-Selftest-Signature"]))).toBe(true);
     const stages = readManifest(store, id).stages;
     expect(stages.map((s) => s.name)).toEqual([...NAMES.map((n) => `selftest:${n}`), "probe-safe", "verify"]);
     expect(stages.every((s) => s.ok)).toBe(true);
@@ -241,7 +287,7 @@ describe("verify", () => {
   });
 
   it("signs the way the candidate gate expects", () => {
-    expect(signSelftest({ key: "k", keyId: "1", method: "GET", path: "/__selftest", now: 100, nonce: "n" })).toMatch(/^t=100, n=n, k=1, v1=[0-9a-f]{64}$/);
+    expect(signSelftest({ key: "k", keyId: "1", method: "GET", host: "registry.test", path: "/__selftest", now: 100, nonce: "n" })).toMatch(/^t=100, n=n, k=1, v1=[0-9a-f]{64}$/);
   });
 });
 
@@ -253,10 +299,21 @@ describe("promote", () => {
     return store;
   };
 
+  it("writes the rolling record, waits out its propagation, and only then moves traffic", () => {
+    const store = verified(["web"]);
+    const events = [];
+    const mirror = store.mirror.bind(store);
+    store.mirror = (body) => (events.push(`mirror:${JSON.parse(body).state}`), mirror(body));
+    const { run } = fakeWrangler();
+    const traced = (command, args, opts) => (args.includes("deploy") && events.push("deploy"), run(command, args, opts));
+    promote({ run: traced, store, id, log: quiet, sleep: (ms) => events.push(`sleep:${ms}`) });
+    expect(events.slice(0, 4)).toEqual(["mirror:rolling", `sleep:${MIRROR_PROPAGATION_MS}`, "deploy", "mirror:live"]);
+  });
+
   it("moves every changed Worker to 100% in release order, then marks the release live", () => {
     const store = verified(["web", "validator"]);
     const { run, calls } = fakeWrangler();
-    const m = promote({ run, store, id, log: quiet });
+    const m = promote({ run, store, id, log: quiet, sleep: noSleep });
     expect(calls.map((c) => [c.worker, ...c.args.slice(0, 3)])).toEqual([
       ["validator", "versions", "deploy", "new-validator@100"],
       ["web", "versions", "deploy", "new-web@100"],
@@ -268,7 +325,7 @@ describe("promote", () => {
   it("moves nothing unless verify passed", () => {
     const store = verifyingRelease();
     const { run, calls } = fakeWrangler();
-    expect(() => promote({ run, store, id, log: quiet })).toThrow(/no passing verify/);
+    expect(() => promote({ run, store, id, log: quiet, sleep: noSleep })).toThrow(/no passing verify/);
     expect(calls).toEqual([]);
   });
 
@@ -276,7 +333,7 @@ describe("promote", () => {
     const store = verified(["validator", "publish", "github"]);
     writeLive(store, "1.0.0+aaaaaaa");
     const { run, calls } = fakeWrangler({ failOn: (w, a) => w === "github" && a[1] === "deploy" });
-    expect(() => promote({ run, store, id, log: quiet })).toThrow(/promote stopped at github/);
+    expect(() => promote({ run, store, id, log: quiet, sleep: noSleep })).toThrow(/promote stopped at github/);
     expect(calls.filter((c) => c.args[0] === "rollback").map((c) => [c.worker, c.args[1]])).toEqual([["publish", "old-publish"], ["validator", "old-validator"]]);
     expect(readManifest(store, id).state).toBe("rolled_back");
     expect(liveRelease(store)).toBe("1.0.0+aaaaaaa");
@@ -287,14 +344,14 @@ describe("promote", () => {
     writeLive(store, "1.0.0+aaaaaaa");
     update(store, id, (m) => ({ ...m, workers: { ...m.workers, validator: { ...m.workers.validator, incumbent: null } } }));
     const { run } = fakeWrangler({ failOn: (w, a) => w === "publish" && a[1] === "deploy" });
-    expect(() => promote({ run, store, id, log: quiet })).toThrow(/1 Worker/);
+    expect(() => promote({ run, store, id, log: quiet, sleep: noSleep })).toThrow(/1 Worker/);
     expect(readManifest(store, id)).toMatchObject({ state: "failed", failure: { moved: ["validator"] } });
   });
 
   it("records a failed release when the very first Worker fails", () => {
     const store = verified();
     const { run } = fakeWrangler({ failOn: () => true });
-    expect(() => promote({ run, store, id, log: quiet })).toThrow(/0 Worker/);
+    expect(() => promote({ run, store, id, log: quiet, sleep: noSleep })).toThrow(/0 Worker/);
     expect(readManifest(store, id)).toMatchObject({ state: "failed", failure: { reason: "promote failed at validator", moved: [] } });
     expect(liveRelease(store)).toBeNull();
   });
@@ -453,6 +510,12 @@ describe("ops store", () => {
     if (args.includes("get") && result.status === 0) writeFileSync(args[args.indexOf("--file") + 1], "body");
     return result;
   };
+
+  it("mirrors the candidate record into production's TELEMETRY_KV through wrangler", () => {
+    const calls = [];
+    opsStore((c, args) => (calls.push(args), { status: 0, stdout: "", stderr: "" })).mirror("{}");
+    expect(calls[0]).toEqual(expect.arrayContaining(["kv", "key", "put", CANDIDATE_MIRROR_KEY, "--binding", "TELEMETRY_KV", "--env", "production", "--remote"]));
+  });
 
   it("reads a missing object as absent but any other failure as could-not-ask", () => {
     expect(opsStore(runner({ status: 1, stdout: "", stderr: "The specified key does not exist. [code: 10007]" })).get(manifestKey("x"))).toBeNull();
