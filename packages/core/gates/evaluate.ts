@@ -36,6 +36,8 @@ export function dominantSource(t: Traffic): string | null {
 }
 const pct = (x: number): string => `${(x * 100).toFixed(1)}%`;
 
+export const UNKNOWN_CONCENTRATION = "the client lists are incomplete, so a dominant client cannot be ruled out";
+
 const NO_MEMORY: GateMemory = { decided_at: null, last: null };
 
 /**
@@ -58,6 +60,7 @@ function proportion(
   if (n < floor) return { result: { status: "insufficient", ...base, reasons: [`${n} of ${floor} samples`] }, memory };
   const dominant = dominantSource(traffic);
   if (dominant) return { result: { status: "suspect", ...base, reasons: [dominant] }, memory };
+  if (traffic.top.unknown) return { result: { status: "insufficient", ...base, reasons: [UNKNOWN_CONCENTRATION] }, memory };
   const point = latestDecisionPoint(n, floor) as number;
   const due = stageEnd || memory.decided_at === null || point > memory.decided_at;
   if (!due) {
@@ -93,6 +96,7 @@ function latency(t: Traffic, baseline: Traffic | null, cls: "read" | "write"): R
   if (n < floor) return { status: "insufficient", ...base, reasons: [`${n} of ${floor} samples`] };
   const dominant = dominantSource(t);
   if (dominant) return { status: "suspect", ...base, reasons: [dominant] };
+  if (t.top.unknown) return { status: "insufficient", ...base, reasons: [UNKNOWN_CONCENTRATION] };
   const reasons: string[] = [];
   if (shareAbove(t.latency, limit) > 1 - q) reasons.push(`${label} is over ${limit} ms`);
   const baseline95 = baseline && histogramSamples(baseline) >= floor ? histogramPercentile(baseline.latency, q) : null;

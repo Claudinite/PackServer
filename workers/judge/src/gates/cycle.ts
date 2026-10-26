@@ -35,6 +35,14 @@ const emptyInputs = (versionId: string, worker: string): VersionInputs => ({
   baseline: null, selftest: null, syntheticRuns: [], indexFetches: [], dryRuns: [], hashMismatches: 0, publishValidated: 0, publishFailed: 0, searchDegraded: 0, queues: [], dlqRecent: 0,
 });
 
+interface Stage {
+  key: string;
+  started_at: number;
+  release_id: string;
+  release_started_at: number;
+  reset: boolean;
+}
+
 const sameAsEmitted = (before: EmittedVerdict | undefined, after: GateVerdict): boolean =>
   before !== undefined && before.status === after.status && before.decided_at === after.decided_at && before.binding === after.binding;
 
@@ -57,21 +65,31 @@ export async function evaluateGates(deps: GateDeps, release: ReleaseRecord | nul
 
   const candidates = new Map<string, string>();
   for (const [worker, w] of Object.entries(release?.workers ?? {})) if (release && w?.changed === true && typeof w.version_id === "string") candidates.set(w.version_id, worker);
-  const stages = new Map<string, { key: string; started_at: number; reset: boolean }>();
+  const stages = new Map<string, Stage>();
   for (const versionId of candidates.keys()) {
     const key = `${release?.release_id}|${release?.state}`;
     const record = await store.stage(versionId);
-    stages.set(versionId, record && record.key === key ? { ...record, reset: false } : { key, started_at: now, reset: true });
+    if (record && record.key === key) stages.set(versionId, { ...record, reset: false });
+    else {
+      // A state change inside one release restarts the counts but not the release's zero-tolerance evidence.
+      const sameRelease = record !== null && record.release_id === release?.release_id;
+      stages.set(versionId, { key, started_at: now, release_id: release?.release_id ?? "", release_started_at: sameRelease ? record.release_started_at : now, reset: true });
+    }
   }
 
-  const window = windowAt(now, [now - MAX_LOOKBACK_MS, ...[...stages.values()].filter((s) => !s.reset).map((s) => s.started_at)]);
+  const window = windowAt(now, [now - MAX_LOOKBACK_MS, ...[...stages.values()].filter((s) => !s.reset).map((s) => s.started_at)], [...candidates.keys()]);
   const [data, domainRows, probeRows] = await Promise.all([deps.data.requestOutcomes(window), deps.data.domainEvents(window), deps.data.syntheticProbes(window)]);
   const tracked = new Map<string, string>();
   for (const g of data.groups) if (g.version_id !== "") tracked.set(g.version_id, g.worker);
   for (const [versionId, worker] of candidates) tracked.set(versionId, worker);
   const rates = realRatePerSecond(data.groups, RECENT_MS / 1000);
-  const domain = domainFacts(domainRows);
   const probes = probeFacts(probeRows);
+  const domains = new Map<number, ReturnType<typeof domainFacts>>();
+  const domainFor = (index: number): ReturnType<typeof domainFacts> => {
+    let facts = domains.get(index);
+    if (!facts) domains.set(index, (facts = domainFacts(domainRows, index)));
+    return facts;
+  };
 
   const cache = new Map<string, Map<string, VersionTraffic>>();
   const trafficFor = (source: Source, index: number): Map<string, VersionTraffic> => {
@@ -85,20 +103,21 @@ export async function evaluateGates(deps: GateDeps, release: ReleaseRecord | nul
   const emittedNow = new Map<string, Record<string, EmittedVerdict>>();
   let verdicts = 0;
   for (const [versionId, worker] of tracked) {
-    const stage = stages.get(versionId) ?? { key: "steady", started_at: window.starts[0] as number, reset: false };
+    const stage = stages.get(versionId) ?? { key: "steady", started_at: window.starts[0] as number, release_id: "", release_started_at: window.starts[0] as number, reset: false };
     const index = windowIndex(window, stage.started_at);
     const rate = rates.get(worker) ?? 0;
     const source: Source = rate < LOW_TRAFFIC_RPS ? "all" : "real";
     const traffics = trafficFor(source, index);
-    const since = Math.max(stage.started_at, window.starts[0] as number);
+    const domain = domainFor(index);
+    const evidenceSince = Math.max(stage.release_started_at, window.starts[0] as number);
     const inputs: VersionInputs = {
       ...emptyInputs(versionId, worker),
       traffic: stage.reset ? emptyInputs(versionId, worker).traffic : (traffics.get(versionId)?.traffic ?? emptyInputs(versionId, worker).traffic),
       baseline: pickBaseline(traffics, versionId, worker),
       selftest: domain.selftest.get(versionId) ?? null,
-      syntheticRuns: (probes.runs.get(versionId) ?? []).filter((r) => r.at >= since),
-      indexFetches: (probes.indexFetches.get(versionId) ?? []).filter((r) => r.at >= since),
-      dryRuns: (await store.dryRuns(versionId)).filter((r) => r.at >= since),
+      syntheticRuns: (probes.runs.get(versionId) ?? []).filter((r) => r.at >= evidenceSince),
+      indexFetches: (probes.indexFetches.get(versionId) ?? []).filter((r) => r.at >= evidenceSince),
+      dryRuns: (await store.dryRuns(versionId)).filter((r) => r.at >= evidenceSince),
       hashMismatches: domain.hashMismatches.get(versionId) ?? 0,
       publishValidated: domain.publishValidated.get(versionId) ?? 0,
       publishFailed: domain.publishFailed.get(versionId) ?? 0,
@@ -125,7 +144,7 @@ export async function evaluateGates(deps: GateDeps, release: ReleaseRecord | nul
     const unchanged = stored !== null && now - stored.evaluated_at < REFRESH_AFTER_MS && JSON.stringify({ ...stored, evaluated_at: 0, gates: stripTimes(stored.gates) }) === JSON.stringify({ ...report, evaluated_at: 0, gates: stripTimes(report.gates) });
     const writes: Array<Promise<void>> = [];
     if (!unchanged) writes.push(store.putReport(report), store.putInputs(inputs));
-    if (stage.reset) writes.push(store.putStage(versionId, { key: stage.key, started_at: stage.started_at }));
+    if (stage.reset) writes.push(store.putStage(versionId, { key: stage.key, started_at: stage.started_at, release_id: stage.release_id, release_started_at: stage.release_started_at }));
     if (stage.reset || JSON.stringify(memoryBefore) !== JSON.stringify(result.memory)) writes.push(store.putMemory(versionId, result.memory));
     await Promise.all(writes);
 

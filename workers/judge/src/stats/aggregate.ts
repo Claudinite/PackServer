@@ -38,10 +38,12 @@ export function trafficByVersion(data: RequestData, source: Source, index: numbe
     }
   }
   const heaviest = (clients: readonly TopClient[], version: string): { samples: number; bad: number } => {
-    let best = { samples: 0, bad: 0 };
+    const best = { samples: 0, bad: 0 };
     for (const c of clients) {
       const w = c.windows[index];
-      if (c.version_id === version && w && w.samples > best.samples) best = w;
+      if (c.version_id !== version || !w) continue;
+      best.samples = Math.max(best.samples, w.samples);
+      best.bad = Math.max(best.bad, w.bad);
     }
     return best;
   };
@@ -49,6 +51,7 @@ export function trafficByVersion(data: RequestData, source: Source, index: numbe
     const p = heaviest(data.principals, version);
     const i = heaviest(data.ips, version);
     Object.assign(entry.traffic.top, { principalSamples: p.samples, principalBad: p.bad, ipSamples: i.samples, ipBad: i.bad });
+    if (data.listsCut && !data.exactVersions.includes(version)) entry.traffic.top.unknown = true;
   }
   return out;
 }
@@ -84,7 +87,8 @@ export interface DomainFacts {
 
 const add = (m: Map<string, number>, key: string, by: number): void => void m.set(key, (m.get(key) ?? 0) + by);
 
-export function domainFacts(rows: readonly DomainRow[]): DomainFacts {
+/** Counts run from window `index`, the stage start of the version asking; the latest reading of a signal is the latest whatever the window. */
+export function domainFacts(rows: readonly DomainRow[], index: number): DomainFacts {
   const facts: DomainFacts = { selftest: new Map(), hashMismatches: new Map(), searchDegraded: new Map(), publishValidated: new Map(), publishFailed: new Map(), queues: [], dlqRecent: 0 };
   const queues = new Map<string, { at: number; oldestAgeS: number | null }>();
   for (const r of rows) {
@@ -95,10 +99,10 @@ export function domainFacts(rows: readonly DomainRow[]): DomainFacts {
         if (parsed && (!seen || r.ts > seen.at)) facts.selftest.set(r.version_id, { ok: parsed.ok, at: r.ts });
         break;
       }
-      case "download.hash_mismatch": add(facts.hashMismatches, r.version_id, r.n); break;
-      case "search.degraded": add(facts.searchDegraded, r.version_id, r.n); break;
-      case "publish.validated": add(facts.publishValidated, r.version_id, r.n); break;
-      case "publish.failed": add(facts.publishFailed, r.version_id, r.n); break;
+      case "download.hash_mismatch": add(facts.hashMismatches, r.version_id, r.windows[index] ?? 0); break;
+      case "search.degraded": add(facts.searchDegraded, r.version_id, r.windows[index] ?? 0); break;
+      case "publish.validated": add(facts.publishValidated, r.version_id, r.windows[index] ?? 0); break;
+      case "publish.failed": add(facts.publishFailed, r.version_id, r.windows[index] ?? 0); break;
       case "queue.backlog": {
         const queue = parseQueueAttrs(r.attrs);
         const seen = queue === null ? undefined : queues.get(queue);

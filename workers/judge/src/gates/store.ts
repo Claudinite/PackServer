@@ -7,7 +7,13 @@ const MAX_DRY_RUNS = 20;
 export interface StageRecord {
   key: string;
   started_at: number;
+  release_id: string;
+  /** When the judge first saw this release, which a state change does not move: zero-tolerance evidence is kept from here. */
+  release_started_at: number;
 }
+
+/** Longer than the whole ladder plus the 24 h bake; a stage record or a candidate's memory that lapsed would restart the stage. */
+export const STAGE_TTL_SECONDS = 8 * 24 * 3600;
 /** What `gate_results` last heard about a gate, so a verdict that could not be written is still news next cycle. */
 export interface EmittedVerdict {
   status: string;
@@ -35,11 +41,11 @@ export function gatesStore(kv: KV) {
     report: (versionId: string) => readJson<GateReport>(kv, GATES_KV_KEYS.report(versionId)),
     putReport: (report: GateReport) => writeJson(kv, GATES_KV_KEYS.report(report.version_id), report),
     memory: async (versionId: string): Promise<VersionMemory> => (await readJson<VersionMemory>(kv, GATES_KV_KEYS.memory(versionId))) ?? {},
-    putMemory: (versionId: string, memory: VersionMemory) => writeJson(kv, GATES_KV_KEYS.memory(versionId), memory),
+    putMemory: (versionId: string, memory: VersionMemory) => writeJson(kv, GATES_KV_KEYS.memory(versionId), memory, STAGE_TTL_SECONDS),
     inputs: (versionId: string) => readJson<VersionInputs>(kv, GATES_KV_KEYS.inputs(versionId)),
     putInputs: (inputs: VersionInputs) => writeJson(kv, GATES_KV_KEYS.inputs(inputs.versionId), inputs),
     stage: (versionId: string) => readJson<StageRecord>(kv, GATES_KV_KEYS.stage(versionId)),
-    putStage: (versionId: string, record: StageRecord) => writeJson(kv, GATES_KV_KEYS.stage(versionId), record),
+    putStage: (versionId: string, record: StageRecord) => writeJson(kv, GATES_KV_KEYS.stage(versionId), record, STAGE_TTL_SECONDS),
     emitted: async (versionId: string): Promise<Record<string, EmittedVerdict>> => (await readJson<Record<string, EmittedVerdict>>(kv, GATES_KV_KEYS.emitted(versionId))) ?? {},
     putEmitted: (versionId: string, emitted: Record<string, EmittedVerdict>) => writeJson(kv, GATES_KV_KEYS.emitted(versionId), emitted),
     lastCycle: async (): Promise<number | null> => (await readJson<{ at: number }>(kv, GATES_KV_KEYS.lastCycle))?.at ?? null,

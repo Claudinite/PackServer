@@ -11,7 +11,8 @@ export class FakeGateData implements GateDataSource {
   groups: GroupSpec[] = [];
   principals: ClientSpec[] = [];
   ips: ClientSpec[] = [];
-  domain: DomainRow[] = [];
+  domain: Array<Omit<DomainRow, "windows"> & { windows?: number[] }> = [];
+  listsCut = false;
   probes: ProbeRow[] = [];
   reads: string[] = [];
   windows: ReadWindow[] = [];
@@ -25,11 +26,13 @@ export class FakeGateData implements GateDataSource {
       groups: this.groups.map(({ counts, ...g }) => ({ ...g, windows: Array.from({ length: n }, () => counts) })),
       principals: this.principals.map((c) => ({ version_id: c.version_id, key: c.key, windows: Array.from({ length: n }, () => ({ samples: c.samples, bad: c.bad })) })),
       ips: this.ips.map((c) => ({ version_id: c.version_id, key: c.key, windows: Array.from({ length: n }, () => ({ samples: c.samples, bad: c.bad })) })),
+      exactVersions: window.candidates,
+      listsCut: this.listsCut,
     };
   }
-  async domainEvents() {
+  async domainEvents(window: ReadWindow): Promise<DomainRow[]> {
     this.reads.push("domain_events");
-    return this.domain;
+    return this.domain.map((r) => ({ ...r, windows: r.windows ?? window.starts.map(() => r.n) }));
   }
   async syntheticProbes() {
     this.reads.push("synthetic_probes");

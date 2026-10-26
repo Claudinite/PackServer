@@ -49,7 +49,11 @@ FROM ${dataset} WHERE ${since(w, 0)} AND ${blob("worker")} != ''
 GROUP BY version_id, worker, version_override, is_synthetic LIMIT ${ROW_LIMIT} FORMAT JSON`;
 }
 
-/** The heaviest non-synthetic clients by one hash column; the list is cut by rank, so it is bounded whatever the traffic. */
+const SAFE_VERSION = /^[A-Za-z0-9._-]{1,128}$/;
+/** Enough to hold the heaviest few by either ranking; a dominant client is always first in one of them. */
+export const CANDIDATE_TOP = 5;
+
+/** The heaviest non-synthetic clients by one hash column across all versions; cut by rank, so bounded whatever the traffic. */
 export function topClientsSql(dataset: string, w: ReadWindow, column: "principal_hash" | "ip_hash"): string {
   const columns = w.starts.flatMap((_, i) => [`sumIf(_sample_interval, ${since(w, i)}) AS s${i}`, `sumIf(_sample_interval, ${since(w, i)} AND ${BAD_IN}) AS b${i}`]);
   return `SELECT index1 AS version_id, ${blob(column)} AS client, ${columns.join(", ")}
@@ -57,15 +61,29 @@ FROM ${dataset} WHERE ${since(w, 0)} AND ${blob("worker")} != '' AND ${blob(colu
 GROUP BY version_id, client HAVING sum(_sample_interval) >= ${MIN_CLIENT_SAMPLES} ORDER BY s0 DESC LIMIT ${TOP_CLIENTS} FORMAT JSON`;
 }
 
+/**
+ * One version's heaviest clients, ranked by samples or by bad samples: ranking inside the version is
+ * what keeps a 1% candidate's dominant client from being cut by the incumbents' larger ones.
+ */
+export function versionClientsSql(dataset: string, w: ReadWindow, column: "principal_hash" | "ip_hash", version: string, rank: "samples" | "bad"): string {
+  if (!SAFE_VERSION.test(version)) throw new Error(`not a version id: ${version}`);
+  const columns = w.starts.flatMap((_, i) => [`sumIf(_sample_interval, ${since(w, i)}) AS s${i}`, `sumIf(_sample_interval, ${since(w, i)} AND ${BAD_IN}) AS b${i}`]);
+  return `SELECT index1 AS version_id, ${blob(column)} AS client, ${columns.join(", ")}
+FROM ${dataset} WHERE ${since(w, 0)} AND index1 = '${version}' AND ${blob(column)} != '' AND ${double("version_override")} = 0 AND ${double("is_synthetic")} = 0
+GROUP BY version_id, client ORDER BY ${rank === "samples" ? "s0" : "b0"} DESC LIMIT ${CANDIDATE_TOP} FORMAT JSON`;
+}
+
 /** `blob1` is the emitting Worker, `blob2` its release, `blob3` its version and `blob4` the attributes, as `Telemetry.emit` writes them. */
 export const DOMAIN_SIGNALS = [
   "selftest.result", "download.hash_mismatch", "queue.backlog", "queue.dlq", "search.degraded", "publish.validated", "publish.failed",
 ] as const;
 
+const windowColumns = (w: ReadWindow): string => w.starts.map((_, i) => `sumIf(_sample_interval, ${since(w, i)}) AS n${i}`).join(", ");
+
 export function domainEventsSql(dataset: string, w: ReadWindow): string {
   const list = DOMAIN_SIGNALS.map((s) => `'${s}'`).join(", ");
   return `SELECT index1 AS signal, blob3 AS version_id, blob4 AS attrs,
-  sum(_sample_interval) AS n, sumIf(_sample_interval, timestamp >= toDateTime(${seconds(w.recentMs)})) AS recent,
+  sum(_sample_interval) AS n, ${windowColumns(w)}, sumIf(_sample_interval, timestamp >= toDateTime(${seconds(w.recentMs)})) AS recent,
   toUnixTimestamp(max(timestamp)) AS ts, argMax(double1, timestamp) AS d1, argMax(double2, timestamp) AS d2
 FROM ${dataset} WHERE timestamp >= toDateTime(${seconds(w.starts[0] as number)}) AND index1 IN (${list})
 GROUP BY signal, version_id, attrs LIMIT ${ROW_LIMIT} FORMAT JSON`;
@@ -100,13 +118,22 @@ export function analyticsGateData(config: AnalyticsSqlConfig, fetchImpl: typeof 
   return {
     async requestOutcomes(w): Promise<RequestData> {
       const base = dataset("request_outcomes");
-      const [totals, principals, ips] = await Promise.all([
+      const columns = ["principal_hash", "ip_hash"] as const;
+      const [totals, principals, ips, ...exact] = await Promise.all([
         run("request_outcomes", requestOutcomesSql(base, w)),
         run("request_outcomes principals", topClientsSql(base, w, "principal_hash"), false),
         run("request_outcomes ips", topClientsSql(base, w, "ip_hash"), false),
+        ...w.candidates.flatMap((v) => columns.flatMap((c) => (["samples", "bad"] as const).map((rank) => run(`request_outcomes ${c} of a candidate`, versionClientsSql(base, w, c, v, rank), false)))),
       ]);
       const clients = (rows: Raw[]): TopClient[] =>
         rows.map((r) => ({ version_id: text(r.version_id), key: text(r.client), windows: w.starts.map((_, i) => ({ samples: num(r[`s${i}`]), bad: num(r[`b${i}`]) })) }));
+      // Four lists per candidate: principal and ip, each ranked by samples and by bad. Both rankings of one column merge into one list.
+      const perCandidate = w.candidates.map((_, i) => exact.slice(i * 4, i * 4 + 4));
+      const merged = (lists: Raw[][]): TopClient[] => {
+        const seen = new Map<string, TopClient>();
+        for (const c of lists.flatMap(clients)) seen.set(`${c.version_id}|${c.key}`, c);
+        return [...seen.values()];
+      };
       return {
         groups: totals.map((r) => ({
           version_id: text(r.version_id),
@@ -122,13 +149,15 @@ export function analyticsGateData(config: AnalyticsSqlConfig, fetchImpl: typeof 
             latency: Array.from({ length: LATENCY_BOUNDS_MS.length + 1 }, (_, j) => num(r[`h${i}_${j}`])),
           })),
         })),
-        principals: clients(principals),
-        ips: clients(ips),
+        principals: [...clients(principals), ...merged(perCandidate.flatMap((l) => [l[0] as Raw[], l[1] as Raw[]]))],
+        ips: [...clients(ips), ...merged(perCandidate.flatMap((l) => [l[2] as Raw[], l[3] as Raw[]]))],
+        exactVersions: [...w.candidates],
+        listsCut: principals.length >= TOP_CLIENTS || ips.length >= TOP_CLIENTS,
       };
     },
     async domainEvents(w): Promise<DomainRow[]> {
       const rows = await run("domain_events", domainEventsSql(dataset("domain_events"), w));
-      return rows.map((r) => ({ signal: text(r.signal), version_id: text(r.version_id), attrs: text(r.attrs), n: num(r.n), recent: num(r.recent), ts: num(r.ts) * 1000, d1: num(r.d1), d2: num(r.d2) }));
+      return rows.map((r) => ({ signal: text(r.signal), version_id: text(r.version_id), attrs: text(r.attrs), n: num(r.n), recent: num(r.recent), windows: w.starts.map((_, i) => num(r[`n${i}`])), ts: num(r.ts) * 1000, d1: num(r.d1), d2: num(r.d2) }));
     },
     async syntheticProbes(w): Promise<ProbeRow[]> {
       const rows = await run("synthetic_probes", syntheticProbesSql(dataset("synthetic_probes"), w));

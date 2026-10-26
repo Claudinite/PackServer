@@ -70,7 +70,10 @@ export interface Traffic {
    * The heaviest single `principal_hash` and `ip_hash` among non-synthetic requests, over `baseSamples`
    * and `baseBad`, the non-synthetic, non-override totals: the prober's own traffic is one source by design.
    */
-  top: { principalSamples: number; principalBad: number; ipSamples: number; ipBad: number; baseSamples: number; baseBad: number };
+  top: { principalSamples: number; principalBad: number; ipSamples: number; ipBad: number; baseSamples: number; baseBad: number;
+    /** True when the client lists cannot rule a dominant client out; the gate then waits rather than reading the absence as a negative. */
+    unknown?: boolean;
+  };
 }
 
 export interface ProbeRun {

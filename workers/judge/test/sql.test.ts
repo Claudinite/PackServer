@@ -1,7 +1,7 @@
 import { LATENCY_BOUNDS_MS } from "@packserver/core/gates";
 import { REQUEST_BLOBS, REQUEST_DOUBLES } from "@packserver/core/telemetry";
 import { describe, expect, it } from "vitest";
-import { analyticsGateData, domainEventsSql, MIN_CLIENT_SAMPLES, requestOutcomesSql, ROW_LIMIT, syntheticProbesSql, TOP_CLIENTS, topClientsSql } from "../src/stats/sql";
+import { versionClientsSql, CANDIDATE_TOP, analyticsGateData, domainEventsSql, MIN_CLIENT_SAMPLES, requestOutcomesSql, ROW_LIMIT, syntheticProbesSql, TOP_CLIENTS, topClientsSql } from "../src/stats/sql";
 import { windowAt } from "../src/stats/source";
 
 const NOW = Date.UTC(2026, 9, 22, 12, 30, 0);
@@ -41,6 +41,31 @@ describe("the reads", () => {
     expect(sql).toContain("'selftest.result'");
     expect(sql).not.toContain("'http.request'");
     expect(syntheticProbesSql("synthetic_probes", window)).toContain("index1 = 'synthetic.probe'");
+  });
+});
+
+describe("one version's clients", () => {
+  it("are ranked inside the version, by samples or by bad, and the version id is checked", () => {
+    const bySamples = versionClientsSql("request_outcomes", window, "principal_hash", "web-v2", "samples");
+    expect(bySamples).toContain("index1 = 'web-v2'");
+    expect(bySamples).toContain(`ORDER BY s0 DESC LIMIT ${CANDIDATE_TOP}`);
+    expect(versionClientsSql("request_outcomes", window, "ip_hash", "web-v2", "bad")).toContain(`ORDER BY b0 DESC LIMIT ${CANDIDATE_TOP}`);
+    expect(() => versionClientsSql("request_outcomes", window, "ip_hash", "x' OR '1'='1", "bad")).toThrow(/not a version id/);
+  });
+
+  it("are read four ways per candidate and marked complete for it", async () => {
+    const bodies: string[] = [];
+    const fetchImpl = (async (_u: string, init: RequestInit) => (bodies.push(String(init.body)), new Response(JSON.stringify({ data: [] })))) as unknown as typeof fetch;
+    const data = await analyticsGateData({ accountId: async () => "a", token: async () => "t", datasetSuffix: "" }, fetchImpl).requestOutcomes({ ...window, candidates: ["web-v2"] });
+    expect(bodies).toHaveLength(3 + 4);
+    expect(data.exactVersions).toEqual(["web-v2"]);
+    expect(data.listsCut).toBe(false);
+  });
+
+  it("report the global lists as cut when they hit their limit", async () => {
+    const full = Array.from({ length: TOP_CLIENTS }, (_, i) => ({ version_id: "v", client: `c${i}`, s0: 30, b0: 0, s1: 30, b1: 0 }));
+    const fetchImpl = (async (_u: string, init: RequestInit) => new Response(JSON.stringify({ data: String(init.body).includes("GROUP BY version_id, client HAVING") ? full : [] }))) as unknown as typeof fetch;
+    expect((await analyticsGateData({ accountId: async () => "a", token: async () => "t", datasetSuffix: "" }, fetchImpl).requestOutcomes(window)).listsCut).toBe(true);
   });
 });
 

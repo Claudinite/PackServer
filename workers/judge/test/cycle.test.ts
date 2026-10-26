@@ -70,6 +70,8 @@ describe("an evaluation cycle", () => {
       })),
       principals: [],
       ips: [],
+      exactVersions: window.candidates,
+      listsCut: false,
     });
     await begin(RELEASE);
     fakes.clock.advance("10m");
@@ -206,5 +208,111 @@ describe("the invocation's point budget", () => {
     expect((await evaluateGates(deps, null, "launch")).pointsDeferred).toBe(0);
     const seen = new Set(points().map((p) => `${p.index}|${p.blobs[0]}`));
     expect(seen.size).toBe(30 * 8);
+  });
+});
+
+describe("a stage that lasts", () => {
+  it("keeps its start, its counts and its decisions across hours in one rolling state", async () => {
+    const { fakes, data, deps, report } = setup();
+    const t0 = fakes.clock.now();
+    data.provider = (window) => ({
+      groups: [{
+        version_id: "web-new", worker: "web", override: false, synthetic: false, today: 0, recent: 9000,
+        windows: window.starts.map((start) => counts(Math.round(((fakes.clock.now() - start) / 1000) * 10), 0)),
+      }],
+      principals: [], ips: [], exactVersions: window.candidates, listsCut: false,
+    });
+    await evaluateGates(deps, RELEASE, "launch");
+    for (let i = 0; i < 31; i++) {
+      fakes.clock.advance("5m");
+      await evaluateGates(deps, RELEASE, "launch");
+    }
+    const stage = await gatesStore(deps.gatesKv).stage("web-new");
+    expect(stage?.started_at).toBe(t0);
+    expect(fakes.clock.now() - t0).toBe(31 * 5 * 60_000);
+    expect((await report("web-new")).gates["gate.availability"]?.samples).toBe(93_000);
+    const memory = await gatesStore(deps.gatesKv).memory("web-new");
+    expect(memory["gate.availability"]?.decided_at).toBeGreaterThan(300);
+    // And a day later, still the same stage.
+    fakes.clock.advance("23h");
+    await evaluateGates(deps, RELEASE, "launch");
+    expect((await gatesStore(deps.gatesKv).stage("web-new"))?.started_at).toBe(t0);
+  });
+
+  it("keeps a zero-tolerance failure across the rolling to live restart, and drops the stage's counts", async () => {
+    const { fakes, data, deps, report, begin } = setup();
+    data.groups = [group("web-new", "web", 400)];
+    await begin(RELEASE);
+    const at = fakes.clock.now();
+    const probe = (run: string, ok: boolean, offset: number) => ({ attrs: `{"target":"web-new","run":"${run}","scenario":"adopt.public_pack","ok":${ok}}`, n: 1, ts: at - offset });
+    data.probes = [probe("r1", true, 50_000), probe("r2", false, 40_000), probe("r3", false, 30_000)];
+    await evaluateGates(deps, RELEASE, "launch");
+    expect((await report("web-new")).gates["gate.synthetic"]?.status).toBe("fail");
+    fakes.clock.advance("1m");
+    await evaluateGates(deps, { ...RELEASE, state: "live" }, "launch");
+    const gates = (await report("web-new")).gates;
+    expect(gates["gate.availability"]?.samples).toBe(0);
+    expect(gates["gate.synthetic"]?.status).toBe("fail");
+    expect((await gatesStore(deps.gatesKv).stage("web-new"))?.release_started_at).toBeLessThan(fakes.clock.now());
+  });
+
+  it("starts the evidence over for a different release", async () => {
+    const { fakes, data, deps, report, begin } = setup();
+    data.groups = [group("web-new", "web", 400)];
+    await begin(RELEASE);
+    const at = fakes.clock.now();
+    data.probes = [0, 1].map((i) => ({ attrs: `{"target":"web-new","run":"r${i}","scenario":"s","ok":false}`, n: 1, ts: at - 60_000 + i }));
+    await evaluateGates(deps, RELEASE, "launch");
+    fakes.clock.advance("1m");
+    await evaluateGates(deps, { ...RELEASE, release_id: "next" }, "launch");
+    expect((await report("web-new")).gates["gate.synthetic"]?.status).toBe("insufficient");
+  });
+
+  it("counts domain events from the candidate's stage, not the whole lookback", async () => {
+    const { fakes, data, deps, report, begin } = setup();
+    data.groups = [group("web-new", "web", 400, 0, { recent: 2000 })];
+    await begin(RELEASE);
+    data.domain = [{ signal: "download.hash_mismatch", version_id: "web-new", attrs: "{}", n: 3, windows: [3, 0], recent: 0, ts: fakes.clock.now() - 7_200_000, d1: -1, d2: -1 }];
+    await evaluateGates(deps, RELEASE, "launch");
+    expect((await report("web-new")).gates["gate.domain.hash_integrity"]).toMatchObject({ observed: 0 });
+  });
+});
+
+describe("a dominant client among many", () => {
+  const rel: ReleaseRecord = { release_id: "r", state: "rolling", workers: { web: { version_id: "web-new", changed: true } } };
+
+  it("is caught for a small candidate whose clients all rank below the incumbent's", async () => {
+    const { data, deps, report, begin } = setup();
+    // The incumbent has thousands of clients of 50 requests each; the candidate's one heavy client has 120, far below the global cut.
+    data.groups = [group("web-old", "web", 1_000_000, 0, { recent: 90_000 }), group("web-new", "web", 400, 0, { recent: 90_000 })];
+    data.principals = [{ version_id: "web-new", key: "p-heavy", samples: 120, bad: 0 }];
+    data.listsCut = true;
+    await begin(rel);
+    await evaluateGates(deps, rel, "launch");
+    expect(data.windows.at(-1)?.candidates).toEqual(["web-new"]);
+    expect((await report("web-new")).gates["gate.availability"]?.status).toBe("suspect");
+  });
+
+  it("is caught when it carries most of the bad samples without being a heavy client", async () => {
+    const { data, deps, report, begin } = setup();
+    data.groups = [group("web-new", "web", 1000, 10, { recent: 90_000 })];
+    data.principals = [{ version_id: "web-new", key: "p-quiet", samples: 4, bad: 4 }];
+    await begin(rel);
+    await evaluateGates(deps, rel, "launch");
+    expect((await report("web-new")).gates["gate.availability"]?.status).not.toBe("suspect");
+    data.principals = [{ version_id: "web-new", key: "p-quiet", samples: 6, bad: 6 }];
+    await evaluateGates(deps, rel, "launch");
+    expect((await report("web-new")).gates["gate.availability"]?.status).toBe("suspect");
+  });
+
+  it("reads concentration as unknown, not as absent, for a version whose lists were cut", async () => {
+    const { data, deps, report } = setup();
+    data.groups = [group("web-steady", "web", 5000, 0, { recent: 90_000 })];
+    data.listsCut = true;
+    await evaluateGates(deps, null, "launch");
+    const gate = (await report("web-steady")).gates["gate.availability"];
+    expect(gate?.status).toBe("insufficient");
+    expect(gate?.reasons[0]).toMatch(/cannot be ruled out/);
+    expect((await report("web-steady")).gates["gate.p99_latency"]?.status).toBe("insufficient");
   });
 });

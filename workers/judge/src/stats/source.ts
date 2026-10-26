@@ -35,6 +35,13 @@ export interface RequestData {
   groups: RequestGroup[];
   principals: TopClient[];
   ips: TopClient[];
+  /**
+   * Versions whose client lists are complete where it counts: the heaviest client by samples and by
+   * bad samples were each read by their own ranking, so a dominant client cannot have been cut.
+   */
+  exactVersions: string[];
+  /** True when the all-versions lists were cut by their limit, so any version outside `exactVersions` cannot be ruled out. */
+  listsCut: boolean;
 }
 
 /** One row of the domain_events read: the points of one signal, from one emitting version, with one attribute blob. */
@@ -43,6 +50,8 @@ export interface DomainRow {
   version_id: string;
   attrs: string;
   n: number;
+  /** Counts since each window start, aligned with `ReadWindow.starts`. */
+  windows: number[];
   recent: number;
   ts: number;
   d1: number;
@@ -62,6 +71,8 @@ export interface ReadWindow {
   dayStartMs: number;
   /** Start of the "recent" span. */
   recentMs: number;
+  /** Versions in a stage, whose heavy clients are read one version at a time. */
+  candidates: string[];
 }
 
 /** One read per dataset per cycle, with the concentration of clients read separately from the totals. */
@@ -77,10 +88,10 @@ export const RECENT_MS = 15 * 60_000;
 export const MAX_WINDOWS = 6;
 
 /** Windows for the given stage starts, each clipped to the lookback, oldest first. */
-export function windowAt(nowMs: number, stageStarts: readonly number[]): ReadWindow {
+export function windowAt(nowMs: number, stageStarts: readonly number[], candidates: readonly string[] = []): ReadWindow {
   const floor = nowMs - MAX_LOOKBACK_MS;
   const distinct = [...new Set(stageStarts.map((s) => Math.max(s, floor)))].sort((a, b) => a - b);
-  return { starts: (distinct.length > 0 ? distinct : [floor]).slice(0, MAX_WINDOWS), dayStartMs: nowMs - (nowMs % 86_400_000), recentMs: nowMs - RECENT_MS };
+  return { starts: (distinct.length > 0 ? distinct : [floor]).slice(0, MAX_WINDOWS), dayStartMs: nowMs - (nowMs % 86_400_000), recentMs: nowMs - RECENT_MS, candidates: [...candidates] };
 }
 
 /** The index of the newest window that starts no later than `startMs`, so a stage is never given less than its own traffic. */
