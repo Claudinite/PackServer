@@ -1,3 +1,4 @@
+import { oidcConfig } from "@packserver/core/publishing";
 import { hashSessionId, pkceChallenge, type GitHubProfile } from "@packserver/core/identity";
 import { migratedD1 } from "@packserver/core/identity/testing";
 import { SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
@@ -43,7 +44,7 @@ function setup(github: { profile: (request: { codeVerifier: string }) => Promise
       },
     },
     services: { mcp: {} as Fetcher, publish: {} as Fetcher },
-    config: { cdnOrigin: undefined, siteOrigins: [ORIGIN, CANARY] },
+    config: { oidc: oidcConfig({ ENVIRONMENT: "production" }), fetch, cdnOrigin: undefined, siteOrigins: [ORIGIN, CANARY] },
   };
   const app = createApp(runtime);
   let host = ORIGIN;

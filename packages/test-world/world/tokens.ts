@@ -8,15 +8,19 @@ import type { Pack, Session, Sensitive, User } from "./types";
 
 type Statement = { all(): Promise<{ results?: Array<Record<string, unknown>>; meta?: { changes?: number; last_row_id?: number } }> };
 
-/** Only `query` is used by the token gate. */
-function d1Over(db: unknown): D1 {
+/** Only `query` and `batch` are used by the gates and grants the world reaches directly. */
+export function d1Over(db: unknown): D1 {
   const prepare = (db as { prepare(sql: string): { bind(...values: unknown[]): Statement } }).prepare.bind(db);
   return {
     async query(sql, params = []): Promise<D1Result> {
       const out = await prepare(sql).bind(...params).all();
       return { rows: out.results ?? [], meta: { changes: out.meta?.changes ?? 0, last_row_id: out.meta?.last_row_id ?? null } };
     },
-    batch: () => Promise.reject(new InfrastructureError("the world's token gate does not batch")),
+    async batch(statements) {
+      const run = (db as { batch(statements: unknown[]): Promise<Array<{ results?: Array<Record<string, unknown>>; meta?: { changes?: number; last_row_id?: number } }>> }).batch;
+      const prepared = statements.map((s) => (db as { prepare(sql: string): { bind(...values: unknown[]): unknown } }).prepare(s.sql).bind(...(s.params ?? [])));
+      return (await run.call(db, prepared)).map((out) => ({ rows: out.results ?? [], meta: { changes: out.meta?.changes ?? 0, last_row_id: out.meta?.last_row_id ?? null } }));
+    },
   };
 }
 

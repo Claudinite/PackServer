@@ -1,10 +1,8 @@
 import { base64url, exportJWK, generateKeyPair, SignJWT, type JWK } from "jose";
 import { createFakePorts } from "@packserver/ports/fakes";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { findKey, JWKS_FRESH_MS, JWKS_REFETCH_COOLDOWN_MS, JwksUnavailable, resetJwksMemory } from "../src/oidc/jwks";
-import { verifyActionsToken } from "../src/oidc/verify";
 import { oidcConfig } from "../src/bindings";
-import { GITHUB_OIDC_ISSUER, OIDC_AUDIENCE } from "@packserver/core/publishing";
+import { findKey, GITHUB_OIDC_ISSUER, JWKS_FRESH_MS, JWKS_REFETCH_COOLDOWN_MS, JwksUnavailable, OIDC_AUDIENCE, resetJwksMemory, verifyActionsToken } from "@packserver/core/publishing";
 
 const ISSUER = "https://issuer.example";
 const AUD = OIDC_AUDIENCE;
