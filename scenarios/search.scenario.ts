@@ -183,29 +183,50 @@ scenario("IT-COMM-010 A published advisory, a failed newest validation or an abu
   expect((await ask(world, query)).ids).toEqual(original);
 }, storage);
 
-scenario("IT-COMM-014 Trending ranks by recent growth; 50 fetches and 5 stars are the floor, and the rail hides until a pack qualifies", async (world) => {
-  const names = ["g", "s", "f", "t"];
-  const pack = new Map<string, Awaited<ReturnType<World["packs"]["public"]>>>();
-  for (const name of names) {
-    const p = await world.packs.public(`@acme/${name}`);
-    await world.search.list(p, { pitch: `Pack ${name}`, category: "workflow" });
-    pack.set(name, p);
-  }
-  const at = (name: string) => pack.get(name) as NonNullable<ReturnType<typeof pack.get>>;
-  await world.search.signals(at("f"), { fetchesLast7d: 49, starsLast7d: 20 });
-  await world.search.signals(at("t"), { fetchesLast7d: 100, starsLast7d: 4 });
-  expect(await world.search.trending()).toEqual([]);
+const ROLLUP: ScenarioOpts = { needs: ["storage", "fakes", "clock", "reset"] };
 
-  await world.search.signals(at("g"), { fetchesBefore: 10, starsBefore: 1, fetchesLast7d: 100, starsLast7d: 6 });
-  await world.search.signals(at("s"), { fetchesBefore: 1000, starsBefore: 50, fetchesLast7d: 1010, starsLast7d: 51 });
-  expect(await world.search.trending()).toEqual([at("g").name, at("s").name]);
+const listedPack = async (world: World, name: string) => {
+  const pack = await world.packs.public(name);
+  await world.search.list(pack, { pitch: `Pack ${name}`, category: "workflow" });
+  return pack;
+};
 
-  await world.search.signals(at("f"), { fetchesLast7d: 50, starsLast7d: 20 });
-  await world.search.signals(at("t"), { fetchesLast7d: 100, starsLast7d: 5 });
-  const risen = await world.search.trending();
-  expect(risen).toEqual(expect.arrayContaining([at("f").name, at("t").name]));
-  expect(risen.slice(0, 2)).toEqual(expect.not.arrayContaining([at("s").name]));
-}, empty);
+scenario(
+  "IT-COMM-014 Trending ranks by recent growth; 50 fetches and 5 stars are the floor, and the rail hides until a pack qualifies",
+  async (world) => {
+    const [g, s, f, t] = [await listedPack(world, "@acme/g"), await listedPack(world, "@acme/s"), await listedPack(world, "@acme/f"), await listedPack(world, "@acme/t")];
+    // Counted stars are another job's; they are seeded, and the rollup must leave them alone.
+    await world.search.signals(g, { starsBefore: 1, starsLast7d: 6 });
+    await world.search.signals(s, { starsBefore: 50, starsLast7d: 51 });
+    await world.search.signals(f, { starsLast7d: 20 });
+    await world.search.signals(t, { starsLast7d: 4 });
+
+    // A hit record stands for ten fetches and a miss for one.
+    await world.rollups.download(f, { networks: 49 });
+    await world.rollups.download(t, { networks: 10, job: "hits" });
+    await world.rollups.run();
+    expect(await world.search.trending()).toEqual([]);
+
+    await world.rollups.download(g, { networks: 1, job: "hits", ago: "10d" });
+    await world.rollups.download(g, { networks: 10, job: "hits" });
+    await world.rollups.download(s, { networks: 100, job: "hits", ago: "10d" });
+    await world.rollups.download(s, { networks: 101, job: "hits" });
+    await world.clock.advance("1h");
+    await world.rollups.run();
+    expect(await world.rollups.stats(f)).toMatchObject({ fetches7d: 49 });
+    expect(await world.rollups.stats(g)).toMatchObject({ fetches7d: 100, fetchesPrevious28d: 10 });
+    expect(await world.search.trending()).toEqual([g.name, s.name]);
+
+    // One more fetch lifts F over its floor, and one more counted star lifts T over its.
+    await world.rollups.download(f, { from: "198.18.7.7" });
+    await world.search.signals(t, { starsLast7d: 5 });
+    await world.rollups.download(t, { from: "198.18.7.8" });
+    await world.clock.advance("1h");
+    await world.rollups.run();
+    expect(await world.search.trending()).toEqual(expect.arrayContaining([f.name, t.name]));
+  },
+  ROLLUP,
+);
 
 scenario("IT-MCP-016 Removed or private packs leave semantic search", async (world) => {
   const task = "ship a service to the cloud";

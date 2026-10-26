@@ -32,6 +32,8 @@ describe("every Worker boots in the harness under env.test", () => {
   });
 
   it("admin runs its hourly trigger", async () => {
+    // The rollup reads and writes registry tables, so the trigger needs the schema a deployed database has.
+    await server.getWorker("admin-test").applyD1Migrations("DB");
     const result = await server.getWorker("admin-test").scheduled({ cron: "0 * * * *", scheduledTime: new Date() });
     expect(result.outcome).toBe("ok");
   });

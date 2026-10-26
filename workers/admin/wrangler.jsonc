@@ -118,7 +118,8 @@
         "WORKER": "admin",
         "ENVIRONMENT": "staging",
         "AUDIT_S3_ENDPOINT": "https://ACCOUNT_ID.r2.cloudflarestorage.com/audit-log-staging",
-        "POINTS_DATASET": "domain_events_staging"
+        "POINTS_DATASET": "domain_events_staging",
+        "DOWNLOADS_DATASET": "downloads_staging"
       },
       "d1_databases": [
         {
@@ -245,7 +246,8 @@
         "WORKER": "admin",
         "ENVIRONMENT": "production",
         "AUDIT_S3_ENDPOINT": "https://ACCOUNT_ID.r2.cloudflarestorage.com/audit-log",
-        "POINTS_DATASET": "domain_events"
+        "POINTS_DATASET": "domain_events",
+        "DOWNLOADS_DATASET": "downloads"
       },
       "d1_databases": [
         {

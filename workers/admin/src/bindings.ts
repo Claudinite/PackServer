@@ -1,3 +1,4 @@
+import { analyticsPrivateDownloads, type PrivateDownloads } from "@packserver/core/stats";
 import { analyticsAppendedPoints, ecdsaSigner, rekorTransparency, s3AuditBucket, type AppendedPoints, type AuditBucket } from "@packserver/core/audit";
 import { analyticsStats, createIsolateTelemetry } from "@packserver/http";
 import {
@@ -30,6 +31,8 @@ export interface Env {
   AUDIT_HEAD_SIGNING_KEY: string | SecretsStoreSecret;
   /** Dataset the nightly verifier reads `audit.appended` points back from, in the account of the audit endpoint; absent, the verifier skips that reconciliation and says so. */
   POINTS_DATASET?: string;
+  /** Dataset the `downloads` binding of the serving Workers writes to, read back by the rollup for private fetch counts; absent, those counts are left as they were. */
+  DOWNLOADS_DATASET?: string;
   /** API token with Account Analytics read, for the Analytics Engine SQL API. */
   ANALYTICS_READ_TOKEN: string | SecretsStoreSecret;
   /** The transparency log's base URL; the public Sigstore log when absent. */
@@ -44,6 +47,8 @@ export type AdminPorts = Pick<Ports, "clock" | "rng" | "d1" | "stats" | "queues"
   auditBucket: AuditBucket;
   /** Reads `audit.appended` points back for the nightly reconciliation; unset where the account and dataset are not configured. */
   appendedPoints?: AppendedPoints;
+  /** Reads private downloads back for the rollup; unset where the account and dataset are not configured. */
+  privateDownloads?: PrivateDownloads;
 };
 
 /** Reads the token from Secrets Store on first use, so a missing secret fails the batch rather than the isolate. */
@@ -81,6 +86,12 @@ function pointsReader(env: Env): AppendedPoints | undefined {
   return analyticsAppendedPoints({ accountId, dataset: env.POINTS_DATASET, token: () => readSecret(env.ANALYTICS_READ_TOKEN) });
 }
 
+function downloadsReader(env: Env): PrivateDownloads | undefined {
+  const accountId = env.AUDIT_S3_ENDPOINT && /^https:\/\/([^./]+)\.r2\.cloudflarestorage\.com/.exec(env.AUDIT_S3_ENDPOINT)?.[1];
+  if (!accountId || !env.DOWNLOADS_DATASET) return undefined;
+  return analyticsPrivateDownloads({ accountId, dataset: env.DOWNLOADS_DATASET, token: () => readSecret(env.ANALYTICS_READ_TOKEN) });
+}
+
 export type AdminRuntime = WorkerRuntime<AdminPorts>;
 
 const isolateTelemetry = createIsolateTelemetry();
@@ -108,5 +119,6 @@ export function createRuntime(env: Env): AdminRuntime {
     auditBucket: lazyAuditBucket(env),
     transparency: lazyTransparency(env),
     ...optional("appendedPoints", pointsReader(env)),
+    ...optional("privateDownloads", downloadsReader(env)),
   });
 }

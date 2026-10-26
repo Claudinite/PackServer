@@ -57,6 +57,13 @@ export interface SeedStorage {
   };
   packsPublic: SeedBucket;
   packsPrivate: SeedBucket;
+  /** The `ops` bucket the zone's Logpush jobs deliver to; absent when the admin Worker is not booted. */
+  ops?: OpsBucket;
+}
+export interface OpsBucket {
+  put(key: string, value: Uint8Array | string): Promise<unknown>;
+  get(key: string): Promise<{ arrayBuffer(): Promise<ArrayBuffer> } | null>;
+  list(options: { prefix: string; cursor?: string }): Promise<{ objects: Array<{ key: string }>; truncated: boolean; cursor?: string }>;
 }
 export interface SeedBucket {
   put(key: string, value: Uint8Array | string, options?: { httpMetadata?: SeedObjectMetadata }): Promise<unknown>;

@@ -7,3 +7,4 @@ export type { PackBody, VersionBody, Read } from "./world/packs";
 export type { OrgHandle, PeopleView, ProfileView, TransferHandle, Invitation, ScopeRole } from "./world/scopes";
 export type { ScopeOwner } from "./world/areas/scopes";
 export type { ListingSeed, SignalsSeed, Filters as SearchFilters, Results as SearchResults, ResultCard } from "./world/areas/search";
+export type { DownloadOptions, MismatchCase, MismatchReportOptions, PrivateDownloadOptions } from "./world/areas/rollups";
