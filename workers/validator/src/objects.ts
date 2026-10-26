@@ -4,7 +4,7 @@ import { runPipeline, type StepRunner, type WorkflowParams } from "./workflow/pi
 
 export class ValidatePackWorkflow extends WorkflowEntrypoint<ObjectEnv, WorkflowParams> {
   async run(event: WorkflowEvent<WorkflowParams>, step: WorkflowStep): Promise<void> {
-    await runPipeline(createRuntime(this.env), step as unknown as StepRunner, event.payload);
+    await runPipeline(createRuntime(this.env), step as unknown as StepRunner, event.payload, { retryDelay: this.env.STEP_RETRY_DELAY });
   }
 }
 

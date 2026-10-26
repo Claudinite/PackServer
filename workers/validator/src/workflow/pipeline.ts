@@ -19,7 +19,7 @@ export interface WorkflowParams {
 }
 
 /** An infrastructure error retries twice, then the run ends `error` (REQ-VAL-014). */
-const INFRASTRUCTURE: StepConfig = { retries: { limit: 2, delay: "1 second", backoff: "exponential" }, timeout: "6 minutes" };
+const infrastructure = (retryDelay: string): StepConfig => ({ retries: { limit: 2, delay: retryDelay, backoff: "exponential" }, timeout: "6 minutes" });
 const ONCE: StepConfig = { retries: { limit: 0, delay: "1 second" }, timeout: "1 minute" };
 
 /**
@@ -28,7 +28,8 @@ const ONCE: StepConfig = { retries: { limit: 0, delay: "1 second" }, timeout: "1
  * of docs/architecture/validation-pipeline.md. A step that finds an earlier failure writes a
  * `skipped` milestone instead of doing its work, so the dashboard shows the whole pipeline.
  */
-export async function runPipeline(rt: ValidatorRuntime, step: StepRunner, params: WorkflowParams): Promise<void> {
+export async function runPipeline(rt: ValidatorRuntime, step: StepRunner, params: WorkflowParams, config: { retryDelay: string }): Promise<void> {
+  const INFRASTRUCTURE = infrastructure(config.retryDelay);
   const runId = params.run_id;
   const begun = await step.do("start", ONCE, () => steps.start(rt, runId));
   if (begun.finished) return;

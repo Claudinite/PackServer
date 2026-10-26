@@ -16,6 +16,7 @@
       "vars": {
         "WORKER": "validator",
         "ENVIRONMENT": "test",
+        "STEP_RETRY_DELAY": "10 milliseconds",
         "SIGNING_KEY_ACTIVE": "test-signing-key-active",
         "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
         "IP_HASH_MASTER_KEY": "test-ip-hash-master-key",
@@ -158,7 +159,8 @@
       },
       "vars": {
         "WORKER": "validator",
-        "ENVIRONMENT": "staging"
+        "ENVIRONMENT": "staging",
+        "STEP_RETRY_DELAY": "1 second"
       },
       "d1_databases": [
         {
@@ -334,7 +336,8 @@
       },
       "vars": {
         "WORKER": "validator",
-        "ENVIRONMENT": "production"
+        "ENVIRONMENT": "production",
+        "STEP_RETRY_DELAY": "1 second"
       },
       "d1_databases": [
         {
