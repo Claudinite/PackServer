@@ -191,11 +191,12 @@ a hard `timeout-minutes`; everything inside the free Actions minutes of a privat
 rounded up to a whole minute, so a job past 60 s bills 2: a push run is 17 jobs (`check`, `changes`,
 `coverage`, `checks`, two `typecheck`, three `unit`, `infra`, six `scenarios`, `summary`). Two `unit`
 legs ran about 100 s each and left the run at 111-140 s, so there are three; the measured bill is in
-PR #146. ~150 push runs at about 16 minutes are about 2,400 minutes, more than the 1,850 before any
+PR #146. ~150 push runs at about 18 minutes are about 2,700 minutes, more than the 1,850 before any
 nightly or weekly job, so the estimate is **over the free budget**; the shard counts are the lever
 (each `unit` leg removed saves about 150-300 minutes a month and adds wall-clock). Docs-only changes
 skip CI; a newer push cancels the older run; nothing nightly or weekly runs on forks. Shards grow by
-one when the scenario job's p90 passes 90 s for a week; shards cost billed minutes, not wall-clock.
+one when the scenario job's p90 passes 90 s for a week, or sooner when green runs breach the budget;
+shards cost billed minutes, not wall-clock.
 The third `scenarios` leg came when two legs ran 100-138 s and pushed the run past 2 minutes; while
 the repository is public its standard-runner minutes are not billed. The fourth came when the
 slowest of three ran 131 s and left a fully green run at 137 s; the fifth and sixth when new
