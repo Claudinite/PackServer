@@ -21,7 +21,8 @@ Notable endpoints:
 | `POST /api/tokens/leak` | Leak report, full token only (REQ-PUB-032) |
 | `GET /api/private/index` | The signed per-pack private entries the caller may read, after the OIDC, session or `psr_` check (REQ-PRIV-016, REQ-PRIV-020) |
 | `GET /api/private/v/<opaque version id>` | Streamed private archive or 5-minute presigned URL; the id is the one the private entry names, so no pack name reaches a log (REQ-DELIV-007) |
-| `GET /api/search?q=…` | Site search; delegates to `mcp`'s search over a service binding |
+| `GET /api/search?q=…` | Site search and browse (no `q`): `category`, `part`, `verified`, `verified_domains`, `has_repository`, `sort` (score, stars, rating, recent, fetches), `limit`, `offset`; delegates to `mcp`'s search over a service binding |
+| `GET /api/categories`, `GET /api/trending` | The fixed category list with counts; the Trending rail's packs (REQ-COMM-014); both delegate to `mcp` |
 
 ## Publishing (`publish`)
 
@@ -77,7 +78,8 @@ caller as data inside a field, never as instructions (REQ-SEARCH-023).
 
 Search merges FTS5 BM25 with Vectorize nearest neighbours filtered by category, part, visibility and
 verification, and re-ranks by text relevance × pack score × category match × engine compatibility.
-On D1 failure the tool answers from Vectorize or a cached result set with `degraded: true`.
+On D1 failure the tool answers `503` (only D1 knows who may still be found, so Vectorize alone never answers); when the
+model budget is spent it answers by keyword alone with `degraded: true`, and a query's embedding is cached for 24 hours.
 
 ## CDN objects (`packs.claudinite.com`)
 

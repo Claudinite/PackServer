@@ -3,10 +3,14 @@ import {
   cryptoRng, d1Port, embedderFrom, kvPort, r2ReadPort, rateLimitPort, systemClock, vectorIndexPort, workerRuntime, readSecret, type WorkerRuntime,
 } from "@packserver/ports/cloudflare";
 import type { Ports, R2Read } from "@packserver/ports";
+import type { SearchConfig } from "@packserver/core/search";
 
 export interface Env {
   WORKER: string;
   ENVIRONMENT: string;
+  /** The model that fixed the Vectorize index's dimension count; search refuses to run on any other. */
+  EMBEDDING_MODEL: string;
+  EMBEDDING_DIMENSIONS: string;
   DB: D1Database;
   OAUTH_KV: KVNamespace;
   PACKS_PRIVATE: R2Bucket;
@@ -27,13 +31,13 @@ export interface Env {
 export type McpPorts = Pick<Ports, "clock" | "rng" | "d1" | "stats" | "kv" | "rateLimits" | "vectors" | "embedder" | "telemetry"> & {
   r2: Readonly<Record<string, R2Read>>;
 };
-export type McpRuntime = WorkerRuntime<McpPorts>;
+export type McpRuntime = WorkerRuntime<McpPorts> & { config: { search: SearchConfig } };
 
 const isolateTelemetry = createIsolateTelemetry();
 
 export function createRuntime(env: Env): McpRuntime {
   const telemetryKv = kvPort(env.TELEMETRY_KV);
-  return workerRuntime("mcp", env, {
+  const base = workerRuntime("mcp", env, {
     clock: systemClock,
     rng: cryptoRng,
     d1: d1Port(env.DB),
@@ -48,4 +52,5 @@ export function createRuntime(env: Env): McpRuntime {
     vectors: vectorIndexPort(env.ENVIRONMENT, env.VECTORIZE),
     embedder: embedderFrom(env.ENVIRONMENT, env.AI),
   });
+  return { ...base, config: { search: { embeddingModel: env.EMBEDDING_MODEL, embeddingDimensions: Number(env.EMBEDDING_DIMENSIONS) } } };
 }
