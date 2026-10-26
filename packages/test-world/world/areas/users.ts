@@ -4,6 +4,7 @@ import type { FakeGitHubAccount } from "../../fakes/github-login";
 import type { Aliases } from "../alias";
 import { InfrastructureError, NotImplemented, stubModule } from "../errors";
 import { createMail } from "../mail";
+import { createUserTokens, type UserTokens } from "../tokens";
 import { Refusal, type Observation, type RefusalReason } from "../outcomes";
 import type {
   AccountInfo, Assertion, FormFaults, Notification, Publisher, PublisherOpts, Session, SessionCookie, SessionInfo, User, UserOpts, Visitor,
@@ -134,6 +135,24 @@ function request(driver: Driver, client: Client, req: Request): Promise<ApiRespo
   return driver.http.request({ surface: "web", method: req.method, path: req.path, headers, ...(req.rawBody ? { body: req.rawBody } : body === undefined ? {} : { body }) });
 }
 
+export interface CallRequest {
+  method: string;
+  path: string;
+  json?: unknown;
+  headers?: Record<string, string>;
+  faults?: FormFaults;
+}
+
+/** What an area module needs to act as a person it did not create. */
+export interface Caller {
+  call(req: CallRequest): Promise<ApiResponse>;
+}
+
+export function callerOf(user: User): Caller {
+  if (typeof (user as Partial<Caller>).call !== "function") throw new InfrastructureError("this person was not made by the users module, so it cannot act through a session");
+  return user as User & Caller;
+}
+
 class Person implements User {
   readonly sessions = {
     list: async (): Promise<SessionInfo[]> => {
@@ -153,12 +172,22 @@ class Person implements User {
     },
   };
 
+  readonly tokens: UserTokens;
+
   constructor(
     private readonly ctx: Context,
     private readonly who: Account,
     private readonly client: Client,
     private readonly bound?: Session,
-  ) {}
+  ) {
+    this.tokens = createUserTokens({
+      send: (req) => this.send(req),
+      formHeaders: (session) => this.formHeaders(session),
+      session: () => this.view,
+      refused: refusal,
+      aliases: ctx.aliases,
+    });
+  }
 
   get handle(): string {
     return this.who.handle ?? "";
@@ -253,6 +282,13 @@ class Person implements User {
   async claimHandle(name: string, system: string): Promise<void> {
     await this.chooseHandle(system);
     this.who.handle = name;
+  }
+
+  /** For area modules: one request in this person's session, carrying the headers a valid form would. */
+  async call(req: CallRequest): Promise<ApiResponse> {
+    const session = this.view;
+    const { faults, headers, ...rest } = req;
+    return this.send({ ...rest, session, headers: { ...(await this.formHeaders(session, faults)), ...headers } });
   }
 
   assertionFor(): Promise<Assertion> {

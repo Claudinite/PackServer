@@ -1,10 +1,10 @@
 import type { SessionPorts } from "@packserver/core/identity";
-import { resolveSession, type SessionVariables } from "@packserver/http";
+import { resolveSession, type SessionVariables, type TokenVariables } from "@packserver/http";
 import { syncClock } from "@packserver/ports";
 import type { Context, MiddlewareHandler } from "hono";
 import type { WebRuntime } from "./bindings";
 
-export interface WebVariables extends SessionVariables {
+export interface WebVariables extends SessionVariables, TokenVariables {
   runtime: WebRuntime;
 }
 export type WebEnv = { Variables: WebVariables };
