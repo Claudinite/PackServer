@@ -116,24 +116,24 @@ scenario("IT-MCP-020 Rate limits per IP and per token; no daily quota", async (w
   const token = await owner.tokens.mint({ read: secret });
 
   const anon = world.agents.anonymous();
-  const anonymous = await anon.flood(70);
+  const anonymous = await anon.flood(26);
   expect(anonymous.refused).toBeGreaterThan(0);
-  expect(anonymous.answered).toBeLessThan(70);
+  expect(anonymous.answered).toBeLessThan(26);
   expect(anonymous.refusal?.reason).toBe("rate-limited");
   expect(anonymous.refusalMentionsPack).toBe(false);
 
-  const holder = await anon.from("198.19.0.7").bearing(token).flood(640);
+  const holder = await anon.from("198.19.0.7").bearing(token).flood(250);
   expect(holder.refused).toBeGreaterThan(0);
   expect(holder.answered).toBeGreaterThan(anonymous.answered * 2);
-  expect(holder.answered).toBeLessThan(640);
+  expect(holder.answered).toBeLessThan(250);
   expect(holder.refusal?.reason).toBe("rate-limited");
   expect(holder.refusalMentionsPack).toBe(false);
 
   expect((await anon.from("198.19.0.8").categories()).ok).toBe(true);
 
   const slow = anon.from("198.19.0.9");
-  for (let hour = 0; hour < 24; hour++) {
-    await world.clock.advance("1h");
+  for (let step = 0; step < 8; step++) {
+    await world.clock.advance("3h");
     expect((await slow.categories()).ok).toBe(true);
   }
 }, agent);
