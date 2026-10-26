@@ -16,7 +16,7 @@ async function build(search = config) {
   const d1 = new SqliteD1();
   const runtime: McpRuntime = {
     worker: "mcp", environment: "test", version: { versionId: SHELL_VERSION, releaseId: SHELL_RELEASE }, missingBindings: [], missingSecrets: [],
-    ports: { ...fakes, d1 }, services: {}, config: { search },
+    ports: { ...fakes, d1 }, services: {}, config: { search, cdnOrigin: "https://packs.test.invalid" }, tokenClock: fakes.clock,
   };
   await d1.query("INSERT INTO scopes (id, name, kind, state, created_at) VALUES ('s', 'acme', 'org', 'active', 'x')");
   await d1.query("INSERT INTO packs (id, scope_id, name, visibility, created_at) VALUES ('p', 's', 'gcp', 'public', 'x')");

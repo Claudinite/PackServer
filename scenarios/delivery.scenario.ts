@@ -148,6 +148,13 @@ scenario("IT-MCP-005 get_pack returns the full public view; the adopt snippet is
     preinstall: { guards: [{ name: "no-secrets", tool_calls: ["Bash"] }], new: ["guard:no-secrets"] },
   });
   await pack.version("1.0.0").seed({ status: "deprecated", reason: "use 1.1.0" });
+  await world.search.list(pack, { pitch: "Deploy to Google Cloud", category: "cloud", repository: "github.com/acme/gcp" });
+  const rules = "r".repeat(5000);
+  await world.agents.seedExcerpts(pack, "1.1.0", {
+    readme: "Deploys things.",
+    rules,
+    skills: [{ name: "deploy", description: "Deploy a service" }, { name: "iam", description: "Grant roles" }, { name: "logs", description: "Read logs" }],
+  });
 
   const view = (await pack.read()) as PackBody;
   expect(view.latest_eligible).toBe("1.1.0");
@@ -164,7 +171,35 @@ scenario("IT-MCP-005 get_pack returns the full public view; the adopt snippet is
   });
   expect(Object.keys(view.version ?? {})).not.toContain("files");
   expect(Object.keys(view.version ?? {})).not.toContain("contents");
-}, storage);
+
+  // The MCP half. The advisory and the "Reported, under review" label wait on the reports tables (T-092); the tool's seam for them is proven in the Worker's own tests.
+  const anon = world.agents.anonymous();
+  await world.agents.setAdoptVersion(null);
+  const preview = (await anon.pack(pack)).body;
+  expect(preview).toMatchObject({
+    id: pack.name,
+    version: "1.1.0",
+    manifest: { capabilities: ["guard"], requires: [] },
+    inventory: { skills: { count: 0 } },
+    preinstall: { publisher_text: { guards: [{ name: "no-secrets" }], new: ["guard:no-secrets"] } },
+    publisher_text: { readme_excerpt: "Deploys things.", rules_excerpt: rules.slice(0, 2000) },
+    verification: { verified: true, verified_domain: "acme.com", source_verified: true },
+    provenance: { source_verified: true },
+    validation: { verdict: "pass" },
+    repository: "github.com/acme/gcp",
+    score: { total: expect.any(Number) },
+  });
+  expect(preview.skills.map((s: { publisher_text: { name: string } }) => s.publisher_text.name)).toEqual(["deploy", "iam", "logs"]);
+  expect(preview.versions.map((x: { version: string; status: string }) => [x.version, x.status])).toEqual([["1.1.0", "active"], ["1.0.0", "deprecated"]]);
+  expect(preview.adopt_snippet).toMatch(/^Preview: adoptable with cn ≥ \S+/);
+  expect(preview).not.toHaveProperty("declared_snippet");
+  expect(Object.keys(preview).filter((k) => /^(files|contents)$/.test(k))).toEqual([]);
+
+  await world.agents.setAdoptVersion("1.62000.0");
+  const live = (await anon.pack(pack)).body;
+  expect(live.adopt_snippet).toBe(`cn adopt ${pack.name}`);
+  expect(live.declared_snippet).toContain(pack.name);
+}, { needs: ["storage", "fakes"], tags: ["agent"] });
 
 scenario("IT-PAGE-002 The public view shows verification facts, capabilities, source, hashes and the report", async (world) => {
   const trusted = await world.packs.public("@acme/gcp", {

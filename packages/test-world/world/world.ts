@@ -45,7 +45,7 @@ export function createWorld(driver: Driver, title: string) {
     ...createAdmin(),
     ...createRecoveries(driver),
     ...createMember(),
-    ...createAgents(),
+    ...createAgents(driver, aliases),
     ...createGitHub(driver),
     ...createAuditModule(driver),
     ...createSearch(driver, aliases),
