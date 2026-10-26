@@ -1,4 +1,5 @@
 import type { D1 } from "@packserver/ports";
+import { personalScopeStatements, type ScopePorts } from "../scopes/personal.ts";
 import { RESERVED_WORDS } from "../validation/identity/reserved.ts";
 import { isNearMiss, skeleton } from "../validation/identity/similarity.ts";
 
@@ -64,14 +65,22 @@ export async function loadHandleFacts(d1: D1, handle: string): Promise<HandleFac
   return { taken: taken!.rows.length > 0, verifiedNames: [...verifiedNames] };
 }
 
-/** Sets the handle of an account that has none; the name is checked, then claimed by the unique index. */
-export async function chooseHandle(d1: D1, userId: string, raw: string): Promise<HandleVerdict> {
+/**
+ * Sets the handle of an account that has none and gives it its personal scope; the name is
+ * checked, then claimed by the unique indexes, so a scope and a handle never share a name.
+ */
+export async function chooseHandle(ports: ScopePorts, userId: string, raw: string): Promise<HandleVerdict> {
+  const { d1 } = ports;
   const handle = normalizeHandle(raw);
   const verdict = judgeHandle(handle, await loadHandleFacts(d1, handle));
   if (!verdict.ok) return verdict;
   try {
-    const { meta } = await d1.query("update users set handle = ? where id = ? and handle is null", [verdict.handle, userId]);
-    if (meta.changes === 0) return refuse("taken", "This account already has a handle.");
+    const held = await d1.query("select handle from users where id = ?", [userId]);
+    if (held.rows[0]?.handle != null) return refuse("taken", "This account already has a handle.");
+    await d1.batch([
+      { sql: "update users set handle = ? where id = ? and handle is null", params: [verdict.handle, userId] },
+      ...personalScopeStatements(ports, userId, verdict.handle),
+    ]);
   } catch (error) {
     if (/UNIQUE/i.test(String(error))) return refuse("taken", `"${verdict.handle}" is already taken.`);
     throw error;

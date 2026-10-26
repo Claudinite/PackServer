@@ -32,15 +32,15 @@ export function createWorld(driver: Driver, title: string) {
       return filterInvocations(driver.recorder.invocations(filter), filter);
     },
   };
-  const users = createUsers(driver, aliases);
+  const people = createUsers(driver, aliases);
   const ci = createCi(driver, (name) => aliases.alias(name));
   return {
     driver,
-    ...users,
-    ...createScopes(driver, aliases),
+    ...people,
+    ...createScopes(driver, aliases, people),
     ...createPublishing(),
     ...createValidation(),
-    ...createPublishFlow(driver, aliases, users, ci),
+    ...createPublishFlow(driver, aliases, people, ci),
     ...createAccess(driver),
     ...createCommunity(),
     ...createModeration(),

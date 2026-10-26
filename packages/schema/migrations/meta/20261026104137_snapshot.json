@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "39c57c9f-be9e-453d-aa88-8870129c499f",
+  "id": "56ae1ca3-2359-4ac9-8d83-a7cfd2ed7533",
   "prevId": "17585dd5-a0d8-4e5a-8d08-c9d476c3585c",
   "tables": {
     "credentials": {
@@ -926,6 +926,390 @@
       },
       "uniqueConstraints": {},
       "checkConstraints": {}
+    },
+    "pack_transfers": {
+      "name": "pack_transfers",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "pack_id": {
+          "name": "pack_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "pack_name": {
+          "name": "pack_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "from_scope": {
+          "name": "from_scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "to_scope": {
+          "name": "to_scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "offered_by": {
+          "name": "offered_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "offered_at": {
+          "name": "offered_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'offered'"
+        },
+        "resolved_by": {
+          "name": "resolved_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "resolved_at": {
+          "name": "resolved_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "pack_transfers_one_open_per_pack": {
+          "name": "pack_transfers_one_open_per_pack",
+          "columns": [
+            "pack_id"
+          ],
+          "isUnique": true,
+          "where": "\"pack_transfers\".\"state\" = 'offered'"
+        },
+        "pack_transfers_pack_idx": {
+          "name": "pack_transfers_pack_idx",
+          "columns": [
+            "pack_id"
+          ],
+          "isUnique": false
+        },
+        "pack_transfers_to_idx": {
+          "name": "pack_transfers_to_idx",
+          "columns": [
+            "to_scope",
+            "state"
+          ],
+          "isUnique": false
+        },
+        "pack_transfers_from_idx": {
+          "name": "pack_transfers_from_idx",
+          "columns": [
+            "from_scope",
+            "pack_name"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "pack_transfers_pack_id_packs_id_fk": {
+          "name": "pack_transfers_pack_id_packs_id_fk",
+          "tableFrom": "pack_transfers",
+          "tableTo": "packs",
+          "columnsFrom": [
+            "pack_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pack_transfers_offered_by_users_id_fk": {
+          "name": "pack_transfers_offered_by_users_id_fk",
+          "tableFrom": "pack_transfers",
+          "tableTo": "users",
+          "columnsFrom": [
+            "offered_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "pack_transfers_resolved_by_users_id_fk": {
+          "name": "pack_transfers_resolved_by_users_id_fk",
+          "tableFrom": "pack_transfers",
+          "tableTo": "users",
+          "columnsFrom": [
+            "resolved_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "pack_transfers_state_check": {
+          "name": "pack_transfers_state_check",
+          "value": "\"pack_transfers\".\"state\" in ('offered', 'accepted', 'lapsed', 'void')"
+        }
+      }
+    },
+    "scope_invites": {
+      "name": "scope_invites",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scope_id": {
+          "name": "scope_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "invited_by": {
+          "name": "invited_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "scope_invites_scope_email_unique": {
+          "name": "scope_invites_scope_email_unique",
+          "columns": [
+            "scope_id",
+            "email"
+          ],
+          "isUnique": true
+        },
+        "scope_invites_scope_user_unique": {
+          "name": "scope_invites_scope_user_unique",
+          "columns": [
+            "scope_id",
+            "user_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "scope_invites_scope_id_scopes_id_fk": {
+          "name": "scope_invites_scope_id_scopes_id_fk",
+          "tableFrom": "scope_invites",
+          "tableTo": "scopes",
+          "columnsFrom": [
+            "scope_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "scope_invites_user_id_users_id_fk": {
+          "name": "scope_invites_user_id_users_id_fk",
+          "tableFrom": "scope_invites",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "scope_invites_invited_by_users_id_fk": {
+          "name": "scope_invites_invited_by_users_id_fk",
+          "tableFrom": "scope_invites",
+          "tableTo": "users",
+          "columnsFrom": [
+            "invited_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "scope_invites_target_check": {
+          "name": "scope_invites_target_check",
+          "value": "(\"scope_invites\".\"email\" is null) <> (\"scope_invites\".\"user_id\" is null)"
+        },
+        "scope_invites_role_check": {
+          "name": "scope_invites_role_check",
+          "value": "\"scope_invites\".\"role\" in ('owner', 'maintainer')"
+        }
+      }
+    },
+    "vp_applications": {
+      "name": "vp_applications",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scope_id": {
+          "name": "scope_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pending'"
+        },
+        "applied_by": {
+          "name": "applied_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "applied_at": {
+          "name": "applied_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "vp_applications_scope_idx": {
+          "name": "vp_applications_scope_idx",
+          "columns": [
+            "scope_id",
+            "state"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "vp_applications_scope_id_scopes_id_fk": {
+          "name": "vp_applications_scope_id_scopes_id_fk",
+          "tableFrom": "vp_applications",
+          "tableTo": "scopes",
+          "columnsFrom": [
+            "scope_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "vp_applications_applied_by_users_id_fk": {
+          "name": "vp_applications_applied_by_users_id_fk",
+          "tableFrom": "vp_applications",
+          "tableTo": "users",
+          "columnsFrom": [
+            "applied_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "vp_applications_state_check": {
+          "name": "vp_applications_state_check",
+          "value": "\"vp_applications\".\"state\" in ('pending', 'approved', 'rejected', 'revoked')"
+        }
+      }
     },
     "read_tokens": {
       "name": "read_tokens",
@@ -2136,384 +2520,6 @@
         "github_issue_states_state_check": {
           "name": "github_issue_states_state_check",
           "value": "\"github_issue_states\".\"state\" in ('open', 'closed', 'deleted')"
-        }
-      }
-    },
-    "sandbox_usage": {
-      "name": "sandbox_usage",
-      "columns": {
-        "day": {
-          "name": "day",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "minutes": {
-          "name": "minutes",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "validation_milestones": {
-      "name": "validation_milestones",
-      "columns": {
-        "run_id": {
-          "name": "run_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "seq": {
-          "name": "seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "step": {
-          "name": "step",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "outcome": {
-          "name": "outcome",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "detail": {
-          "name": "detail",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "at": {
-          "name": "at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "validation_milestones_run_id_validation_runs_id_fk": {
-          "name": "validation_milestones_run_id_validation_runs_id_fk",
-          "tableFrom": "validation_milestones",
-          "tableTo": "validation_runs",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "validation_milestones_run_id_seq_pk": {
-          "columns": [
-            "run_id",
-            "seq"
-          ],
-          "name": "validation_milestones_run_id_seq_pk"
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "validation_milestones_outcome_check": {
-          "name": "validation_milestones_outcome_check",
-          "value": "\"validation_milestones\".\"outcome\" in ('ok', 'fail', 'skipped')"
-        }
-      }
-    },
-    "validation_runs": {
-      "name": "validation_runs",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "source": {
-          "name": "source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "scope_id": {
-          "name": "scope_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "pack_name": {
-          "name": "pack_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "version": {
-          "name": "version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "principal": {
-          "name": "principal",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "credential_id": {
-          "name": "credential_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "staging_key": {
-          "name": "staging_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "declared_sha256": {
-          "name": "declared_sha256",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "size_bytes": {
-          "name": "size_bytes",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "prose_screen": {
-          "name": "prose_screen",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        },
-        "synthetic": {
-          "name": "synthetic",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "verdict": {
-          "name": "verdict",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "queued_reason": {
-          "name": "queued_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "start_after": {
-          "name": "start_after",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "dispatched_at": {
-          "name": "dispatched_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "dispatch_attempts": {
-          "name": "dispatch_attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "workflow_instance_id": {
-          "name": "workflow_instance_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "report_key": {
-          "name": "report_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "counted_new_pack": {
-          "name": "counted_new_pack",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "finished_at": {
-          "name": "finished_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "validation_runs_credential_unique": {
-          "name": "validation_runs_credential_unique",
-          "columns": [
-            "credential_id"
-          ],
-          "isUnique": true
-        },
-        "validation_runs_version_idx": {
-          "name": "validation_runs_version_idx",
-          "columns": [
-            "scope_id",
-            "pack_name",
-            "version"
-          ],
-          "isUnique": false
-        },
-        "validation_runs_principal_idx": {
-          "name": "validation_runs_principal_idx",
-          "columns": [
-            "principal",
-            "created_at"
-          ],
-          "isUnique": false
-        },
-        "validation_runs_status_idx": {
-          "name": "validation_runs_status_idx",
-          "columns": [
-            "status"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "validation_runs_scope_id_scopes_id_fk": {
-          "name": "validation_runs_scope_id_scopes_id_fk",
-          "tableFrom": "validation_runs",
-          "tableTo": "scopes",
-          "columnsFrom": [
-            "scope_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "validation_runs_kind_check": {
-          "name": "validation_runs_kind_check",
-          "value": "\"validation_runs\".\"kind\" in ('publish', 'dry-run')"
-        },
-        "validation_runs_source_check": {
-          "name": "validation_runs_source_check",
-          "value": "\"validation_runs\".\"source\" in ('oidc', 'upload')"
-        },
-        "validation_runs_status_check": {
-          "name": "validation_runs_status_check",
-          "value": "\"validation_runs\".\"status\" in ('queued', 'running', 'finished')"
-        },
-        "validation_runs_verdict_check": {
-          "name": "validation_runs_verdict_check",
-          "value": "\"validation_runs\".\"verdict\" is null or \"validation_runs\".\"verdict\" in ('pass', 'warn', 'hold', 'fail', 'error')"
-        },
-        "validation_runs_queue_reason_check": {
-          "name": "validation_runs_queue_reason_check",
-          "value": "\"validation_runs\".\"queued_reason\" is null or \"validation_runs\".\"queued_reason\" in ('soft-rate-limit', 'sandbox-budget')"
-        },
-        "validation_runs_size_check": {
-          "name": "validation_runs_size_check",
-          "value": "\"validation_runs\".\"size_bytes\" >= 0"
         }
       }
     }
