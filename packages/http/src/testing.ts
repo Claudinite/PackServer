@@ -107,9 +107,11 @@ export function expectPortsMatchTrustTable(
 }
 
 /** Every Worker reads the hash keys and `telemetry_mode` through its own bindings, and nothing else. */
+type TelemetryRuntime = { ports: { telemetry: { keys(): Promise<unknown>; mode(): Promise<unknown> } } };
+
 export async function expectTelemetryWired(
   worker: WorkerName,
-  createRuntime: (env: never) => { ports: { telemetry: { keys(): Promise<unknown>; mode(): Promise<unknown> } } },
+  createRuntime: (env: never) => TelemetryRuntime | Promise<TelemetryRuntime>,
 ): Promise<void> {
   const asked: string[] = [];
   const env = {
@@ -118,7 +120,7 @@ export async function expectTelemetryWired(
     PRINCIPAL_HASH_KEY: { get: async () => "principal-key" },
     TELEMETRY_KV: { get: async (key: string) => (asked.push(key), "economy") },
   };
-  const { telemetry } = createRuntime(env as never).ports;
+  const { telemetry } = (await createRuntime(env as never)).ports;
   expect(await telemetry.keys()).toEqual({ ipMaster: "ip-key", principalKey: "principal-key" });
   expect(await telemetry.mode()).toBe("economy");
   expect(asked).toEqual(["telemetry_mode"]);

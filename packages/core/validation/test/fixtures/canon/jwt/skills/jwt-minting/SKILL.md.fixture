@@ -1,0 +1,8 @@
+---
+name: jwt-minting
+description: Issuing or signing JWTs — choosing the algorithm, generating keys, deciding the claims. Use when adding or changing code that creates tokens.
+metadata:
+  body: workflow
+  usage:
+    expect: judgment
+---

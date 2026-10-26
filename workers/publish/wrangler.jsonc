@@ -17,6 +17,11 @@
         "WORKER": "publish",
         "ENVIRONMENT": "test",
         "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
+        "STAGING_S3_ACCESS_KEY_ID": "test-staging-access-key",
+        "STAGING_S3_SECRET_ACCESS_KEY": "test-staging-secret-key",
+        "STAGING_S3_ENDPOINT": "https://test-account.r2.cloudflarestorage.com/packs-staging-test",
+        "OIDC_ISSUER": "https://oidc.test",
+        "OIDC_JWKS_URL": "https://oidc.test/.well-known/jwks",
         "IP_HASH_MASTER_KEY": "test-ip-hash-master-key",
         "PRINCIPAL_HASH_KEY": "test-principal-hash-key"
       },
@@ -96,6 +101,16 @@
         {
           "binding": "DOMAIN_EVENTS",
           "dataset": "domain_events_test"
+        }
+      ],
+      "ratelimits": [
+        {
+          "name": "RATE_LIMIT",
+          "namespace_id": "3003",
+          "simple": {
+            "limit": 1000,
+            "period": 60
+          }
         }
       ],
       "version_metadata": {
@@ -204,6 +219,21 @@
       ],
       "secrets_store_secrets": [
         {
+          "binding": "STAGING_S3_ENDPOINT",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "staging-s3-endpoint-staging"
+        },
+        {
+          "binding": "STAGING_S3_ACCESS_KEY_ID",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "staging-s3-access-key-id-staging"
+        },
+        {
+          "binding": "STAGING_S3_SECRET_ACCESS_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "staging-s3-secret-access-key-staging"
+        },
+        {
           "binding": "SELFTEST_HMAC_KEY",
           "store_id": "00000000000000000000190000000004",
           "secret_name": "selftest-hmac-key-staging"
@@ -217,6 +247,16 @@
           "binding": "PRINCIPAL_HASH_KEY",
           "store_id": "00000000000000000000190000000004",
           "secret_name": "principal-hash-key-staging"
+        }
+      ],
+      "ratelimits": [
+        {
+          "name": "RATE_LIMIT",
+          "namespace_id": "2003",
+          "simple": {
+            "limit": 30,
+            "period": 60
+          }
         }
       ],
       "version_metadata": {
@@ -337,6 +377,21 @@
       ],
       "secrets_store_secrets": [
         {
+          "binding": "STAGING_S3_ENDPOINT",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "staging-s3-endpoint"
+        },
+        {
+          "binding": "STAGING_S3_ACCESS_KEY_ID",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "staging-s3-access-key-id"
+        },
+        {
+          "binding": "STAGING_S3_SECRET_ACCESS_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "staging-s3-secret-access-key"
+        },
+        {
           "binding": "SELFTEST_HMAC_KEY",
           "store_id": "00000000000000000000290000000004",
           "secret_name": "selftest-hmac-key"
@@ -350,6 +405,16 @@
           "binding": "PRINCIPAL_HASH_KEY",
           "store_id": "00000000000000000000290000000004",
           "secret_name": "principal-hash-key"
+        }
+      ],
+      "ratelimits": [
+        {
+          "name": "RATE_LIMIT",
+          "namespace_id": "1003",
+          "simple": {
+            "limit": 30,
+            "period": 60
+          }
         }
       ],
       "version_metadata": {

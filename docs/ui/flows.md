@@ -65,7 +65,7 @@ progress and verdict appear on the dashboard and by email; nothing is written to
 approve with a passkey when staged publishing or a capability widening applies; every promotion
 emails every owner.
 
-Failures: claim mismatch → refused with a claim-by-claim diff; tag/manifest version mismatch →
+Failures: claim mismatch → refused, naming the kinds of claim that mismatched (never registered values); tag/manifest version mismatch →
 located finding; fork, unsafe event, wrong ref or unprotected ref → refused; repository tree differs
 → fail-class finding; JWKS unreachable → fails closed, CI retries.
 

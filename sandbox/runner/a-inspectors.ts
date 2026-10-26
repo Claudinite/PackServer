@@ -1,4 +1,5 @@
 import type { Tree } from "@packserver/core/canonical";
+import { inspector as capabilityInspector } from "@packserver/core/capabilities";
 import type { Finding } from "@packserver/schema";
 
 export interface InspectorInput {
@@ -11,9 +12,6 @@ export interface Inspector {
   name: string;
   inspect(input: InspectorInput): Promise<{ findings: Finding[]; capabilities?: unknown }>;
 }
-
-/** Specifier of the capability inspector (T-042); absent until that task merges. */
-const CAPABILITY_MODULE = "@packserver/core/capabilities";
 
 const ABSENT_CODES = new Set(["ERR_MODULE_NOT_FOUND", "ERR_PACKAGE_PATH_NOT_EXPORTED"]);
 // Test loaders (vite) report the same condition without Node's codes.
@@ -31,13 +29,14 @@ function isAbsent(e: unknown, specifier: string): boolean {
 }
 
 /**
- * The optional inspectors, each with a note saying why it did not load. A module that exists but
+ * The capability inspector, bound statically so the image bundle contains it, followed by any further
+ * inspectors named by specifier, each with a note saying why it did not load. A module that exists but
  * fails to load is a defect and propagates, so a broken inspector never reads as an absent one.
  */
 export async function loadOptionalInspectors(
-  specifiers: readonly string[] = [CAPABILITY_MODULE],
+  specifiers: readonly string[] = [],
 ): Promise<{ inspectors: Inspector[]; skipped: { name: string; note: string }[] }> {
-  const inspectors: Inspector[] = [];
+  const inspectors: Inspector[] = [capabilityInspector];
   const skipped: { name: string; note: string }[] = [];
   for (const specifier of specifiers) {
     try {

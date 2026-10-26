@@ -1,10 +1,19 @@
-import { http, HttpResponse } from "msw";
+import { http, HttpResponse, passthrough } from "msw";
 import { setupServer, type SetupServer } from "msw/node";
 import { Agent, setGlobalDispatcher } from "undici";
 import type { InvocationView } from "../world/recorder";
 
 /** A fake for one outside host: answers a request it owns, returns nothing for any other. */
 export type NetHandler = (request: Request) => Promise<Response | undefined> | Response | undefined;
+
+const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
+/**
+ * The test process talking to the harness's own server (a Worker under test, a fake Worker's
+ * control surface, a binding behind the local proxy) is not the system calling out. The
+ * interceptor sees these requests intermittently, so they pass; a Worker's own request to
+ * loopback carries the `cf-worker` header and still needs a fake.
+ */
+export const isHarnessTraffic = (request: Request): boolean => LOOPBACK.has(new URL(request.url).hostname) && !request.headers.has("cf-worker");
 
 /**
  * Every outbound `fetch` of every Worker passes through Node, so one interception point
@@ -33,6 +42,7 @@ export class Net {
     this.server = setupServer(
       http.all("*", async ({ request }) => {
         const url = new URL(request.url);
+        if (isHarnessTraffic(request)) return passthrough();
         for (const handler of this.handlers) {
           const res = await handler(request.clone() as Request);
           if (res) {
