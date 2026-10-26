@@ -26,7 +26,8 @@
     "mcp": {
       "d1": { "DB": "registry" },
       "kv": { "OAUTH_KV": "oauth", "TELEMETRY_KV": "telemetry" },
-      "r2": { "PACKS_PRIVATE": { "bucket": "packs-private", "access": "read" } },
+      "r2": { "PACKS_PUBLIC": { "bucket": "packs-public", "access": "read" },
+        "PACKS_PRIVATE": { "bucket": "packs-private", "access": "read" } },
       "queues": {},
       "queue_consumers": [],
       "workflows": {},
@@ -47,7 +48,7 @@
       "d1": { "DB": "registry" },
       "kv": { "CACHE_KV": "cache", "TELEMETRY_KV": "telemetry" },
       "r2": { "PACKS_STAGING": { "bucket": "packs-staging", "access": "read-write" } },
-      "queues": { "NOTIFY_QUEUE": "notify" },
+      "queues": { "AUDIT_QUEUE": "audit", "NOTIFY_QUEUE": "notify" },
       "queue_consumers": [],
       "workflows": {},
       "durable_objects": {

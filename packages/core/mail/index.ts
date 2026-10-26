@@ -10,6 +10,8 @@ import { newDeviceSignIn } from "./templates/new-device-sign-in";
 import { packActioned } from "./templates/pack-actioned";
 import { reportStatusChanged } from "./templates/report-status-changed";
 import { scopeNameDisputed } from "./templates/scope-name-disputed";
+import { securityReportReminder } from "./templates/security-report-reminder";
+import { securityReportUpdate } from "./templates/security-report-update";
 import { stepUpLocked } from "./templates/step-up-locked";
 import { trustedPublisherChanged } from "./templates/trusted-publisher-changed";
 import { validationVerdict } from "./templates/validation-verdict";
@@ -31,6 +33,8 @@ export const NOTICES = {
   "domain-proof-warning": domainProofWarning,
   "verified-publisher-decision": verifiedPublisherDecision,
   "report-status-changed": reportStatusChanged,
+  "security-report-reminder": securityReportReminder,
+  "security-report-update": securityReportUpdate,
   "version-withdrawn": versionWithdrawn,
   "pack-actioned": packActioned,
   "appeal-decided": appealDecided,

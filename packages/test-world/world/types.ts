@@ -1,6 +1,7 @@
 // The handle interfaces scenarios write against (dsl.md §4). A handle is a cheap view: it hits the
 // system only when a verb or observation does. Area tasks fill the modules that return them.
 
+import type { ApiResponse } from "../drivers/driver";
 import type { Observation } from "./outcomes";
 import type { UserTokens } from "./tokens";
 
@@ -186,6 +187,11 @@ export interface User {
   star(pack: Pack): Promise<void>;
   open(pack: Pack): Promise<unknown>;
   inbox(): Promise<Notification[]>;
+  /**
+   * One request as this person's browser makes it, for the area modules that act as a person: the session cookie
+   * and, for an unsafe method, the origin, CSRF token and idempotency key.
+   */
+  request(method: string, path: string, o?: { json?: unknown; body?: Uint8Array }): Promise<ApiResponse>;
 }
 export interface Publisher extends User {
   scope: Scope;
