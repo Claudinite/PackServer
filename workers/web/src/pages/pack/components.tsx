@@ -1,5 +1,6 @@
 import type { VersionStatus, VersionsDocument } from "@packserver/schema";
 import { Drawer, FileText, HoverCard, ManifestLine, PublisherMark, Readme, ScoreRing, ShapeGlyph, type PublisherProof } from "@packserver/ui";
+import { ADOPTION_LABEL } from "@packserver/core/github";
 import { loadRules } from "@packserver/rules";
 import type { VersionView } from "@packserver/core/catalog";
 import { CONTENT_PARTS, type PackContents } from "../../routes/packs/contents";
@@ -221,7 +222,7 @@ export function Facts(props: { data: PackData; version: VersionView }) {
         {data.declaringRepositories === null ? null : (
           <>
             <dt>Declared by</dt>
-            <dd>{plural(data.declaringRepositories, "repository", "repositories")} (approximate, weekly)</dd>
+            <dd>{plural(data.declaringRepositories, "repository", "repositories")} ({ADOPTION_LABEL})</dd>
           </>
         )}
         <dt>Contents</dt>

@@ -49,6 +49,7 @@ interface Seed {
   report?: unknown;
   rating?: number | null;
   oidc?: boolean;
+  declaredBy?: number;
 }
 
 async function site(seed: Seed = {}) {
@@ -78,6 +79,12 @@ async function site(seed: Seed = {}) {
   if (seed.reported) {
     await d1.query("INSERT OR IGNORE INTO users (id, handle, created_at) VALUES ('u1', 'rep', ?)", [PUBLISHED]);
     await d1.query("INSERT INTO reports (id, pack_id, reporter_id, kind, version, severity, title, repro, environment, route, disclosure_deadline, created_at, updated_at) VALUES ('r2', 'p1', 'u1', 'security', '1.0.0', 'critical', 't', 'r', 'e', 'registry_security', ?, ?, ?)", [PUBLISHED, PUBLISHED, PUBLISHED]);
+  }
+  if (seed.declaredBy !== undefined) {
+    await d1.query("INSERT INTO adoption_scans (id, started_at, updated_at, completed_at, truncated) VALUES ('scan1', '2026-10-23T00:00:00.000Z', '2026-10-24T00:00:00.000Z', '2026-10-24T00:00:00.000Z', 0)");
+    for (let i = 0; i < seed.declaredBy; i++) {
+      await d1.query("INSERT INTO pack_declarations (scan_id, pack, repository, owner, pinned_version, settings_path) VALUES ('scan1', ?, ?, 'o', NULL, '.claudinite/settings.yaml')", [NAME, `o/r${i}`]);
+    }
   }
   const put = (key: string, value: unknown) => void fakes.r2.PACKS_PUBLIC?.put(key, text(value));
   for (const v of versions) {
@@ -141,6 +148,11 @@ describe("pack page overview (REQ-SEARCH-014)", () => {
     expect(html).toContain("2 skills · 1 guard");
     expect(html).toContain(SHA);
     expect(html).toContain("github.com/acme/gcp");
+  });
+
+  it("says how many public repositories declare the pack, approximately, and nothing before a scan has covered it", async () => {
+    expect((await (await site({ declaredBy: 7 })).get(`/packs/${NAME}`)).html).toContain("7 repositories (approximate, weekly)");
+    expect((await (await site()).get(`/packs/${NAME}`)).html).not.toContain("repositories (");
   });
 
   it("names the single largest improvement beside the score", async () => {

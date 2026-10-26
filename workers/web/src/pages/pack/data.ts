@@ -1,3 +1,4 @@
+import { adoptionOf } from "@packserver/core/github";
 import { objectKey, type PackListing, type VersionView } from "@packserver/core/catalog";
 import { advisoriesFor, type Advisory } from "@packserver/core/reports";
 import { loadProfile, type Profile } from "@packserver/core/scopes";
@@ -46,7 +47,7 @@ export interface PackData {
   kid: string | null;
   report: ReportFacts;
   versionExtras: Map<string, VersionExtras>;
-  /** Repositories declaring the pack in the weekly public scan; null until that scan exists. */
+  /** Repositories declaring the pack in the latest completed weekly scan; null until one has covered it. */
   declaringRepositories: number | null;
 }
 
@@ -161,7 +162,7 @@ async function load(c: Context<WebEnv>, name: string, scope: string, packName: s
   const packId = String(pack.id);
   const version = held ? null : view.version;
 
-  const [listed, versions, profile, advisories, reportedRows, adoptVersion, attestation] = await Promise.all([
+  const [listed, versions, profile, advisories, reportedRows, adoptVersion, attestation, adoption] = await Promise.all([
     d1.query(
       `SELECT ps.pitch AS pitch, ps.category AS category, ps.card AS card, st.stars AS stars, st.rating AS rating, st.fetches_30d AS fetches_30d,
         st.fetches_7d AS fetches_7d, st.fetches_prev_28d AS fetches_prev_28d
@@ -177,6 +178,7 @@ FROM pack_search ps LEFT JOIN pack_stats st ON st.pack_id = ps.pack_id WHERE ps.
     ),
     adoptFlag(c),
     version ? readPublic(c, objectKey(name, "attestation", version.version)) : Promise.resolve(undefined),
+    adoptionOf(d1, name),
   ]);
 
   const row = listed.rows[0];
@@ -215,7 +217,7 @@ FROM pack_search ps LEFT JOIN pack_stats st ON st.pack_id = ps.pack_id WHERE ps.
       kid: parsedAttestation.success ? parsedAttestation.data.kid : null,
       report: shownReport,
       versionExtras,
-      declaringRepositories: null,
+      declaringRepositories: adoption.declaringRepositories,
     },
   };
 }

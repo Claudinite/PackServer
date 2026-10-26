@@ -20,7 +20,7 @@ test("a pack's HTML and SVG are shown as text and run no script", async ({ world
   const response = await page.goto(path);
   expect(response?.status()).toBe(200);
   expect(response?.headers()["content-security-policy"]).not.toMatch(/script-src[^;]*'unsafe-inline'/);
-  expect(await driver.currentPage.evaluate(() => (window as unknown as { __ran?: boolean }).__ran)).toBeUndefined();
+  expect(await driver.currentPage.evaluate<unknown>("window.__ran")).toBeUndefined();
   expect(await page.locator("#injected, #drawn").count()).toBe(0);
   await expect(page.getByText("<script>window.__ran = true</script>", { exact: false })).toBeVisible();
   await expect(page.getByText('onload="window.__ran = true"', { exact: false })).toBeVisible();
