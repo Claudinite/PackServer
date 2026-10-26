@@ -22,6 +22,11 @@ export const AUDIT_ACTIONS = [
   "assertion.refused",
   "token.refused",
   "oidc.refused",
+  "session.revoked",
+  "account.deleted",
+  "recovery.requested",
+  "recovery.approved",
+  "scope.mfa_policy.changed",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -49,6 +54,11 @@ export const DETAIL_FIELDS: Record<AuditAction, readonly string[]> = {
   "assertion.refused": ["reason"],
   "token.refused": ["reason"],
   "oidc.refused": ["reason"],
+  "session.revoked": [],
+  "account.deleted": [],
+  "recovery.requested": [],
+  "recovery.approved": [],
+  "scope.mfa_policy.changed": ["policy"],
 };
 
 const Detail = z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]));

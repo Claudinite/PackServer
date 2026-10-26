@@ -10,6 +10,7 @@ import { createMember } from "./areas/member";
 import { createModeration } from "./areas/moderation";
 import { createOperator } from "./areas/operator";
 import { createPublishing } from "./areas/publishing";
+import { createRecoveries } from "./areas/recovery";
 import { createScopes } from "./areas/scopes";
 import { createSearch } from "./areas/search";
 import { createTelemetry } from "./areas/telemetry";
@@ -42,6 +43,7 @@ export function createWorld(driver: Driver, title: string) {
     ...createCommunity(),
     ...createModeration(),
     ...createAdmin(),
+    ...createRecoveries(driver),
     ...createMember(),
     ...createAgents(),
     ...createGitHub(driver),

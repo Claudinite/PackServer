@@ -1,4 +1,5 @@
 import type { D1 } from "@packserver/ports";
+import { lacksRequiredFactor } from "../identity/mfa-policy.ts";
 import { isScopeRole, satisfies, type Need, type ScopeRole } from "./roles.ts";
 
 export interface ScopeRow {
@@ -24,7 +25,9 @@ export async function roleOf(d1: D1, scopeId: string, userId: string): Promise<S
 export type Decision =
   | { kind: "allow"; scope: ScopeRow; role: ScopeRole }
   | { kind: "not_found" }
-  | { kind: "forbidden" };
+  | { kind: "forbidden" }
+  /** The scope requires a factor the caller has not enrolled (REQ-ACC-018). */
+  | { kind: "mfa_required"; scope: string };
 
 /**
  * Identity decides, never the id the caller named: a caller without the standing the action needs is
@@ -38,6 +41,9 @@ export async function authorize(
   const scope = await loadScope(d1, input.scope);
   if (!scope) return { kind: "not_found" };
   const role = input.userId ? await roleOf(d1, scope.id, input.userId) : null;
-  if (role && satisfies(role, input.need)) return { kind: "allow", scope, role };
+  if (role && satisfies(role, input.need)) {
+    if (input.userId && (await lacksRequiredFactor(d1, scope.id, input.userId))) return { kind: "mfa_required", scope: scope.name };
+    return { kind: "allow", scope, role };
+  }
   return { kind: input.resource === "private" ? "not_found" : "forbidden" };
 }

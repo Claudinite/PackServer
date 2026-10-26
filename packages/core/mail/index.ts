@@ -6,6 +6,9 @@ import { domainProofWarning } from "./templates/domain-proof-warning";
 import { factorAdded } from "./templates/factor-added";
 import { newDeviceSignIn } from "./templates/new-device-sign-in";
 import { packActioned } from "./templates/pack-actioned";
+import { providerLinked } from "./templates/provider-linked";
+import { recoveryApproved } from "./templates/recovery-approved";
+import { recoveryStarted } from "./templates/recovery-started";
 import { reportStatusChanged } from "./templates/report-status-changed";
 import { stepUpLocked } from "./templates/step-up-locked";
 import { trustedPublisherChanged } from "./templates/trusted-publisher-changed";
@@ -22,6 +25,9 @@ export const NOTICES = {
   "factor-added": factorAdded,
   "new-device-sign-in": newDeviceSignIn,
   "step-up-locked": stepUpLocked,
+  "provider-linked": providerLinked,
+  "recovery-approved": recoveryApproved,
+  "recovery-started": recoveryStarted,
   "trusted-publisher-changed": trustedPublisherChanged,
   "validation-verdict": validationVerdict,
   "version-published": versionPublished,
