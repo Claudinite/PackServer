@@ -125,6 +125,33 @@ export function loadSpecs(src) {
   return { tests, excused };
 }
 
+/** Whether a `/` at the end of the masked code so far opens a regular expression rather than divides. */
+function startsRegex(code) {
+  const before = code.trimEnd();
+  if (before === "") return true;
+  if (/(?:\+\+|--)$/.test(before)) return false;
+  if ("(,=:[!&|?{};+-*%<>~^".includes(before.at(-1))) return true;
+  return /(?<!\.\s*)\b(return|typeof|case|in|of|void|delete|throw|new|yield|await)$/.test(before);
+}
+
+/** The offset just past a regular expression literal starting at `start`, or -1 when none closes on its line. */
+function regexEnd(source, start) {
+  let inClass = false;
+  for (let j = start + 1; j < source.length; j++) {
+    const ch = source[j];
+    if (ch === "\n") return -1;
+    if (ch === "\\") j++;
+    else if (ch === "[") inClass = true;
+    else if (ch === "]") inClass = false;
+    else if (ch === "/" && !inClass) {
+      let end = j + 1;
+      while (/[a-z]/i.test(source[end] ?? "")) end++;
+      return end;
+    }
+  }
+  return -1;
+}
+
 // --- reading scenario source -------------------------------------------------------------------
 /** Blanks comments and string contents while keeping every offset, so structure can be scanned safely. */
 export function mask(source) {
@@ -150,6 +177,17 @@ export function mask(source) {
       code += blank(source.slice(i, stop));
       stripped += blank(source.slice(i, stop));
       i = stop;
+    } else if (c === "/" && startsRegex(code)) {
+      const j = regexEnd(source, i);
+      if (j === -1) {
+        code += c;
+        stripped += c;
+        i += 1;
+        continue;
+      }
+      code += c + blank(source.slice(i + 1, j - 1)) + "/";
+      stripped += source.slice(i, j);
+      i = j;
     } else if (c === '"' || c === "'" || c === "`") {
       let j = i + 1;
       while (j < source.length && source[j] !== c) j += source[j] === "\\" ? 2 : 1;
@@ -241,11 +279,15 @@ export function scanScenarios(path, source) {
   const found = [];
   const ranges = [];
   const re = /\bscenario(\.smoke)?\s*\(/g;
+  let unparsed = null;
   let m;
   while ((m = re.exec(code))) {
     const open = m.index + m[0].length - 1;
     const close = matching(code, open);
-    if (close === -1) break;
+    if (close === -1) {
+      unparsed = lineOf(m.index);
+      break;
+    }
     re.lastIndex = close + 1;
     let end = close + 1;
     while (code[end] === " " || code[end] === "\t") end++;
@@ -295,7 +337,7 @@ export function scanScenarios(path, source) {
   }
   const context = compact(outside.join(""));
   for (const f of found) Object.assign(f, { context, normalised: `${context}\u0000${f.call}` });
-  return { scenarios: found, comments: comments.map((c) => ({ ...c, line: lineOf(c.at) })), code, source };
+  return { scenarios: found, unparsed, comments: comments.map((c) => ({ ...c, line: lineOf(c.at) })), code, source };
 }
 
 export function loadScenarios(src) {
@@ -312,6 +354,7 @@ export function checkTree(src, { baseSrc = null, complete = false } = {}) {
   const scenarioIds = new Map();
 
   for (const f of files) {
+    if (f.unparsed !== null) problems.push(`${f.path}:${f.unparsed}: this scenario could not be read to its end, so neither it nor any scenario after it in the file was checked`);
     if (f.harness) continue;
     for (const c of f.comments) {
       const hit = VOCABULARY.find((v) => v.pattern.test(c.text));
