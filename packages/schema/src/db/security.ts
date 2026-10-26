@@ -48,7 +48,7 @@ export const recovery_requests = sqliteTable(
     user_id: text("user_id")
       .notNull()
       .references(() => users.id),
-    /** The verified address the request named; the sign-in link goes only there. */
+    /** The verified address the request named; the sign-in link goes to the address that asks for it after approval. */
     email: text("email").notNull(),
     requested_at: text("requested_at").notNull(),
     /** Earliest instant an admin may complete it. */
@@ -60,10 +60,13 @@ export const recovery_requests = sqliteTable(
     link_hash: text("link_hash"),
     link_expires_at: text("link_expires_at"),
     completed_at: text("completed_at"),
+    /** SHA-256 of the one-time link in the "recovery requested" notice that stops the request. */
+    cancel_hash: text("cancel_hash"),
   },
   (t) => [
     index("recovery_requests_user_idx").on(t.user_id),
     uniqueIndex("recovery_requests_link_unique").on(t.link_hash),
+    uniqueIndex("recovery_requests_cancel_unique").on(t.cancel_hash),
     check("recovery_requests_state_check", sql`${t.state} in (${inList(RECOVERY_STATES)})`),
   ],
 );

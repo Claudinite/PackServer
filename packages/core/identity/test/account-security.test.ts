@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createFakePorts } from "@packserver/ports/fakes";
 import {
   approveRecovery, completeRecovery, createSession, deleteAccount, lacksRequiredFactor, linkGitHub, noteSignInDevice, publishingFrozen, RECOVERY_DELAY_MS,
-  requestRecovery, revokeSession, setScopeMfaPolicy, isRevoked,
+  requestRecovery, RECOVERY_APPROVAL_TTL_MS, cancelRecoveries, cancelRecoveryByToken, checkDeletable, revokeSession, setScopeMfaPolicy, isRevoked,
 } from "../index.ts";
 import { migratedD1 } from "../testing.ts";
 
@@ -65,8 +65,8 @@ describe("delayed recovery", () => {
     const opened = await requestRecovery(ports, "A2@example.test");
     expect(opened).toMatchObject({ kind: "opened", user_id: "u1", addresses: ["a2@example.test", "a@example.test"] });
     expect(await requestRecovery(ports, "a@example.test")).toEqual({ kind: "ignored" });
-    expect(await publishingFrozen(ports.d1, "s1")).toBe(true);
-    expect(await publishingFrozen(ports.d1, "o1")).toBe(true);
+    expect(await publishingFrozen(ports, "s1")).toBe(true);
+    expect(await publishingFrozen(ports, "o1")).toBe(true);
 
     const id = (opened as { id: string }).id;
     fakes.clock.advance(RECOVERY_DELAY_MS - HOUR);
@@ -74,7 +74,7 @@ describe("delayed recovery", () => {
     fakes.clock.advance(HOUR);
     expect(await approveRecovery(ports, id, "admin@example.test")).toEqual({ ok: true, user_id: "u1" });
     expect(await approveRecovery(ports, id, "admin@example.test")).toMatchObject({ ok: false, reason: "not_pending" });
-    expect(await publishingFrozen(ports.d1, "s1")).toBe(true);
+    expect(await publishingFrozen(ports, "s1")).toBe(true);
 
     const link = await requestRecovery(ports, "a@example.test");
     expect(link).toMatchObject({ kind: "link", email: "a@example.test" });
@@ -82,7 +82,7 @@ describe("delayed recovery", () => {
     expect(await completeRecovery(ports, "wrong")).toBeNull();
     expect(await completeRecovery(ports, token)).toEqual({ user_id: "u1" });
     expect(await completeRecovery(ports, token)).toBeNull();
-    expect(await publishingFrozen(ports.d1, "s1")).toBe(false);
+    expect(await publishingFrozen(ports, "s1")).toBe(false);
   });
 
   it("lets a link lapse", async () => {
@@ -93,6 +93,86 @@ describe("delayed recovery", () => {
     const link = await requestRecovery(ports, "a@example.test");
     fakes.clock.advance(25 * HOUR);
     expect(await completeRecovery(ports, (link as { token: string }).token)).toBeNull();
+  });
+});
+
+describe("recovery that can be stopped and re-checked", () => {
+  const open = async (t: ReturnType<typeof setup>) => {
+    const opened = (await requestRecovery(t.ports, "a@example.test")) as { id: string; cancel_token: string };
+    return opened;
+  };
+  const passkey = (t: ReturnType<typeof setup>) =>
+    t.db.exec(`insert into credentials (id, user_id, credential_id, public_key, created_at) values ('c9', 'u1', 'cid9', 'pk', '${NOW}')`);
+
+  it("stops with the one-time link, once, and lifts the freeze", async () => {
+    const t = setup();
+    const { cancel_token } = await open(t);
+    expect(await publishingFrozen(t.ports, "s1")).toBe(true);
+    expect(await cancelRecoveryByToken(t.ports, "nope")).toBeNull();
+    expect(await cancelRecoveryByToken(t.ports, cancel_token)).toEqual({ user_id: "u1" });
+    expect(await cancelRecoveryByToken(t.ports, cancel_token)).toBeNull();
+    expect(await publishingFrozen(t.ports, "s1")).toBe(false);
+  });
+
+  it("is cancelled for the signed-in person", async () => {
+    const t = setup();
+    await open(t);
+    expect(await cancelRecoveries(t.ports, "u1")).toBe(1);
+    expect(await publishingFrozen(t.ports, "s1")).toBe(false);
+  });
+
+  it("is refused at approval once a passkey exists, and the request is cancelled", async () => {
+    const t = setup();
+    const { id } = await open(t);
+    passkey(t);
+    t.fakes.clock.advance(RECOVERY_DELAY_MS);
+    expect(await approveRecovery(t.ports, id, "admin")).toEqual({ ok: false, reason: "no_longer_eligible" });
+    expect(await publishingFrozen(t.ports, "s1")).toBe(false);
+  });
+
+  it("is refused at completion once a provider is linked after the link was mailed", async () => {
+    const t = setup();
+    const { id } = await open(t);
+    t.fakes.clock.advance(RECOVERY_DELAY_MS);
+    await approveRecovery(t.ports, id, "admin");
+    const link = (await requestRecovery(t.ports, "a@example.test")) as { token: string };
+    t.db.exec(`insert into identities (id, user_id, provider, provider_user_id, created_at) values ('i9', 'u1', 'github', '99', '${NOW}')`);
+    expect(await completeRecovery(t.ports, link.token)).toBeNull();
+  });
+
+  it("lapses seven days after approval and the freeze lifts with it", async () => {
+    const t = setup();
+    const { id } = await open(t);
+    t.fakes.clock.advance(RECOVERY_DELAY_MS);
+    await approveRecovery(t.ports, id, "admin");
+    t.fakes.clock.advance(RECOVERY_APPROVAL_TTL_MS - HOUR);
+    expect(await publishingFrozen(t.ports, "s1")).toBe(true);
+    const link = (await requestRecovery(t.ports, "a@example.test")) as { token: string };
+    t.fakes.clock.advance(2 * HOUR);
+    expect(await publishingFrozen(t.ports, "s1")).toBe(false);
+    expect(await completeRecovery(t.ports, link.token)).toBeNull();
+    expect(await requestRecovery(t.ports, "a@example.test")).toMatchObject({ kind: "opened" });
+  });
+
+  it("writes its audit entry before anything changes", async () => {
+    const t = setup();
+    const seen: number[] = [];
+    const count = () => Number((t.db.prepare("select count(*) as n from recovery_requests").get() as { n: number }).n);
+    const opened = (await requestRecovery(t.ports, "a@example.test", async () => void seen.push(count()))) as { id: string };
+    t.fakes.clock.advance(RECOVERY_DELAY_MS);
+    const state = () => (t.db.prepare("select state from recovery_requests").get() as { state: string }).state;
+    await approveRecovery(t.ports, opened.id, "admin", async () => void seen.push(state() === "pending" ? -1 : -2));
+    expect(seen).toEqual([0, -1]);
+  });
+});
+
+describe("audit before the revocation", () => {
+  it("runs the hook while the session still stands", async () => {
+    const { ports } = setup();
+    const live = await createSession(ports, { user_id: "u1", device: { label: "x", country: "NO" } });
+    let revokedDuring: boolean | undefined;
+    await revokeSession(ports, "u1", live.sid_hash, async () => void (revokedDuring = await isRevoked(ports, live.sid_hash)));
+    expect(revokedDuring).toBe(false);
   });
 });
 
@@ -108,6 +188,21 @@ describe("linking", () => {
 });
 
 describe("deletion", () => {
+  it("removes trusted publishers of the personal scope, pending ones and the credentials that name them included", async () => {
+    const { ports, db } = setup();
+    db.exec(`insert into trusted_publishers (id, scope_id, pack_name, repository_id, repository_owner_id, repository, workflow, path, refs, events, pending_until, created_at, updated_at)
+             values ('tp1', 's1', 'gcp', '1', '2', 'ann/gcp', 'w.yml', 'p', '[]', '[]', '2099-01-01T00:00:00.000Z', '${NOW}', '${NOW}'),
+                    ('tp2', 'o1', 'org-pack', '1', '2', 'acme/x', 'w.yml', 'p', '[]', '[]', null, '${NOW}', '${NOW}')`);
+    db.exec(`insert into upload_credentials (id, secret_hash, source, scope_id, pack_name, version, trusted_publisher_id, staging_key, lifetime, issued_at, expires_at)
+             values ('uc1', 'h', 'oidc', 's1', 'gcp', '1.0.0', 'tp1', 'k', 'draft', '${NOW}', '${NOW}')`);
+    expect(await checkDeletable(ports.d1, "u1")).toMatchObject({ ok: false });
+    db.exec("delete from scope_members where scope_id = 'o1' and user_id = 'u1'");
+    db.exec(`insert into scope_members (scope_id, user_id, role, created_at) values ('o1', 'u2', 'owner', '${NOW}') on conflict do update set role = 'owner'`);
+    expect(await deleteAccount(ports, "u1")).toEqual({ ok: true });
+    expect(db.prepare("select id from trusted_publishers").all()).toEqual([{ id: "tp2" }]);
+    expect(db.prepare("select trusted_publisher_id as t from upload_credentials").get()).toEqual({ t: null });
+  });
+
   it("keeps the handle, removes every way in and the credential flags, and refuses a sole owner", async () => {
     const { ports, db } = setup();
     db.exec(`insert into credentials (id, user_id, credential_id, public_key, created_at) values ('c1', 'u2', 'cid', 'pk', '${NOW}')`);

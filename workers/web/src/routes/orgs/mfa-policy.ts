@@ -21,7 +21,7 @@ routes.post("/orgs/:org/mfa-policy", sensitive("org.mfa-policy", orgOf), async (
   const policy = ((await c.req.json().catch(() => ({}))) as { policy?: unknown }).policy;
   if (!isMfaPolicy(policy)) return refusal("forbidden", { status: 400, message: `policy: one of ${MFA_POLICIES.join(", ")}.` });
   const { d1, clock } = c.get("runtime").ports;
-  await setScopeMfaPolicy({ d1, clock }, who.scope.id, policy, c.get("session")!.record.user_id);
   await recordAudit(c, c.get("session")!.record.user_id, "scope.mfa_policy.changed", who.scope.name, { policy });
+  await setScopeMfaPolicy({ d1, clock }, who.scope.id, policy, c.get("session")!.record.user_id);
   return ok(c, { org: who.scope.name, policy });
 });

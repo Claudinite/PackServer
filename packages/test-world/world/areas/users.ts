@@ -229,12 +229,28 @@ class Person implements User {
       });
       if (res.status !== 202) throw refusal(res, "recovery.request");
     },
+    /** Stops the recovery with the link in the newest "recovery requested" mail the address received. */
+    cancelFromMail: async (address?: string): Promise<void> => {
+      const mail = createMail(this.ctx.driver).inbox({ email: address ?? this.who.email }).all().filter((m) => /recovery requested/i.test(m.subject));
+      const token = /[?&]token=([0-9a-f]{64})/.exec(mail.at(-1)?.text ?? "")?.[1];
+      if (!token) throw new InfrastructureError("recovery.cancelFromMail: no notice with a cancel link has been mailed");
+      const res = await this.send({ method: "POST", path: "/api/auth/recovery/cancel-link", json: { token }, headers: { origin: ORIGIN } });
+      if (res.status !== 200) throw refusal(res, "recovery.cancelFromMail");
+    },
+    /** The signed-in person stops their own open recovery. */
+    cancel: async (): Promise<void> => {
+      const session = this.view;
+      const res = await this.send({ method: "POST", path: "/api/auth/recovery/cancel", session, json: {}, headers: await this.formHeaders(session) });
+      if (res.status !== 200) throw refusal(res, "recovery.cancel");
+    },
     /** Follows the link in the newest approval mail the address received. */
-    signIn: async (address?: string): Promise<Session> => {
+    signIn: async (address?: string, faults: FormFaults = {}): Promise<Session> => {
       const mail = createMail(this.ctx.driver).inbox({ email: address ?? this.who.email }).all().filter((m) => /recovery was approved/i.test(m.subject));
       const token = /[?&]token=([0-9a-f]{64})/.exec(mail.at(-1)?.text ?? "")?.[1];
       if (!token) throw new InfrastructureError("recovery.signIn: no approval link has been mailed");
-      const res = await this.send({ method: "POST", path: "/api/auth/recovery/complete", json: { token } });
+      const res = await this.send({
+        method: "POST", path: "/api/auth/recovery/complete", json: { token }, headers: { origin: faults.origin === "foreign" ? FOREIGN_ORIGIN : ORIGIN },
+      });
       if (res.status !== 200) throw refusal(res, "recovery.signIn");
       const line = cookieValue(res, SESSION_COOKIE);
       if (!line) throw new InfrastructureError("recovery.signIn: the site set no session cookie");

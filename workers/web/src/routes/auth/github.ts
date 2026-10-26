@@ -1,6 +1,6 @@
 import { ensurePersonalScope } from "@packserver/core/scopes";
 import {
-  createSession, describeDevice, destroySession, GitHubLoginError, type GitHubProfile, hashSessionId, linkGitHub, pkceChallenge, safeReturnTarget, signInWithGitHub, toHex,
+  createSession, describeDevice, destroySession, GitHubLoginError, type GitHubProfile, hashSessionId, cancelRecoveries, checkLinkGitHub, linkGitHub, pkceChallenge, safeReturnTarget, signInWithGitHub, toHex,
 } from "@packserver/core/identity";
 import { consume, formFields, rateLimitClient, rateLimited, refusal, sessionCookie, turnstile } from "@packserver/http";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
@@ -98,9 +98,9 @@ routes.get("/auth/github/callback", async (c) => {
   const previous = c.get("session");
   if (previous) await destroySession(ports, previous);
   const device = describeDevice(c.req.header("user-agent"), c.req.header("cf-ipcountry"));
+  await recordAudit(c, outcome.user_id, "login", undefined, { method: "github" });
   const live = await createSession(ports, { user_id: outcome.user_id, device });
   await announceDevice(c, outcome.user_id, device);
-  await recordAudit(c, outcome.user_id, "login", undefined, { method: "github" });
 
   const landing = outcome.handle === null ? `/signin?step=handle&next=${encodeURIComponent(next)}` : next;
   const headers = new Headers({ location: landing, "cache-control": "no-store" });
@@ -120,10 +120,14 @@ async function finishLink(c: Context<WebEnv>, userId: string, profile: GitHubPro
   if (c.get("session")?.record.user_id !== userId) {
     return clearState(refusal("forbidden", { status: 400, message: "This link request expired or did not start here. Start again." }));
   }
-  const linked = await linkGitHub({ d1: runtime.ports.d1, clock: runtime.ports.clock, rng: runtime.ports.rng }, userId, profile);
-  if (!linked.ok) return clearState(refusal("exists", { message: "That GitHub account already belongs to another account." }));
-  if (linked.created) {
+  const ports = { d1: runtime.ports.d1, clock: runtime.ports.clock, rng: runtime.ports.rng };
+  const state = await checkLinkGitHub(ports.d1, userId, profile);
+  if (state === "taken") return clearState(refusal("exists", { message: "That GitHub account already belongs to another account." }));
+  if (state === "new") {
     await recordAudit(c, userId, "provider.linked", undefined, { provider: "github" });
+    const linked = await linkGitHub(ports, userId, profile);
+    if (!linked.ok) return clearState(refusal("exists", { message: "That GitHub account already belongs to another account." }));
+    await cancelRecoveries(ports, userId);
     await notifyUser(c, userId, "provider-linked", { provider: "GitHub", securityUrl: securityUrlOf(c) });
   }
   return clearState(new Response(null, { status: 303, headers: { location: next, "cache-control": "no-store" } }));

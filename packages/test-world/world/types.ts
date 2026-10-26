@@ -198,7 +198,11 @@ export interface User {
     /** Asks for a recovery by an address (the person's own by default) without signing in. */
     request(address?: string): Promise<void>;
     /** Follows the link an approved recovery mailed, which signs the person in with no factor. */
-    signIn(address?: string): Promise<Session>;
+    signIn(address?: string, faults?: FormFaults): Promise<Session>;
+    /** Stops the recovery with the cancel link in the notice mailed to the address. */
+    cancelFromMail(address?: string): Promise<void>;
+    /** The signed-in person stops their own open recovery. */
+    cancel(): Promise<void>;
   };
   /** The same person from another browser or country. */
   onDevice(device: { userAgent?: string; country?: string }): User;

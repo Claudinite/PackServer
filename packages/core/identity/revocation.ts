@@ -1,9 +1,12 @@
 import { destroySession, listSessions, loadSessionRecord, type SessionPorts } from "./sessions.ts";
 
 /** Ends one of the person's own sessions; another person's id, or one already gone, is not found. */
-export async function revokeSession(ports: SessionPorts, userId: string, sidHash: string): Promise<boolean> {
+export async function revokeSession(
+  ports: SessionPorts, userId: string, sidHash: string, beforeRevoke: () => Promise<void> = async () => {},
+): Promise<boolean> {
   const record = await loadSessionRecord(ports, sidHash);
   if (record === null || record.user_id !== userId) return false;
+  await beforeRevoke();
   await destroySession(ports, { sid_hash: sidHash, record });
   return true;
 }

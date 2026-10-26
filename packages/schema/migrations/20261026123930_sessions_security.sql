@@ -27,12 +27,14 @@ CREATE TABLE `recovery_requests` (
 	`link_hash` text,
 	`link_expires_at` text,
 	`completed_at` text,
+	`cancel_hash` text,
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "recovery_requests_state_check" CHECK("recovery_requests"."state" in ('pending', 'approved', 'completed', 'cancelled'))
 );
 --> statement-breakpoint
 CREATE INDEX `recovery_requests_user_idx` ON `recovery_requests` (`user_id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `recovery_requests_link_unique` ON `recovery_requests` (`link_hash`);--> statement-breakpoint
+CREATE UNIQUE INDEX `recovery_requests_cancel_unique` ON `recovery_requests` (`cancel_hash`);--> statement-breakpoint
 CREATE TABLE `scope_mfa_policies` (
 	`scope_id` text PRIMARY KEY NOT NULL,
 	`policy` text NOT NULL,

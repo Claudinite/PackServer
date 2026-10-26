@@ -10,7 +10,7 @@ const SAMPLES: { [K in NoticeKind]: NoticeData<K> } = {
   "step-up-locked": { minutes: 15, securityUrl: url },
   "provider-linked": { provider: "GitHub", securityUrl: url },
   "recovery-approved": { signInUrl: url },
-  "recovery-started": { hours: 72, securityUrl: url },
+  "recovery-started": { hours: 72, securityUrl: url, cancelUrl: url },
   "trusted-publisher-changed": { pack: "@acme/pack", change: "added", publisher: "acme/repo", actor: "ann", packUrl: url },
   "validation-verdict": { pack: "@acme/pack", version: "1.0.0", verdict: "failed", findings: [{ rule: "r1", class: "fail", file: "a.md", line: 3, quote: null, hint: "bad" }], runUrl: url },
   "version-published": { pack: "@acme/pack", version: "1.0.0", path: "CI", actor: "ann", versionUrl: url },

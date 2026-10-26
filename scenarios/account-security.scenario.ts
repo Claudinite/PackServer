@@ -87,12 +87,32 @@ scenario("IT-ACC-015 GitHub sign-in is the recovery path; recovery with nothing 
   await expect(publish("1.0.1")).toBeRefused("forbidden");
 
   await p.recovery.request(second);
+  await expect(p.recovery.signIn(second, { origin: "foreign" })).toBeRefused("forbidden");
   const session = await p.recovery.signIn(second);
   expect(session.landedOn).toContain("enrol");
   await expect(p.recovery.signIn(second)).toBeRefused("forbidden");
   const first = await p.mfa.enrol();
   expect((await p.mfa.passkeys()).find((k) => k.id === first.id)!.heldUntil).toBeNull();
   accepted(await publish("1.0.1"));
+
+  const q = await world.users.create();
+  await q.signIn();
+  await q.loseFactors({ providers: true });
+  const waiting = async () => (await world.recoveries.queue()).includes(q.email);
+  await q.recovery.request();
+  expect(await waiting()).toBe(true);
+  await q.recovery.cancelFromMail();
+  expect(await waiting()).toBe(false);
+  await expect(q.recovery.cancelFromMail()).toBeRefused("forbidden");
+
+  await q.recovery.request();
+  await q.recovery.cancel();
+  expect(await waiting()).toBe(false);
+
+  await q.recovery.request();
+  expect(await waiting()).toBe(true);
+  await q.mfa.enrol();
+  expect(await waiting()).toBe(false);
 }, storage);
 
 scenario("IT-ACC-016 Account deletion needs an assertion; the handle is never reassigned", async (world) => {
@@ -102,6 +122,7 @@ scenario("IT-ACC-016 Account deletion needs an assertion; the handle is never re
   await expect(p.account.show()).resolves.toMatchObject({ handle: world.alias(p.handle) });
 
   await expect(p.account.delete()).toBeRefusedSaying("only owner");
+  expect((await p.account.history()).map((e) => e.action)).not.toContain("account.deleted");
   await org.delete();
 
   await p.account.delete();

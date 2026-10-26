@@ -27,19 +27,20 @@ export function recoveryRoutes(runtime: AdminRuntime): Hono<{ Variables: { admin
   app.use("/admin/recoveries", verified);
   app.use("/admin/recoveries/*", verified);
 
-  app.get("/admin/recoveries", async (c) => c.json({ recoveries: await recoveryQueue(d1) }, 200, NO_STORE));
+  app.get("/admin/recoveries", async (c) => c.json({ recoveries: await recoveryQueue({ d1, clock }) }, 200, NO_STORE));
 
   app.post("/admin/recoveries/:id/approve", async (c) => {
     const admin = c.get("admin");
-    const result = await approveRecovery({ d1, clock }, c.req.param("id"), admin);
+    const queue = queues["AUDIT_QUEUE"];
+    if (!queue) throw new Error("the audit queue is not bound");
+    const audit = createAudit({ clock, rng, queue, d1 }, { ipKey: "" });
+    const result = await approveRecovery({ d1, clock }, c.req.param("id"), admin, async (userId) => {
+      await audit({ kind: "admin", id: admin }, "recovery.approved", c.req.param("id"), { user_id: userId });
+    });
     if (!result.ok) {
       const status = result.reason === "not_found" ? 404 : 409;
       return c.json({ ok: false, reason: result.reason, ...(result.ready_at ? { ready_at: result.ready_at } : {}) }, status, NO_STORE);
     }
-    const queue = queues["AUDIT_QUEUE"];
-    if (!queue) throw new Error("the audit queue is not bound");
-    const audit = createAudit({ clock, rng, queue, d1 }, { ipKey: "" });
-    await audit({ kind: "admin", id: admin }, "recovery.approved", c.req.param("id"), { user_id: result.user_id });
     return c.json({ ok: true }, 200, NO_STORE);
   });
 

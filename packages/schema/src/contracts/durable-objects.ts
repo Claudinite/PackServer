@@ -27,6 +27,7 @@ const ping = { args: z.tuple([]), result: result({ ok: z.literal(true) }) };
 
 export const QUOTA_KINDS = [
   "new_packs_per_scope",
+  "new_packs_per_account",
   "validation_runs",
   "dry_runs",
   "versions_per_pack",

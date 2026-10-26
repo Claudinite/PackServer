@@ -12,4 +12,5 @@ export * from "./community";
 export * from "./github";
 export * from "./mfa";
 export * from "./security";
+export * from "./validation";
 export * from "../range";

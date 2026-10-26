@@ -14,10 +14,9 @@ const HISTORY_LIMIT = 200;
 routes.post("/auth/sessions/:id/revoke", signedInPost(), async (c) => {
   const live = c.get("session")!;
   const id = c.req.param("id");
-  if (!(await revokeSession(sessionPorts(c.get("runtime")), live.record.user_id, id))) {
-    return refusal("forbidden", { status: 404, message: "No such session." });
-  }
-  await recordAudit(c, live.record.user_id, "session.revoked", id);
+  const revoked = await revokeSession(sessionPorts(c.get("runtime")), live.record.user_id, id, () =>
+    recordAudit(c, live.record.user_id, "session.revoked", id));
+  if (!revoked) return refusal("forbidden", { status: 404, message: "No such session." });
   return c.json({ revoked: id }, 200, { ...NO_STORE, ...(id === live.sid_hash ? { "set-cookie": clearedSessionCookie } : {}) });
 });
 
