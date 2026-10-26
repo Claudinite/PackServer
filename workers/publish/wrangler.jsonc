@@ -131,7 +131,7 @@
           "zone_name": "claudinite.com"
         },
         {
-          "pattern": "registry-staging.claudinite.com/api/dry-run/*",
+          "pattern": "registry-staging.claudinite.com/api/dry-run*",
           "zone_name": "claudinite.com"
         }
       ],
@@ -277,7 +277,7 @@
           "zone_name": "claudinite.com"
         },
         {
-          "pattern": "registry.claudinite.com/api/dry-run/*",
+          "pattern": "registry.claudinite.com/api/dry-run*",
           "zone_name": "claudinite.com"
         },
         {
@@ -289,7 +289,7 @@
           "zone_name": "claudinite.com"
         },
         {
-          "pattern": "registry-canary.claudinite.com/api/dry-run/*",
+          "pattern": "registry-canary.claudinite.com/api/dry-run*",
           "zone_name": "claudinite.com"
         }
       ],

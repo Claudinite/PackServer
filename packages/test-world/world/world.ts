@@ -15,6 +15,7 @@ import { createSearch } from "./areas/search";
 import { createTelemetry } from "./areas/telemetry";
 import { createUsers } from "./areas/users";
 import { createValidation } from "./areas/validation";
+import { createPublishFlow } from "./publishing";
 import { createClock } from "./clock";
 import { createCi } from "./ci-workflow";
 import { InfrastructureError } from "./errors";
@@ -31,12 +32,15 @@ export function createWorld(driver: Driver, title: string) {
       return filterInvocations(driver.recorder.invocations(filter), filter);
     },
   };
+  const users = createUsers(driver, aliases);
+  const ci = createCi(driver, (name) => aliases.alias(name));
   return {
     driver,
-    ...createUsers(driver, aliases),
+    ...users,
     ...createScopes(driver, aliases),
     ...createPublishing(),
     ...createValidation(),
+    ...createPublishFlow(driver, aliases, users, ci),
     ...createAccess(driver),
     ...createCommunity(),
     ...createModeration(),
@@ -47,7 +51,7 @@ export function createWorld(driver: Driver, title: string) {
     ...createAuditModule(driver),
     ...createSearch(driver, aliases),
     ...createTelemetry(),
-    ...createCi(driver, (name) => aliases.alias(name)),
+    ...ci,
     operator: createOperator(driver),
     clock: createClock(driver),
     mail: createMail(driver),

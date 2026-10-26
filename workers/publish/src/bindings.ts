@@ -4,7 +4,10 @@ import {
   type WorkerRuntime,
 } from "@packserver/ports/cloudflare";
 import { GITHUB_OIDC_ISSUER, GITHUB_OIDC_JWKS_URL, OIDC_AUDIENCE } from "@packserver/core/publishing";
-import type { Clock, Ports } from "@packserver/ports";
+import { PortError, type Clock, type D1, type Ports } from "@packserver/ports";
+import { SignAndWriteRootResponse } from "@packserver/schema";
+import type { IndexRebuilder, RootNotifier } from "./coordinator";
+import { ROOT_COORDINATOR_NAME, type RootSigner } from "./root-coordinator";
 import { awsPresigner, type Presigner } from "./upload/presign";
 
 type Secret = string | SecretsStoreSecret;
@@ -119,6 +122,54 @@ export async function createRuntime(env: Env): Promise<PublishRuntime> {
         secretAccessKey: () => readSecret(env.STAGING_S3_SECRET_ACCESS_KEY),
       }),
       fetch: (input, init) => fetch(input, init),
+    },
+  };
+}
+
+/** The environment a Durable Object of this Worker receives, which is the Worker's own. */
+export type ObjectEnv = Env;
+
+/** What a Durable Object of this Worker needs from its environment: the registry database and the validator's signing entrypoint. */
+export interface CoordinatorDeps {
+  d1: D1;
+  signer: RootSigner;
+  indexes: IndexRebuilder;
+  root: RootNotifier;
+}
+
+type Rpc = Record<string, ((request: unknown) => Promise<unknown>) | undefined>;
+
+/**
+ * The validator signs and writes; a coordinator only orchestrates. Until the validator's
+ * `signAndWriteRoot` lands the call is rejected by the receiver, and the root coordinator keeps
+ * its work and retries.
+ */
+function validatorSigner(binding: Fetcher): RootSigner {
+  const rpc = binding as unknown as Rpc;
+  return {
+    async signAndWriteRoot(request) {
+      const call = rpc.signAndWriteRoot;
+      if (!call) throw new PortError("not_wired", "the validator has no signAndWriteRoot entrypoint yet");
+      const ack = SignAndWriteRootResponse.parse(await call.call(binding, request));
+      return { sha256: ack.sha256, serial: ack.serial };
+    },
+  };
+}
+
+export function createCoordinatorDeps(env: Env): CoordinatorDeps {
+  const durableObjects = durableObjectsPort({ RootCoordinator: env.ROOT_COORDINATOR });
+  return {
+    d1: d1Port(env.DB),
+    signer: validatorSigner(env.VALIDATOR),
+    indexes: {
+      async rebuild() {
+        throw new PortError("not_wired", "building and signing a scope index lands with promotion");
+      },
+    },
+    root: {
+      async scopeChanged(change) {
+        await durableObjects.call("RootCoordinator", ROOT_COORDINATOR_NAME, "notifyScopeChange", [change]);
+      },
     },
   };
 }

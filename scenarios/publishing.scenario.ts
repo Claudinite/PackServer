@@ -149,3 +149,109 @@ scenario("IT-PUB-030 The upload credential is bound, single-use, size-capped and
   const over = accepted(await bigRun.exchange("@big/pack", "9.1.0"));
   await expect(over.presign(MiB)).toBeRefused("quota");
 });
+
+scenario("IT-PUB-017 Versions are immutable; re-publishing a version is an error", async (world) => {
+  const z = await world.publishers.create({ scope: "z" });
+  const original = world.archive("gcp", { version: "1.0.0" });
+  const other = world.archive("gcp", { version: "1.0.0", files: { "README.md": "# different bytes\n" } });
+  expect(other.sha256).not.toBe(original.sha256);
+
+  const first = await z.publish(original).as("@z/tool@1.0.0");
+  const staged = await world.ci.staging.objects("z");
+  expect(staged).toHaveLength(1);
+
+  await expect(z.publish(other).as("@z/tool@1.0.0")).toBeRefused("exists");
+  expect(await world.ci.staging.objects("z")).toEqual(staged);
+
+  expect(await first.sha256()).toBe(original.sha256);
+  expect(await first.sha256()).toBe(original.sha256);
+});
+
+scenario("IT-PUB-026 20 versions per pack a day; 5 new packs per scope a day, 20 for a Verified Publisher", async (world) => {
+  const versions = await world.publishers.create({ scope: "vers" });
+  const plain = await world.publishers.create({ scope: "plain" });
+  const verified = await world.publishers.create({ scope: "vp", verified: true });
+  const racer = await world.publishers.create({ scope: "race" });
+
+  const day = await Promise.all([
+    (async () => {
+      for (let n = 0; n < 20; n++) await versions.publish(world.archive("gcp", { version: `1.0.${n}` })).as(`@vers/tool@1.0.${n}`);
+    })(),
+    (async () => {
+      for (let n = 1; n <= 5; n++) await plain.publish(world.archive("gcp", { version: `1.0.${n}` })).as(`@plain/pack${n}@1.0.0`);
+    })(),
+    (async () => {
+      for (let n = 1; n <= 20; n++) await verified.publish(world.archive("gcp", { version: `1.0.${n}` })).as(`@vp/pack${n}@1.0.0`);
+    })(),
+  ]);
+  expect(day).toHaveLength(3);
+  await expect(versions.publish(world.archive("gcp", { version: "1.0.20" })).as("@vers/tool@1.0.20")).toBeRefusedSaying("a day");
+  await expect(plain.publish(world.archive("gcp")).as("@plain/pack6@1.0.0")).toBeRefusedSaying("a day");
+  await expect(verified.publish(world.archive("gcp")).as("@vp/pack21@1.0.0")).toBeRefusedSaying("a day");
+
+  await world.clock.advance("24h1m");
+  await versions.publish(world.archive("gcp", { version: "1.0.20" })).as("@vers/tool@1.0.20");
+  await plain.publish(world.archive("gcp")).as("@plain/pack6@1.0.0");
+  await verified.publish(world.archive("gcp")).as("@vp/pack21@1.0.0");
+
+  const attempts = await Promise.allSettled(
+    Array.from({ length: 10 }, (_, n) => racer.publish(world.archive("gcp", { version: `2.0.${n}` })).as(`@race/pack${n}@1.0.0`)),
+  );
+  expect(attempts.filter((a) => a.status === "fulfilled")).toHaveLength(5);
+  for (const refused of attempts.filter((a) => a.status === "rejected")) await expect(Promise.reject((refused as PromiseRejectedResult).reason)).toBeRefused("quota");
+});
+
+scenario("IT-PUB-027 Concurrent publishes of one version yield one version and one new-pack count", async (world) => {
+  const z = await world.publishers.create({ scope: "z" });
+  const y = await world.publishers.create({ scope: "y" });
+  const outcomes = (attempts: PromiseSettledResult<unknown>[]) => ({
+    won: attempts.filter((a) => a.status === "fulfilled").length,
+    lost: attempts.filter((a) => a.status === "rejected") as PromiseRejectedResult[],
+  });
+
+  for (let n = 1; n <= 4; n++) await z.publish(world.archive("gcp", { version: `0.0.${n}` })).as(`@z/old${n}@1.0.0`);
+  const racing = outcomes(
+    await Promise.allSettled(Array.from({ length: 5 }, (_, n) => z.publish(world.archive("gcp", { files: { "README.md": `# racer ${n}\n` } })).as("@z/new@1.0.0"))),
+  );
+  expect(racing.won).toBe(1);
+  for (const lost of racing.lost) await expect(Promise.reject(lost.reason)).toBeRefused("exists");
+  const counted = await world.driver.publishStorage!.sql("select count(*) as n from validation_runs where pack_name = 'new' and counted_new_pack = 1");
+  expect(counted[0]!.n).toBe(1);
+  await expect(z.publish(world.archive("gcp")).as("@z/sixth@1.0.0")).toBeRefused("quota");
+
+  await y.publish(world.archive("gcp")).as("@y/lib@1.0.0");
+  const attempts = await Promise.allSettled(
+    [1, 1, 1, 2, 2].map((minor, n) => y.publish(world.archive("gcp", { files: { "README.md": `# racer ${n}\n` } })).as(`@y/lib@1.${minor}.0`)),
+  );
+  const settled = outcomes(attempts);
+  expect(settled.won).toBe(2);
+  for (const lost of settled.lost) await expect(Promise.reject(lost.reason)).toBeRefused("exists");
+  await y.publish(world.archive("gcp")).as("@y/lib@1.3.0");
+});
+
+scenario("IT-VAL-002 Hash mismatch, oversize or non-zstd fail before any sandbox starts", async (world) => {
+  const v = await world.publishers.create({ scope: "v" });
+  const valid = world.archive("gcp");
+
+  await expect(v.publish(world.archive("gcp", { padTo: 3 * MiB + 1 })).as("@v/big@1.0.0")).toBeRefused("quota");
+  expect(await world.ci.staging.objects("v")).toEqual([]);
+
+  const mismatch = await v.publish(valid).as("@v/lie@1.0.0", { declaredSha256: "0".repeat(64) });
+  expect(await mismatch.run.verdict()).toBe("fail");
+  expect(await mismatch.run.reason()).toBe("integrity.sha256_mismatch");
+
+  const gzip = await v.publish(world.archive("gcp", { format: "gzip" })).as("@v/gz@1.0.0");
+  expect(await gzip.run.verdict()).toBe("fail");
+  expect(await gzip.run.reason()).toBe("integrity.not_zstd");
+
+  for (const run of [mismatch.run, gzip.run]) {
+    const steps = await run.milestones();
+    expect(steps.map((m) => `${m.step}:${m.outcome}`)).toEqual(["admission:ok", "integrity:fail"]);
+  }
+  expect((await world.recorder.invocations()).filter((i) => /sandbox/i.test(i.target))).toEqual([]);
+
+  const exact = await v.publish(world.archive("gcp", { padTo: 3 * MiB })).as("@v/exact@1.0.0");
+  const steps = await exact.run.milestones();
+  expect(steps.map((m) => `${m.step}:${m.outcome}`)).toEqual(["admission:ok", "integrity:ok"]);
+  expect(await exact.run.reason()).toBeNull();
+});
