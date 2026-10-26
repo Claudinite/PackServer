@@ -4,6 +4,7 @@ import type { SandboxAReport, SandboxBReport } from "@packserver/ports";
 import { FakeGithubOidc } from "./github-oidc";
 import { FakeGitHubLogin } from "./github-login";
 import { FakeGithubApp } from "./github-app";
+import { mailHandler } from "./mail";
 import { Net } from "./net";
 import { publishTestConfig } from "./publish-config";
 import { FakeStagingS3, type StagingBucket } from "./staging-s3";
@@ -70,6 +71,7 @@ export class WorldFakes {
       if (booted.includes(name)) this.workers[key as keyof FakeWorkers] = new FakeWorkerClient(server, name);
     }
     this.net.use((request) => turnstileHandler(this.ports.turnstile)(request));
+    this.net.use((request) => mailHandler(this.ports.mail)(request));
     const publish = publishTestConfig();
     if (publish) {
       const now = () => (this.workers.clock ? this.workers.clock.call<number>("now") : Promise.resolve(Date.now()));

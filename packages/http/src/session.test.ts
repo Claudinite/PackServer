@@ -1,16 +1,16 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
-import { createSession, destroySession, type SessionPorts } from "@packserver/core/identity";
+import { createSession, destroySession, issueGrant, type SessionPorts } from "@packserver/core/identity";
 import { migratedD1 } from "@packserver/core/identity/testing";
 import { createFakePorts } from "@packserver/ports/fakes";
 import {
-  ASSERTION_STUB_HEADER, clearedSessionCookie, csrfTokenFor, requireAssertion, requireSession, resolveSession, sessionCaller, sessionCookie,
+  ASSERTION_HEADER, clearedSessionCookie, csrfTokenFor, requireAssertion, requireMfa, requireSession, resolveSession, sessionCaller, sessionCookie,
   sessionCsrf, SESSION_COOKIE, type SessionVariables,
 } from "./index";
 
 const ORIGIN = "https://registry.example";
 
-async function setup(environment = "test") {
+async function setup() {
   const fakes = createFakePorts();
   const { d1, db } = migratedD1();
   for (const id of ["u1", "u2"]) db.exec(`insert into users (id, created_at) values ('${id}', '2026-10-22T00:00:00.000Z')`);
@@ -20,7 +20,9 @@ async function setup(environment = "test") {
   app.get("/open", (c) => c.text(c.get("session") ? "signed-in" : "anonymous"));
   app.get("/private", requireSession(), (c) => c.text("private"));
   app.post("/form", sessionCsrf(() => ORIGIN), (c) => c.text(`caller:${sessionCaller(c)}`));
-  app.post("/sensitive", requireAssertion("token.mint", { ports: () => ports, environment: () => environment }), (c) => c.text("done"));
+  app.post("/sensitive", requireAssertion("token.mint", { ports: () => ports }), (c) => c.text(`done:${c.get("assertion")?.user_id}`));
+  app.post("/targeted", requireAssertion("token.mint", { ports: () => ports, target: (c) => c.req.query("pack") ?? "" }), (c) => c.text("done"));
+  app.post("/publisher", requireMfa({ ports: () => ports }), (c) => c.text("publisher"));
   const live = await createSession(ports, { user_id: "u1", device: { label: "Firefox on Linux", country: "NO" } });
   const other = await createSession(ports, { user_id: "u2", device: { label: "Firefox on Linux", country: "NO" } });
   const cookie = (sid: string) => ({ cookie: `${SESSION_COOKIE}=${sid}` });
@@ -85,32 +87,75 @@ describe("IT-ABUSE-007 CSRF bound to the session", () => {
   });
 });
 
-describe("the assertion stand-in", () => {
-  it("asks for step-up unless the request names the action", async () => {
+describe("the per-action assertion check", () => {
+  const ACTION = "token.mint";
+  const grant = async (h: Awaited<ReturnType<typeof setup>>, over: Partial<{ sid_hash: string; action: string; target: string; user_id: string }> = {}) =>
+    issueGrant(h.ports, { user_id: "u1", sid_hash: h.live.sid_hash, action: ACTION, target: "", ...over }, { method: "passkey", credential_id: null });
+  const call = (h: Awaited<ReturnType<typeof setup>>, sid: string, token?: string, path = "/sensitive") =>
+    h.app(path, { method: "POST", headers: { ...h.cookie(sid), ...(token ? { [ASSERTION_HEADER]: token } : {}) } });
+
+  it("asks for step-up unless the request carries an assertion, and for sign-in unless it has a session", async () => {
     const h = await setup();
-    const call = (extra: Record<string, string>) => h.app("/sensitive", { method: "POST", headers: { ...h.cookie(h.live.sid), ...extra } });
-    expect(await (await call({})).json()).toMatchObject({ reason: "step-up" });
-    expect((await call({ [ASSERTION_STUB_HEADER]: "yank" })).status).toBe(403);
-    expect((await call({ [ASSERTION_STUB_HEADER]: "token.mint" })).status).toBe(200);
+    expect(await (await call(h, h.live.sid)).json()).toMatchObject({ reason: "step-up" });
+    expect(await (await call(h, h.live.sid, "not-a-grant")).json()).toMatchObject({ reason: "step-up" });
     expect((await h.app("/sensitive", { method: "POST" })).status).toBe(401);
   });
 
-  it("fails closed outside the test environment, whatever the request carries", async () => {
-    for (const environment of ["production", "staging", ""]) {
-      const h = await setup(environment);
-      const res = await h.app("/sensitive", { method: "POST", headers: { ...h.cookie(h.live.sid), [ASSERTION_STUB_HEADER]: "token.mint" } });
-      expect(res.status, environment).toBe(403);
-      expect(await res.json(), environment).toMatchObject({ reason: "step-up" });
-    }
+  it("accepts an assertion made by this session for this action once, and leaves the grant on the context", async () => {
+    const h = await setup();
+    const token = await grant(h);
+    const first = await call(h, h.live.sid, token);
+    expect(first.status).toBe(200);
+    expect(await first.text()).toBe("done:u1");
+    expect(await (await call(h, h.live.sid, token)).json()).toMatchObject({ reason: "step-up" });
+  });
+
+  it("refuses an assertion made for another action, target or session without spending it", async () => {
+    const h = await setup();
+    const wrongAction = await grant(h, { action: "yank" });
+    const wrongTarget = await grant(h, { target: "pack-b" });
+    const elsewhere = await grant(h, { sid_hash: h.other.sid_hash });
+    for (const token of [wrongAction, wrongTarget, elsewhere]) expect((await call(h, h.live.sid, token)).status).toBe(403);
+    expect((await call(h, h.other.sid, elsewhere)).status).toBe(403);
+  });
+
+  it("binds the target the route names", async () => {
+    const h = await setup();
+    const mine = await grant(h, { target: "pack-a" });
+    expect((await call(h, h.live.sid, mine, "/targeted?pack=pack-b")).status).toBe(403);
+    expect((await call(h, h.live.sid, mine, "/targeted?pack=pack-a")).status).toBe(200);
   });
 
   it("refuses a signed-out id while a store replica still serves it", async () => {
     const h = await setup();
-    const call = () => h.app("/sensitive", { method: "POST", headers: { ...h.cookie(h.live.sid), [ASSERTION_STUB_HEADER]: "token.mint" } });
-    expect((await call()).status).toBe(200);
+    const token = await grant(h);
     const record = await h.fakes.kv.SESSIONS_KV!.get(`sess:${h.live.sid_hash}`);
     await destroySession(h.ports, h.live);
     await h.fakes.kv.SESSIONS_KV!.put(`sess:${h.live.sid_hash}`, record!, { ttl_seconds: 600 });
-    expect((await call()).status).toBe(401);
+    expect((await call(h, h.live.sid, token)).status).toBe(401);
+  });
+
+  it("refuses everything while step-up is locked", async () => {
+    const h = await setup();
+    const token = await grant(h);
+    await h.ports.d1.query("insert into assertion_failures (user_id, failures, window_started_at, locked_until) values ('u1', 5, ?, ?)", [
+      new Date(h.fakes.clock.now()).toISOString(), new Date(h.fakes.clock.now() + 900_000).toISOString(),
+    ]);
+    const res = await call(h, h.live.sid, token);
+    expect(res.status).toBe(429);
+    expect(res.headers.get("retry-after")).toBe("900");
+  });
+});
+
+describe("the MFA gate", () => {
+  it("sends an account without a passkey to enrolment and lets one with a passkey through", async () => {
+    const h = await setup();
+    expect(await (await h.app("/publisher", { method: "POST", headers: h.cookie(h.live.sid) })).json()).toMatchObject({ reason: "mfa-required" });
+    expect((await h.app("/publisher", { method: "POST" })).status).toBe(401);
+    await h.ports.d1.query(
+      "insert into credentials (id, user_id, credential_id, public_key, sign_count, created_at) values ('c1', 'u1', 'cred', 'key', 0, '2026-10-22T00:00:00.000Z')",
+    );
+    expect((await h.app("/publisher", { method: "POST", headers: h.cookie(h.live.sid) })).status).toBe(200);
+    expect((await h.app("/publisher", { method: "POST", headers: h.cookie(h.other.sid) })).status).toBe(403);
   });
 });

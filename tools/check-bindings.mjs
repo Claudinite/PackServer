@@ -14,7 +14,7 @@ const problem = (where, message) => problems.push(`${where}: ${message}`);
 
 const BINDING_KEYS = [
   "d1_databases", "kv_namespaces", "r2_buckets", "queues", "workflows", "durable_objects", "containers", "services",
-  "vectorize", "ai", "analytics_engine_datasets", "ratelimits", "secrets_store_secrets", "version_metadata",
+  "vectorize", "ai", "analytics_engine_datasets", "ratelimits", "secrets_store_secrets", "version_metadata", "send_email",
 ];
 const OTHER_KEYS = ["name", "workers_dev", "preview_urls", "routes", "triggers", "vars", "exports"];
 const ALLOWED_KEYS = new Set([...BINDING_KEYS, ...OTHER_KEYS]);
@@ -28,6 +28,9 @@ const ENV_IMPORT = /import\s*\{[^}]*\benv\b[^}]*\}\s*from\s*["']cloudflare:worke
 
 // The GitHub App's OAuth client id and secret: web finishes GitHub sign-in with them. The App's private key and webhook secret stay with the github Worker.
 const WEB_SIGN_IN_SECRETS = ["GITHUB_APP_CLIENT_ID", "GITHUB_APP_CLIENT_SECRET"];
+
+// Who sends mail: web alone, through Email Service in the deployed environments. env.test sends over fetch to the world's mail fake.
+const EMAIL_SENDERS = { web: ["EMAIL"] };
 
 const suffix = (env, name, sep = "-") => (env === "production" ? name : `${name}${sep}${env}`);
 const workerName = suffix;
@@ -105,6 +108,7 @@ function checkEnv(worker, t, env, block) {
   sameSet(where, "AI bindings", block.ai ? [block.ai.binding] : [], want.ai);
   sameSet(where, "Analytics Engine datasets", pairs((block.analytics_engine_datasets ?? []).map((a) => [a.binding, a.dataset])), pairs(want.analytics));
   sameSet(where, "rate limits", (block.ratelimits ?? []).map((r) => r.name), want.ratelimits);
+  sameSet(where, "send_email bindings", (block.send_email ?? []).map((e) => e.name), env === "test" ? [] : (EMAIL_SENDERS[worker] ?? []));
 
   if (env === "test") {
     sameSet(where, "secrets given as test vars", want.secrets.filter((s) => block.vars?.[s] !== undefined), want.secrets);

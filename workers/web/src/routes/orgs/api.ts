@@ -21,10 +21,14 @@ function peopleRefusal(result: Extract<PeopleResult, { ok: false }>): Response {
   return refusal("exists", { message: result.message });
 }
 
+/** What an assertion for these verbs is bound to: the organisation, or the person within it. */
+const orgOf = (c: Context<WebEnv>): string => c.req.param("org") ?? "";
+const personOf = (c: Context<WebEnv>): string => `${orgOf(c)}/${c.req.param("handle")}`;
+
 /** A scope's people. A personal scope answers like an organisation, except that it refuses to gain anyone. */
 const orgStanding = (c: Context<WebEnv>, need: "owner" | "maintainer") => standing(c, { scope: c.req.param("org") ?? "", need, resource: "public" });
 
-routes.post("/orgs", sensitive("org.create"), async (c) => {
+routes.post("/orgs", sensitive("org.create", async (c) => text(((await c.req.raw.clone().json().catch(() => null)) as { name?: unknown } | null)?.name) ?? ""), async (c) => {
   const name = text((await jsonBody(c)).name);
   if (!name) return badRequest("name: name the organisation.");
   const result = await createOrg(scopePorts(c), c.get("session")!.record.user_id, name);
@@ -39,7 +43,7 @@ routes.get("/orgs/:org/people", requireSession(), async (c) => {
   return ok(c, { org: who.scope.name, you: who.role, ...(await listPeople(c.get("runtime").ports.d1, who.scope.id)) });
 });
 
-routes.post("/orgs/:org/people", sensitive("org.invite"), async (c) => {
+routes.post("/orgs/:org/people", sensitive("org.invite", orgOf), async (c) => {
   const who = await orgStanding(c, "owner");
   if (who instanceof Response) return who;
   const body = await jsonBody(c);
@@ -53,7 +57,7 @@ routes.post("/orgs/:org/people", sensitive("org.invite"), async (c) => {
   return result.ok ? ok(c, { outcome: result.outcome }, 201) : peopleRefusal(result);
 });
 
-routes.post("/orgs/:org/people/:handle/role", sensitive("org.set-role"), async (c) => {
+routes.post("/orgs/:org/people/:handle/role", sensitive("org.set-role", personOf), async (c) => {
   const who = await orgStanding(c, "owner");
   if (who instanceof Response) return who;
   const role = (await jsonBody(c)).role;
@@ -62,14 +66,14 @@ routes.post("/orgs/:org/people/:handle/role", sensitive("org.set-role"), async (
   return result.ok ? ok(c, { outcome: result.outcome }) : peopleRefusal(result);
 });
 
-routes.delete("/orgs/:org/people/:handle", sensitive("org.remove"), async (c) => {
+routes.delete("/orgs/:org/people/:handle", sensitive("org.remove", personOf), async (c) => {
   const who = await orgStanding(c, "owner");
   if (who instanceof Response) return who;
   const result = await removePerson(scopePorts(c), who.scope, c.req.param("handle"));
   return result.ok ? ok(c, { outcome: result.outcome }) : peopleRefusal(result);
 });
 
-routes.delete("/orgs/:org/invitations/:id", sensitive("org.remove"), async (c) => {
+routes.delete("/orgs/:org/invitations/:id", sensitive("org.remove", (c) => `${orgOf(c)}/invitations/${c.req.param("id")}`), async (c) => {
   const who = await orgStanding(c, "owner");
   if (who instanceof Response) return who;
   const result = await removeInvitation(c.get("runtime").ports.d1, who.scope, c.req.param("id"));
@@ -77,7 +81,7 @@ routes.delete("/orgs/:org/invitations/:id", sensitive("org.remove"), async (c) =
 });
 
 /** Refused while the organisation owns a pack; the name is retired for good (REQ-SCOPE-012, REQ-SCOPE-013). */
-routes.delete("/orgs/:org", sensitive("org.delete"), async (c) => {
+routes.delete("/orgs/:org", sensitive("org.delete", orgOf), async (c) => {
   const who = await orgStanding(c, "owner");
   if (who instanceof Response) return who;
   const result = await deleteOrg(scopePorts(c), who.scope);
