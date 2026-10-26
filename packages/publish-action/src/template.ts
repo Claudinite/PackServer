@@ -6,8 +6,6 @@ export const ACTION_REPOSITORY = "claudinite/publish-pack";
 
 // Third-party actions the template uses, pinned by commit SHA.
 const CHECKOUT = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1";
-const UPLOAD = "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2";
-const DOWNLOAD = "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2";
 
 export interface TemplateInput {
   /** `@scope/name`. */
@@ -20,8 +18,8 @@ export interface TemplateInput {
   cnSha256: string;
   /** The GitHub environment named in the trusted-publisher registration, when it has one. */
   environment?: string;
-  /** Pack tasks (build, test) that run in the job without a token. */
-  buildCommand?: string;
+  /** The pack's tests, run in the job that has no token; the publish job waits for it. */
+  testCommand?: string;
 }
 
 const PACK = /^@[a-z0-9._-]+\/[a-z0-9._-]+$/;
@@ -33,28 +31,31 @@ function require(ok: boolean, what: string): void {
   if (!ok) throw new Error(`template input ${what} is not valid`);
 }
 
-/** The workflow the dashboard hands a publisher; every interpolated value is validated because the result is pasted into a repository. */
+const q = (value: string) => JSON.stringify(value);
+
+/** The workflow the dashboard hands a publisher; every interpolated value is validated and quoted because the result is pasted into a repository. */
 export function publishWorkflowTemplate(input: TemplateInput): string {
   require(PACK.test(input.pack), "pack");
-  require(PATH.test(input.path) && !input.path.split("/").includes(".."), "path");
+  require(PATH.test(input.path) && !input.path.startsWith("/") && !input.path.split("/").includes(".."), "path (relative, inside the repository)");
   require(/^[0-9a-f]{40}$/.test(input.actionSha), "actionSha (a full commit SHA)");
   require(VERSION.test(input.cnVersion), "cnVersion");
   require(/^[0-9a-f]{64}$/.test(input.cnSha256), "cnSha256");
   require(input.environment === undefined || ENVIRONMENT.test(input.environment), "environment");
-  require(input.buildCommand === undefined || !/[\r\n]/.test(input.buildCommand), "buildCommand (one line)");
+  require(input.testCommand === undefined || (!/[\r\n]/.test(input.testCommand) && !input.testCommand.includes("${{")), "testCommand (one line, no expressions)");
 
   const name = input.pack.split("/")[1]!;
-  const build = input.buildCommand ? `      - name: Build\n        run: ${JSON.stringify(input.buildCommand)}\n` : "";
-  const environment = input.environment ? `    environment: ${input.environment}\n` : "";
+  const test = input.testCommand ? `      - name: Test\n        run: ${q(input.testCommand)}\n` : "";
+  const environment = input.environment ? `    environment: ${q(input.environment)}\n` : "";
   return `# Publishes ${input.pack} to the Claudinite registry when a tag ${name}/<version> is pushed.
-# The "${PACK_CODE_JOB}" job runs your pack's own code with no token and no secrets available. The "${OIDC_JOB}"
-# job holds the OIDC permission and runs none of it; the registry refuses a token from the "${PACK_CODE_JOB}" job.
-name: Publish ${name}
+# The "${PACK_CODE_JOB}" job runs your pack's own tests with no token and no secrets available. The "${OIDC_JOB}"
+# job holds the OIDC permission, runs none of your code, and starts only when "${PACK_CODE_JOB}" passed; the
+# registry refuses a token from the "${PACK_CODE_JOB}" job.
+name: ${q(`Publish ${name}`)}
 
 on:
   push:
     tags:
-      - "${name}/*"
+      - ${q(`${name}/*`)}
 
 permissions: {}
 
@@ -68,23 +69,17 @@ jobs:
       - uses: ${CHECKOUT}
         with:
           persist-credentials: false
-${build}      - uses: ${UPLOAD}
-        with:
-          name: pack
-          path: ${input.path}
-          include-hidden-files: true
-          if-no-files-found: error
-
+${test}
   ${OIDC_JOB}:
     needs: ${PACK_CODE_JOB}
     runs-on: ubuntu-24.04
 ${environment}    permissions:
+      contents: read
       id-token: write
     steps:
-      - uses: ${DOWNLOAD}
+      - uses: ${CHECKOUT}
         with:
-          name: pack
-          path: pack
+          persist-credentials: false
       - name: Read the version from the tag
         id: version
         env:
@@ -92,10 +87,10 @@ ${environment}    permissions:
         run: echo "value=\${TAG#${name}/}" >> "$GITHUB_OUTPUT"
       - uses: ${ACTION_REPOSITORY}@${input.actionSha}
         with:
-          pack: "${input.pack}"
+          pack: ${q(input.pack)}
           version: \${{ steps.version.outputs.value }}
-          path: pack
-          cn-version: "${input.cnVersion}"
-          cn-sha256: "${input.cnSha256}"
+          path: ${q(input.path)}
+          cn-version: ${q(input.cnVersion)}
+          cn-sha256: ${q(input.cnSha256)}
 `;
 }

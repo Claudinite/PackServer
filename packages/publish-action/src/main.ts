@@ -1,7 +1,8 @@
 import { appendFileSync } from "node:fs";
+import { OIDC_AUDIENCE } from "@packserver/core/publishing";
 import { defaultCnUrl, installCn, runVendor } from "./cn.ts";
 import { packDirectory } from "./pack.ts";
-import { publish, verdictFailsJob } from "./run.ts";
+import { publish, exitCodeFor } from "./run.ts";
 
 const input = (name: string, fallback?: string): string => {
   const value = process.env[`INPUT_${name.toUpperCase().replace(/-/g, "_")}`]?.trim() || fallback;
@@ -14,7 +15,7 @@ async function main(): Promise<void> {
   const cnVersion = input("cn-version");
   let cn: string | undefined;
   const outcome = await publish(
-    { pack: input("pack"), version: input("version"), registry: input("registry", "https://registry.claudinite.com") },
+    { pack: input("pack"), version: input("version"), registry: input("registry", `https://${OIDC_AUDIENCE}`) },
     {
       runner: process.env,
       fetch,
@@ -29,8 +30,12 @@ async function main(): Promise<void> {
   );
   const out = process.env.GITHUB_OUTPUT;
   if (out) appendFileSync(out, `run-id=${outcome.runId}\nverdict=${outcome.verdict}\nsha256=${outcome.sha256}\n`);
-  console.log(`verdict: ${outcome.verdict}${outcome.reason ? ` (${outcome.reason})` : ""}; the full report is in the dashboard`);
-  if (verdictFailsJob(outcome.verdict)) process.exitCode = 1;
+  console.log(
+    outcome.verdict === "queued"
+      ? `run ${outcome.runId} is queued by the registry and continues there; follow it in the dashboard`
+      : `verdict: ${outcome.verdict}${outcome.reason ? ` (${outcome.reason})` : ""}; the full report is in the dashboard`,
+  );
+  process.exitCode = exitCodeFor(outcome.verdict);
 }
 
 main().catch((error: unknown) => {

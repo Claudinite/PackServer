@@ -11,17 +11,17 @@ inputs:
     description: The pack directory.
     default: .
   cn-version:
-    description: The cn release that runs `cn vendor`.
+    description: The cn release that runs `cn vendor` (npm package @claudinite/cli-linux-x64).
     required: true
   cn-sha256:
-    description: SHA-256 of the cn binary at cn-version.
+    description: SHA-256 of that release's .tgz; it is checked before anything is extracted or run.
     required: true
   cn-url:
-    description: Where the cn binary is downloaded from; defaults to the release for cn-version.
+    description: Where the .tgz is downloaded from; defaults to the npm registry.
     default: ""
   registry:
-    description: The registry origin.
-    default: https://registry.claudinite.com
+    description: The registry origin; defaults to the production registry.
+    default: ""
 outputs:
   run-id:
     description: The validation run's id.

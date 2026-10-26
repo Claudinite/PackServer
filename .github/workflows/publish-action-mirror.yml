@@ -24,11 +24,12 @@ jobs:
     timeout-minutes: 10
     environment: publish-action-mirror
     env:
-      MIRROR_TOKEN: ${{ secrets.PUBLISH_PACK_MIRROR_TOKEN }}
       TAG: ${{ github.ref_name }}
     steps:
       # Handled outcome, not a failure: the token comes from the mirror repository's creation (T-012).
       - id: configured
+        env:
+          MIRROR_TOKEN: ${{ secrets.PUBLISH_PACK_MIRROR_TOKEN }}
         run: |
           if [ -n "$MIRROR_TOKEN" ]; then echo "yes=true" >> "$GITHUB_OUTPUT"; else echo "::notice::PUBLISH_PACK_MIRROR_TOKEN is not set; nothing to mirror"; fi
       - if: steps.configured.outputs.yes == 'true'
@@ -44,7 +45,10 @@ jobs:
           cache: pnpm
       - if: steps.configured.outputs.yes == 'true'
         run: pnpm install --frozen-lockfile && pnpm --filter @packserver/publish-action build
+      # The token is in the environment of this step alone, never of the install or the build.
       - if: steps.configured.outputs.yes == 'true'
+        env:
+          MIRROR_TOKEN: ${{ secrets.PUBLISH_PACK_MIRROR_TOKEN }}
         run: |
           set -euo pipefail
           version="${TAG#publish-action-}"
@@ -60,5 +64,4 @@ jobs:
           git add -A
           git commit -m "publish-pack ${version} from ${GITHUB_REPOSITORY}@${GITHUB_SHA}" || echo "::notice::the mirror already holds this build"
           git tag "$version"
-          git push origin HEAD:main
-          git push origin "refs/tags/${version}"
+          git push --atomic origin HEAD:main "refs/tags/${version}"
