@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "d618f189-cefa-4490-85e1-94260032622e",
-  "prevId": "977cdad8-21c9-4706-989e-9a6990c9b5a3",
+  "id": "fb734dcc-41a8-4547-8a94-cfbac015a84c",
+  "prevId": "1eee0a2b-0c06-49ae-80b2-e10832801e5a",
   "tables": {
     "credentials": {
       "name": "credentials",
@@ -927,6 +927,251 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
+    "domain_challenges": {
+      "name": "domain_challenges",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scope_id": {
+          "name": "scope_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "domain": {
+          "name": "domain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "token": {
+          "name": "token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pending'"
+        },
+        "method": {
+          "name": "method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "proven_at": {
+          "name": "proven_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_checked_at": {
+          "name": "last_checked_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "failed_since": {
+          "name": "failed_since",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "warned_at": {
+          "name": "warned_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "transferred_at": {
+          "name": "transferred_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "domain_challenges_one_holder": {
+          "name": "domain_challenges_one_holder",
+          "columns": [
+            "domain"
+          ],
+          "isUnique": true,
+          "where": "\"domain_challenges\".\"state\" = 'proven'"
+        },
+        "domain_challenges_one_pending": {
+          "name": "domain_challenges_one_pending",
+          "columns": [
+            "scope_id",
+            "domain"
+          ],
+          "isUnique": true,
+          "where": "\"domain_challenges\".\"state\" = 'pending'"
+        },
+        "domain_challenges_scope_idx": {
+          "name": "domain_challenges_scope_idx",
+          "columns": [
+            "scope_id",
+            "state"
+          ],
+          "isUnique": false
+        },
+        "domain_challenges_domain_idx": {
+          "name": "domain_challenges_domain_idx",
+          "columns": [
+            "domain",
+            "ended_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "domain_challenges_scope_id_scopes_id_fk": {
+          "name": "domain_challenges_scope_id_scopes_id_fk",
+          "tableFrom": "domain_challenges",
+          "tableTo": "scopes",
+          "columnsFrom": [
+            "scope_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "domain_challenges_state_check": {
+          "name": "domain_challenges_state_check",
+          "value": "\"domain_challenges\".\"state\" in ('pending', 'proven', 'lapsed', 'moved')"
+        },
+        "domain_challenges_method_check": {
+          "name": "domain_challenges_method_check",
+          "value": "\"domain_challenges\".\"method\" is null or \"domain_challenges\".\"method\" in ('txt', 'well-known')"
+        }
+      }
+    },
+    "github_org_proofs": {
+      "name": "github_org_proofs",
+      "columns": {
+        "scope_id": {
+          "name": "scope_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "org_login": {
+          "name": "org_login",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "method": {
+          "name": "method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "installation_id": {
+          "name": "installation_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "proven_at": {
+          "name": "proven_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "alerted_at": {
+          "name": "alerted_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "github_org_proofs_org_unique": {
+          "name": "github_org_proofs_org_unique",
+          "columns": [
+            "org_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "github_org_proofs_scope_id_scopes_id_fk": {
+          "name": "github_org_proofs_scope_id_scopes_id_fk",
+          "tableFrom": "github_org_proofs",
+          "tableTo": "scopes",
+          "columnsFrom": [
+            "scope_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "github_org_proofs_method_check": {
+          "name": "github_org_proofs_method_check",
+          "value": "\"github_org_proofs\".\"method\" in ('app', 'admin')"
+        }
+      }
+    },
     "pack_transfers": {
       "name": "pack_transfers",
       "columns": {
@@ -1089,6 +1334,123 @@
         "pack_transfers_state_check": {
           "name": "pack_transfers_state_check",
           "value": "\"pack_transfers\".\"state\" in ('offered', 'accepted', 'lapsed', 'void')"
+        }
+      }
+    },
+    "scope_disputes": {
+      "name": "scope_disputes",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scope_id": {
+          "name": "scope_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "claimant_scope_id": {
+          "name": "claimant_scope_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "domain": {
+          "name": "domain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'open'"
+        },
+        "held_scope": {
+          "name": "held_scope",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "resolved_at": {
+          "name": "resolved_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "scope_disputes_pair_unique": {
+          "name": "scope_disputes_pair_unique",
+          "columns": [
+            "scope_id",
+            "claimant_scope_id"
+          ],
+          "isUnique": true
+        },
+        "scope_disputes_scope_idx": {
+          "name": "scope_disputes_scope_idx",
+          "columns": [
+            "scope_id",
+            "state"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "scope_disputes_scope_id_scopes_id_fk": {
+          "name": "scope_disputes_scope_id_scopes_id_fk",
+          "tableFrom": "scope_disputes",
+          "tableTo": "scopes",
+          "columnsFrom": [
+            "scope_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "scope_disputes_claimant_scope_id_scopes_id_fk": {
+          "name": "scope_disputes_claimant_scope_id_scopes_id_fk",
+          "tableFrom": "scope_disputes",
+          "tableTo": "scopes",
+          "columnsFrom": [
+            "claimant_scope_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "scope_disputes_state_check": {
+          "name": "scope_disputes_state_check",
+          "value": "\"scope_disputes\".\"state\" in ('open', 'resolved')"
         }
       }
     },
@@ -1262,6 +1624,34 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "decided_by": {
+          "name": "decided_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "denial_reason": {
+          "name": "denial_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "renewable_at": {
+          "name": "renewable_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "basis": {
+          "name": "basis",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {
@@ -1272,6 +1662,14 @@
             "state"
           ],
           "isUnique": false
+        },
+        "vp_applications_one_pending": {
+          "name": "vp_applications_one_pending",
+          "columns": [
+            "scope_id"
+          ],
+          "isUnique": true,
+          "where": "\"vp_applications\".\"state\" = 'pending'"
         }
       },
       "foreignKeys": {
@@ -1294,6 +1692,19 @@
           "tableTo": "users",
           "columnsFrom": [
             "applied_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "vp_applications_decided_by_users_id_fk": {
+          "name": "vp_applications_decided_by_users_id_fk",
+          "tableFrom": "vp_applications",
+          "tableTo": "users",
+          "columnsFrom": [
+            "decided_by"
           ],
           "columnsTo": [
             "id"
@@ -2909,6 +3320,13 @@
         },
         "uninstalled_at": {
           "name": "uninstalled_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "inactive_since": {
+          "name": "inactive_since",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -5112,424 +5530,6 @@
             "repository"
           ],
           "name": "pack_declarations_scan_id_pack_repository_pk"
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "fetch_days": {
-      "name": "fetch_days",
-      "columns": {
-        "pack_id": {
-          "name": "pack_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "version": {
-          "name": "version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "day": {
-          "name": "day",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "caller": {
-          "name": "caller",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "weight": {
-          "name": "weight",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "fetch_days_day_idx": {
-          "name": "fetch_days_day_idx",
-          "columns": [
-            "day"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "fetch_days_pack_id_packs_id_fk": {
-          "name": "fetch_days_pack_id_packs_id_fk",
-          "tableFrom": "fetch_days",
-          "tableTo": "packs",
-          "columnsFrom": [
-            "pack_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "fetch_days_pack_id_version_day_caller_pk": {
-          "columns": [
-            "pack_id",
-            "version",
-            "day",
-            "caller"
-          ],
-          "name": "fetch_days_pack_id_version_day_caller_pk"
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "fetch_days_kind_check": {
-          "name": "fetch_days_kind_check",
-          "value": "\"fetch_days\".\"kind\" in ('public', 'private')"
-        },
-        "fetch_days_weight_check": {
-          "name": "fetch_days_weight_check",
-          "value": "\"fetch_days\".\"weight\" >= 1"
-        }
-      }
-    },
-    "hash_mismatch_cases": {
-      "name": "hash_mismatch_cases",
-      "columns": {
-        "pack_id": {
-          "name": "pack_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "version": {
-          "name": "version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "trigger": {
-          "name": "trigger",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "opened_at": {
-          "name": "opened_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "paged_at": {
-          "name": "paged_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "hash_mismatch_cases_pack_id_packs_id_fk": {
-          "name": "hash_mismatch_cases_pack_id_packs_id_fk",
-          "tableFrom": "hash_mismatch_cases",
-          "tableTo": "packs",
-          "columnsFrom": [
-            "pack_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "hash_mismatch_cases_pack_id_version_pk": {
-          "columns": [
-            "pack_id",
-            "version"
-          ],
-          "name": "hash_mismatch_cases_pack_id_version_pk"
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "hash_mismatch_cases_trigger_check": {
-          "name": "hash_mismatch_cases_trigger_check",
-          "value": "\"hash_mismatch_cases\".\"trigger\" in ('reports', 'server', 'review')"
-        }
-      }
-    },
-    "hash_mismatch_reports": {
-      "name": "hash_mismatch_reports",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "pack_id": {
-          "name": "pack_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "version": {
-          "name": "version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "reporter_id": {
-          "name": "reporter_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "expected": {
-          "name": "expected",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "observed": {
-          "name": "observed",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "reported_at": {
-          "name": "reported_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "hash_mismatch_reports_version_idx": {
-          "name": "hash_mismatch_reports_version_idx",
-          "columns": [
-            "pack_id",
-            "version",
-            "reported_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "hash_mismatch_reports_pack_id_packs_id_fk": {
-          "name": "hash_mismatch_reports_pack_id_packs_id_fk",
-          "tableFrom": "hash_mismatch_reports",
-          "tableTo": "packs",
-          "columnsFrom": [
-            "pack_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "hash_mismatch_reports_reporter_id_users_id_fk": {
-          "name": "hash_mismatch_reports_reporter_id_users_id_fk",
-          "tableFrom": "hash_mismatch_reports",
-          "tableTo": "users",
-          "columnsFrom": [
-            "reporter_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "hash_mismatch_reports_kind_check": {
-          "name": "hash_mismatch_reports_kind_check",
-          "value": "\"hash_mismatch_reports\".\"kind\" in ('hash', 'signature')"
-        }
-      }
-    },
-    "pack_fetch_stats": {
-      "name": "pack_fetch_stats",
-      "columns": {
-        "pack_id": {
-          "name": "pack_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "distinct_30d": {
-          "name": "distinct_30d",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "computed_at": {
-          "name": "computed_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "pack_fetch_stats_pack_id_packs_id_fk": {
-          "name": "pack_fetch_stats_pack_id_packs_id_fk",
-          "tableFrom": "pack_fetch_stats",
-          "tableTo": "packs",
-          "columnsFrom": [
-            "pack_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "rollup_files": {
-      "name": "rollup_files",
-      "columns": {
-        "job": {
-          "name": "job",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "object_key": {
-          "name": "object_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "processed_at": {
-          "name": "processed_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "rollup_files_job_object_key_pk": {
-          "columns": [
-            "job",
-            "object_key"
-          ],
-          "name": "rollup_files_job_object_key_pk"
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "rollup_runs": {
-      "name": "rollup_runs",
-      "columns": {
-        "job": {
-          "name": "job",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "hour": {
-          "name": "hour",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "capped": {
-          "name": "capped",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        },
-        "files": {
-          "name": "files",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "rows": {
-          "name": "rows",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "completed_at": {
-          "name": "completed_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "rollup_runs_job_hour_pk": {
-          "columns": [
-            "job",
-            "hour"
-          ],
-          "name": "rollup_runs_job_hour_pk"
         }
       },
       "uniqueConstraints": {},

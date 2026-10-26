@@ -14,18 +14,19 @@ export function d1GithubStore(d1: D1): GithubStore {
     },
     async recordInstallation(fact: Extract<GithubFact, { kind: "installation" }>, now) {
       await d1.query(
-        `insert into github_installations (installation_id, account_id, account_login, account_type, sender_login, repository_selection, status, installed_at, uninstalled_at, updated_at)
-         values (?, ?, ?, ?, ?, ?, 'active', ?, null, ?)
+        `insert into github_installations (installation_id, account_id, account_login, account_type, sender_login, repository_selection, status, installed_at, uninstalled_at, inactive_since, updated_at)
+         values (?, ?, ?, ?, ?, ?, 'active', ?, null, null, ?)
          on conflict (installation_id) do update set account_id = excluded.account_id, account_login = excluded.account_login,
            account_type = excluded.account_type, sender_login = excluded.sender_login, repository_selection = excluded.repository_selection,
-           status = 'active', installed_at = excluded.installed_at, uninstalled_at = null, updated_at = excluded.updated_at`,
+           status = 'active', installed_at = excluded.installed_at, uninstalled_at = null, inactive_since = null, updated_at = excluded.updated_at`,
         [fact.installationId, fact.account.id, fact.account.login, fact.account.type, fact.senderLogin, fact.repositorySelection, now, now],
       );
     },
     async setInstallationStatus(installationId, status, now) {
       await d1.query(
-        "update github_installations set status = ?, uninstalled_at = case when ? = 'deleted' then ? else uninstalled_at end, updated_at = ? where installation_id = ?",
-        [status, status, now, now, installationId],
+        `update github_installations set status = ?, uninstalled_at = case when ? = 'deleted' then ? else uninstalled_at end,
+         inactive_since = case when ? = 'active' then null else coalesce(inactive_since, ?) end, updated_at = ? where installation_id = ?`,
+        [status, status, now, status, now, now, installationId],
       );
     },
     async setRepositorySelection(installationId, selection, now) {

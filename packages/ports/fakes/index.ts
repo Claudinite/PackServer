@@ -6,7 +6,7 @@ import {
 } from "./core";
 import {
   FakeAccessIdentity, FakeDns, FakeEmbedder, FakeGitHub, FakeMail, FakeOidcVerifier, FakeProseScreen, FakeSandbox,
-  FakeTurnstile, FakeVectorIndex,
+  FakeTurnstile, FakeVectorIndex, FakeWellKnown,
 } from "./external";
 
 export * from "./core";
@@ -14,7 +14,7 @@ export * from "./external";
 
 type Fakes = {
   clock: FakeClock; rng: FakeRng; github: FakeGitHub; oidc: FakeOidcVerifier; vectors: FakeVectorIndex;
-  embedder: FakeEmbedder; sandbox: FakeSandbox; proseScreen: FakeProseScreen; mail: FakeMail; dns: FakeDns;
+  embedder: FakeEmbedder; sandbox: FakeSandbox; proseScreen: FakeProseScreen; mail: FakeMail; dns: FakeDns; wellKnown: FakeWellKnown;
   turnstile: FakeTurnstile; access: FakeAccessIdentity; stats: FakeStats; telemetry: FakeTelemetryConfig; cache: FakeCache; uploads: FakeUploads;
   audit: FakeAuditSink; transparency: FakeTransparency; d1: FakeD1; durableObjects: FakeDurableObjects;
 };
@@ -56,6 +56,7 @@ export function createFakePorts(options: FakePortsOptions = {}): FakePorts {
     proseScreen: new FakeProseScreen(),
     mail: new FakeMail(),
     dns: new FakeDns(),
+    wellKnown: new FakeWellKnown(),
     turnstile: new FakeTurnstile(),
     access: new FakeAccessIdentity(),
     stats: new FakeStats(),

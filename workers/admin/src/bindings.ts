@@ -2,8 +2,8 @@ import { analyticsPrivateDownloads, type PrivateDownloads } from "@packserver/co
 import { analyticsAppendedPoints, ecdsaSigner, rekorTransparency, s3AuditBucket, type AppendedPoints, type AuditBucket } from "@packserver/core/audit";
 import { analyticsStats, createIsolateTelemetry } from "@packserver/http";
 import {
-  accessPort, clockFrom, cryptoRng, d1Port, kvPort, queuePort, r2Port, r2ReadPort, readSecret, systemClock, workerRuntime, workflowPort,
-  type WorkerRuntime,
+  accessPort, clockFrom, cryptoRng, d1Port, dohDns, kvPort, mailPort, queuePort, r2Port, r2ReadPort, readSecret, systemClock, wellKnownPort, workerRuntime, workflowPort,
+  type SendEmailBinding, type WorkerRuntime,
 } from "@packserver/ports/cloudflare";
 import type { Ports, R2, R2Read, Transparency } from "@packserver/ports";
 
@@ -15,6 +15,13 @@ export interface Env {
   VALIDATION_REPORTS: R2Bucket;
   OPS_BUCKET: R2Bucket;
   AUDIT_QUEUE: Queue;
+  REINDEX_QUEUE: Queue;
+  /** Email Service; absent under `env.test`, which posts to the world's mail fake. */
+  EMAIL?: SendEmailBinding;
+  /** The sender address on notices; unused under `env.test`. */
+  MAIL_FROM?: string;
+  /** The origins the registry's pages are served from, first the public one; notices link to it. */
+  SITE_ORIGINS: string;
   VALIDATE_PACK: Workflow;
   ACCESS?: Fetcher;
   /** The test world's clock, bound only under `env.test`. */
@@ -43,7 +50,7 @@ export interface Env {
 }
 
 /** The admin Worker writes no public or private bucket; reports and `ops` are read-only here. */
-export type AdminPorts = Pick<Ports, "clock" | "rng" | "d1" | "stats" | "queues" | "workflows" | "access" | "telemetry" | "kv" | "transparency"> & {
+export type AdminPorts = Pick<Ports, "clock" | "rng" | "d1" | "stats" | "queues" | "workflows" | "access" | "telemetry" | "kv" | "transparency" | "mail" | "dns" | "wellKnown"> & {
   r2: Readonly<{ PACKS_STAGING: R2; VALIDATION_REPORTS: R2Read; OPS_BUCKET: R2Read }>;
   /** The audit chain's bucket over the S3 API with an object-only token; not an R2 binding. */
   auditBucket: AuditBucket;
@@ -94,13 +101,20 @@ function downloadsReader(env: Env): PrivateDownloads | undefined {
   return analyticsPrivateDownloads({ accountId, dataset: env.DOWNLOADS_DATASET, token: () => readSecret(env.ANALYTICS_READ_TOKEN) });
 }
 
-export type AdminRuntime = WorkerRuntime<AdminPorts>;
+export type AdminRuntime = WorkerRuntime<AdminPorts> & { config?: { siteOrigin: string } };
+
+/** Signals leave as log lines, the same channel every Worker's other events take. */
+const logTelemetry = {
+  signal: (name: string, fields: Record<string, string | number>) => console.log(JSON.stringify({ signal: name, ...fields })),
+  ticket: (kind: string, fields: Record<string, string | number>) => console.log(JSON.stringify({ ticket: kind, ...fields })),
+};
+const MAIL_FAILURE_THRESHOLD = 2;
 
 const isolateTelemetry = createIsolateTelemetry();
 
 export function createRuntime(env: Env): AdminRuntime {
   const telemetryKv = kvPort(env.TELEMETRY_KV);
-  return workerRuntime("admin", env, {
+  const base = workerRuntime("admin", env, {
     clock: clockFrom(env.ENVIRONMENT, env.CLOCK),
     rng: cryptoRng,
     d1: d1Port(env.DB),
@@ -115,7 +129,10 @@ export function createRuntime(env: Env): AdminRuntime {
       VALIDATION_REPORTS: r2ReadPort(env.VALIDATION_REPORTS),
       OPS_BUCKET: r2ReadPort(env.OPS_BUCKET),
     },
-    queues: { AUDIT_QUEUE: queuePort(env.AUDIT_QUEUE) },
+    queues: { AUDIT_QUEUE: queuePort(env.AUDIT_QUEUE), REINDEX_QUEUE: queuePort(env.REINDEX_QUEUE) },
+    mail: mailPort(env.ENVIRONMENT, env.EMAIL, { from: env.MAIL_FROM, telemetry: logTelemetry as never, failureThreshold: MAIL_FAILURE_THRESHOLD }),
+    dns: dohDns(),
+    wellKnown: wellKnownPort(),
     workflows: { VALIDATE_PACK: workflowPort(env.VALIDATE_PACK) },
     access: accessPort(env.ENVIRONMENT, env.ACCESS),
     auditBucket: lazyAuditBucket(env),
@@ -123,4 +140,12 @@ export function createRuntime(env: Env): AdminRuntime {
     ...optional("appendedPoints", pointsReader(env)),
     ...optional("privateDownloads", downloadsReader(env)),
   });
+  return { ...base, config: { siteOrigin: siteOriginOf(env.SITE_ORIGINS) } };
+}
+
+/** The first origin is the public one. */
+function siteOriginOf(value: string): string {
+  const first = value.split(",").map((o) => o.trim()).find(Boolean);
+  if (!first) throw new Error("SITE_ORIGINS names no origin for this environment");
+  return first;
 }

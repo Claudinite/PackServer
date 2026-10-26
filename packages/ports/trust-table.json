@@ -7,7 +7,7 @@
         "PACKS_PUBLIC": { "bucket": "packs-public", "access": "read" },
         "PACKS_PRIVATE": { "bucket": "packs-private", "access": "read" }
       },
-      "queues": { "AUDIT_QUEUE": "audit" },
+      "queues": { "AUDIT_QUEUE": "audit", "REINDEX_QUEUE": "reindex" },
       "queue_consumers": [],
       "workflows": {},
       "durable_objects": {},
@@ -117,7 +117,7 @@
         "VALIDATION_REPORTS": { "bucket": "validation-reports", "access": "read" },
         "OPS_BUCKET": { "bucket": "ops", "access": "read" }
       },
-      "queues": { "AUDIT_QUEUE": "audit" },
+      "queues": { "AUDIT_QUEUE": "audit", "REINDEX_QUEUE": "reindex" },
       "queue_consumers": ["audit"],
       "workflows": { "VALIDATE_PACK": "validate-pack" },
       "durable_objects": {},

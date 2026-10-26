@@ -45,7 +45,7 @@ scenario(
 );
 
 scenario(
-  "IT-SCOPE-008 GitHub org proof by App install or org-admin sign-in (webhook half)",
+  "IT-SCOPE-008 GitHub org proof by App install or org-admin sign-in",
   async (world) => {
     const g = world.github;
     const acme = await g.installApp("acme", { by: "owner-g", installationId: 201 });
@@ -57,13 +57,40 @@ scenario(
 
     expect(await g.webhook("installation_repositories", { installation: acme.id })).toMatchObject({ result: "applied" });
     expect(await g.installation(acme.id)).toMatchObject({ repository_selection: "selected" });
+    {
+      const acmeGh = world.alias("acmegh");
+      const betaGh = world.alias("betagh");
+      const gammaGh = world.alias("gammagh");
+      const g = await world.publishers.create({ handle: "g", githubOrgs: [{ id: 7001, login: acmeGh, role: "admin" }] });
+      const s = await world.publishers.create({ handle: "s", githubOrgs: [{ id: 7002, login: betaGh, role: "admin" }] });
+      const n = await world.publishers.create({ handle: "n", githubOrgs: [{ id: 7003, login: gammaGh, role: "member" }] });
+      const acme = await g.orgs.create("acme");
+      const beta = await s.orgs.create("beta");
+      const gamma = await n.orgs.create("gamma");
+
+      await world.github.installApp(acmeGh, { by: world.alias("g"), accountId: 7001 });
+      await world.github.installApp(gammaGh, { by: world.alias("n"), accountId: 7003 });
+
+      await expect(beta.verifyGitHub(acmeGh, "app")).toBeRefusedSaying("Only an owner of");
+      await expect(acme.verifyGitHub(acmeGh, "app")).resolves.toMatchObject({ org: "acmegh", method: "app" });
+      await expect(beta.verifyGitHub(betaGh, "admin")).resolves.toMatchObject({ org: "betagh", method: "admin" });
+      await expect(gamma.verifyGitHub(gammaGh, "app")).toBeRefusedSaying("not an owner");
+      await expect(gamma.verifyGitHub(gammaGh, "admin")).toBeRefusedSaying("owner");
+      await expect(beta.verifyGitHub(acmeGh, "app")).toBeRefusedSaying("Only an owner of");
+
+      await expect(world.profiles.profile(acme)).resolves.toMatchObject({ verifiedGithubOrg: "acmegh", mark: { kind: "github", text: `● github.com/acmegh` } });
+      await expect(world.profiles.profile(beta)).resolves.toMatchObject({ verifiedGithubOrg: "betagh" });
+      await expect(world.profiles.profile(gamma)).resolves.toMatchObject({ verifiedGithubOrg: null, mark: { kind: "unproven" } });
+      await expect(acme.verifyGitHub(acmeGh, "app", { assertion: "none" })).toBeRefused("step-up");
+      expect(await world.github.writes()).toEqual([]);
+    }
     await expectNoWrites(world);
   },
-  NEEDS,
+  { needs: ["fakes", "storage", "reset"] },
 );
 
 scenario(
-  "IT-SCOPE-009 App uninstall revokes the proof after 7 days with an alert (webhook half)",
+  "IT-SCOPE-009 App uninstall revokes the proof after 7 days with an alert",
   async (world) => {
     const g = world.github;
     const acme = await g.installApp("acme", { installationId: 301 });
@@ -80,9 +107,65 @@ scenario(
     // Installing again inside the grace period clears the timer's input.
     await g.installApp("acme", { installationId: 301 });
     expect(await g.installation(acme.id)).toMatchObject({ status: "active", uninstalled_at: null });
+    {
+      const acmeGh = world.alias("acmegh");
+      const g = await world.publishers.create({ handle: "g", githubOrgs: [{ id: 7001, login: acmeGh, role: "admin" }] });
+      const acme = await g.orgs.create("acme");
+      const installation = await world.github.installApp(acmeGh, { by: world.alias("g"), accountId: 7001 });
+      await acme.verifyGitHub(acmeGh, "app");
+
+      await world.github.uninstallApp(installation);
+      await world.cron.run("github-proof-lapse");
+      expect(world.mail.inbox(g).all().filter((m) => m.subject.startsWith("GitHub App removed"))).toHaveLength(1);
+      await expect(acme.verification()).resolves.toMatchObject({ github: { org: "acmegh", method: "app", endsAt: expect.any(String) } });
+
+      await world.clock.advance("6d23h");
+      await world.cron.run("github-proof-lapse");
+      await expect(world.profiles.profile(acme)).resolves.toMatchObject({ verifiedGithubOrg: "acmegh" });
+
+      await world.clock.advance("1h");
+      await world.cron.run("github-proof-lapse");
+      await expect(world.profiles.profile(acme)).resolves.toMatchObject({ verifiedGithubOrg: null, mark: { kind: "unproven" } });
+      await expect(world.verifiedPublishers.reindexed(acme)).resolves.toContain("github_revoked");
+      expect(world.mail.inbox(g).all().filter((m) => m.subject.startsWith("GitHub App removed"))).toHaveLength(1);
+    }
+    {
+      const acmeGh = world.alias("secondgh");
+      const h = await world.publishers.create({ handle: "h", githubOrgs: [{ id: 7009, login: acmeGh, role: "admin" }] });
+      const acme = await h.orgs.create("second");
+      const installation = await world.github.installApp(acmeGh, { by: world.alias("h"), accountId: 7009 });
+      await acme.verifyGitHub(acmeGh, "app");
+
+      await world.github.uninstallApp(installation);
+      await world.cron.run("github-proof-lapse");
+      await world.clock.advance("3d");
+      await h.signIn();
+      const again = await world.github.installApp(acmeGh, { by: world.alias("h"), accountId: 7009 });
+      expect(again.id).not.toBe(installation.id);
+      await world.cron.run("github-proof-lapse");
+      await expect(acme.verification()).resolves.toMatchObject({ github: { org: "secondgh", endsAt: null } });
+
+      await world.clock.advance("30d");
+      await world.cron.run("github-proof-lapse");
+      await expect(world.profiles.profile(acme)).resolves.toMatchObject({ verifiedGithubOrg: "secondgh" });
+    }
+    {
+      const orgGh = world.alias("thirdgh");
+      const t = await world.publishers.create({ handle: "t3", githubOrgs: [{ id: 7011, login: orgGh, role: "admin" }] });
+      const third = await t.orgs.create("third");
+      const installation = await world.github.installApp(orgGh, { by: world.alias("t3"), accountId: 7011 });
+      await third.verifyGitHub(orgGh, "app");
+
+      await world.github.suspendApp(installation);
+      await world.cron.run("github-proof-lapse");
+      expect(world.mail.inbox(t).all().filter((m) => m.subject.startsWith("GitHub App suspended"))).toHaveLength(1);
+      await world.clock.advance("7d1h");
+      await world.cron.run("github-proof-lapse");
+      await expect(world.profiles.profile(third)).resolves.toMatchObject({ verifiedGithubOrg: null });
+    }
     await expectNoWrites(world);
   },
-  NEEDS,
+  { needs: ["fakes", "storage", "reset"] },
 );
 
 scenario(

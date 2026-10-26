@@ -23,6 +23,9 @@ const SAMPLES: { [K in NoticeKind]: NoticeData<K> } = {
   "pack-actioned": { pack: "@acme/pack", action: "quarantined", reason: "malware", appealUrl: url },
   "appeal-decided": { pack: "@acme/pack", outcome: "denied", packUrl: url },
   "domain-drift-warning": { pack: "@acme/pack", version: "1.0.0", domain: "x.test", versionUrl: url },
+  "domain-proof-moved": { scope: "@acme", domain: "acme.test", scopeUrl: url },
+  "github-org-proof-alert": { scope: "@acme", org: "acme", cause: "removed", removalDate: "2026-11-02", scopeUrl: url },
+  "scope-name-disputed": { scope: "@acme", domain: "acme.test", held: true, scopeUrl: url },
 };
 
 describe("notices", () => {
