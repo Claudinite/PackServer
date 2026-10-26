@@ -1,13 +1,4 @@
-import { expect, scenario, type Run, type World } from "@packserver/test-world";
-
-type Publisher = Awaited<ReturnType<World["publishers"]["create"]>>;
-
-/** Publishes `archive` as the next version of `@<handle>/tool` and waits for its verdict. */
-async function validate(world: World, publisher: Publisher, handle: string, archive: ReturnType<World["archive"]>, version: string): Promise<Run> {
-  return world.validation.completes(await publisher.publish(archive).as(`@${handle}/tool@${version}`));
-}
-
-const rulesOf = async (run: Run) => (await run.findings()).map((f) => f.rule);
+import { expect, scenario, validate, rulesOf } from "@packserver/test-world";
 
 scenario("IT-VAL-005 A detected secret hard-fails without revealing the value", async (world) => {
   const publisher = await world.publishers.create({ handle: "sec" });

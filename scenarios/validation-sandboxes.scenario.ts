@@ -1,12 +1,4 @@
-import { expect, scenario, type Run, type World } from "@packserver/test-world";
-
-type Publisher = Awaited<ReturnType<World["publishers"]["create"]>>;
-
-/** Publishes `archive` as the next version of `@<handle>/tool` and waits for its verdict. */
-async function validate(world: World, publisher: Publisher, handle: string, archive: ReturnType<World["archive"]>, version: string): Promise<Run> {
-  return world.validation.completes(await publisher.publish(archive).as(`@${handle}/tool@${version}`));
-}
-
+import { expect, scenario, validate } from "@packserver/test-world";
 
 scenario("IT-VAL-014 Infrastructure errors retry and cost nothing; extraction failures are final", async (world) => {
   const publisher = await world.publishers.create({ handle: "inf" });

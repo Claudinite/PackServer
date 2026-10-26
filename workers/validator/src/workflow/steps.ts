@@ -416,6 +416,7 @@ export async function verdict(ctx: Context, facts: { sourceVerified: boolean; pr
     const caps = (a.capabilities ?? { capabilities: [], preinstall: null, widening: false }) as { capabilities: Capability[]; preinstall: PreInstallManifest | null; widening: boolean };
     widening = caps.widening;
     if (a.tree_hash !== run.tree_hash) throw new InfrastructureError("sandbox.canonical_mismatch");
+    if (!a.score_inputs) console.warn(JSON.stringify({ event: "validation.score_unavailable", reason: "sandbox A shed the score inputs to fit its report", run_id: runId }));
     if (a.score_inputs) {
       const claimed = await claimsOf(rt, run);
       const provenance: Provenance = claimed

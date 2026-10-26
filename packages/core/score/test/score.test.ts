@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadRules } from "@packserver/rules";
 import { scoreInputsOf, ScoreInputs, scorePack, treeOfScoreInputs } from "../index.ts";
+import { buildTree } from "../../canonical/index.ts";
 import { cleanFiles, declared, GOOD_DESCRIPTION, input, readPackDir, RULES_VERSION, skill, TRUSTED, UPLOAD } from "./helpers.ts";
 
 const score = loadRules(RULES_VERSION).score;
@@ -316,6 +317,27 @@ describe("the inputs a sandbox hands over", () => {
     for (const rule of ["skill-structure.reference-depth", "skill-structure.reference-toc", "skill-structure.windows-paths", "skill-structure.time-sensitive"]) {
       expect(lostOf(direct, rule), rule).not.toEqual([]);
     }
+    const inputs = ScoreInputs.parse(JSON.parse(JSON.stringify(scoreInputsOf(tree, RULES_VERSION))));
+    expect(scorePack({ tree: treeOfScoreInputs(inputs), ...args })).toEqual(direct);
+  });
+});
+
+describe("a UTF-16 file keeps its NUL characters through the inputs", () => {
+  const utf16 = (text: string) => {
+    const out = new Uint8Array(2 + text.length * 2);
+    out.set([0xff, 0xfe]);
+    for (let i = 0; i < text.length; i++) new DataView(out.buffer).setUint16(2 + i * 2, text.charCodeAt(i), true);
+    return out;
+  };
+  it("scores a skill whose name holds a NUL as the tree does", () => {
+    const base = cleanFiles();
+    const tree = buildTree([
+      ...Object.entries(base).filter(([path]) => path !== "skills/commit/SKILL.md").map(([path, content]) => ({ path, executable: false, content: new TextEncoder().encode(content) })),
+      { path: "skills/commit/SKILL.md", executable: false, content: utf16(skill("bad\u0000name", GOOD_DESCRIPTION)) },
+    ]);
+    const args = { capabilities: [], provenance: TRUSTED, linkedPublicRepository: true, publishedAdvisory: false, rulesVersion: RULES_VERSION };
+    const direct = scorePack({ tree, ...args });
+    expect(lostOf(direct, "skill-structure.name")).not.toEqual([]);
     const inputs = ScoreInputs.parse(JSON.parse(JSON.stringify(scoreInputsOf(tree, RULES_VERSION))));
     expect(scorePack({ tree: treeOfScoreInputs(inputs), ...args })).toEqual(direct);
   });

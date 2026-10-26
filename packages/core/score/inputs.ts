@@ -26,12 +26,19 @@ export function scoreInputsOf(tree: Tree, rulesVersion: string): ScoreInputs {
   };
 }
 
-const encoder = new TextEncoder();
+/** UTF-16LE with a byte-order mark: `decodeText` reads that form back to exactly the text it was given, NUL characters and a leading U+FEFF included. */
+function utf16le(text: string): Uint8Array {
+  const out = new Uint8Array(2 + text.length * 2);
+  out.set([0xff, 0xfe]);
+  const view = new DataView(out.buffer);
+  for (let i = 0; i < text.length; i++) view.setUint16(2 + i * 2, text.charCodeAt(i), true);
+  return out;
+}
 
 /** A tree that scores exactly as the one the inputs were taken from: files the score never reads as text carry no content. */
 export function treeOfScoreInputs(inputs: ScoreInputs): Tree {
   const files: TreeFile[] = inputs.files.map((f) => {
-    const content = f.text === null ? new Uint8Array([0]) : encoder.encode(f.text);
+    const content = f.text === null ? new Uint8Array([0]) : utf16le(f.text);
     return { path: f.path, executable: f.executable, size: content.length, sha256: "", content };
   });
   const dirs = new Set<string>();

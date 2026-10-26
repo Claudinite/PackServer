@@ -13,3 +13,4 @@ export type { ListingSeed, SignalsSeed, Filters as SearchFilters, Results as Sea
 export type { Run, RunView, RunMilestone } from "./world/publishing";
 export type { DownloadOptions, MismatchCase, MismatchReportOptions, PrivateDownloadOptions } from "./world/areas/rollups";
 export type { PublisherChangeEvent, RegistrationFields, TrustedRegistration } from "./world/trusted-publishers";
+export { validate, rulesOf, type Publisher } from "./world/validation-helpers";
