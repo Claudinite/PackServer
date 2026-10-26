@@ -94,6 +94,11 @@ scenario("IT-PUB-008 Trusted-publishing-only refuses web uploads", async (world)
   await expect(world.trusted.setOnly("@acme/gcp", false, p, { assertion: "none" })).rejects.toMatchObject({ reason: "step-up" });
   expect(await world.ci.staging.objects("acme")).toEqual([]);
 
+  await world.trusted.setOnly("@acme/gcp", false, p);
+  const earlier = await m.upload(world.archive("gcp", { version: "3.0.0" }), "@acme/gcp@3.0.0");
+  await world.trusted.setOnly("@acme/gcp", true, p);
+  await expect(earlier.start()).rejects.toMatchObject({ reason: "trusted-only" });
+
   const run = world.ci.workflow({ repo, environment: "release", ref: "refs/tags/gcp/9.0.0" });
   const credential = accepted(await run.exchange("@acme/gcp", "9.0.0"));
   expect(accepted(await credential.upload(new Uint8Array(1024).fill(7)))).toMatchObject({ sizeBytes: 1024 });

@@ -160,4 +160,27 @@ describe("beforeWrite (the audit entry) runs after validation and before the wri
     expect(out).toMatchObject({ ok: false, reason: "cap" });
     expect(calls).toBe(0);
   });
+
+  it("writes nothing when the hook throws, for register, change and setTrustedOnly", async () => {
+    const t = setup();
+    const boom = async () => {
+      throw new Error("audit queue down");
+    };
+    const count = (table: string) => (t.db.prepare(`select count(*) as n from ${table}`).get() as { n: number }).n;
+
+    await expect(registerPublisher(t.ports, { scope: t.scope, packName: "new", userId: "u1", input: INPUT, beforeWrite: boom })).rejects.toThrow("audit queue down");
+    expect(count("trusted_publishers")).toBe(0);
+    expect(count("publisher_changes")).toBe(0);
+
+    const added = await t.register("new");
+    if (!added.ok) throw new Error("setup");
+    t.db.exec("delete from publisher_changes");
+    await expect(changePublisher(t.ports, { scope: t.scope, packName: "new", userId: "u1", id: added.publisher.id, patch: { workflow: "x.yml" }, beforeWrite: boom })).rejects.toThrow("audit queue down");
+    expect(count("publisher_changes")).toBe(0);
+    expect((await listPublishers(t.ports, "s1", "new"))[0]?.workflow).toBe(INPUT.workflow);
+
+    t.db.exec(`insert into packs (id, scope_id, name, visibility, created_at) values ('pk', 's1', 'real', 'public', '${t.at}')`);
+    await expect(setTrustedOnly(t.ports, "s1", "real", true, boom)).rejects.toThrow("audit queue down");
+    expect(count("pack_publish_settings")).toBe(0);
+  });
 });

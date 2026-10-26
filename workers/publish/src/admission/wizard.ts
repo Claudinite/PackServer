@@ -77,6 +77,8 @@ export function wizardRoutes(runtime: PublishRuntime): Hono {
     }
 
     if (request.declared_sha256 === undefined) return badRequest("declared_sha256 is required to start");
+    const gate = await webUploadGate(runtime.ports, where.scope.id, packName);
+    if (!gate.ok) return refusal(gate.reason === "trusted-only" ? "trusted-only" : "forbidden", { message: gate.message });
     const lifetime = request.action === "dry-run" ? "dry-run" : "draft";
     const staged = (
       await d1.query(
