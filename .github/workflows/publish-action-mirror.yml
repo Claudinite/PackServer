@@ -1,0 +1,64 @@
+# Mirrors the built publish-pack Action to Claudinite/publish-pack when a release tag is pushed.
+# The mirror holds only action.yml and the bundle, so a publisher pins a small repository by SHA.
+name: publish-action-mirror
+
+on:
+  push:
+    tags:
+      - "publish-action-v*"
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: publish-action-mirror
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: publish-action-mirror
+    env:
+      MIRROR_TOKEN: ${{ secrets.PUBLISH_PACK_MIRROR_TOKEN }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      # Handled outcome, not a failure: the token comes from the mirror repository's creation (T-012).
+      - id: configured
+        run: |
+          if [ -n "$MIRROR_TOKEN" ]; then echo "yes=true" >> "$GITHUB_OUTPUT"; else echo "::notice::PUBLISH_PACK_MIRROR_TOKEN is not set; nothing to mirror"; fi
+      - if: steps.configured.outputs.yes == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - if: steps.configured.outputs.yes == 'true'
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - if: steps.configured.outputs.yes == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - if: steps.configured.outputs.yes == 'true'
+        run: pnpm install --frozen-lockfile && pnpm --filter @packserver/publish-action build
+      - if: steps.configured.outputs.yes == 'true'
+        run: |
+          set -euo pipefail
+          version="${TAG#publish-action-}"
+          out="$RUNNER_TEMP/mirror"
+          git clone --depth 1 "https://x-access-token:${MIRROR_TOKEN}@github.com/Claudinite/publish-pack.git" "$out"
+          rm -rf "$out/dist"
+          mkdir "$out/dist"
+          cp packages/publish-action/action.yml "$out/action.yml"
+          cp packages/publish-action/dist/index.mjs "$out/dist/index.mjs"
+          cd "$out"
+          git config user.name "claudinite-mirror"
+          git config user.email "noreply@claudinite.com"
+          git add -A
+          git commit -m "publish-pack ${version} from ${GITHUB_REPOSITORY}@${GITHUB_SHA}" || echo "::notice::the mirror already holds this build"
+          git tag "$version"
+          git push origin HEAD:main
+          git push origin "refs/tags/${version}"
