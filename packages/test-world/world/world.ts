@@ -49,7 +49,7 @@ export function createWorld(driver: Driver, title: string) {
     ...createModeration(),
     ...createReportsModule(driver, aliases),
     ...createAdmin(driver, (restore) => void undo.push(restore)),
-    ...createMember(),
+    ...createMember(driver),
     ...createAgents(driver, aliases),
     ...createGitHub(driver),
     ...createAuditModule(driver),
