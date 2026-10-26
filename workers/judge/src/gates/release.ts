@@ -21,9 +21,18 @@ export async function readRelease(telemetryKv: KV): Promise<ReleaseRecord | null
 
 export const rolloutInProgress = (release: ReleaseRecord | null): boolean => release !== null && IN_PROGRESS.has(release.state);
 
+/**
+ * Launch unless the mirror says, explicitly, that the flag is off. An absent or unreadable key must
+ * not weaken the gates: pre-launch needs a deliberate `false`, and the pre-launch pipeline consults
+ * the two gates it needs by name regardless.
+ */
 export async function readLaunchMode(telemetryKv: KV): Promise<"pre-launch" | "launch"> {
-  const raw = await telemetryKv.get(LAUNCH_FLAG_KEY);
-  return raw === "1" || raw === "true" ? "launch" : "pre-launch";
+  try {
+    const raw = await telemetryKv.get(LAUNCH_FLAG_KEY);
+    return raw === "false" || raw === "0" ? "pre-launch" : "launch";
+  } catch {
+    return "launch";
+  }
 }
 
 /** Every minute while a rollout is in flight, every fifth minute otherwise. */

@@ -25,13 +25,13 @@ const histogramSamples = (t: Traffic): number => t.latency.reduce((a, b) => a + 
 
 /** One hash carrying more than a fifth of the samples, or half of the bad ones, makes the numbers a single source's. */
 export function dominantSource(t: Traffic): string | null {
-  if (t.samples <= 0) return null;
-  const { principalSamples, principalBad, ipSamples, ipBad } = t.top;
+  const { principalSamples, principalBad, ipSamples, ipBad, baseSamples, baseBad } = t.top;
+  if (baseSamples <= 0) return null;
   const share = (part: number, whole: number): number => (whole > 0 ? part / whole : 0);
-  if (share(principalSamples, t.samples) > DOMINANT_SAMPLE_SHARE) return `one principal_hash is ${pct(share(principalSamples, t.samples))} of the samples`;
-  if (share(ipSamples, t.samples) > DOMINANT_SAMPLE_SHARE) return `one ip_hash is ${pct(share(ipSamples, t.samples))} of the samples`;
-  if (share(principalBad, t.bad) > DOMINANT_BAD_SHARE) return `one principal_hash is ${pct(share(principalBad, t.bad))} of the bad samples`;
-  if (share(ipBad, t.bad) > DOMINANT_BAD_SHARE) return `one ip_hash is ${pct(share(ipBad, t.bad))} of the bad samples`;
+  if (share(principalSamples, baseSamples) > DOMINANT_SAMPLE_SHARE) return `one principal_hash is ${pct(share(principalSamples, baseSamples))} of the samples`;
+  if (share(ipSamples, baseSamples) > DOMINANT_SAMPLE_SHARE) return `one ip_hash is ${pct(share(ipSamples, baseSamples))} of the samples`;
+  if (share(principalBad, baseBad) > DOMINANT_BAD_SHARE) return `one principal_hash is ${pct(share(principalBad, baseBad))} of the bad samples`;
+  if (share(ipBad, baseBad) > DOMINANT_BAD_SHARE) return `one ip_hash is ${pct(share(ipBad, baseBad))} of the bad samples`;
   return null;
 }
 const pct = (x: number): string => `${(x * 100).toFixed(1)}%`;
@@ -111,18 +111,17 @@ function selftest(input: VersionInputs, now: number): Result {
   return { status: "pass", ...base, reasons: ["the latest self-test passed"] };
 }
 
-/** Every run must pass; a failed run is forgiven when the next one passed, and waits for the next one when it is the latest. */
+/** Every run must pass; one failed run in the window is forgiven when the next run passed, a second failure is not. */
 function synthetic(input: VersionInputs): Result {
   const runs = input.syntheticRuns;
   const floor = GATE_TABLE.synthetic.floor;
   const base = { samples: runs.length, floor };
-  const failedTwice = runs.some((r, i) => !r.ok && runs[i + 1] !== undefined && !(runs[i + 1] as { ok: boolean }).ok);
-  if (failedTwice) return { status: "fail", ...base, reasons: ["two probe runs in a row failed"] };
+  const failures = runs.filter((r) => !r.ok).length;
+  if (failures >= 2) return { status: "fail", ...base, reasons: [`${failures} probe runs failed; only one failure is forgiven`] };
   if (runs.length < floor) return { status: "insufficient", ...base, reasons: [`${runs.length} of ${floor} probe runs`] };
   const last = runs[runs.length - 1] as { ok: boolean };
   if (!last.ok) return { status: "watching", ...base, reasons: ["the latest probe run failed; the next one decides"] };
-  const forgiven = runs.filter((r) => !r.ok).length;
-  return { status: "pass", ...base, reasons: [forgiven > 0 ? `${forgiven} failed run forgiven` : "every probe run passed"] };
+  return { status: "pass", ...base, reasons: [failures > 0 ? "one failed run forgiven" : "every probe run passed"] };
 }
 
 function hashIntegrity(input: VersionInputs): Result {
@@ -148,7 +147,7 @@ function publishSuccess(input: VersionInputs, memory: GateMemory, stageEnd: bool
   const t = GATE_TABLE.publish;
   const publishes = Math.round(input.publishValidated + input.publishFailed);
   if (publishes >= t.floor) {
-    const traffic: Traffic = { ...input.traffic, samples: publishes, bad: input.publishFailed, top: { principalSamples: 0, principalBad: 0, ipSamples: 0, ipBad: 0 } };
+    const traffic: Traffic = { ...input.traffic, samples: publishes, bad: input.publishFailed, top: { principalSamples: 0, principalBad: 0, ipSamples: 0, ipBad: 0, baseSamples: 0, baseBad: 0 } };
     return proportion(memory, stageEnd, traffic, null, t.floor, 1 - t.rate);
   }
   const dry = input.dryRuns[input.dryRuns.length - 1];

@@ -49,16 +49,33 @@ describe("the cron", () => {
     await runScheduled(deps);
     const [beat] = signals("monitoring.heartbeat");
     expect(beat?.blobs[0]).toBe("judge");
-    expect(JSON.parse(beat?.blobs[3] ?? "{}")).toMatchObject({ ran: true, mode: "pre-launch", versions: 1, failures: 0, telemetry_mode: "normal" });
+    expect(JSON.parse(beat?.blobs[3] ?? "{}")).toMatchObject({ ran: true, mode: "launch", versions: 1, failures: 0, telemetry_mode: "normal" });
   });
 
-  it("reads launch mode from the mirrored flag", async () => {
+  it("is in launch mode unless the mirror says, explicitly, that the flag is off", async () => {
     const { data, telemetryKv, deps } = setup();
     data.groups = [group("web-new", "web", 400)];
+    const modeOf = async () => JSON.parse((await deps.gatesKv.get("gates/web-new")) ?? "{}").mode;
+    await runScheduled(deps);
+    expect(await modeOf()).toBe("launch");
     await telemetryKv.put(LAUNCH_FLAG_KEY, "true");
-    expect((await runScheduled(deps)).cycle?.versions).toBe(1);
-    const report = JSON.parse((await deps.gatesKv.get("gates/web-new")) ?? "{}");
-    expect(report.mode).toBe("launch");
+    deps.clock.now();
+    await runScheduled({ ...deps });
+    expect(await modeOf()).toBe("launch");
+    await telemetryKv.put(LAUNCH_FLAG_KEY, "false");
+    await runScheduled(deps);
+    expect(await modeOf()).toBe("pre-launch");
+  });
+
+  it("treats an unreadable flag as launch", async () => {
+    const { data, telemetryKv, deps } = setup();
+    data.groups = [group("web-new", "web", 400)];
+    telemetryKv.get = async (key: string) => {
+      if (key === LAUNCH_FLAG_KEY) throw new Error("kv down");
+      return null;
+    };
+    await runScheduled(deps);
+    expect(JSON.parse((await deps.gatesKv.get("gates/web-new")) ?? "{}").mode).toBe("launch");
   });
 });
 

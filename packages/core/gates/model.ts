@@ -66,8 +66,11 @@ export interface Traffic {
   bad: number;
   downloads: number;
   latency: LatencyHistogram;
-  /** The heaviest single `principal_hash` and the heaviest single `ip_hash`. */
-  top: { principalSamples: number; principalBad: number; ipSamples: number; ipBad: number };
+  /**
+   * The heaviest single `principal_hash` and `ip_hash` among non-synthetic requests, over `baseSamples`
+   * and `baseBad`, the non-synthetic, non-override totals: the prober's own traffic is one source by design.
+   */
+  top: { principalSamples: number; principalBad: number; ipSamples: number; ipBad: number; baseSamples: number; baseBad: number };
 }
 
 export interface ProbeRun {
@@ -145,6 +148,8 @@ export interface GateReport {
   source: Source;
   real_requests_per_second: number | null;
   evaluated_at: number;
+  /** True when the judge's last successful cycle is too old for these verdicts to stand: every gate then reads `insufficient`. */
+  stale: boolean;
   /** True when the verdicts were decided at stage end on demand rather than read from the last cycle. */
   stage_end: boolean;
   gates: Partial<Record<GateName, GateVerdict>>;

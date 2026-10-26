@@ -1,10 +1,11 @@
 import { LATENCY_BOUNDS_MS } from "@packserver/core/gates";
 import { REQUEST_BLOBS, REQUEST_DOUBLES } from "@packserver/core/telemetry";
 import { describe, expect, it } from "vitest";
-import { analyticsGateData, domainEventsSql, requestOutcomesSql, ROW_LIMIT, syntheticProbesSql } from "../src/stats/sql";
+import { analyticsGateData, domainEventsSql, MIN_CLIENT_SAMPLES, requestOutcomesSql, ROW_LIMIT, syntheticProbesSql, TOP_CLIENTS, topClientsSql } from "../src/stats/sql";
 import { windowAt } from "../src/stats/source";
 
-const window = windowAt(Date.UTC(2026, 9, 22, 12, 30, 0));
+const NOW = Date.UTC(2026, 9, 22, 12, 30, 0);
+const window = windowAt(NOW, [NOW - 3_600_000, NOW - 60_000]);
 
 describe("the reads", () => {
   it("name the recorder's columns by position", () => {
@@ -12,13 +13,27 @@ describe("the reads", () => {
     expect(sql).toContain(`blob${REQUEST_BLOBS.indexOf("outcome") + 1} IN ('server_error', 'exception', 'canceled')`);
     expect(sql).toContain(`double${REQUEST_DOUBLES.indexOf("is_synthetic") + 1} AS is_synthetic`);
     expect(sql).toContain("index1 AS version_id");
-    for (let i = 0; i <= LATENCY_BOUNDS_MS.length; i++) expect(sql).toContain(`AS h${i}`);
+    for (let w = 0; w < window.starts.length; w++) for (let i = 0; i <= LATENCY_BOUNDS_MS.length; i++) expect(sql).toContain(`AS h${w}_${i}`);
   });
 
   it("bound the window and exclude unknown durations from the histogram", () => {
     const sql = requestOutcomesSql("request_outcomes", window);
-    expect(sql).toContain(`timestamp >= toDateTime(${Math.floor(window.sinceMs / 1000)})`);
+    for (const start of window.starts) expect(sql).toContain(`timestamp >= toDateTime(${Math.floor(start / 1000)})`);
     expect(sql).toContain(`double${REQUEST_DOUBLES.indexOf("duration_ms") + 1} >= 0`);
+  });
+
+  it("group the totals by version and flags, never by client", () => {
+    const sql = requestOutcomesSql("request_outcomes", window);
+    expect(sql).toMatch(/GROUP BY version_id, worker, version_override, is_synthetic LIMIT/);
+    expect(sql).not.toContain("principal");
+  });
+
+  it("list clients by rank among the non-synthetic, cut by a limit that is not a refusal", () => {
+    const sql = topClientsSql("request_outcomes", window, "principal_hash");
+    expect(sql).toContain(`double${REQUEST_DOUBLES.indexOf("is_synthetic") + 1} = 0`);
+    expect(sql).toContain(`HAVING sum(_sample_interval) >= ${MIN_CLIENT_SAMPLES}`);
+    expect(sql).toContain(`ORDER BY s0 DESC LIMIT ${TOP_CLIENTS}`);
+    expect(topClientsSql("request_outcomes", window, "ip_hash")).toContain(`blob${REQUEST_BLOBS.indexOf("ip_hash") + 1} != ''`);
   });
 
   it("select only the signals the gates read", () => {
@@ -44,13 +59,31 @@ describe("the Analytics Engine client", () => {
     expect(seen[0]?.body).toContain("FROM request_outcomes_staging");
   });
 
-  it("parses rows into numbers, booleans and a histogram", async () => {
-    const row = { version_id: "v", worker: "web", version_override: "0", is_synthetic: 1, principal: "p", ip: "", samples: "10", bad: 1, downloads: 0, today: 10, recent: 5, h2: "9", h16: 1 };
-    const [group] = await analyticsGateData(config, respond([row])).requestOutcomes(window);
-    expect(group).toMatchObject({ version_id: "v", override: false, synthetic: true, samples: 10, bad: 1 });
-    expect(group?.latency).toHaveLength(LATENCY_BOUNDS_MS.length + 1);
-    expect(group?.latency[2]).toBe(9);
-    expect(group?.latency[LATENCY_BOUNDS_MS.length]).toBe(1);
+  it("answers totals, principals and ips from three statements and shapes each window", async () => {
+    const bodies: string[] = [];
+    const answer = (body: string) =>
+      body.includes("GROUP BY version_id, client")
+        ? [{ version_id: "v", client: "p1", s0: "50", b0: 2, s1: "40", b1: 1 }]
+        : [{ version_id: "v", worker: "web", version_override: "0", is_synthetic: 1, today: 10, recent: 5, s0: "10", b0: 1, d0: 2, h0_2: "9", h0_16: 1, s1: 4 }];
+    const fetchImpl = (async (_url: string, init: RequestInit) => (bodies.push(String(init.body)), new Response(JSON.stringify({ data: answer(String(init.body)) })))) as unknown as typeof fetch;
+    const data = await analyticsGateData(config, fetchImpl).requestOutcomes(window);
+    expect(bodies).toHaveLength(3);
+    const [g] = data.groups;
+    expect(g).toMatchObject({ version_id: "v", override: false, synthetic: true, today: 10, recent: 5 });
+    expect(g?.windows).toHaveLength(2);
+    expect(g?.windows[0]).toMatchObject({ samples: 10, bad: 1, downloads: 2 });
+    expect(g?.windows[0]?.latency[2]).toBe(9);
+    expect(g?.windows[0]?.latency[LATENCY_BOUNDS_MS.length]).toBe(1);
+    expect(data.principals[0]).toEqual({ version_id: "v", key: "p1", windows: [{ samples: 50, bad: 2 }, { samples: 40, bad: 1 }] });
+    expect(data.ips).toHaveLength(1);
+  });
+
+  it("does not take a full client list for a refusal, but does for the totals", async () => {
+    const full = Array.from({ length: ROW_LIMIT }, (_, i) => ({ version_id: "v", client: `c${i}`, s0: 30, b0: 0, s1: 30, b1: 0 }));
+    const clientsOnly = (async (_u: string, init: RequestInit) => new Response(JSON.stringify({ data: String(init.body).includes("GROUP BY version_id, client") ? full : [] }))) as unknown as typeof fetch;
+    expect((await analyticsGateData(config, clientsOnly).requestOutcomes(window)).principals).toHaveLength(ROW_LIMIT);
+    const totalsFull = (async (_u: string, init: RequestInit) => new Response(JSON.stringify({ data: String(init.body).includes("GROUP BY version_id, worker") ? Array.from({ length: ROW_LIMIT }, () => ({})) : [] }))) as unknown as typeof fetch;
+    await expect(analyticsGateData(config, totalsFull).requestOutcomes(window)).rejects.toThrow(/incomplete/);
   });
 
   it("turns seconds into milliseconds for the domain and probe reads", async () => {

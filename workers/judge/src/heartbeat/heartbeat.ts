@@ -5,7 +5,7 @@ export interface HeartbeatFacts {
   mode: "pre-launch" | "launch";
   versions: number;
   gatePointsWritten: number;
-  gatePointsDropped: number;
+  gatePointsDeferred: number;
   telemetryMode: string;
   auditPageworthy: number;
   failures: number;
@@ -18,7 +18,7 @@ export function emitHeartbeat(emit: Telemetry["emit"], facts: HeartbeatFacts): v
     mode: facts.mode,
     versions: facts.versions,
     gate_points_written: facts.gatePointsWritten,
-    gate_points_dropped: facts.gatePointsDropped,
+    gate_points_deferred: facts.gatePointsDeferred,
     telemetry_mode: facts.telemetryMode,
     audit_pageworthy: facts.auditPageworthy,
     failures: facts.failures,

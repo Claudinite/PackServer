@@ -4,16 +4,28 @@ import { SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
 import { authoriseAdminCall, type AdminRequest, type AdminResponse } from "@packserver/schema";
 import type { JudgeRuntime } from "../src/bindings";
 import type { AdminClient } from "../src/heartbeat/admin-client";
-import type { DomainRow, GateDataSource, ProbeRow, RequestGroup } from "../src/stats/source";
+import type { DomainRow, GateDataSource, ProbeRow, ReadWindow, RequestData, RequestGroup, WindowCounts } from "../src/stats/source";
 
+/** The groups and clients are given for one window and answered for every window the cycle asks about, unless `provider` answers by window. */
 export class FakeGateData implements GateDataSource {
-  groups: RequestGroup[] = [];
+  groups: GroupSpec[] = [];
+  principals: ClientSpec[] = [];
+  ips: ClientSpec[] = [];
   domain: DomainRow[] = [];
   probes: ProbeRow[] = [];
   reads: string[] = [];
-  async requestOutcomes() {
+  windows: ReadWindow[] = [];
+  provider: ((window: ReadWindow) => RequestData) | null = null;
+  async requestOutcomes(window: ReadWindow): Promise<RequestData> {
     this.reads.push("request_outcomes");
-    return this.groups;
+    this.windows.push(window);
+    if (this.provider) return this.provider(window);
+    const n = window.starts.length;
+    return {
+      groups: this.groups.map(({ counts, ...g }) => ({ ...g, windows: Array.from({ length: n }, () => counts) })),
+      principals: this.principals.map((c) => ({ version_id: c.version_id, key: c.key, windows: Array.from({ length: n }, () => ({ samples: c.samples, bad: c.bad })) })),
+      ips: this.ips.map((c) => ({ version_id: c.version_id, key: c.key, windows: Array.from({ length: n }, () => ({ samples: c.samples, bad: c.bad })) })),
+    };
   }
   async domainEvents() {
     this.reads.push("domain_events");
@@ -23,6 +35,14 @@ export class FakeGateData implements GateDataSource {
     this.reads.push("synthetic_probes");
     return this.probes;
   }
+}
+
+export type GroupSpec = Omit<RequestGroup, "windows"> & { counts: WindowCounts };
+export interface ClientSpec {
+  version_id: string;
+  key: string;
+  samples: number;
+  bad: number;
 }
 
 export class FakeAdmin implements AdminClient {
@@ -35,10 +55,14 @@ export class FakeAdmin implements AdminClient {
 }
 
 /** `samples` requests answered in 100 ms, `bad` of them failed. */
-export function group(version: string, worker: string, samples: number, bad = 0, options: Partial<RequestGroup> = {}): RequestGroup {
+export function counts(samples: number, bad = 0, downloads = 0): WindowCounts {
   const latency = emptyHistogram();
   latency[LATENCY_BOUNDS_MS.findIndex((b) => 100 <= b)] = samples;
-  return { version_id: version, worker, override: false, synthetic: false, principal: "", ip: "", samples, bad, downloads: 0, today: samples, recent: samples, latency, ...options };
+  return { samples, bad, downloads, latency };
+}
+
+export function group(version: string, worker: string, samples: number, bad = 0, options: Partial<Omit<GroupSpec, "counts">> = {}): GroupSpec {
+  return { version_id: version, worker, override: false, synthetic: false, today: samples, recent: samples, counts: counts(samples, bad), ...options };
 }
 
 export function runtimeWith(fakes: FakePorts, data: GateDataSource = new FakeGateData(), admin: AdminClient = new FakeAdmin()): JudgeRuntime {

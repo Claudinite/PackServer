@@ -3,6 +3,18 @@ import type { KV } from "@packserver/ports";
 
 const MAX_DRY_RUNS = 20;
 
+/** Where a version stands in the release and since when the judge has counted it there. */
+export interface StageRecord {
+  key: string;
+  started_at: number;
+}
+/** What `gate_results` last heard about a gate, so a verdict that could not be written is still news next cycle. */
+export interface EmittedVerdict {
+  status: string;
+  decided_at: number | null;
+  binding: boolean;
+}
+
 async function readJson<T>(kv: KV, key: string): Promise<T | null> {
   const raw = await kv.get(key);
   if (raw === null) return null;
@@ -26,6 +38,14 @@ export function gatesStore(kv: KV) {
     putMemory: (versionId: string, memory: VersionMemory) => writeJson(kv, GATES_KV_KEYS.memory(versionId), memory),
     inputs: (versionId: string) => readJson<VersionInputs>(kv, GATES_KV_KEYS.inputs(versionId)),
     putInputs: (inputs: VersionInputs) => writeJson(kv, GATES_KV_KEYS.inputs(inputs.versionId), inputs),
+    stage: (versionId: string) => readJson<StageRecord>(kv, GATES_KV_KEYS.stage(versionId)),
+    putStage: (versionId: string, record: StageRecord) => writeJson(kv, GATES_KV_KEYS.stage(versionId), record),
+    emitted: async (versionId: string): Promise<Record<string, EmittedVerdict>> => (await readJson<Record<string, EmittedVerdict>>(kv, GATES_KV_KEYS.emitted(versionId))) ?? {},
+    putEmitted: (versionId: string, emitted: Record<string, EmittedVerdict>) => writeJson(kv, GATES_KV_KEYS.emitted(versionId), emitted),
+    lastCycle: async (): Promise<number | null> => (await readJson<{ at: number }>(kv, GATES_KV_KEYS.lastCycle))?.at ?? null,
+    putLastCycle: (at: number) => writeJson(kv, GATES_KV_KEYS.lastCycle, { at }),
+    stageEnd: (versionId: string) => readJson<GateReport & { looked_at: number }>(kv, GATES_KV_KEYS.stageEnd(versionId)),
+    putStageEnd: (report: GateReport & { looked_at: number }) => writeJson(kv, GATES_KV_KEYS.stageEnd(report.version_id), report),
     async dryRuns(versionId: string): Promise<Array<DryRun & { runId: string }>> {
       return (await readJson<Array<DryRun & { runId: string }>>(kv, GATES_KV_KEYS.dryRuns(versionId))) ?? [];
     },

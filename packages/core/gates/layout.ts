@@ -1,5 +1,5 @@
 import type { StatsPoint } from "@packserver/ports";
-import type { GateVerdict, Mode, Source } from "./model";
+import type { GateReport, GateVerdict, Mode, Source } from "./model";
 
 /** Keys in the judge's own `gates` KV namespace; nothing else reads or writes them. */
 export const GATES_KV_KEYS = {
@@ -8,9 +8,28 @@ export const GATES_KV_KEYS = {
   memory: (versionId: string): string => `memory/${versionId}`,
   inputs: (versionId: string): string => `inputs/${versionId}`,
   dryRuns: (versionId: string): string => `probe/dry-run/${versionId}`,
+  /** The stage a version is in and when the judge first saw it, so a window runs from the stage start. */
+  stage: (versionId: string): string => `stage/${versionId}`,
+  /** The verdict each gate last had written to `gate_results`, which is what "changed" is measured against. */
+  emitted: (versionId: string): string => `emitted/${versionId}`,
+  stageEnd: (versionId: string): string => `stage-end/${versionId}`,
   auditCursor: "audit/cursor",
   lastCycle: "cycle/last",
 } as const;
+
+/** A report older than this, by the judge's last successful cycle, is not served as current: two idle cycles. */
+export const STALE_AFTER_MS = 10 * 60_000;
+
+/** Every gate `insufficient` with the reason, for when the judge has no fresh read to stand on. */
+export function staleReport(report: GateReport, now: number, lastCycleAt: number | null): GateReport {
+  const age = lastCycleAt === null ? "has never completed a cycle" : `last read ${Math.round((now - lastCycleAt) / 60_000)} minutes ago`;
+  const gates = Object.fromEntries(
+    Object.entries(report.gates).map(([name, v]) => [name, { ...v, status: "insufficient" as const, reasons: [`the judge has no fresh read (${age})`] }]),
+  );
+  return { ...report, stale: true, gates };
+}
+
+export const isStale = (now: number, lastCycleAt: number | null): boolean => lastCycleAt === null || now - lastCycleAt > STALE_AFTER_MS;
 
 /** How long a stored report outlives the cycle that wrote it, so a dead judge's verdicts stop being served. */
 export const REPORT_TTL_SECONDS = 3600;

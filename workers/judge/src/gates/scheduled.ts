@@ -4,7 +4,7 @@ import type { AdminClient } from "../heartbeat/admin-client";
 import { pollAccountAudit, type AuditLog } from "../heartbeat/audit";
 import { emitHeartbeat } from "../heartbeat/heartbeat";
 import { flipTelemetryMode } from "../heartbeat/telemetry-mode";
-import { evaluateGates, type GateCycle, type GateDeps } from "./cycle";
+import { evaluateGates, MAX_AUDIT_POINTS, type GateCycle, type GateDeps } from "./cycle";
 import { cycleDue, readLaunchMode, readRelease } from "./release";
 
 export interface ScheduledDeps extends GateDeps {
@@ -50,14 +50,14 @@ export async function runScheduled(deps: ScheduledDeps): Promise<ScheduledResult
         return flipTelemetryMode({ kv: deps.telemetryKv, admin: deps.admin, requestsToday: cycle.requestsToday, allowance: deps.dailyLogAllowance });
       })
     : null;
-  const audit = deps.audit ? await attempt("audit", () => pollAccountAudit({ log: deps.audit as AuditLog, kv: deps.gatesKv, clock: deps.clock, emit: deps.emit, release, ciTokenIds: deps.ciTokenIds })) : null;
+  const audit = deps.audit ? await attempt("audit", () => pollAccountAudit({ log: deps.audit as AuditLog, kv: deps.gatesKv, clock: deps.clock, emit: deps.emit, release, ciTokenIds: deps.ciTokenIds, maxSignals: MAX_AUDIT_POINTS })) : null;
 
   emitHeartbeat(deps.emit, {
     ran: true,
     mode,
     versions: cycle?.versions ?? 0,
     gatePointsWritten: cycle?.pointsWritten ?? 0,
-    gatePointsDropped: cycle?.pointsDropped ?? 0,
+    gatePointsDeferred: cycle?.pointsDeferred ?? 0,
     telemetryMode: flip?.mode ?? "unknown",
     auditPageworthy: audit?.pageworthy ?? 0,
     failures: failures.length,

@@ -15,7 +15,7 @@ export function mulberry32(seed: number): () => number {
 const traffic = (samples: number, bad: number): Traffic => {
   const latency = emptyHistogram();
   latency[2] = samples;
-  return { samples, bad, downloads: 0, latency, top: { principalSamples: 0, principalBad: 0, ipSamples: 0, ipBad: 0 } };
+  return { samples, bad, downloads: 0, latency, top: { principalSamples: 0, principalBad: 0, ipSamples: 0, ipBad: 0, baseSamples: samples, baseBad: bad } };
 };
 
 export interface Outcome {

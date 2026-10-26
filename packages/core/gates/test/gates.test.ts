@@ -5,10 +5,10 @@ const NOW = 1_000_000_000_000;
 const none = { principalSamples: 0, principalBad: 0, ipSamples: 0, ipBad: 0 };
 
 /** `samples` requests of which `bad` failed, all answered in `ms`. */
-function traffic(samples: number, bad: number, ms = 100, top = none): Traffic {
+function traffic(samples: number, bad: number, ms = 100, top: Partial<Traffic["top"]> = {}): Traffic {
   const latency = emptyHistogram();
   latency[LATENCY_BOUNDS_MS.findIndex((b) => ms <= b)] = samples;
-  return { samples, bad, downloads: 0, latency, top };
+  return { samples, bad, downloads: 0, latency, top: { ...none, baseSamples: samples, baseBad: bad, ...top } };
 }
 
 function inputs(patch: Partial<VersionInputs> = {}): VersionInputs {
@@ -114,19 +114,25 @@ describe("decision points", () => {
 
 describe("suspect", () => {
   it("flags one principal over 20% of the samples", () => {
-    const t = traffic(1000, 0, 100, { ...none, principalSamples: 201 });
+    const t = traffic(1000, 0, 100, { principalSamples: 201 });
     expect(dominantSource(t)).toMatch(/principal_hash/);
     expect(statusOf({ traffic: t }, "gate.availability")).toBe("suspect");
   });
   it("flags one ip over 20% of the samples and over 50% of the bad ones", () => {
-    expect(statusOf({ traffic: traffic(1000, 0, 100, { ...none, ipSamples: 201 }) }, "gate.availability")).toBe("suspect");
-    expect(statusOf({ traffic: traffic(1000, 2, 100, { ...none, ipBad: 2, ipSamples: 10 }) }, "gate.availability")).toBe("suspect");
+    expect(statusOf({ traffic: traffic(1000, 0, 100, { ipSamples: 201 }) }, "gate.availability")).toBe("suspect");
+    expect(statusOf({ traffic: traffic(1000, 2, 100, { ipBad: 2, ipSamples: 10 }) }, "gate.availability")).toBe("suspect");
   });
   it("leaves 20% and 50% exactly alone", () => {
     expect(dominantSource(traffic(1000, 10, 100, { principalSamples: 200, principalBad: 5, ipSamples: 200, ipBad: 5 }))).toBeNull();
   });
+  it("measures concentration against the non-synthetic traffic, not the prober's share of the samples", () => {
+    const t = traffic(2800, 0, 100, { baseSamples: 1000, principalSamples: 150 });
+    expect(dominantSource(t)).toBeNull();
+    expect(dominantSource(traffic(2800, 0, 100, { baseSamples: 1000, principalSamples: 250 }))).toMatch(/principal_hash/);
+    expect(dominantSource(traffic(2800, 0, 100, { baseSamples: 0, principalSamples: 250 }))).toBeNull();
+  });
   it("does not stop a gate below its floor", () => {
-    expect(statusOf({ traffic: traffic(100, 0, 100, { ...none, principalSamples: 100 }) }, "gate.availability")).toBe("insufficient");
+    expect(statusOf({ traffic: traffic(100, 0, 100, { principalSamples: 100 }) }, "gate.availability")).toBe("insufficient");
   });
 });
 
@@ -175,6 +181,12 @@ describe("self-test and synthetic", () => {
   it("passes 100% of runs, forgiving one failure the next run passed", () => {
     expect(statusOf({ syntheticRuns: runs(true, true, true) }, "gate.synthetic")).toBe("pass");
     expect(statusOf({ syntheticRuns: runs(true, false, true, true) }, "gate.synthetic")).toBe("pass");
+  });
+  it("forgives one failed run in the window, not every isolated one", () => {
+    const alternating = Array.from({ length: 12 }, (_, i) => i % 2 === 1);
+    expect(statusOf({ syntheticRuns: runs(...alternating) }, "gate.synthetic")).toBe("fail");
+    expect(statusOf({ syntheticRuns: runs(true, false, true, true, false, true) }, "gate.synthetic")).toBe("fail");
+    expect(statusOf({ syntheticRuns: runs(true, true, false, true, true, true, true) }, "gate.synthetic")).toBe("pass");
   });
   it("waits on a latest failure and fails two in a row", () => {
     expect(statusOf({ syntheticRuns: runs(true, true, false) }, "gate.synthetic")).toBe("watching");

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GATE_RESULT_BLOBS, GATE_RESULT_DOUBLES, gateResultPoint, pageCategory, parseProbeAttrs, parseQueueAttrs, parseSelftestAttrs, type GateVerdict } from "../index";
+import { GATE_RESULT_BLOBS, GATE_RESULT_DOUBLES, gateResultPoint, parseProbeAttrs, parseQueueAttrs, parseSelftestAttrs, type GateVerdict } from "../index";
 
 const verdict: GateVerdict = {
   gate: "gate.availability", version_id: "v1", status: "pass", binding: true, samples: 300, floor: 300, observed: 0.002, threshold: 0.005,
@@ -33,14 +33,5 @@ describe("signal attribute readers", () => {
     expect(parseProbeAttrs('{"target":"v","ok":true}')).toBeNull();
     expect(parseQueueAttrs('{"queue":"audit"}')).toBe("audit");
     expect(parseQueueAttrs("[]")).toBeNull();
-  });
-});
-
-describe("the account page list", () => {
-  it("matches the categories the spec names and skips reads", () => {
-    const categories = ["token.create", "member.invite", "access.policy.update", "logpush.job.create", "r2.bucket.lock.update", "workers.observability.enable", "secrets_store.secret.create", "waf.ruleset.update", "worker.script.upload", "worker.route.create"];
-    expect(categories.map(pageCategory)).toEqual(["token", "member", "access", "logpush", "bucket_lock", "observability", "secrets", "waf", "worker_upload", "worker_route"]);
-    expect(pageCategory("token.view")).toBeNull();
-    expect(pageCategory("dns.record.create")).toBeNull();
   });
 });

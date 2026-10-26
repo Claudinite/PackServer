@@ -22,8 +22,7 @@ export function createApp(runtime: JudgeRuntime, options: AppOptions = {}): Hono
     selfTest: selfTestAccess(runtime),
   });
   const gatesKv = ports.kv["GATES_KV"];
-  const telemetryKv = ports.kv["TELEMETRY_KV"];
-  if (!gatesKv || !telemetryKv) throw new Error("the judge's KV namespaces are not bound");
-  app.route("/", apiRoutes({ clock: ports.clock, access: ports.access, gatesKv, telemetryKv }));
+  if (!gatesKv) throw new Error("the judge's KV namespaces are not bound");
+  app.route("/", apiRoutes({ clock: ports.clock, access: ports.access, gatesKv }));
   return app;
 }

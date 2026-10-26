@@ -2,51 +2,53 @@ import {
   addHistograms, emptyHistogram, INDEX_SCENARIO, parseProbeAttrs, parseQueueAttrs, parseSelftestAttrs,
   type IndexFetch, type ProbeRun, type QueueReading, type Source, type Traffic,
 } from "@packserver/core/gates";
-import type { DomainRow, ProbeRow, RequestGroup } from "./source";
+import type { DomainRow, ProbeRow, RequestData, RequestGroup, TopClient } from "./source";
 
 export interface VersionTraffic {
   worker: string;
   traffic: Traffic;
 }
 
-const emptyTraffic = (): Traffic => ({ samples: 0, bad: 0, downloads: 0, latency: emptyHistogram(), top: { principalSamples: 0, principalBad: 0, ipSamples: 0, ipBad: 0 } });
+const emptyTraffic = (): Traffic => ({
+  samples: 0, bad: 0, downloads: 0, latency: emptyHistogram(),
+  top: { principalSamples: 0, principalBad: 0, ipSamples: 0, ipBad: 0, baseSamples: 0, baseBad: 0 },
+});
 
 const wanted = (g: RequestGroup, source: Source): boolean => source === "all" || (!g.override && !g.synthetic);
 
-/** Sums the groups into one Traffic per version; `top` is the heaviest single hash, blank hashes being unknown rather than one source. */
-export function trafficByVersion(groups: readonly RequestGroup[], source: Source): Map<string, VersionTraffic> {
+/**
+ * Sums the groups into one Traffic per version over window `index`. Concentration is read from the
+ * non-synthetic clients only, against the non-synthetic totals: the prober is one source by design
+ * and must not make a quiet version look dominated by it.
+ */
+export function trafficByVersion(data: RequestData, source: Source, index: number): Map<string, VersionTraffic> {
   const out = new Map<string, VersionTraffic>();
-  const principals = new Map<string, Map<string, { samples: number; bad: number }>>();
-  const ips = new Map<string, Map<string, { samples: number; bad: number }>>();
-  const bump = (index: Map<string, Map<string, { samples: number; bad: number }>>, version: string, key: string, g: RequestGroup): void => {
-    if (key === "") return;
-    const byKey = index.get(version) ?? new Map();
-    const seen = byKey.get(key) ?? { samples: 0, bad: 0 };
-    seen.samples += g.samples;
-    seen.bad += g.bad;
-    byKey.set(key, seen);
-    index.set(version, byKey);
-  };
-  for (const g of groups) {
-    if (!wanted(g, source) || g.version_id === "") continue;
+  for (const g of data.groups) {
+    const w = g.windows[index];
+    if (!w || !wanted(g, source) || g.version_id === "") continue;
     const entry = out.get(g.version_id) ?? { worker: g.worker, traffic: emptyTraffic() };
-    entry.traffic.samples += g.samples;
-    entry.traffic.bad += g.bad;
-    entry.traffic.downloads += g.downloads;
-    entry.traffic.latency = addHistograms(entry.traffic.latency, g.latency);
+    entry.traffic.samples += w.samples;
+    entry.traffic.bad += w.bad;
+    entry.traffic.downloads += w.downloads;
+    entry.traffic.latency = addHistograms(entry.traffic.latency, w.latency);
     out.set(g.version_id, entry);
-    bump(principals, g.version_id, g.principal, g);
-    bump(ips, g.version_id, g.ip, g);
+    if (!g.override && !g.synthetic) {
+      entry.traffic.top.baseSamples += w.samples;
+      entry.traffic.top.baseBad += w.bad;
+    }
   }
+  const heaviest = (clients: readonly TopClient[], version: string): { samples: number; bad: number } => {
+    let best = { samples: 0, bad: 0 };
+    for (const c of clients) {
+      const w = c.windows[index];
+      if (c.version_id === version && w && w.samples > best.samples) best = w;
+    }
+    return best;
+  };
   for (const [version, entry] of out) {
-    const heaviest = (index: Map<string, Map<string, { samples: number; bad: number }>>): { samples: number; bad: number } => {
-      let best = { samples: 0, bad: 0 };
-      for (const seen of index.get(version)?.values() ?? []) if (seen.samples > best.samples) best = seen;
-      return best;
-    };
-    const p = heaviest(principals);
-    const i = heaviest(ips);
-    entry.traffic.top = { principalSamples: p.samples, principalBad: p.bad, ipSamples: i.samples, ipBad: i.bad };
+    const p = heaviest(data.principals, version);
+    const i = heaviest(data.ips, version);
+    Object.assign(entry.traffic.top, { principalSamples: p.samples, principalBad: p.bad, ipSamples: i.samples, ipBad: i.bad });
   }
   return out;
 }

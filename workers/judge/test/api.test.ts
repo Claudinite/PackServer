@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { unwiredPort } from "@packserver/ports/cloudflare";
+import type { AccessIdentity } from "@packserver/ports";
 import { createApp } from "../src/app";
 import { evaluateGates } from "../src/gates/cycle";
 import { gatesStore } from "../src/gates/store";
@@ -59,6 +61,81 @@ describe("GET /gates", () => {
     expect(end.status).toBe("fail");
     expect((await json(await get("/gates/web-new/gate.availability"))).status).toBe("watching");
     expect((await gatesStore(gatesKv).memory("web-new"))["gate.availability"]?.decided_at).toBe(300);
+  });
+});
+
+describe("a report the judge cannot stand behind", () => {
+  it("reads insufficient, with the reason, when the last good cycle is old", async () => {
+    const { fakes, data, gatesKv, get } = await setup();
+    data.groups = [group("web-new", "web", 400)];
+    await evaluateGates({ clock: fakes.clock, gatesKv, data, stats: fakes.stats }, null, "launch");
+    expect((await json(await get("/gates/web-new/gate.availability"))).status).toBe("pass");
+    fakes.clock.advance("11m");
+    const report = await json(await get("/gates/web-new"));
+    expect(report.stale).toBe(true);
+    for (const verdict of Object.values<{ status: string; reasons: string[] }>(report.gates)) {
+      expect(verdict.status).toBe("insufficient");
+      expect(verdict.reasons[0]).toMatch(/no fresh read/);
+    }
+    expect((await json(await get("/gates/web-new/gate.availability?stage_end=1"))).status).toBe("insufficient");
+  });
+
+  it("stays stale after a cycle whose read was refused, until a cycle succeeds again", async () => {
+    const { fakes, data, gatesKv, get } = await setup();
+    const deps = { clock: fakes.clock, gatesKv, data, stats: fakes.stats };
+    data.groups = [group("web-new", "web", 400)];
+    await evaluateGates(deps, null, "launch");
+    fakes.clock.advance("6m");
+    data.requestOutcomes = async () => {
+      throw new Error("the request_outcomes read returned 10000 rows, so it is incomplete");
+    };
+    await expect(evaluateGates(deps, null, "launch")).rejects.toThrow(/incomplete/);
+    fakes.clock.advance("6m");
+    expect((await json(await get("/gates/web-new"))).stale).toBe(true);
+    delete (data as { requestOutcomes?: unknown }).requestOutcomes;
+    await evaluateGates(deps, null, "launch");
+    expect((await json(await get("/gates/web-new"))).stale).toBe(false);
+  });
+
+  it("serves the freshness of the last cycle as the report's evaluated_at", async () => {
+    const { fakes, data, gatesKv, get } = await setup();
+    data.groups = [group("web-new", "web", 400)];
+    const t = fakes.clock.now();
+    await evaluateGates({ clock: fakes.clock, gatesKv, data, stats: fakes.stats }, null, "launch");
+    fakes.clock.advance("2m");
+    await evaluateGates({ clock: fakes.clock, gatesKv, data, stats: fakes.stats }, null, "launch");
+    expect((await json(await get("/gates/web-new"))).evaluated_at).toBe(t + 120_000);
+  });
+});
+
+describe("a repeated stage-end call", () => {
+  it("answers from the same decision until a new cycle brings new data, and is not another look", async () => {
+    const { fakes, data, gatesKv, get } = await setup();
+    const deps = { clock: fakes.clock, gatesKv, data, stats: fakes.stats };
+    data.groups = [group("web-new", "web", 300, 0, { recent: 2000 })];
+    await evaluateGates(deps, null, "launch");
+    data.groups = [group("web-new", "web", 450, 5, { recent: 2000 })];
+    fakes.clock.advance("1m");
+    await evaluateGates(deps, null, "launch");
+    const first = await json(await get("/gates/web-new?stage_end=1"));
+    expect(first.stage_end).toBe(true);
+    // Same cycle's data: even if the inputs were to change under it, the answer holds.
+    await gatesKv.put("inputs/web-new", JSON.stringify({ ...(await gatesStore(gatesKv).inputs("web-new")), hashMismatches: 5 }));
+    expect(await json(await get("/gates/web-new?stage_end=1"))).toEqual(first);
+    fakes.clock.advance("1m");
+    await evaluateGates(deps, null, "launch");
+    expect((await json(await get("/gates/web-new?stage_end=1"))).evaluated_at).not.toBe(first.evaluated_at);
+  });
+});
+
+describe("the production configuration", () => {
+  it("answers 401 on both routes, because no Access verifier is bound outside env.test", async () => {
+    const { fakes } = await setup();
+    const unwired = unwiredPort<AccessIdentity>("access");
+    const app = createApp({ ...runtimeWith(fakes), ports: { ...fakes, access: unwired } });
+    const assertion = { "cf-access-jwt-assertion": await fakes.access.assert({ email: "svc@packserver.test", sub: "s" }) };
+    expect((await app.request("/gates/v1", { headers: assertion })).status).toBe(401);
+    expect((await app.request("/probe-results", { method: "POST", headers: assertion, body: "{}" })).status).toBe(401);
   });
 });
 
