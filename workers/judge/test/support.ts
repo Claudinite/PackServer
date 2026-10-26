@@ -26,7 +26,7 @@ export class FakeGateData implements GateDataSource {
       groups: this.groups.map(({ counts, ...g }) => ({ ...g, windows: Array.from({ length: n }, () => counts) })),
       principals: this.principals.map((c) => ({ version_id: c.version_id, key: c.key, windows: Array.from({ length: n }, () => ({ samples: c.samples, bad: c.bad })) })),
       ips: this.ips.map((c) => ({ version_id: c.version_id, key: c.key, windows: Array.from({ length: n }, () => ({ samples: c.samples, bad: c.bad })) })),
-      exactVersions: window.candidates,
+      exactVersions: window.candidates.map((c) => c.version),
       listsCut: this.listsCut,
     };
   }

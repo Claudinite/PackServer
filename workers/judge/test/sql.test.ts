@@ -46,17 +46,23 @@ describe("the reads", () => {
 
 describe("one version's clients", () => {
   it("are ranked inside the version, by samples or by bad, and the version id is checked", () => {
-    const bySamples = versionClientsSql("request_outcomes", window, "principal_hash", "web-v2", "samples");
+    const bySamples = versionClientsSql("request_outcomes", window, "principal_hash", "web-v2", "samples", 0);
     expect(bySamples).toContain("index1 = 'web-v2'");
     expect(bySamples).toContain(`ORDER BY s0 DESC LIMIT ${CANDIDATE_TOP}`);
-    expect(versionClientsSql("request_outcomes", window, "ip_hash", "web-v2", "bad")).toContain(`ORDER BY b0 DESC LIMIT ${CANDIDATE_TOP}`);
-    expect(() => versionClientsSql("request_outcomes", window, "ip_hash", "x' OR '1'='1", "bad")).toThrow(/not a version id/);
+    expect(versionClientsSql("request_outcomes", window, "ip_hash", "web-v2", "bad", 0)).toContain(`ORDER BY b0 DESC LIMIT ${CANDIDATE_TOP}`);
+    expect(() => versionClientsSql("request_outcomes", window, "ip_hash", "x' OR '1'='1", "bad", 0)).toThrow(/not a version id/);
+  });
+
+  it("are ranked by the candidate's own stage columns, which the 24 h columns can disagree with", () => {
+    const staged = { ...window, candidates: [{ version: "web-v2", index: 1 }] };
+    expect(versionClientsSql("request_outcomes", staged, "principal_hash", "web-v2", "samples", 1)).toContain("ORDER BY s1 DESC");
+    expect(versionClientsSql("request_outcomes", staged, "principal_hash", "web-v2", "bad", 1)).toContain("ORDER BY b1 DESC");
   });
 
   it("are read four ways per candidate and marked complete for it", async () => {
     const bodies: string[] = [];
     const fetchImpl = (async (_u: string, init: RequestInit) => (bodies.push(String(init.body)), new Response(JSON.stringify({ data: [] })))) as unknown as typeof fetch;
-    const data = await analyticsGateData({ accountId: async () => "a", token: async () => "t", datasetSuffix: "" }, fetchImpl).requestOutcomes({ ...window, candidates: ["web-v2"] });
+    const data = await analyticsGateData({ accountId: async () => "a", token: async () => "t", datasetSuffix: "" }, fetchImpl).requestOutcomes({ ...window, candidates: [{ version: "web-v2", index: 0 }] });
     expect(bodies).toHaveLength(3 + 4);
     expect(data.exactVersions).toEqual(["web-v2"]);
     expect(data.listsCut).toBe(false);

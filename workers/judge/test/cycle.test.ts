@@ -70,7 +70,7 @@ describe("an evaluation cycle", () => {
       })),
       principals: [],
       ips: [],
-      exactVersions: window.candidates,
+      exactVersions: window.candidates.map((c) => c.version),
       listsCut: false,
     });
     await begin(RELEASE);
@@ -220,7 +220,7 @@ describe("a stage that lasts", () => {
         version_id: "web-new", worker: "web", override: false, synthetic: false, today: 0, recent: 9000,
         windows: window.starts.map((start) => counts(Math.round(((fakes.clock.now() - start) / 1000) * 10), 0)),
       }],
-      principals: [], ips: [], exactVersions: window.candidates, listsCut: false,
+      principals: [], ips: [], exactVersions: window.candidates.map((c) => c.version), listsCut: false,
     });
     await evaluateGates(deps, RELEASE, "launch");
     for (let i = 0; i < 31; i++) {
@@ -268,6 +268,17 @@ describe("a stage that lasts", () => {
     expect((await report("web-new")).gates["gate.synthetic"]?.status).toBe("insufficient");
   });
 
+  it("keeps hash mismatches across the rolling to live restart, from the release's start rather than the day", async () => {
+    const { fakes, data, deps, report, begin } = setup();
+    data.groups = [group("web-new", "web", 400, 0, { recent: 2000 })];
+    await begin(RELEASE);
+    data.domain = [{ signal: "download.hash_mismatch", version_id: "web-new", attrs: "{}", n: 5, windows: [5, 3], recent: 0, ts: fakes.clock.now(), d1: -1, d2: -1 }];
+    await evaluateGates(deps, RELEASE, "launch");
+    fakes.clock.advance("1m");
+    await evaluateGates(deps, { ...RELEASE, state: "live" }, "launch");
+    expect((await report("web-new")).gates["gate.domain.hash_integrity"]).toMatchObject({ status: "fail", observed: 3 });
+  });
+
   it("counts domain events from the candidate's stage, not the whole lookback", async () => {
     const { fakes, data, deps, report, begin } = setup();
     data.groups = [group("web-new", "web", 400, 0, { recent: 2000 })];
@@ -289,8 +300,48 @@ describe("a dominant client among many", () => {
     data.listsCut = true;
     await begin(rel);
     await evaluateGates(deps, rel, "launch");
-    expect(data.windows.at(-1)?.candidates).toEqual(["web-new"]);
+    expect(data.windows.at(-1)?.candidates.map((c) => c.version)).toEqual(["web-new"]);
     expect((await report("web-new")).gates["gate.availability"]?.status).toBe("suspect");
+  });
+
+  it("is caught in the stage window even when the day's ranking would have listed other clients", async () => {
+    const { data, deps, report, begin } = setup();
+    // Over the day p-old is the heavy client; in the candidate's stage p-stage carries 30% of its samples.
+    // The fake keeps one client per list, ranked by the same window column the query is told to rank by.
+    data.provider = (window) => {
+      const index = window.candidates[0]?.index ?? 0;
+      const clients = [
+        { key: "p-old", windows: [{ samples: 2000, bad: 0 }, { samples: 5, bad: 0 }] },
+        { key: "p-stage", windows: [{ samples: 130, bad: 0 }, { samples: 120, bad: 0 }] },
+      ];
+      const top = [...clients].sort((a, b) => (b.windows[index]?.samples ?? 0) - (a.windows[index]?.samples ?? 0))[0];
+      const list = top ? [{ version_id: "web-new", key: top.key, windows: top.windows }] : [];
+      return {
+        groups: [{ version_id: "web-new", worker: "web", override: false, synthetic: false, today: 0, recent: 90_000, windows: window.starts.map((_, i) => counts(i === 0 ? 3000 : 400, 0)) }],
+        principals: list, ips: [], exactVersions: window.candidates.map((c) => c.version), listsCut: true,
+      };
+    };
+    await begin(rel);
+    await evaluateGates(deps, rel, "launch");
+    expect(data.windows.at(-1)?.candidates).toEqual([{ version: "web-new", index: 1 }]);
+    expect((await report("web-new")).gates["gate.availability"]?.status).toBe("suspect");
+  });
+
+  it("drops a candidate whose version id is unsafe, logs it, and still judges the rest", async () => {
+    const { deps, report, data } = setup();
+    const both: ReleaseRecord = { release_id: "r", state: "rolling", workers: { web: { version_id: "web-new", changed: true }, mcp: { version_id: "x' OR '1'='1", changed: true } } };
+    data.groups = [group("web-new", "web", 400)];
+    const logged: string[] = [];
+    const original = console.error;
+    console.error = (m: unknown) => void logged.push(String(m));
+    try {
+      await evaluateGates(deps, both, "launch");
+    } finally {
+      console.error = original;
+    }
+    expect(logged.join()).toContain("judge.candidate_dropped");
+    expect(data.windows.at(-1)?.candidates.map((c) => c.version)).toEqual(["web-new"]);
+    expect((await report("web-new")).stale).toBe(false);
   });
 
   it("is caught when it carries most of the bad samples without being a heavy client", async () => {

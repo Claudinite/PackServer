@@ -72,7 +72,7 @@ export interface ReadWindow {
   /** Start of the "recent" span. */
   recentMs: number;
   /** Versions in a stage, whose heavy clients are read one version at a time. */
-  candidates: string[];
+  candidates: Array<{ version: string; index: number }>;
 }
 
 /** One read per dataset per cycle, with the concentration of clients read separately from the totals. */
@@ -88,10 +88,12 @@ export const RECENT_MS = 15 * 60_000;
 export const MAX_WINDOWS = 6;
 
 /** Windows for the given stage starts, each clipped to the lookback, oldest first. */
-export function windowAt(nowMs: number, stageStarts: readonly number[], candidates: readonly string[] = []): ReadWindow {
+export function windowAt(nowMs: number, stageStarts: readonly number[], candidates: ReadonlyArray<{ version: string; start: number }> = []): ReadWindow {
   const floor = nowMs - MAX_LOOKBACK_MS;
   const distinct = [...new Set(stageStarts.map((s) => Math.max(s, floor)))].sort((a, b) => a - b);
-  return { starts: (distinct.length > 0 ? distinct : [floor]).slice(0, MAX_WINDOWS), dayStartMs: nowMs - (nowMs % 86_400_000), recentMs: nowMs - RECENT_MS, candidates: [...candidates] };
+  const window: ReadWindow = { starts: (distinct.length > 0 ? distinct : [floor]).slice(0, MAX_WINDOWS), dayStartMs: nowMs - (nowMs % 86_400_000), recentMs: nowMs - RECENT_MS, candidates: [] };
+  window.candidates = candidates.map((c) => ({ version: c.version, index: windowIndex(window, c.start) }));
+  return window;
 }
 
 /** The index of the newest window that starts no later than `startMs`, so a stage is never given less than its own traffic. */
@@ -103,3 +105,6 @@ export function windowIndex(window: ReadWindow, startMs: number): number {
   });
   return found;
 }
+
+/** What a version id may look like where it is written into a statement. */
+export const isSafeVersionId = (id: string): boolean => /^[A-Za-z0-9._-]{1,128}$/.test(id);

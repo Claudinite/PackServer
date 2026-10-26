@@ -3,7 +3,7 @@ import {
 } from "@packserver/core/gates";
 import type { Clock, KV, Stats } from "@packserver/ports";
 import { domainFacts, pickBaseline, probeFacts, realRatePerSecond, requestsToday, trafficByVersion, type VersionTraffic } from "../stats/aggregate";
-import { MAX_LOOKBACK_MS, RECENT_MS, windowAt, windowIndex, type GateDataSource } from "../stats/source";
+import { MAX_LOOKBACK_MS, RECENT_MS, isSafeVersionId, windowAt, windowIndex, type GateDataSource } from "../stats/source";
 import { gatesStore, type EmittedVerdict } from "./store";
 
 /** Analytics Engine accepts 250 points per invocation (analytics-engine/limits); the heartbeat and the audit signals take their share. */
@@ -64,7 +64,11 @@ export async function evaluateGates(deps: GateDeps, release: ReleaseRecord | nul
   const store = gatesStore(deps.gatesKv);
 
   const candidates = new Map<string, string>();
-  for (const [worker, w] of Object.entries(release?.workers ?? {})) if (release && w?.changed === true && typeof w.version_id === "string") candidates.set(w.version_id, worker);
+  for (const [worker, w] of Object.entries(release?.workers ?? {})) {
+    if (!release || w?.changed !== true || typeof w.version_id !== "string") continue;
+    if (!isSafeVersionId(w.version_id)) console.error(JSON.stringify({ event: "judge.candidate_dropped", worker, reason: "unsafe version id" }));
+    else candidates.set(w.version_id, worker);
+  }
   const stages = new Map<string, Stage>();
   for (const versionId of candidates.keys()) {
     const key = `${release?.release_id}|${release?.state}`;
@@ -77,7 +81,11 @@ export async function evaluateGates(deps: GateDeps, release: ReleaseRecord | nul
     }
   }
 
-  const window = windowAt(now, [now - MAX_LOOKBACK_MS, ...[...stages.values()].filter((s) => !s.reset).map((s) => s.started_at)], [...candidates.keys()]);
+  const window = windowAt(
+    now,
+    [now - MAX_LOOKBACK_MS, ...[...stages.values()].flatMap((s) => (s.reset ? [s.release_started_at] : [s.started_at, s.release_started_at]))],
+    [...candidates.keys()].map((version) => ({ version, start: stages.get(version)?.started_at ?? now })),
+  );
   const [data, domainRows, probeRows] = await Promise.all([deps.data.requestOutcomes(window), deps.data.domainEvents(window), deps.data.syntheticProbes(window)]);
   const tracked = new Map<string, string>();
   for (const g of data.groups) if (g.version_id !== "") tracked.set(g.version_id, g.worker);
@@ -118,7 +126,7 @@ export async function evaluateGates(deps: GateDeps, release: ReleaseRecord | nul
       syntheticRuns: (probes.runs.get(versionId) ?? []).filter((r) => r.at >= evidenceSince),
       indexFetches: (probes.indexFetches.get(versionId) ?? []).filter((r) => r.at >= evidenceSince),
       dryRuns: (await store.dryRuns(versionId)).filter((r) => r.at >= evidenceSince),
-      hashMismatches: domain.hashMismatches.get(versionId) ?? 0,
+      hashMismatches: domainFor(windowIndex(window, evidenceSince)).hashMismatches.get(versionId) ?? 0,
       publishValidated: domain.publishValidated.get(versionId) ?? 0,
       publishFailed: domain.publishFailed.get(versionId) ?? 0,
       searchDegraded: domain.searchDegraded.get(versionId) ?? 0,

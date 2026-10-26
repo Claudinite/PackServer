@@ -1,6 +1,6 @@
 import { DOWNLOAD_JOURNEY, LATENCY_BOUNDS_MS } from "@packserver/core/gates";
 import { REQUEST_BLOBS, REQUEST_DOUBLES } from "@packserver/core/telemetry";
-import type { DomainRow, GateDataSource, ProbeRow, ReadWindow, RequestData, TopClient } from "./source";
+import { isSafeVersionId, type DomainRow, type GateDataSource, type ProbeRow, type ReadWindow, type RequestData, type TopClient } from "./source";
 
 export interface AnalyticsSqlConfig {
   accountId: () => Promise<string>;
@@ -49,7 +49,6 @@ FROM ${dataset} WHERE ${since(w, 0)} AND ${blob("worker")} != ''
 GROUP BY version_id, worker, version_override, is_synthetic LIMIT ${ROW_LIMIT} FORMAT JSON`;
 }
 
-const SAFE_VERSION = /^[A-Za-z0-9._-]{1,128}$/;
 /** Enough to hold the heaviest few by either ranking; a dominant client is always first in one of them. */
 export const CANDIDATE_TOP = 5;
 
@@ -62,15 +61,16 @@ GROUP BY version_id, client HAVING sum(_sample_interval) >= ${MIN_CLIENT_SAMPLES
 }
 
 /**
- * One version's heaviest clients, ranked by samples or by bad samples: ranking inside the version is
+ * One version's heaviest clients, ranked by samples or by bad samples over its own stage window
+ * (`index`), which is the column the gates read: a client heavy only before the stage is not its head. ranking inside the version is
  * what keeps a 1% candidate's dominant client from being cut by the incumbents' larger ones.
  */
-export function versionClientsSql(dataset: string, w: ReadWindow, column: "principal_hash" | "ip_hash", version: string, rank: "samples" | "bad"): string {
-  if (!SAFE_VERSION.test(version)) throw new Error(`not a version id: ${version}`);
+export function versionClientsSql(dataset: string, w: ReadWindow, column: "principal_hash" | "ip_hash", version: string, rank: "samples" | "bad", index: number): string {
+  if (!isSafeVersionId(version)) throw new Error(`not a version id: ${version}`);
   const columns = w.starts.flatMap((_, i) => [`sumIf(_sample_interval, ${since(w, i)}) AS s${i}`, `sumIf(_sample_interval, ${since(w, i)} AND ${BAD_IN}) AS b${i}`]);
   return `SELECT index1 AS version_id, ${blob(column)} AS client, ${columns.join(", ")}
 FROM ${dataset} WHERE ${since(w, 0)} AND index1 = '${version}' AND ${blob(column)} != '' AND ${double("version_override")} = 0 AND ${double("is_synthetic")} = 0
-GROUP BY version_id, client ORDER BY ${rank === "samples" ? "s0" : "b0"} DESC LIMIT ${CANDIDATE_TOP} FORMAT JSON`;
+GROUP BY version_id, client ORDER BY ${rank === "samples" ? `s${index}` : `b${index}`} DESC LIMIT ${CANDIDATE_TOP} FORMAT JSON`;
 }
 
 /** `blob1` is the emitting Worker, `blob2` its release, `blob3` its version and `blob4` the attributes, as `Telemetry.emit` writes them. */
@@ -123,7 +123,7 @@ export function analyticsGateData(config: AnalyticsSqlConfig, fetchImpl: typeof 
         run("request_outcomes", requestOutcomesSql(base, w)),
         run("request_outcomes principals", topClientsSql(base, w, "principal_hash"), false),
         run("request_outcomes ips", topClientsSql(base, w, "ip_hash"), false),
-        ...w.candidates.flatMap((v) => columns.flatMap((c) => (["samples", "bad"] as const).map((rank) => run(`request_outcomes ${c} of a candidate`, versionClientsSql(base, w, c, v, rank), false)))),
+        ...w.candidates.flatMap(({ version, index }) => columns.flatMap((c) => (["samples", "bad"] as const).map((rank) => run(`request_outcomes ${c} of a candidate`, versionClientsSql(base, w, c, version, rank, index), false)))),
       ]);
       const clients = (rows: Raw[]): TopClient[] =>
         rows.map((r) => ({ version_id: text(r.version_id), key: text(r.client), windows: w.starts.map((_, i) => ({ samples: num(r[`s${i}`]), bad: num(r[`b${i}`]) })) }));
@@ -151,7 +151,7 @@ export function analyticsGateData(config: AnalyticsSqlConfig, fetchImpl: typeof 
         })),
         principals: [...clients(principals), ...merged(perCandidate.flatMap((l) => [l[0] as Raw[], l[1] as Raw[]]))],
         ips: [...clients(ips), ...merged(perCandidate.flatMap((l) => [l[2] as Raw[], l[3] as Raw[]]))],
-        exactVersions: [...w.candidates],
+        exactVersions: w.candidates.map((c) => c.version),
         listsCut: principals.length >= TOP_CLIENTS || ips.length >= TOP_CLIENTS,
       };
     },
