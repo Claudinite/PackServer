@@ -13,7 +13,7 @@ export interface SignedIndexes {
 }
 
 const POLL_MS = 250;
-const SETTLE_MS = 45_000;
+const SETTLE_MS = 20_000;
 
 const lifetimeOf = (doc: { generated_at: string; expires: string }): number => Date.parse(doc.expires) - Date.parse(doc.generated_at);
 const hex = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");

@@ -16,7 +16,7 @@ import { loadSigning } from "../sign/keys";
 import { getJson, runKeys } from "../workflow/report";
 import { claimsOf, InfrastructureError, nowIso, provenanceOf, reports, stat } from "../workflow/steps";
 import { NOTIFY_SCHEMA, type VersionPromoted } from "../notify/message";
-import { loadPromotion, packOf, promotable, versionRow, type PromotionRun } from "./load";
+import { loadPromotion, packOf, promotable, stagingReason, versionRow, type PromotionRun } from "./load";
 
 export interface Context {
   rt: ValidatorRuntime;
@@ -66,7 +66,8 @@ async function materialOf(rt: ValidatorRuntime, run: PromotionRun): Promise<Mate
 /**
  * The version row promotion commits: written `approved` here, before anything is put in a bucket,
  * because a private archive's key is the row's opaque id. A version some other run already holds
- * is not this run's to promote.
+ * is not this run's to promote. A version REQ-VAL-038 or REQ-PUB-019 stages gets no row here and
+ * is left for the owner's approval.
  */
 export async function prepare(ctx: Context): Promise<{ promote: false } | { promote: true; versionId: string }> {
   const { rt, runId } = ctx;
@@ -81,11 +82,12 @@ export async function prepare(ctx: Context): Promise<{ promote: false } | { prom
   const caps = (a.capabilities ?? EMPTY_CAPS) as Material["capabilities"];
   const facts = await verificationFacts(d1, run.scope_id);
   if (!facts) throw new InfrastructureError("promote.scope_missing");
+  const at = await nowIso(rt);
+  if (await stagingReason(d1, run, facts.verified, at)) return { promote: false };
   const claimed = await claimsOf(rt, run);
   const manifest = (a.manifest ?? {}) as { minEngineVersion?: unknown; requires?: unknown };
   const requires = Array.isArray(manifest.requires) ? manifest.requires.filter((r): r is string => typeof r === "string") : [];
   const versionId = rt.ports.rng.uuid();
-  const at = await nowIso(rt);
 
   await d1.batch([
     {

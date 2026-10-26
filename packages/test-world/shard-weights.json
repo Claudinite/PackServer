@@ -10,6 +10,7 @@
  "scenarios/operations.scenario.ts": 21,
  "scenarios/pack-pages-manifest.scenario.ts": 27,
  "scenarios/private-packs.scenario.ts": 39,
+ "scenarios/promotion.scenario.ts": 60,
  "scenarios/publishing.scenario.ts": 60,
  "scenarios/scope-domain-proofs.scenario.ts": 30,
  "scenarios/scope-holds.scenario.ts": 32,

@@ -103,3 +103,35 @@ describe("the entrypoints", () => {
     expect(await sign.signScopeIndex({ scope: "acme", unsigned })).toMatchObject({ serial: 1 });
   });
 });
+
+describe("signings in flight together", () => {
+  it("never share a serial: each gets a distinct, increasing one, and the alias ends on the newest", async () => {
+    const { rt, publicBucket, fakes } = await testRuntime();
+    const now = new Date(fakes.clock.now());
+    const make = (n: number) => ({
+      scope: "acme",
+      unsigned: buildScopeIndex({ scope: "acme", serial: 1, now: new Date(now.getTime() + n), packs: [] }),
+    });
+    const acks = await Promise.all([1, 2, 3, 4].map((n) => signAndWriteScopeIndex(rt, make(n))));
+    expect(acks.map((a) => a.serial).sort()).toEqual([1, 2, 3, 4]);
+    expect(new Set(acks.map((a) => a.sha256)).size).toBe(4);
+    const newest = acks.find((a) => a.serial === 4)!;
+    expect(publicBucket.objects.get("index/v1/acme.json")?.body).toEqual(publicBucket.objects.get(newest.key)?.body);
+  });
+
+  it("do the same for the root", async () => {
+    const { rt, fakes } = await testRuntime();
+    const now = new Date(fakes.clock.now());
+    const acks = await Promise.all([1, 2, 3].map(() => signAndWriteRootDocument(rt, { unsigned: buildRoot({ serial: 1, now, scopes: [] }) })));
+    expect(acks.map((a) => a.serial).sort()).toEqual([1, 2, 3]);
+  });
+
+  it("record only under the serial they reserved: a signing overtaken by a later one leaves the later one's record", async () => {
+    const { rt, db, fakes } = await testRuntime();
+    const now = new Date(fakes.clock.now());
+    const [a, b] = await Promise.all([1, 2].map((n) => signAndWriteScopeIndex(rt, { scope: "acme", unsigned: buildScopeIndex({ scope: "acme", serial: 1, now: new Date(now.getTime() + n), packs: [] }) })));
+    const row = db.prepare(`select serial, sha256 from signed_documents where doc_key = 'scope:acme'`).get() as { serial: number; sha256: string };
+    const newest = a!.serial > b!.serial ? a! : b!;
+    expect(row).toEqual({ serial: newest.serial, sha256: newest.sha256 });
+  });
+});

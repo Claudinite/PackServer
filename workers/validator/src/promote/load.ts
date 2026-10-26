@@ -1,3 +1,4 @@
+import { hasPublisherChange } from "@packserver/core/publishing";
 import type { D1 } from "@packserver/ports";
 
 /** A validation run as promotion reads it: the verdict, the committed form and who stood behind it. */
@@ -71,4 +72,22 @@ export async function versionRow(d1: D1, run: PromotionRun): Promise<VersionRow 
     )
   ).rows[0];
   return (row as unknown as VersionRow | undefined) ?? null;
+}
+
+/** Days without a publish after which the next version is owed the first-publish review (REQ-VAL-038). */
+export const DORMANT_DAYS = 180;
+
+export type StagingReason = "publisher-change" | "dormant" | "verified-publisher";
+
+/** Why a version that passed must wait for an owner's approval instead of being promoted here, or null when it may go straight out. */
+export async function stagingReason(d1: D1, run: PromotionRun, verified: boolean, nowIso: string): Promise<StagingReason | null> {
+  if (await hasPublisherChange(d1, run.scope_id, run.pack_name)) return "publisher-change";
+  const last = (
+    await d1.query(
+      `select max(v.published_at) as at from pack_versions v join packs p on p.id = v.pack_id where p.scope_id = ? and p.name = ? and v.published_at is not null`,
+      [run.scope_id, run.pack_name],
+    )
+  ).rows[0]?.at;
+  if (typeof last === "string" && Date.parse(nowIso) - Date.parse(last) > DORMANT_DAYS * 86_400_000) return "dormant";
+  return verified ? "verified-publisher" : null;
 }

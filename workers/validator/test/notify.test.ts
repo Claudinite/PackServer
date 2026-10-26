@@ -61,6 +61,21 @@ describe("the version-published notice", () => {
     await sendVersionPublished(rt, message);
     expect(fakes.mail.sent.map((m) => m.to).sort()).toEqual(["ada@example.test", "bob@example.test"]);
   });
+
+  it("takes over a send that died unfinished once its lease has run out, and leaves a fresh one to its sender", async () => {
+    const { rt, fakes, db } = await setup();
+    db.exec(`insert into notice_deliveries (dedupe_key, sent_at, status) values
+      ('${message.dedupe}:ada@example.test', '2020-01-01T00:00:00.000Z', 'sending'),
+      ('${message.dedupe}:bob@example.test', '2999-01-01T00:00:00.000Z', 'sending')`);
+    await sendVersionPublished(rt, message);
+    expect(fakes.mail.sent.map((m) => m.to)).toEqual(["ada@example.test"]);
+    expect(db.prepare(`select dedupe_key, status from notice_deliveries order by dedupe_key`).all()).toEqual([
+      { dedupe_key: `${message.dedupe}:ada@example.test`, status: "sent" },
+      { dedupe_key: `${message.dedupe}:bob@example.test`, status: "sending" },
+    ]);
+    await sendVersionPublished(rt, message);
+    expect(fakes.mail.sent).toHaveLength(1);
+  });
 });
 
 describe("the notify consumer", () => {

@@ -38,6 +38,9 @@ export interface Env {
   /** Read only under `env.test`, where the issuer is the test world's. */
   OIDC_ISSUER?: string;
   OIDC_JWKS_URL?: string;
+  /** Milliseconds, as text: how long an index rebuild request is answered by the last one, and how long root changes are batched. */
+  REBUILD_DEBOUNCE_MS: string;
+  ROOT_BATCH_MS: string;
   /** The fake clock, bound only under `env.test`. */
   CLOCK?: Fetcher & { now(): Promise<number> };
 }
@@ -119,6 +122,13 @@ export interface CoordinatorDeps {
   signer: RootSigner;
   indexes: IndexRebuilder;
   root: RootNotifier;
+  timings: { rebuildDebounceMs: number; rootBatchMs: number };
+}
+
+function millis(name: string, value: string | undefined): number {
+  const n = Number(value);
+  if (value === undefined || !Number.isInteger(n) || n < 0) throw new Error(`${name} must be a number of milliseconds, not ${JSON.stringify(value)}`);
+  return n;
 }
 
 type Rpc = Record<string, ((request: unknown) => Promise<unknown>) | undefined>;
@@ -156,6 +166,7 @@ export function createCoordinatorDeps(env: Env): CoordinatorDeps {
     d1,
     signer,
     indexes: createIndexRebuilder({ d1, signer, now: () => Date.now() }),
+    timings: { rebuildDebounceMs: millis("REBUILD_DEBOUNCE_MS", env.REBUILD_DEBOUNCE_MS), rootBatchMs: millis("ROOT_BATCH_MS", env.ROOT_BATCH_MS) },
     root: {
       async scopeChanged(change) {
         await durableObjects.call("RootCoordinator", ROOT_COORDINATOR_NAME, "notifyScopeChange", [change]);

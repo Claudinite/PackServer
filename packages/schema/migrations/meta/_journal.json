@@ -169,6 +169,13 @@
       "when": 1793049282281,
       "tag": "20261026211442_foundation_pack_version_status",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1793052201572,
+      "tag": "20261026220321_promotion_notice_lease",
+      "breakpoints": true
     }
   ]
 }

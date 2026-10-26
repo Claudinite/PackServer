@@ -111,6 +111,42 @@ describe("ScopeCoordinator", () => {
     expect(await storage.get("pending")).toBeUndefined();
   });
 
+  it("runs one rebuild at a time and, for requests arriving meanwhile, exactly one more", async () => {
+    const clock = clockAt();
+    const { d1 } = migratedD1();
+    let active = 0;
+    let peak = 0;
+    const gates: Array<() => void> = [];
+    let calls = 0;
+    const logic = new ScopeCoordinatorLogic(new MemoryDoStorage(), clock.now, {
+      d1,
+      indexes: {
+        rebuild: async () => {
+          const n = ++calls;
+          peak = Math.max(peak, ++active);
+          await new Promise<void>((open) => gates.push(open));
+          active--;
+          return { sha256: sha(String(n)), serial: n };
+        },
+      },
+      root: { scopeChanged: async () => {} },
+    });
+    const first = logic.rebuildIndex({ scope: "acme" });
+    await Promise.resolve();
+    const second = logic.rebuildIndex({ scope: "acme" });
+    const third = logic.rebuildIndex({ scope: "acme" });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(calls).toBe(1);
+    gates[0]!();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(calls).toBe(2);
+    gates[1]!();
+    const results = await Promise.all([first, second, third]);
+    expect(calls).toBe(2);
+    expect(peak).toBe(1);
+    expect(results.map((r) => r.serial)).toEqual([2, 2, 2]);
+  });
+
   it("does nothing on an alarm with nothing pending", async () => {
     const { logic, built } = setup();
     await logic.alarm();

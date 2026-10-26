@@ -18,7 +18,10 @@ export const notice_deliveries = sqliteTable(
   "notice_deliveries",
   {
     dedupe_key: text("dedupe_key").primaryKey(),
+    /** When the row was claimed, which is when the send began. */
     sent_at: text("sent_at").notNull(),
+    /** `sending` from the claim until the mail is accepted; a `sending` row older than the lease is claimed again. */
+    status: text("status", { enum: ["sending", "sent"] }).notNull().default("sent"),
   },
   (t) => [index("notice_deliveries_sent_idx").on(t.sent_at)],
 );

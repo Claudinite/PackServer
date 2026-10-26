@@ -172,6 +172,43 @@ describe("promotion", () => {
     }
   });
 
+  describe("a version the registry stages instead of promoting", () => {
+    const leftStaged = async (s: Seeded) => {
+      const before = rowsOf(s.db, "pack_versions");
+      expect(await prepare(s.ctx)).toEqual({ promote: false });
+      expect(rowsOf(s.db, "pack_versions")).toBe(before);
+      expect(s.publicBucket.objects.size).toBe(0);
+    };
+
+    it("is left alone while an unconsumed publisher change is owed a first-publish review, and promoted once it is consumed", async () => {
+      const s = await finishedRun();
+      s.db.exec(`insert into publisher_changes (id, scope_id, pack_name, kind, occurred_at) values ('pc1', 's-acme', 'gcp', 'maintainer-added', 'x')`);
+      await leftStaged(s);
+      s.db.exec(`update publisher_changes set consumed_at = 'y'`);
+      expect(await prepare(s.ctx)).toMatchObject({ promote: true });
+    });
+
+    it("is left alone for a Verified Publisher, whatever the pack's setting, and promoted once the verification is gone", async () => {
+      const s = await finishedRun();
+      s.db.exec(`insert into users (id, created_at) values ('u1', 'x');
+        update scopes set verified_domain = 'acme.com' where id = 's-acme';
+        insert into vp_applications (id, scope_id, state, applied_by, applied_at) values ('vp1', 's-acme', 'approved', 'u1', 'x');`);
+      await leftStaged(s);
+      s.db.exec(`update vp_applications set state = 'revoked'`);
+      expect(await prepare(s.ctx)).toMatchObject({ promote: true });
+    });
+
+    it("is left alone after 180 days without a publish, and promoted when the last publish is inside the window", async () => {
+      const s = await finishedRun({ version: "1.1.0" });
+      s.db.exec(`insert into packs (id, scope_id, name, visibility, created_at) values ('p-old', 's-acme', 'gcp', 'public', 'x');
+        insert into pack_versions (id, pack_id, version, state, sha256, size_bytes, verified, source_verified, published_at)
+          values ('v-old', 'p-old', '1.0.0', 'active', '${"c".repeat(64)}', 1, 0, 0, '2026-04-01T00:00:00.000Z')`);
+      await leftStaged(s);
+      s.db.exec(`update pack_versions set published_at = '2026-09-01T00:00:00.000Z'`);
+      expect(await prepare(s.ctx)).toMatchObject({ promote: true });
+    });
+  });
+
   it("promotes a run that only warned, and counts the warning by category in meta.json", async () => {
     const s = await finishedRun({ verdict: "warn" });
     await allSteps(s);

@@ -2,7 +2,7 @@ import { DO_RPC_SCHEMA_VERSION, type ScopeCoordinatorRpc } from "@packserver/sch
 import type { D1 } from "@packserver/ports";
 import type { DoStorage } from "../do-storage";
 
-/** Index rebuilds requested closer together than this are answered by the one just made. */
+/** The production window: index rebuilds requested closer together than this are answered by the one just made. */
 export const REBUILD_DEBOUNCE_MS = 5_000;
 
 interface Lock {
@@ -37,7 +37,12 @@ export class ScopeCoordinatorLogic implements ScopeCoordinatorRpc {
     private readonly storage: DoStorage,
     private readonly now: () => number,
     private readonly deps: { d1: D1; indexes: IndexRebuilder; root: RootNotifier },
+    private readonly debounceMs: number = REBUILD_DEBOUNCE_MS,
   ) {}
+
+  /** The rebuild in flight, if any, and the scope a request that arrived meanwhile wants rebuilt once more. */
+  private running: Promise<{ sha256: string; serial: number }> | null = null;
+  private again: string | undefined;
 
   async ping() {
     return { schema_version: DO_RPC_SCHEMA_VERSION, ok: true as const };
@@ -84,28 +89,51 @@ export class ScopeCoordinatorLogic implements ScopeCoordinatorRpc {
 
   /** A request inside the debounce window is answered with the last index and rebuilt by the alarm, so a change is never skipped, only delayed. */
   async rebuildIndex(request: Parameters<ScopeCoordinatorRpc["rebuildIndex"]>[0]) {
+    if (this.running) return { schema_version: DO_RPC_SCHEMA_VERSION, ...(await this.rebuild(request.scope)) };
     const now = this.now();
     const last = await this.storage.get<Rebuilt>("rebuilt");
-    if (last && now - last.at < REBUILD_DEBOUNCE_MS) {
+    if (last && now - last.at < this.debounceMs) {
       await this.storage.put("pending", request.scope);
-      if ((await this.storage.getAlarm()) === null) await this.storage.setAlarm(last.at + REBUILD_DEBOUNCE_MS);
+      if ((await this.storage.getAlarm()) === null) await this.storage.setAlarm(last.at + this.debounceMs);
       return { schema_version: DO_RPC_SCHEMA_VERSION, sha256: last.sha256, serial: last.serial };
     }
-    return { schema_version: DO_RPC_SCHEMA_VERSION, ...(await this.rebuild(request.scope, now)) };
+    return { schema_version: DO_RPC_SCHEMA_VERSION, ...(await this.rebuild(request.scope)) };
   }
 
   /** Runs the rebuild a debounced request is waiting for. */
   async alarm(): Promise<void> {
     const scope = await this.storage.get<string>("pending");
     if (scope === undefined) return;
-    await this.rebuild(scope, this.now());
+    await this.rebuild(scope);
   }
 
-  private async rebuild(scope: string, now: number): Promise<{ sha256: string; serial: number }> {
-    const written = await this.deps.indexes.rebuild(scope);
-    await this.storage.put("rebuilt", { at: now, ...written } satisfies Rebuilt);
-    await this.storage.delete("pending");
-    await this.deps.root.scopeChanged({ scope, ...written });
-    return written;
+  /**
+   * One rebuild at a time: a request that arrives while one runs asks for exactly one more
+   * after it, and is answered with that one's result, so the newest change is always signed last.
+   */
+  private rebuild(scope: string): Promise<{ sha256: string; serial: number }> {
+    if (this.running) {
+      this.again = scope;
+      return this.running;
+    }
+    const run = (async () => {
+      let next: string | undefined = scope;
+      let written!: { sha256: string; serial: number };
+      try {
+        while (next !== undefined) {
+          this.again = undefined;
+          written = await this.deps.indexes.rebuild(next);
+          await this.storage.put("rebuilt", { at: this.now(), ...written } satisfies Rebuilt);
+          await this.storage.delete("pending");
+          await this.deps.root.scopeChanged({ scope: next, ...written });
+          next = this.again;
+        }
+      } finally {
+        this.running = null;
+      }
+      return written;
+    })();
+    this.running = run;
+    return run;
   }
 }

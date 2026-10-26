@@ -26,42 +26,53 @@ const toOptions = (h: { contentType: string; contentDisposition: string; cacheCo
   cache_control: h.cacheControl,
 });
 
-async function lastSerial(d1: D1, docKey: string): Promise<number> {
-  const row = (await d1.query(`select serial from signed_documents where doc_key = ?`, [docKey])).rows[0];
-  return row ? Number(row.serial) : 0;
-}
-
-/** Records what was signed last; a lower serial than the one already recorded never replaces it. */
-async function record(d1: D1, docKey: string, written: { serial: number; sha256: string; contentHash: string }, at: string): Promise<void> {
-  await d1.query(
-    `insert into signed_documents (doc_key, serial, sha256, content_hash, signed_at) values (?, ?, ?, ?, ?)
-     on conflict (doc_key) do update set serial = excluded.serial, sha256 = excluded.sha256, content_hash = excluded.content_hash, signed_at = excluded.signed_at
-     where excluded.serial >= signed_documents.serial`,
-    [docKey, written.serial, written.sha256, written.contentHash, at],
-  );
-}
-
 const nowOf = async (rt: ValidatorRuntime): Promise<Date> => {
   await syncClock(rt.ports.clock);
   return new Date(rt.ports.clock.now());
 };
 
 /**
- * A serial never goes backwards: if the coordinator's count was lost, the validator, which saw
- * every document it signed, continues from its own.
+ * Reserves the document's next serial in one statement, so two signings in flight never hold the
+ * same one. The serial is the larger of the one asked for and the last reserved plus one: if the
+ * coordinator's count was lost, the validator, which saw every document it signed, continues from its own.
  */
-const serialFor = async (d1: D1, docKey: string, asked: number): Promise<number> => Math.max(asked, (await lastSerial(d1, docKey)) + 1);
+async function claimSerial(d1: D1, docKey: string, asked: number, at: string): Promise<number> {
+  const row = (
+    await d1.query(
+      `insert into signed_documents (doc_key, serial, sha256, content_hash, signed_at) values (?, ?, '', '', ?)
+       on conflict (doc_key) do update set serial = max(excluded.serial, signed_documents.serial + 1)
+       returning serial`,
+      [docKey, asked, at],
+    )
+  ).rows[0];
+  return Number(row!.serial);
+}
+
+/** Whether no later signing has reserved a higher serial for the document. */
+async function stillNewest(d1: D1, docKey: string, serial: number): Promise<boolean> {
+  const row = (await d1.query(`select serial from signed_documents where doc_key = ?`, [docKey])).rows[0];
+  return Number(row?.serial) === serial;
+}
+
+/** Fills in what was signed under a reserved serial; a signing that a later one has overtaken records nothing. */
+async function record(d1: D1, docKey: string, written: { serial: number; sha256: string; contentHash: string }, at: string): Promise<boolean> {
+  const result = await d1.query(`update signed_documents set sha256 = ?, content_hash = ?, signed_at = ? where doc_key = ? and serial = ?`, [
+    written.sha256, written.contentHash, at, docKey, written.serial,
+  ]);
+  return result.meta.changes === 1;
+}
 
 export async function signAndWriteScopeIndex(rt: ValidatorRuntime, request: Parsed<typeof SignScopeIndexRequest>, signing?: { signer: Signer }): Promise<Ack> {
   const { signer } = signing ?? (await loadSigning(rt));
   const d1 = rt.ports.d1;
   const docKey = DOC_KEY.scope(request.scope);
-  const unsigned = { ...request.unsigned, serial: await serialFor(d1, docKey, request.unsigned.serial) };
+  const at = (await nowOf(rt)).toISOString();
+  const unsigned = { ...request.unsigned, serial: await claimSerial(d1, docKey, request.unsigned.serial, at) };
   const published = await signScopeIndex(unsigned, signer);
   const bucket = publicBucket(rt);
   await bucket.putIfAbsent(published.objectKey, published.bytes, toOptions(INDEX_HEADERS.immutable));
-  await bucket.put(published.aliasKey, published.bytes, toOptions(INDEX_HEADERS.live));
-  await record(d1, docKey, { serial: unsigned.serial, sha256: published.sha256, contentHash: await contentDigest(published.doc) }, (await nowOf(rt)).toISOString());
+  if (await stillNewest(d1, docKey, unsigned.serial)) await bucket.put(published.aliasKey, published.bytes, toOptions(INDEX_HEADERS.live));
+  await record(d1, docKey, { serial: unsigned.serial, sha256: published.sha256, contentHash: await contentDigest(published.doc) }, at);
   return { sha256: published.sha256, serial: unsigned.serial, key: published.objectKey, kid: signer.kid };
 }
 
@@ -91,10 +102,11 @@ export async function signAndWritePrivateEntries(
   for (const entry of request.entries) {
     const key = await privateKeyOf(d1, request.scope, entry.pack);
     const docKey = DOC_KEY.private(entry.pack);
-    const unsigned = { ...entry, serial: await serialFor(d1, docKey, entry.serial) };
+    const at = (await nowOf(rt)).toISOString();
+    const unsigned = { ...entry, serial: await claimSerial(d1, docKey, entry.serial, at) };
     const published = await signPrivateEntry(unsigned, signer);
-    await bucket.put(key, published.bytes, toOptions(INDEX_HEADERS.private));
-    await record(d1, docKey, { serial: unsigned.serial, sha256: published.sha256, contentHash: await contentDigest(published.doc) }, (await nowOf(rt)).toISOString());
+    if (await stillNewest(d1, docKey, unsigned.serial)) await bucket.put(key, published.bytes, toOptions(INDEX_HEADERS.private));
+    await record(d1, docKey, { serial: unsigned.serial, sha256: published.sha256, contentHash: await contentDigest(published.doc) }, at);
     out.push({ pack: entry.pack, sha256: published.sha256, serial: unsigned.serial, key, kid: signer.kid });
   }
   return out;
@@ -107,14 +119,14 @@ export async function signAndWriteRootDocument(rt: ValidatorRuntime, request: Pa
   const bucket = publicBucket(rt);
   const now = await nowOf(rt);
 
-  const keysSerial = await serialFor(d1, DOC_KEY.keys, 1);
+  const keysSerial = await claimSerial(d1, DOC_KEY.keys, 1, now.toISOString());
   const keys = await signKeysDocument(buildKeysDocument({ serial: keysSerial, now, keys: signing.keys }), signing.signer);
-  await bucket.put(KEYS_KEY, keys.bytes, toOptions(INDEX_HEADERS.live));
+  if (await stillNewest(d1, DOC_KEY.keys, keysSerial)) await bucket.put(KEYS_KEY, keys.bytes, toOptions(INDEX_HEADERS.live));
   await record(d1, DOC_KEY.keys, { serial: keysSerial, sha256: keys.sha256, contentHash: await contentDigest(keys.doc) }, now.toISOString());
 
-  const serial = await serialFor(d1, DOC_KEY.root, request.unsigned.serial);
+  const serial = await claimSerial(d1, DOC_KEY.root, request.unsigned.serial, now.toISOString());
   const root = await signRoot({ ...request.unsigned, serial }, signing.signer);
-  await bucket.put(ROOT_KEY, root.bytes, toOptions(INDEX_HEADERS.live));
+  if (await stillNewest(d1, DOC_KEY.root, serial)) await bucket.put(ROOT_KEY, root.bytes, toOptions(INDEX_HEADERS.live));
   await record(d1, DOC_KEY.root, { serial, sha256: root.sha256, contentHash: await contentDigest(root.doc) }, now.toISOString());
   return { sha256: root.sha256, serial, key: ROOT_KEY, kid: signing.signer.kid };
 }

@@ -1,0 +1,1 @@
+ALTER TABLE `notice_deliveries` ADD `status` text DEFAULT 'sent' NOT NULL;

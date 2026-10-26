@@ -2,7 +2,7 @@ import { buildRoot } from "@packserver/core/index";
 import { DO_RPC_SCHEMA_VERSION, type RootCoordinatorRpc } from "@packserver/schema";
 import type { DoStorage } from "../do-storage";
 
-/** Scope changes arriving within this window go out in one signed root. */
+/** The production window: scope changes arriving within it go out in one signed root. */
 export const ROOT_BATCH_MS = 10_000;
 /** The root is re-signed at least this often, whether or not a scope changed, so its `expires` never lapses. */
 export const ROOT_DAILY_MS = 24 * 3_600_000;
@@ -36,6 +36,7 @@ export class RootCoordinatorLogic implements RootCoordinatorRpc {
     private readonly storage: DoStorage,
     private readonly now: () => number,
     private readonly signer: RootSigner,
+    private readonly batchMs: number = ROOT_BATCH_MS,
   ) {}
 
   async ping() {
@@ -49,7 +50,7 @@ export class RootCoordinatorLogic implements RootCoordinatorRpc {
     scopes[request.scope] = { sha256: request.sha256, serial: request.serial };
     await this.storage.put("scopes", scopes);
     await this.storage.put("dirty", true);
-    await this.arm(this.now() + ROOT_BATCH_MS);
+    await this.arm(this.now() + this.batchMs);
     return { schema_version: DO_RPC_SCHEMA_VERSION, queued: true };
   }
 
