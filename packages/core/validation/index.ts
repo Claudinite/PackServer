@@ -7,3 +7,8 @@ export { checkText, scriptsIn, type TextHygiene, type UrlClass, type UrlEntry } 
 export { extractCapabilities, isWidening, newEntries, WIDENING, type Extraction } from "./capabilities/index.ts";
 export { derivePreInstall, type Promoted, type PreInstallResult } from "./manifest/preinstall.ts";
 export { checkCode, binaryFindings, binaryMagic } from "./code/index.ts";
+export * from "./orchestration/sandbox-reports.ts";
+export * from "./orchestration/engine-mirror.ts";
+export * from "./orchestration/index.ts";
+export { staticOnly, chunkFiles, delimited, CHUNK_TOKENS, type ProseChunk, type ProseScreen, type ProseScreenResult } from "./prose-screen/index.ts";
+export { applyThresholds, UnknownQuestion, type ThresholdResult, type Tripped } from "./thresholds.ts";

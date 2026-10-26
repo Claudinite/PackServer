@@ -80,3 +80,5 @@ export function createRuntime(env: Env): ValidatorRuntime {
     { github: env.GITHUB },
   );
 }
+
+export type ObjectEnv = Env;

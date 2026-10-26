@@ -265,6 +265,66 @@
       "class": "warn",
       "category": "style",
       "description": "A style issue in a Markdown file."
+    },
+    {
+      "id": "sandbox.timeout",
+      "class": "fail",
+      "category": "sandbox",
+      "description": "A sandbox run, or one check, guard or worker run in it, overran its time limit."
+    },
+    {
+      "id": "sandbox.egress",
+      "class": "fail",
+      "category": "network",
+      "description": "Executable content tried to reach the network when it was run once offline."
+    },
+    {
+      "id": "load.failed",
+      "class": "fail",
+      "category": "load",
+      "description": "The pinned cn engine could not load the pack."
+    },
+    {
+      "id": "load.compile-failed",
+      "class": "fail",
+      "category": "load",
+      "description": "A coded check does not compile."
+    },
+    {
+      "id": "load.declared-check-unparseable",
+      "class": "fail",
+      "category": "load",
+      "description": "A declared check does not parse."
+    },
+    {
+      "id": "load.run-nonzero",
+      "class": "warn",
+      "category": "load",
+      "description": "A worker or env setup, run once offline, exited with a non-zero status."
+    },
+    {
+      "id": "engine.unsupported_min_version",
+      "class": "fail",
+      "category": "engine",
+      "description": "The pack's minEngineVersion is older than the oldest engine release the registry supports."
+    },
+    {
+      "id": "provenance.tree_mismatch",
+      "class": "fail",
+      "category": "provenance",
+      "description": "The validated tree differs from the repository tree at the commit the publisher claimed."
+    },
+    {
+      "id": "provenance.source-unverified",
+      "class": "warn",
+      "category": "provenance",
+      "description": "The claimed repository tree could not be fetched, so the source is not verified."
+    },
+    {
+      "id": "prose-screen.flagged",
+      "class": "hold",
+      "category": "prose-screen",
+      "description": "The prose screen flagged a passage; an admin decides."
     }
   ]
 }

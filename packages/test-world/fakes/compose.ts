@@ -1,6 +1,7 @@
 import type { TestHarness } from "wrangler";
 import { createFakePorts, type FakePorts } from "@packserver/ports/fakes";
-import type { SandboxAReport, SandboxBReport } from "@packserver/ports";
+import type { AScript } from "../fake-workers/sandbox/scripts";
+import type { BScript } from "../fake-workers/sandbox/scripts";
 import { FakeGithubOidc } from "./github-oidc";
 import { FakeGitHubLogin } from "./github-login";
 import { FakeGithubApp } from "./github-app";
@@ -96,11 +97,13 @@ export class WorldFakes {
     throw new Error(`the fake ${name} Worker is not booted`);
   }
 
-  async scriptSandboxA(key: string, report: SandboxAReport): Promise<void> {
-    await (this.workers.sandboxA ?? this.missing("sandbox-a")).call("scriptInspect", { key, report });
+  /** Makes container A misbehave for the upload with this sha256; anything unscripted runs for real. */
+  async scriptSandboxA(sha256: string, script: AScript): Promise<void> {
+    await (this.workers.sandboxA ?? this.missing("sandbox-a")).call("script", { sha256, script });
   }
-  async scriptSandboxB(key: string, report: SandboxBReport): Promise<void> {
-    await (this.workers.sandboxB ?? this.missing("sandbox-b")).call("scriptRun", { key, report });
+  /** Makes container B answer as scripted for the canonical tree with this hash; anything unscripted loads cleanly. */
+  async scriptSandboxB(treeHash: string, script: BScript): Promise<void> {
+    await (this.workers.sandboxB ?? this.missing("sandbox-b")).call("script", { treeHash, script });
   }
 
   async reset(): Promise<void> {

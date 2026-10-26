@@ -133,3 +133,7 @@ advisory (D34); no linked public source caps at 70. The lowest cap wins and is s
 The rules carry a version; a change rescores every newest eligible version. The page shows the
 score with its single largest improvement, the breakdown on hover or click; MCP returns the parts;
 `cn lint` and the dry-run report print the same score.
+
+## Where the Workflow stops today
+
+`ValidatePackWorkflow` runs steps 1 to 12 and ends with the run's verdict (`pass`, `warn`, `hold`, `fail` or `error`) and, for a version that may go on, the milestone `validated` with the committed canonical archive key and tree hash on the run row. Promotion (the human-review and staged-approval waits, step 13 onward) starts from that row: the next task reads `validation_runs.canonical_key`, `tree_hash`, `canonical_sha256`, `score` and `source_verified`, and the findings under `runs/<id>/findings/<step>.json`. Admission hands the Workflow a run id only, never bytes.

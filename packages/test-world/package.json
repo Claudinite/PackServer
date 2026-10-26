@@ -17,6 +17,8 @@
     "@packserver/core": "workspace:*",
     "@packserver/http": "workspace:*",
     "@packserver/ports": "workspace:*",
+    "@packserver/rules": "workspace:*",
+    "@packserver/sandbox-runner": "workspace:*",
     "@packserver/schema": "workspace:*",
     "aws4fetch": "catalog:",
     "jose": "catalog:",

@@ -1,4 +1,4 @@
-import { RESPONSE_HEADER_ALLOWLIST, type Finding, type InvocationKind } from "@packserver/schema";
+import { RESPONSE_HEADER_ALLOWLIST, type InvocationKind } from "@packserver/schema";
 import { assertNoCatchAllGrant, type ClassRules, type DataClass } from "./classification";
 import type { BindingPorts, DoArgs, DoMethod, DoNamespace, DoResult, Ports, SinglePorts } from "./ports";
 import type { InvokeSpec, Recorder } from "./recorder";
@@ -119,10 +119,6 @@ const op = "operational";
 const content = "customer-content";
 const isRead = (sql: unknown): Effect => (/^\s*(select|pragma|with)\b/i.test(String(sql)) ? "read" : "write");
 
-const findings = {
-  "*": { rule: op, class: op, file: content, line: op, quote: content, hint: content },
-} satisfies ClassTree<Finding[]>;
-
 const cacheHeaders = Object.fromEntries(RESPONSE_HEADER_ALLOWLIST.map((h) => [h, op])) as {
   [H in (typeof RESPONSE_HEADER_ALLOWLIST)[number]]: "operational";
 };
@@ -180,19 +176,13 @@ export const PORT_SPECS: { [K in Exclude<keyof SinglePorts, "durableObjects">]: 
     methods: {
       inspect: {
         effect: "read",
-        args: [{ archive_key: op }],
-        result: { tree_hash: op, canonical_key: op, file_count: op, findings },
+        args: [{ upload: content, request: content }],
+        result: { report: content, canonical: content },
       },
       run: {
         effect: "read",
-        args: [{ canonical_key: op, tree_hash: op }],
-        result: {
-          loaded: op,
-          round_trip_ok: op,
-          checks: { "*": { name: op, outcome: op } },
-          egress_attempts: content,
-          findings,
-        },
+        args: [{ canonical: content, request: content, engines: { "*": { file: op, bytes: content } } }],
+        result: { report: content },
       },
     },
   },

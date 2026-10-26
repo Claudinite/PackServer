@@ -1,45 +1,9 @@
-import { z } from "zod";
-import { Finding, Sha256 } from "@packserver/schema";
+import { SandboxAReport } from "@packserver/core/validation";
+import type { Finding } from "@packserver/schema";
 import type { ArchiveReason } from "@packserver/core/canonical";
 import { A_LIMITS } from "./a-limits.ts";
 
-export const INSPECTOR_STATUSES = ["ran", "skipped"] as const;
-
-/**
- * What sandbox A returns. The registry wrote nothing into it: the container's output is untrusted,
- * so the Worker parses it with this schema and treats a parse failure as an infrastructure error.
- */
-export const SandboxAReport = z.strictObject({
-  schema: z.literal(1),
-  /** `refused` is a final archive verdict, `timeout` a run overrun, `error` an infrastructure failure. */
-  outcome: z.enum(["ok", "refused", "timeout", "error"]),
-  image_digest: z.string().nullable(),
-  rules_version: z.string().min(1),
-  /** REQ-VAL-051: this container never loads, compiles or runs pack content. */
-  pack_code_executed: z.literal(false),
-  refusal: z.strictObject({ reason: z.enum(["archive.bomb", "archive.unsafe"]), code: z.string() }).nullable(),
-  tree_hash: Sha256.nullable(),
-  canonical_sha256: Sha256.nullable(),
-  canonical_bytes: z.number().int().nonnegative().nullable(),
-  file_count: z.number().int().nonnegative().nullable(),
-  round_trip_ok: z.boolean().nullable(),
-  /**
-   * Contract for consumers: `findings` is complete only when `findings_truncated` is false. When it
-   * is true, `findings` is a prefix (possibly empty) of `findings_total` findings, so an empty list
-   * with `findings_truncated` true is never a clean pass and must be treated as unverified.
-   */
-  findings: z.array(Finding),
-  findings_total: z.number().int().nonnegative(),
-  findings_truncated: z.boolean(),
-  manifest: z.record(z.string(), z.unknown()).nullable(),
-  urls: z.array(z.record(z.string(), z.unknown())),
-  capabilities: z.unknown().nullable(),
-  inspectors: z.array(z.strictObject({ name: z.string(), status: z.enum(INSPECTOR_STATUSES), note: z.string().nullable() })),
-  timings_ms: z.strictObject({ extract: z.number().int().nonnegative().nullable(), total: z.number().int().nonnegative() }),
-  /** Short cause for `error`; never pack content. */
-  error: z.string().nullable(),
-});
-export type SandboxAReport = z.infer<typeof SandboxAReport>;
+export { INSPECTOR_STATUSES, SandboxAReport } from "@packserver/core/validation";
 
 export interface ReportBase {
   rulesVersion: string;

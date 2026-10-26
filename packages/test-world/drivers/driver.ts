@@ -42,6 +42,15 @@ export interface StorageAccess {
     get(key: string): Promise<Uint8Array | null>;
     delete(key: string): Promise<void>;
   };
+  /** What the validator wrote to `validation-reports`: the report, the sandbox output, the canonical archive. */
+  reports: {
+    list(prefix: string): Promise<string[]>;
+    get(key: string): Promise<Uint8Array | null>;
+  };
+  /** The engine release mirror in R2 `ops`, which a release workflow fills in production. */
+  ops: {
+    put(key: string, value: Uint8Array | string): Promise<void>;
+  };
 }
 
 export interface SeedObjectMetadata {

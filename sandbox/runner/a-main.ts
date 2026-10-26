@@ -1,26 +1,12 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { z } from "zod";
 import { ArchiveRefusal, LIMITS } from "@packserver/core/canonical";
-import { archiveFinding, findingFactory } from "@packserver/core/validation";
+import { archiveFinding, findingFactory, SandboxARequest } from "@packserver/core/validation";
 import { loadRules } from "@packserver/rules";
 import { errorReport, fitToCap, refusedReport, type SandboxAReport } from "./a-report.ts";
 import type { RunRequest } from "./a-run.ts";
 import { supervise } from "./a-supervisor.ts";
-
-const Request = z.strictObject({
-  pack: z.string(),
-  newest_version: z.string().nullable(),
-  rules_version: z.string(),
-  lookups: z.strictObject({
-    popular_packs: z.array(z.string()),
-    verified_scopes: z.array(z.string()),
-    proven_domain_labels: z.array(z.strictObject({ label: z.string(), scope: z.string() })),
-    readable_packs: z.array(z.string()),
-  }),
-  previous_capabilities: z.unknown(),
-});
 
 export interface MainOptions {
   inDir: string;
@@ -38,7 +24,7 @@ export interface MainOptions {
  */
 export async function main(options: MainOptions): Promise<SandboxAReport> {
   await mkdir(options.outDir, { recursive: true });
-  const request = Request.parse(JSON.parse(await readFile(join(options.inDir, "request.json"), "utf8"))) as RunRequest;
+  const request: RunRequest = SandboxARequest.parse(JSON.parse(await readFile(join(options.inDir, "request.json"), "utf8")));
   const uploadPath = join(options.inDir, "upload.tar.zst");
 
   let report: SandboxAReport;

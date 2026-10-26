@@ -53,6 +53,22 @@ export const validation_runs = sqliteTable(
     workflow_instance_id: text("workflow_instance_id"),
     /** Where the validator wrote the full report, once it has one. */
     report_key: text("report_key"),
+    /**
+     * The form container A committed before any pack code ran (validation-pipeline.md step 7):
+     * written once, never rewritten, and the only bytes a later promotion may serve.
+     */
+    tree_hash: text("tree_hash"),
+    canonical_sha256: text("canonical_sha256"),
+    /** Where the canonical archive waits in `validation-reports` for promotion. */
+    canonical_key: text("canonical_key"),
+    committed_at: text("committed_at"),
+    /** Whether the repository tree at the claimed commit matched the validated tree; absent until step 9 decided. */
+    source_verified: integer("source_verified", { mode: "boolean" }),
+    /** The version's capability set grew beyond its predecessor's, so it waits for the owner's passkey. */
+    widening: integer("widening", { mode: "boolean" }),
+    /** 0..100, from the committed tree; absent until step 12. */
+    score: integer("score"),
+    rules_version: text("rules_version"),
     /** Whether this run is the one that counted its pack as new against the scope's daily cap. */
     counted_new_pack: integer("counted_new_pack", { mode: "boolean" }).notNull().default(false),
     created_at: text("created_at").notNull(),

@@ -1,4 +1,4 @@
-import type { Finding, RESPONSE_HEADER_ALLOWLIST, QuotaRpc, RootCoordinatorRpc, ScopeCoordinatorRpc } from "@packserver/schema";
+import type { RESPONSE_HEADER_ALLOWLIST, QuotaRpc, RootCoordinatorRpc, ScopeCoordinatorRpc } from "@packserver/schema";
 
 export class PortError extends Error {
   constructor(
@@ -84,24 +84,39 @@ export interface Embedder {
   embed(texts: string[]): Promise<number[][]>;
 }
 
-export interface SandboxAReport {
-  tree_hash: string;
-  canonical_key: string;
-  file_count: number;
-  findings: Finding[];
+/**
+ * What a Worker hands a sandbox container and gets back. The reports are untrusted container
+ * output typed `unknown` here; the Worker parses them with the schemas in `core/validation`, and a
+ * parse failure is an infrastructure error. Bytes cross the port, never keys: a container holds no
+ * binding.
+ */
+export interface SandboxInspectRequest {
+  /** The uploaded `tar.zst`, as staged. */
+  upload: Uint8Array;
+  /** The Worker's D1 answers for this run, shaped by `SandboxARequest`. */
+  request: unknown;
 }
-export interface SandboxBReport {
-  loaded: boolean;
-  round_trip_ok: boolean;
-  checks: Array<{ name: string; outcome: "pass" | "warn" | "hold" | "fail" }>;
-  egress_attempts: string[];
-  findings: Finding[];
+export interface SandboxInspectResult {
+  report: unknown;
+  /** Present exactly when the report's outcome is `ok`. */
+  canonical: Uint8Array | null;
+}
+export interface SandboxRunRequest {
+  /** The canonical archive container A produced and the Worker committed. */
+  canonical: Uint8Array;
+  /** Shaped by `SandboxBRequest`. */
+  request: unknown;
+  /** Each engine release the request names, by the file name it gives. */
+  engines: Array<{ file: string; bytes: Uint8Array }>;
+}
+export interface SandboxRunResult {
+  report: unknown;
 }
 export interface Sandbox {
-  /** Container A: bounded extraction and canonical re-pack. */
-  inspect(request: { archive_key: string }): Promise<SandboxAReport>;
-  /** Container B: load and run the canonical pack. */
-  run(request: { canonical_key: string; tree_hash: string }): Promise<SandboxBReport>;
+  /** Container A: bounded extraction, static inspection and canonical re-pack. It never runs pack code. */
+  inspect(request: SandboxInspectRequest): Promise<SandboxInspectResult>;
+  /** Container B: load and run the canonical pack, offline. Nothing it returns is served. */
+  run(request: SandboxRunRequest): Promise<SandboxRunResult>;
 }
 
 export interface ProseScreenRequest {
