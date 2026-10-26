@@ -149,9 +149,10 @@ scenario("IT-DELIV-021 Anyone can verify an archive by hash", async (world) => {
 
   const burst = "203.0.113.77";
   const answers = [];
-  for (let i = 0; i < 100; i++) answers.push(await world.packs.verify(canonical.canonicalSha256, { ip: burst }));
+  // The limiter counts in wall-clock windows, so a burst can straddle two of them; one more than two windows' worth must be refused.
+  for (let i = 0; i < 121; i++) answers.push(await world.packs.verify(canonical.canonicalSha256, { ip: burst }));
   expect(answers.slice(0, 10).every((a) => !(a instanceof Refusal))).toBe(true);
-  await expect(answers.at(-1)).toBeRateLimited();
+  await expect(answers.find((a) => a instanceof Refusal)).toBeRateLimited();
 }, storage);
 
 scenario("IT-MCP-005 get_pack returns the full public view; the adopt snippet is a Preview until the engine ships", async (world) => {

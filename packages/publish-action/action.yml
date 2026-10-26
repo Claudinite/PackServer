@@ -1,0 +1,34 @@
+name: Publish pack
+description: Pack the pack directory canonically, exchange the job's GitHub OIDC token for an upload credential, upload it and wait for the registry's verdict.
+inputs:
+  pack:
+    description: The pack name, @scope/name.
+    required: true
+  version:
+    description: The version to publish, x.y.z.
+    required: true
+  path:
+    description: The pack directory.
+    default: .
+  cn-version:
+    description: The cn release that runs `cn vendor` (npm package @claudinite/cli-linux-x64).
+    required: true
+  cn-sha256:
+    description: SHA-256 of that release's .tgz; it is checked before anything is extracted or run.
+    required: true
+  cn-url:
+    description: Where the .tgz is downloaded from; defaults to the npm registry.
+    default: ""
+  registry:
+    description: The registry origin; defaults to the production registry.
+    default: ""
+outputs:
+  run-id:
+    description: The validation run's id.
+  verdict:
+    description: pass, warn, hold, fail or error.
+  sha256:
+    description: SHA-256 of the canonical archive.
+runs:
+  using: node24
+  main: dist/index.mjs
