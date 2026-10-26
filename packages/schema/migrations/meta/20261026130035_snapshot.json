@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "f5054d77-16f3-4d45-8266-33ec92676c30",
+  "id": "7cc5b332-397a-4f47-ba05-dfbca91bec02",
   "prevId": "a831a21b-23ee-4cb3-a800-2caba91cb777",
   "tables": {
     "credentials": {
@@ -3840,62 +3840,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "tree_hash": {
-          "name": "tree_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "canonical_sha256": {
-          "name": "canonical_sha256",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "canonical_key": {
-          "name": "canonical_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "committed_at": {
-          "name": "committed_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "source_verified": {
-          "name": "source_verified",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "widening": {
-          "name": "widening",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "score": {
-          "name": "score",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "rules_version": {
-          "name": "rules_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "counted_new_pack": {
           "name": "counted_new_pack",
           "type": "integer",
@@ -4009,6 +3953,194 @@
           "value": "\"validation_runs\".\"size_bytes\" >= 0"
         }
       }
+    },
+    "device_codes": {
+      "name": "device_codes",
+      "columns": {
+        "device_hash": {
+          "name": "device_hash",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_code_hash": {
+          "name": "user_code_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "country": {
+          "name": "country",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "interval_s": {
+          "name": "interval_s",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_poll_at": {
+          "name": "last_poll_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "sid_hash": {
+          "name": "sid_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "session_expires_at": {
+          "name": "session_expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "device_codes_user_code_unique": {
+          "name": "device_codes_user_code_unique",
+          "columns": [
+            "user_code_hash"
+          ],
+          "isUnique": true
+        },
+        "device_codes_expires_idx": {
+          "name": "device_codes_expires_idx",
+          "columns": [
+            "expires_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "device_codes_user_id_users_id_fk": {
+          "name": "device_codes_user_id_users_id_fk",
+          "tableFrom": "device_codes",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "device_codes_state_check": {
+          "name": "device_codes_state_check",
+          "value": "\"device_codes\".\"state\" in ('pending', 'approved', 'denied', 'collected')"
+        }
+      }
+    },
+    "device_tokens": {
+      "name": "device_tokens",
+      "columns": {
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sid_hash": {
+          "name": "sid_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "device_tokens_expires_idx": {
+          "name": "device_tokens_expires_idx",
+          "columns": [
+            "expires_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "device_tokens_user_id_users_id_fk": {
+          "name": "device_tokens_user_id_users_id_fk",
+          "tableFrom": "device_tokens",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     }
   },
   "views": {},
