@@ -21,6 +21,11 @@ scenario("IT-PUB-012 Mint scoped, restricted, time-limited read tokens shown onc
 
   await expect(owner.tokens.mint({ read: secret, assertion: "none" })).toBeRefused("step-up");
   expect(await owner.tokens.list()).toEqual([]);
+  await owner.mfa.enrol();
+  const forScope = await owner.assertionFor({ action: "token.mint", target: `@${world.alias("acme")}` });
+  await expect(owner.tokens.mint({ read: secret, assertion: forScope })).toBeRefused("step-up");
+  await expect(owner.tokens.mint({ read: secret, assertion: await owner.assertionFor("token.mint") })).toBeRefused("step-up");
+  expect(await owner.tokens.list()).toEqual([]);
 
   const first = await owner.tokens.mint({ read: secret });
   expect(first.expiresAt.getTime() - (await world.clock.now()).getTime()).toBe(7 * DAY_MS);

@@ -1,8 +1,8 @@
 import { listTokens, mintToken, revokeToken, type MintInput, type MintRefusal } from "@packserver/core/tokens";
 import { refusal, requireAssertion, requireSession, sessionCsrf } from "@packserver/http";
 import { PackName } from "@packserver/schema";
-import { Hono } from "hono";
-import { runtimeOf, sessionPorts, siteOriginOf, type WebEnv } from "../../context";
+import { Hono, type Context } from "hono";
+import { mfaPorts, runtimeOf, siteOriginOf, type WebEnv } from "../../context";
 
 export const routes = new Hono<WebEnv>();
 
@@ -54,12 +54,21 @@ const REFUSAL_TEXT: Record<Exclude<MintRefusal, "not-found">, string> = {
   label: "label: at most 80 characters, no control characters.",
 };
 
+/** The token's read target as the request names it: the pack, or the scope. */
+async function mintTarget(c: Context<WebEnv>): Promise<string> {
+  // A copy is read, so the handler and the middleware after this one still find the body unread.
+  const body: unknown = await c.req.raw.clone().json().catch(() => null);
+  const b = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
+  const named = b.pack ?? b.scope;
+  return typeof named === "string" ? named : "";
+}
+
 /** Mints a read token. Browser session only: a token is never accepted here (REQ-PUB-012, REQ-PUB-031). */
 routes.post(
   "/tokens",
   requireSession(),
   sessionCsrf<WebEnv>(siteOriginOf),
-  requireAssertion<WebEnv>("token.mint", { ports: (c) => sessionPorts(runtimeOf(c)), environment: (c) => runtimeOf(c).environment }),
+  requireAssertion<WebEnv>("token.mint", { ports: (c) => mfaPorts(runtimeOf(c)), target: mintTarget }),
   async (c) => {
     const parsed = parseMint(await c.req.json().catch(() => null));
     if (typeof parsed === "string") return refusal("forbidden", { status: 422, message: parsed });
