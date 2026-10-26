@@ -4,8 +4,8 @@ export interface PublisherProof {
   kind: "domain" | "github";
   /** The proven thing itself: `acme.com` or `github.com/acme`. */
   label: string;
-  /** ISO date the proof was established. */
-  since: string;
+  /** ISO date the proof was established, when known. */
+  since?: string;
 }
 
 export interface PublisherMarkProps {
@@ -34,7 +34,7 @@ export function PublisherMark(props: PublisherMarkProps) {
     >
       <ul>
         {props.verifiedPublisher ? <li><b>Verified Publisher</b></li> : null}
-        {proofs.length === 0 ? <li>No domain or GitHub organisation proven</li> : proofs.map((p) => <li>{p.label} · since {p.since}</li>)}
+        {proofs.length === 0 ? <li>No domain or GitHub organisation proven</li> : proofs.map((p) => <li>{p.since ? `${p.label} · since ${p.since}` : p.label}</li>)}
         {props.packCount === undefined ? null : <li class="muted">{props.packCount} public {props.packCount === 1 ? "pack" : "packs"}</li>}
       </ul>
     </HoverCard>

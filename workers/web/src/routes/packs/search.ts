@@ -16,7 +16,7 @@ const flag = (value: string | undefined): true | undefined => (value === "1" || 
 const count = (value: string | undefined): number | undefined => (value === undefined || value === "" ? undefined : Number(value));
 
 /** The query string is the whole state of a search; the filters are those of the MCP tool. */
-function requestOf(c: Context<WebEnv>): unknown {
+export function requestOf(c: Context<WebEnv>): unknown {
   const q = c.req.query();
   const domains = list(q.verified_domains);
   return {
@@ -37,7 +37,7 @@ const cacheFor = (c: Context<WebEnv>): string =>
   viewCacheControl({ cookie: c.req.header("cookie") ?? null, authorization: c.req.header("authorization") ?? null });
 
 /** Asks `mcp`, which owns the one search implementation; a refusal of the request is passed on as it was made. */
-async function ask(c: Context<WebEnv>, path: string, init?: RequestInit): Promise<Response | { json: unknown }> {
+export async function ask(c: Context<WebEnv>, path: string, init?: RequestInit): Promise<Response | { json: unknown }> {
   let res: Response;
   try {
     res = await runtimeOf(c).services.mcp.fetch(`${MCP}${path}`, init);

@@ -401,6 +401,9 @@ importers:
       '@packserver/ports':
         specifier: workspace:*
         version: link:../../packages/ports
+      '@packserver/rules':
+        specifier: workspace:*
+        version: link:../../packages/rules
       '@packserver/schema':
         specifier: workspace:*
         version: link:../../packages/schema
