@@ -1,3 +1,4 @@
+import { mintToken } from "@packserver/core/tokens";
 import { SqliteD1 } from "@packserver/core/audit/testing";
 import { applyIndex, type Listing } from "@packserver/core/search";
 import { SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
@@ -204,6 +205,21 @@ describe("limits", () => {
     for (let i = 0; i < 8; i++) statuses.push((await rpc(app, "tools/list", undefined, { authorization: "Bearer psr_forged" })).status);
     expect(statuses).toEqual([401, 401, 401, 401, 401, 429, 429, 429]);
     expect((await rpc(app, "tools/list")).status).toBe(429);
+  });
+
+  it("lets a read token through about ten times as often as an address, and is still limited", async () => {
+    const { app, d1, runtime } = await build();
+    await d1.query("INSERT INTO users (id, created_at) VALUES ('u', 'x')");
+    await d1.query("INSERT INTO scope_members (scope_id, user_id, role, created_at) VALUES ('s', 'u', 'owner', 'x')");
+    const minted = await mintToken({ d1, clock: runtime.tokenClock, rng: runtime.ports.rng }, { userId: "u", scope: "acme" });
+    if (!minted.ok) throw new Error("the token was not minted");
+    const authorization = `Bearer ${minted.token}`;
+    const statuses: number[] = [];
+    for (let i = 0; i < 640; i++) statuses.push((await rpc(app, "tools/list", undefined, { authorization })).status);
+    const answered = statuses.filter((s) => s === 200).length;
+    expect(answered).toBeGreaterThan(300);
+    expect(answered).toBeLessThan(640);
+    expect(statuses.at(-1)).toBe(429);
   });
 
   it("does not look a token up for an address over its limit", async () => {
