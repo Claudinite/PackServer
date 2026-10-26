@@ -53,7 +53,7 @@ export function createWorld(driver: Driver, title: string) {
     ...publishFlow,
     ...createProbe(driver, ci, (name) => aliases.alias(name), publishFlow.publishFromCi),
     ...createAccess(driver),
-    ...createCommunity(),
+    ...createCommunity(driver, aliases),
     ...createModeration(),
     ...createReportsModule(driver, aliases),
     ...createAdmin(driver, (restore) => void undo.push(restore), aliases),
