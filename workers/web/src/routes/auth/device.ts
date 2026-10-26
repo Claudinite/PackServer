@@ -5,7 +5,7 @@ import {
 import { consume, csrfTokenFor, formFields, rateLimitClient, rateLimited, refusal, requireSession, sessionCsrf } from "@packserver/http";
 import { pageCss } from "@packserver/ui";
 import { Hono, type Context } from "hono";
-import { siteOriginOf, type WebEnv } from "../../context";
+import { notifyUser, securityUrlOf, siteOriginOf, type WebEnv } from "../../context";
 
 /**
  * Device-code sign-in for `cn adopt` on a laptop (RFC 8628). `cn` asks for a pair of codes, the
@@ -18,9 +18,15 @@ export const routes = new Hono<WebEnv>();
 const ASK_COST = 6;
 const ATTEMPT_COST = 6;
 
+/** A code attempt or a decision spends from the account's budget and from the address's. */
+async function withinAttemptBudget(c: Context<WebEnv>, userId: string): Promise<boolean> {
+  const limiter = c.get("runtime").ports.rateLimits.RATE_LIMIT!;
+  return (await consume(limiter, `device-lookup:${userId}`, ATTEMPT_COST)) && (await consume(limiter, `device-lookup-ip:${rateLimitClient(c)}`, ATTEMPT_COST));
+}
+
 const portsOf = (c: Context<WebEnv>): DevicePorts => {
-  const { kv, clock, rng } = c.get("runtime").ports;
-  return { kv: kv.SESSIONS_KV!, clock, rng };
+  const { d1, kv, clock, rng } = c.get("runtime").ports;
+  return { d1, kv: kv.SESSIONS_KV!, clock, rng };
 };
 
 const verificationUri = (c: Context<WebEnv>) => `${siteOriginOf(c)}/api/auth/device/verify`;
@@ -121,8 +127,7 @@ routes.get("/auth/device/verify", async (c) => {
 
 routes.post("/auth/device/verify", requireSession(), sessionCsrf<WebEnv>(siteOriginOf), async (c) => {
   const live = c.get("session")!;
-  const limiter = c.get("runtime").ports.rateLimits.RATE_LIMIT!;
-  if (!(await consume(limiter, `device-lookup:${live.record.user_id}`, ATTEMPT_COST))) return rateLimited();
+  if (!(await withinAttemptBudget(c, live.record.user_id))) return rateLimited();
   const typed = (await formFields(c)).user_code;
   const request = typeof typed === "string" ? await describeDeviceRequest(portsOf(c), typed) : null;
   if (!request) return page(c, "That code did not work", "<p>The code is wrong, has expired or was already used. Run <code>cn adopt</code> again to get a new one.</p>", 404);
@@ -144,8 +149,25 @@ routes.post("/auth/device/decision", requireSession(), sessionCsrf<WebEnv>(siteO
   const typed = typeof fields.user_code === "string" ? fields.user_code : "";
   const approve = fields.decision === "approve";
   if (!approve && fields.decision !== "deny") return refusal("forbidden", { status: 400, message: "decision: approve or deny." });
+  const live = c.get("session")!;
+  if (!(await withinAttemptBudget(c, live.record.user_id))) return rateLimited();
   const ports = portsOf(c);
-  const done = approve ? await approveDeviceRequest(ports, typed, c.get("session")!) : await denyDeviceRequest(ports, typed);
+  let done: boolean;
+  if (approve) {
+    const request = await describeDeviceRequest(ports, typed);
+    if (request) {
+      // The email is the person's tripwire for a code they were talked into entering; no email, no approval.
+      await notifyUser(c, live.record.user_id, "new-device-sign-in", {
+        device: "cn on a laptop (device-code sign-in)",
+        location: regionName(request.country),
+        at: new Date(ports.clock.now()).toISOString(),
+        securityUrl: securityUrlOf(c),
+      });
+    }
+    done = request !== null && (await approveDeviceRequest(ports, typed, live));
+  } else {
+    done = await denyDeviceRequest(ports, typed);
+  }
   if (!done) return page(c, "That code did not work", "<p>The code has expired or was already answered. Run <code>cn adopt</code> again.</p>", 404);
   return page(c, approve ? "cn is connected" : "Request denied", approve ? "<p>You can close this tab and return to your terminal.</p>" : "<p>Nothing was connected.</p>");
 });

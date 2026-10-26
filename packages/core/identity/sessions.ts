@@ -1,5 +1,4 @@
 import { sha256Hex, type Clock, type D1, type KV, type Rng } from "@packserver/ports";
-import { rebindDeviceTokens, revokeDeviceTokens } from "./device-code.ts";
 
 export const SESSION_IDLE_MS = 12 * 3_600_000;
 export const SESSION_ABSOLUTE_MS = 7 * 24 * 3_600_000;
@@ -83,6 +82,20 @@ export async function isRevoked(ports: Pick<SessionPorts, "d1">, sidHash: string
   return rows.length > 0;
 }
 
+/**
+ * Whether the session behind this id hash is still usable: its record exists and is neither past
+ * its absolute limit nor idle, and it was not signed out or rotated away. Reads only; it does not
+ * count as activity.
+ */
+export async function isSessionLive(ports: Pick<SessionPorts, "kv" | "d1" | "clock">, sidHash: string): Promise<boolean> {
+  const raw = await ports.kv.get(recordKey(sidHash));
+  if (raw === null) return false;
+  const record = JSON.parse(raw) as SessionRecord;
+  const now = ports.clock.now();
+  if (now >= record.expires_at || now - record.last_seen >= SESSION_IDLE_MS) return false;
+  return !(await isRevoked(ports, sidHash));
+}
+
 async function persistNew(ports: SessionPorts, record: SessionRecord): Promise<LiveSession> {
   const sid = toHex(ports.rng.bytes(SID_BYTES));
   const sid_hash = await hashSessionId(sid);
@@ -134,13 +147,11 @@ export async function rotateSession(ports: SessionPorts, live: LiveSession, patc
   const rotated = await persistNew(ports, { ...live.record, ...patch, csrf_key: toHex(ports.rng.bytes(SID_BYTES)) });
   await revoke(ports, live);
   await drop(ports, live.sid_hash, live.record.user_id);
-  await rebindDeviceTokens(ports, live.sid_hash, rotated.sid_hash);
   return rotated;
 }
 
 export async function destroySession(ports: SessionPorts, live: Pick<LiveSession, "sid_hash" | "record">): Promise<void> {
   await revoke(ports, live);
-  await revokeDeviceTokens(ports, live.sid_hash);
   await drop(ports, live.sid_hash, live.record.user_id);
 }
 

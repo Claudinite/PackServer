@@ -5,7 +5,8 @@ import {
   approveDeviceRequest, authenticateDeviceToken, DEVICE_CODE_TTL_MS, denyDeviceRequest, describeDeviceRequest, looksLikeUserCode,
   normalizeUserCode, pollDeviceCode, startDeviceAuthorization,
 } from "../device-code.ts";
-import { createSession, destroySession, rotateSession, type SessionPorts } from "../sessions.ts";
+import { createSession, destroySession, rotateSession, SESSION_IDLE_MS, type SessionPorts } from "../sessions.ts";
+import type { Rng } from "@packserver/ports";
 
 const SECOND = 1000;
 const device = { label: "Firefox on Linux", country: "NO" };
@@ -15,7 +16,7 @@ function setup() {
   const { d1, db } = migratedD1();
   db.exec("insert into users (id, created_at) values ('u1', '2026-10-22T00:00:00.000Z')");
   const ports: SessionPorts = { kv: fakes.kv.SESSIONS_KV!, d1, clock: fakes.clock, rng: fakes.rng };
-  return { fakes, ports };
+  return { fakes, ports, d1 };
 }
 
 async function approved() {
@@ -92,7 +93,7 @@ describe("IT-PRIV-017 device code", () => {
     const session = await createSession(ports, { user_id: "u1", device });
     expect(await approveDeviceRequest(ports, started.user_code, session)).toBe(false);
     expect(await pollDeviceCode(ports, started.device_code)).toEqual({ kind: "expired" });
-    expect(await pollDeviceCode(ports, started.device_code)).toEqual({ kind: "invalid" });
+    expect(await pollDeviceCode(ports, started.device_code)).toEqual({ kind: "expired" });
   });
 
   it("answers a second approval of the same code as unknown", async () => {
@@ -107,13 +108,55 @@ describe("IT-PRIV-017 device code", () => {
     expect(await authenticateDeviceToken(ports, `psr_${"0".repeat(64)}`)).toBeNull();
   });
 
-  it("ends a token when its session is destroyed, and keeps it through a rotation", async () => {
+  it("mints nothing for an approving session that was signed out before the poll", async () => {
     const { ports, started, session } = await approved();
-    const granted = await pollDeviceCode(ports, started.device_code);
-    if (granted.kind !== "granted") throw new Error("not granted");
-    const rotated = await rotateSession(ports, session);
-    expect(await authenticateDeviceToken(ports, granted.token)).not.toBeNull();
-    await destroySession(ports, rotated);
-    expect(await authenticateDeviceToken(ports, granted.token)).toBeNull();
+    await destroySession(ports, session);
+    expect(await pollDeviceCode(ports, started.device_code)).toEqual({ kind: "expired" });
+    expect(await pollDeviceCode(ports, started.device_code)).toEqual({ kind: "invalid" });
+  });
+
+  it("mints nothing for an approving session that was rotated away or went idle before the poll", async () => {
+    const rotated = await approved();
+    await rotateSession(rotated.ports, rotated.session);
+    expect(await pollDeviceCode(rotated.ports, rotated.started.device_code)).toEqual({ kind: "expired" });
+
+    const idle = await approved();
+    idle.fakes.clock.advance(SESSION_IDLE_MS);
+    expect(await pollDeviceCode(idle.ports, idle.started.device_code)).toEqual({ kind: "expired" });
+  });
+
+  it("lets exactly one of two simultaneous polls collect an approved code", async () => {
+    const { ports, started } = await approved();
+    const polls = await Promise.all([pollDeviceCode(ports, started.device_code), pollDeviceCode(ports, started.device_code)]);
+    expect(polls.filter((p) => p.kind === "granted")).toHaveLength(1);
+    const { rows } = await ports.d1.query("select count(*) as n from device_tokens", []);
+    expect(rows[0]!.n).toBe(1);
+  });
+
+  it("stops a token when its session is signed out, rotated away or idle, on the next use", async () => {
+    for (const end of ["signout", "rotation", "idle"] as const) {
+      const { fakes, ports, started, session } = await approved();
+      const granted = await pollDeviceCode(ports, started.device_code);
+      if (granted.kind !== "granted") throw new Error("not granted");
+      expect(await authenticateDeviceToken(ports, granted.token), end).not.toBeNull();
+      if (end === "signout") await destroySession(ports, session);
+      else if (end === "rotation") await rotateSession(ports, session);
+      else fakes.clock.advance(SESSION_IDLE_MS);
+      expect(await authenticateDeviceToken(ports, granted.token), end).toBeNull();
+    }
+  });
+
+  it("never gives a new request a user code a live one holds", async () => {
+    const { fakes, ports } = setup();
+    const rngWith = (bytes: (n: number) => Uint8Array): Rng => ({ float: () => fakes.rng.float(), uuid: () => fakes.rng.uuid(), bytes });
+    const repeating = (): Rng => rngWith((n) => new Uint8Array(n).fill(7));
+    const first = await startDeviceAuthorization({ ...ports, rng: repeating() }, { country: "SE" });
+    let calls = 0;
+    const sequence = rngWith((n) => (calls++ < 2 ? new Uint8Array(n).fill(7) : fakes.rng.bytes(n)));
+    const second = await startDeviceAuthorization({ ...ports, rng: sequence }, { country: "NO" });
+    expect(second.user_code).not.toBe(first.user_code);
+    expect(await describeDeviceRequest(ports, first.user_code)).toMatchObject({ country: "SE" });
+    expect(await describeDeviceRequest(ports, second.user_code)).toMatchObject({ country: "NO" });
+    expect(await pollDeviceCode(ports, first.device_code)).toEqual({ kind: "pending" });
   });
 });
