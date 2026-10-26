@@ -40,7 +40,7 @@ async function addressOf(d1: D1, to: string, securityAddress: string): Promise<s
  * leaves the notice to be tried again. A person with no verified address is skipped and marked, not retried forever.
  */
 export async function drainNotices(ports: ReportPorts, delivery: NoticeDelivery, limit = 50): Promise<{ sent: number; skipped: number }> {
-  const { rows } = await ports.d1.query("select id, kind, recipient, data from report_notices where sent_at is null order by created_at, id limit ?", [limit]);
+  const { rows } = await ports.d1.query("select id, kind, recipient, data from report_notices where sent_at is null order by rowid limit ?", [limit]);
   let sent = 0;
   let skipped = 0;
   for (const row of rows) {

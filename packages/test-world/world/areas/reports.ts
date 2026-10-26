@@ -39,7 +39,7 @@ export interface FiledReport {
   readonly disclosureEnds: Date | null;
 }
 
-export interface ReportInfo extends ReportView {}
+export type ReportInfo = ReportView;
 
 export interface Inbox {
   reports: ReportInfo[];
@@ -298,7 +298,7 @@ export function createReportsModule(driver: Driver, aliases: Aliases): ReportsMo
       },
       async queued(to, about) {
         const recipient = to === "registry-security" ? to : "address" in to ? `address:${to.address}` : `user:${await userId(to)}`;
-        const { rows } = await (await d1()).query("select kind, data from report_notices where recipient = ? and sent_at is null order by created_at, id", [recipient]);
+        const { rows } = await (await d1()).query("select kind, data from report_notices where recipient = ? and sent_at is null order by rowid", [recipient]);
         return rows
           .map((r) => ({ kind: String(r.kind), data: JSON.parse(String(r.data)) as Record<string, unknown> }))
           .filter((n) => about === undefined || n.data.pack === about.systemName);

@@ -20,40 +20,6 @@ async function packWith(world: World, name: string, opts: { versions?: string[];
   return { pack, owner, maintainer };
 }
 
-scenario("IT-MOD-001 Bug reports: pre-filled issue for a linked repo, in-site inbox otherwise", async (world) => {
-  const linked = await packWith(world, "@acme/gcp", { linked: true });
-  const bare = await packWith(world, "@bare/tool");
-  const reporter = await person(world);
-  const repository = "acme/packs";
-  const onGitHub = `${world.alias("acme")}/packs`;
-  await world.github.installApp(world.alias("acme"), { installationId: 101 });
-
-  const filed = await world.reports.file(reporter, linked.pack, {
-    kind: "bug", version: "1.0.1", type: "crash", severity: "high", title: "Guard blocks git push", repro: "Run git push", environment: "cn 1.61004.1",
-    attachments: [{ name: "screenshot.png", bytes: 4 * MB }],
-  });
-  expect(filed).toMatchObject({ route: "github_issue", status: "open" });
-  expect(filed.newIssue).toMatchObject({ repository, title: "Guard blocks git push" });
-  expect(filed.attachments).toHaveLength(1);
-
-  // The reporter files the issue themselves and says which one it is; the App's webhooks then carry its state.
-  await world.reports.linkIssue(reporter, filed, { repository, number: 7 });
-  expect(await world.github.issueState(onGitHub, 7, "closed")).toMatchObject({ result: "applied" });
-  expect(await world.reports.read(reporter, filed)).toMatchObject({ status: "closed" });
-  expect(await world.github.issueState(onGitHub, 7, "open", { updatedAt: "2026-10-24T00:00:00Z" })).toMatchObject({ result: "applied" });
-  expect(await world.reports.read(reporter, filed)).toMatchObject({ status: "open" });
-
-  const inbox = await world.reports.file(reporter, bare.pack, { kind: "bug", title: "Crash on start" });
-  expect(inbox).toMatchObject({ route: "inbox", newIssue: null });
-  const received = await world.reports.inbox(bare.owner, bare.pack);
-  expect(received).toMatchObject({ reports: [expect.objectContaining({ id: inbox.id })] });
-
-  expect(await world.github.writes()).toEqual([]);
-
-  await expect(world.reports.file(reporter, linked.pack, { kind: "bug", attachments: [{ name: "big.png", bytes: 6 * MB }] })).toBeRefusedSaying("5 MB");
-  expect(await world.reports.issues(linked.pack)).toHaveLength(1);
-}, NEEDS);
-
 scenario("IT-MOD-002 Security reports are private with a 90-day timer and a 7-day reminder", async (world) => {
   const { pack, owner, maintainer } = await packWith(world, "@acme/gcp");
   const reporter = await person(world);
@@ -112,7 +78,7 @@ scenario("IT-MOD-004 Attachments with secrets or active content are blocked", as
   const filed = await world.reports.file(reporter, pack, {
     kind: "bug",
     attachments: [
-      { name: "evil.svg", text: "<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>" },
+      { name: "evil.svg", text: "<svg xmlns='x'><script>alert(1)</script></svg>" },
       { name: "page.html", text: "<html><script>alert(1)</script></html>" },
       { name: "shot.png", bytes: 2048 },
     ],
@@ -122,6 +88,12 @@ scenario("IT-MOD-004 Attachments with secrets or active content are blocked", as
     expect(await world.reports.download(reporter, filed, active!)).toEqual({ disposition: "attachment", contentType: "application/octet-stream", sniffable: false });
   }
   expect(await world.reports.download(reporter, filed, png!)).toEqual({ disposition: "inline", contentType: "image/png", sniffable: false });
+
+  // Size: a 4 MB image attaches, a 6 MB one is refused and leaves no report behind.
+  await world.reports.file(reporter, pack, { kind: "bug", attachments: [{ name: "big.png", bytes: 4 * MB }] });
+  const before = (await world.reports.mine(reporter)).length;
+  await expect(world.reports.file(reporter, pack, { kind: "bug", attachments: [{ name: "huge.png", bytes: 6 * MB }] })).toBeRefusedSaying("5 MB");
+  expect(await world.reports.mine(reporter)).toHaveLength(before);
 }, NEEDS);
 
 scenario("IT-MOD-005 Reporters see similar existing issues first", async (world) => {

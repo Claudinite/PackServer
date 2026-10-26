@@ -1,5 +1,5 @@
 import type { PackVersion } from "@packserver/schema";
-import { attachmentsOf, type AttachmentMeta } from "./attachment-store.ts";
+import { attachmentsOf } from "./attachment-store.ts";
 import { standingOn, type PackRef, type Standing } from "./access.ts";
 import { MAX_ATTACHMENTS_PER_REPORT } from "./constants.ts";
 import type { ReportInput, StatusInput } from "./input.ts";
