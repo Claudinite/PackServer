@@ -13,7 +13,7 @@ import { readJsonc } from "../../infra/lib/plan.mjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { LIVE_POINTER, REPO, WORKERS, argOf, bundleFile, bundleKey, dbName, liveVersion, manifestKey, opsStore, sha256File, spawnRunner, wranglerOk } from "./common.mjs";
+import { LIVE_POINTER, MIRROR_PROPAGATION_MS, sleepSync, REPO, WORKERS, argOf, bundleFile, bundleKey, dbName, liveVersion, manifestKey, opsStore, sha256File, spawnRunner, wranglerOk } from "./common.mjs";
 
 export const KINDS = ["normal", "hotfix", "lifecycle-only", "migration-only", "compat-only", "rollback-deep"];
 export const STATES = ["building", "verifying", "rolling", "live", "finalised", "failed", "rolled_back"];
@@ -132,7 +132,7 @@ function migrationsSince(commit) {
  * Cut a candidate: expand migrations, then one 0% version per Worker whose bundle changed, every
  * bundle copied once into `ops`, and the manifest left in `verifying`. Nothing here moves traffic.
  */
-export function cut({ run, store, digests, bundlesDir, id, commit, now = new Date().toISOString(), root = REPO, gitFn = defaultGit }) {
+export function cut({ run, store, digests, bundlesDir, id, commit, now = new Date().toISOString(), root = REPO, gitFn = defaultGit, sleep = sleepSync }) {
   // A re-run must not erase the rollback target of a release that already moved past verifying.
   const existing = store.get(manifestKey(id));
   if (existing) {
@@ -174,6 +174,8 @@ export function cut({ run, store, digests, bundlesDir, id, commit, now = new Dat
   }
   manifest = withState({ ...manifest, workers }, "verifying", now);
   writeManifest(store, manifest);
+  // Until the gate is visible everywhere the candidate answers unsigned requests, so nothing verifies before it is.
+  sleep(MIRROR_PROPAGATION_MS);
   return manifest;
 }
 

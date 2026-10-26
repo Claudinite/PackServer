@@ -1,7 +1,7 @@
-import type { Clock } from "@packserver/ports";
+import { CANDIDATE_ISOLATE_CACHE_MS, type Clock } from "@packserver/ports";
 
 /** How long one manifest read stands, success or failure: a request must not cost a bucket read. */
-export const MANIFEST_TTL_MS = 10_000;
+export const MANIFEST_TTL_MS = CANDIDATE_ISOLATE_CACHE_MS;
 
 export type GatingState = "gated" | "open:not-candidate" | "open:no-manifest" | "open:read-failed" | "open:no-reader";
 
@@ -17,18 +17,19 @@ export interface CandidateGatingOptions {
 
 interface Manifest {
   state?: unknown;
+  release_id?: unknown;
   workers?: Record<string, { version_id?: unknown; changed?: unknown } | undefined>;
 }
 
 /**
  * Whether this version is the release's candidate in `verifying`: the one moment it answers
- * only signed requests. An unchanged Worker keeps the incumbent's version id in the manifest,
+ * only signed requests, and only when the record is for this version's own release. An unchanged Worker keeps the incumbent's version id in the manifest,
  * so `changed` is what tells a candidate from the version already serving.
  */
-export function isCandidate(manifest: unknown, worker: string, versionId: string): boolean {
+export function isCandidate(manifest: unknown, worker: string, versionId: string, releaseId: string): boolean {
   const m = manifest as Manifest | null;
   const entry = m?.workers?.[worker];
-  return m?.state === "verifying" && entry?.changed === true && entry.version_id === versionId;
+  return m?.release_id === releaseId && m.state === "verifying" && entry?.changed === true && entry.version_id === versionId;
 }
 
 export interface Remembered {
@@ -49,7 +50,7 @@ async function decide(options: CandidateGatingOptions): Promise<{ gated: boolean
   }
   if (!raw) return { gated: false, state: "open:no-manifest" };
   try {
-    const gated = isCandidate(JSON.parse(new TextDecoder().decode(raw)), options.worker, options.versionId);
+    const gated = isCandidate(JSON.parse(new TextDecoder().decode(raw)), options.worker, options.versionId, options.releaseId);
     return { gated, state: gated ? "gated" : "open:not-candidate" };
   } catch {
     return { gated: false, state: "open:read-failed" };

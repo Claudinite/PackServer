@@ -132,6 +132,12 @@ export function opsStore(run, { bucket = OPS_BUCKET, root = REPO } = {}) {
 
 const RELEASE_KEYS = JSON.parse(readFileSync(join(REPO, "packages", "ports", "release-keys.json"), "utf8"));
 export const CANDIDATE_MIRROR_KEY = RELEASE_KEYS.candidateMirror;
+/**
+ * How long a mirror write can go unseen by a Worker: KV's documented propagation, the edge cache
+ * on a read that sets no `cacheTtl`, the isolate's own cache, and a margin.
+ */
+export const MIRROR_PROPAGATION_MS = (RELEASE_KEYS.kvWritePropagationSeconds + RELEASE_KEYS.kvEdgeCacheSeconds + RELEASE_KEYS.isolateCacheSeconds + RELEASE_KEYS.marginSeconds) * 1000;
+export const sleepSync = (ms) => void Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 export const manifestKey = (id) => `${MANIFEST_PREFIX}/${id}.json`;
 export const bundleKey = (id, worker) => `${MANIFEST_PREFIX}/bundles/${id}/${worker}.js`;
 export const LIVE_POINTER = `${MANIFEST_PREFIX}/live.json`;

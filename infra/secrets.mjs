@@ -42,7 +42,7 @@ export const SELFTEST_SECRET = "SELFTEST_HMAC_KEY";
 /** The value goes in on stdin, so it is on no command line and in no log. */
 export function setGithubSecret({ environment, name, value }) {
   const r = spawnSync("gh", ["secret", "set", name, "--env", environment, "--repo", GITHUB_REPO], { input: value, encoding: "utf8" });
-  if (r.status !== 0) throw new Error(`gh secret set ${name} --env ${environment} failed: ${(r.stderr || r.error?.message || "").trim()}`);
+  if (r.status !== 0) throw new Error(`gh secret set ${name} --env ${environment} failed: ${(r.stderr || r.error?.message || "").trim()}; the Secrets Store copy now exists and its value cannot be read back, so delete ${SELFTEST_SECRET} from Secrets Store and re-run`);
 }
 
 export function kidFor(date) {

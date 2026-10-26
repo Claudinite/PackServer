@@ -115,7 +115,12 @@ describe("candidate gating", () => {
     const runtime: SelfTestRuntime = { worker: "web", version: { versionId: "v1", releaseId: `r-${++counter}` }, selfTestKey: async () => KEY, ports: { clock } };
     const app = createShell({
       worker: "web", releaseId: runtime.version.releaseId, versionId: "v1", clock, checks: () => [],
-      selfTest: selfTestAccess(runtime, { memory, wallClock, readManifest: read }),
+      selfTest: selfTestAccess(runtime, { memory, wallClock, readManifest: async (id) => {
+        const raw = await read(id);
+        if (!raw) return raw;
+        const record = JSON.parse(new TextDecoder().decode(raw)) as { release_id?: string };
+        return new TextEncoder().encode(JSON.stringify({ release_id: id, ...record }));
+      } }),
     });
     app.get("/page", (c) => c.text("hello"));
     return { app, clock };
@@ -132,13 +137,19 @@ describe("candidate gating", () => {
 
   it("reads the mirror in TELEMETRY_KV when the Worker has no manifest reader of its own", async () => {
     const clock = new FakeClock(NOW);
-    const store = new Map<string, string>([[CANDIDATE_MIRROR_KEY, JSON.stringify({ state: "verifying", workers: { web: { changed: true, version_id: "v1" } } })]]);
+    const releaseId = `r-${++counter}`;
+    const store = new Map<string, string>([[CANDIDATE_MIRROR_KEY, JSON.stringify({ release_id: releaseId, state: "verifying", workers: { web: { changed: true, version_id: "v1" } } })]]);
     const kv = { get: async (k: string) => store.get(k) ?? null, put: async () => {}, delete: async () => {}, list: async () => [] };
-    const runtime: SelfTestRuntime = { worker: "web", version: { versionId: "v1", releaseId: `r-${++counter}` }, selfTestKey: async () => KEY, ports: { clock, kv: { TELEMETRY_KV: kv } } };
+    const runtime: SelfTestRuntime = { worker: "web", version: { versionId: "v1", releaseId }, selfTestKey: async () => KEY, ports: { clock, kv: { TELEMETRY_KV: kv } } };
     const app = createShell({ worker: "web", releaseId: runtime.version.releaseId, versionId: "v1", clock, checks: () => [], selfTest: selfTestAccess(runtime, { memory: new SelfTestMemory(), wallClock }) });
     app.get("/page", (c) => c.text("hello"));
     expect((await app.fetch(new Request("https://registry.test/page"))).status).toBe(404);
     expect(await statusOf(app, await signed("/page"))).toBe(200);
+  });
+
+  it("is not gated by a record for another release, even one naming this version as its candidate", async () => {
+    const { app } = gatedWorld(async () => manifest({ release_id: "some-other-release" }));
+    expect(await statusOf(app, new Request("https://registry.test/page"))).toBe(200);
   });
 
   it("serves everyone once the release has moved past verifying, or when the version is not the candidate", async () => {

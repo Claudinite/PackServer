@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createPublicKey, createPrivateKey, sign, verify } from "node:crypto";
-import { kidFor, nextKid, main, generateSigningKey } from "./secrets.mjs";
+import { kidFor, nextKid, main, generateSigningKey, setGithubSecret } from "./secrets.mjs";
 
 function fakeCloudflare({ existing = [], failList = false, failCreateOn, accounts = [{ id: "acct" }], flaky = 0, networkFlaky = 0 } = {}) {
   let flakyLeft = flaky;
@@ -106,6 +106,16 @@ describe("secrets.mjs", () => {
     expect(sent).toEqual([{ environment: "staging", name: "SELFTEST_HMAC_KEY", value: stored.value }]);
     expect(r.out + r.err).not.toContain(stored.value);
     expect(r.out).toContain("set GitHub environment secret SELFTEST_HMAC_KEY in staging");
+  });
+
+  it("tells the person to delete the stored key and re-run when gh fails, since the value is gone", () => {
+    const path = process.env.PATH;
+    process.env.PATH = "/nonexistent";
+    try {
+      expect(() => setGithubSecret({ environment: "staging", name: "SELFTEST_HMAC_KEY", value: "v" })).toThrow(/delete SELFTEST_HMAC_KEY from Secrets Store and re-run/);
+    } finally {
+      process.env.PATH = path;
+    }
   });
 
   it("says so when the self-test key has no GitHub copy, and does not claim one for a key it cannot read back", async () => {

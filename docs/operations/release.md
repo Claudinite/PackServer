@@ -84,7 +84,13 @@ METHOD|host|path|t|n|k)`, `t` within ±5 minutes and `n` unseen; everything else
 host gives an unknown path. The candidate record is a mirror of the manifest (release id, state, and
 each Worker's version id and `changed` flag) that the release tooling writes to production's
 `TELEMETRY_KV` under `selftest/candidate` whenever it writes the manifest; every Worker holds that
-namespace, so none needs a read on `ops`, and each isolate reads it at most once in ten seconds.
+namespace, so none needs a read on `ops`. A Worker gates only on a record whose `release_id` is its
+own. A write is visible to every Worker only after KV's propagation (60 s), the edge cache on the
+read (60 s, the default for a read that sets no `cacheTtl`) and the isolate's own ten-second cache,
+plus a margin; that sum is one constant (`MIRROR_PROPAGATION_MS`, from `packages/ports/release-keys.json`),
+and the tooling waits it out after the candidate record is written, and again between the `rolling`
+write and the move to 100%, so no version takes traffic while it still believes it is gated. Staging
+has no candidate (it deploys straight to 100% and its suite sends unsigned requests), so it is not gated.
 Visitor-style (unsigned) requests are what the gate refuses; the probe-safe run therefore needs
 `SELFTEST_HMAC_KEY`, and verification skips the self-test with a logged reason when it is absent. The check fails open when the read fails, so a verified
 version that becomes the incumbent can never lock itself out. The prober and the controller sign
