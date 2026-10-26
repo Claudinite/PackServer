@@ -1,7 +1,9 @@
 import { addGrant, isAccountId, listGrants, removeGrant } from "@packserver/core/access";
 import { refusal, requireSession } from "@packserver/http";
 import { Hono, type Context } from "hono";
+import { announceProofChange } from "@packserver/core/scopes";
 import { recordAudit, runtimeOf, type WebEnv } from "../../context";
+import { proofPorts } from "../orgs/proof-ports";
 import { notFound, ok, scopePorts, sensitive, standing } from "../scopes/guard";
 import { auditTarget, findPack, loadAccess, type PackRow } from "./store";
 
@@ -16,9 +18,10 @@ async function bodyOf(c: Context<WebEnv>): Promise<Record<string, unknown>> {
   return typeof body === "object" && body !== null && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
 }
 
-const accountNamed = async (c: Context<WebEnv>): Promise<string> => {
-  const named = (await bodyOf(c)).account_id;
-  return typeof named === "string" ? named : "";
+/** The grant an assertion covers: the account and how wide the entry is, so a narrow assertion cannot authorise a wider entry. */
+const grantNamed = async (c: Context<WebEnv>): Promise<string> => {
+  const body = await bodyOf(c);
+  return `${typeof body.account_id === "string" ? body.account_id : ""}:${body.private_repos_only === false ? "any" : "private"}`;
 };
 
 /**
@@ -28,9 +31,9 @@ const accountNamed = async (c: Context<WebEnv>): Promise<string> => {
 async function packFor(c: Context<WebEnv>, need: "maintainer" | "owner"): Promise<{ pack: PackRow; role: "owner" | "maintainer" } | Response> {
   const scope = (c.req.param("scope") ?? "").replace(/^@/, "");
   const pack = await findPack(runtimeOf(c).ports.d1, scope, c.req.param("name") ?? "");
-  if (!pack) return notFound();
   const who = await standing(c, { scope, need: "maintainer", resource: "private" });
   if (who instanceof Response) return who;
+  if (!pack) return notFound();
   // A maintainer already knows the pack exists, so an owner-only action is refused, not hidden.
   if (need === "owner" && who.role !== "owner") return refusal("forbidden", { message: "Only an owner can do this." });
   return { pack, role: who.role };
@@ -45,7 +48,7 @@ routes.get("/access/:scope/:name", requireSession(), async (c) => {
 
 const SCOPE_PATH = "/packs/:scope/:name";
 
-routes.post(`${SCOPE_PATH}/grants`, sensitive("grant.add", async (c) => `${systemName(c)}:${await accountNamed(c)}`), async (c) => {
+routes.post(`${SCOPE_PATH}/grants`, sensitive("grant.add", async (c) => `${systemName(c)}:${await grantNamed(c)}`), async (c) => {
   const found = await packFor(c, "maintainer");
   if (found instanceof Response) return found;
   const { pack } = found;
@@ -88,16 +91,17 @@ routes.post(`${SCOPE_PATH}/visibility`, sensitive("pack.visibility", (c) => syst
   const { pack } = found;
   const body = await bodyOf(c);
   if (body.visibility !== "public" && body.visibility !== "private") return refusal("forbidden", { status: 422, message: "visibility: public or private." });
+  const { d1 } = runtimeOf(c).ports;
+  const published = await d1.query("select 1 from pack_versions where pack_id = ? and published_at is not null limit 1", [pack.id]);
+  if (published.rows.length > 0) {
+    return refusal("exists", { status: 409, message: "A pack with a published version cannot change visibility yet: moving its versions between the public and private stores is not built (issue 229)." });
+  }
   if (body.visibility === pack.visibility) return ok(c, { visibility: pack.visibility, changed: false });
   if (body.visibility === "public" && body.confirm !== true) {
     return refusal("forbidden", { status: 422, message: "confirm: making a pack public is permanent; send confirm: true to go ahead." });
   }
-  const { d1 } = runtimeOf(c).ports;
   await d1.query("update packs set visibility = ? where id = ?", [body.visibility, pack.id]);
-  const userId = c.get("session")!.record.user_id;
-  await recordAudit(c, userId, "visibility.changed", auditTarget(pack), { from: pack.visibility, to: body.visibility }, pack.scopeId);
-  const reindex = runtimeOf(c).ports.queues.REINDEX_QUEUE;
-  if (!reindex) throw new Error("the reindex queue is not bound");
-  await reindex.send({ schema: 1, type: "scope.proof_changed", scope: pack.scope, change: "visibility_changed" });
+  await announceProofChange(proofPorts(c), pack.scope, "visibility_changed");
+  await recordAudit(c, c.get("session")!.record.user_id, "visibility.changed", auditTarget(pack), { from: pack.visibility, to: body.visibility }, pack.scopeId);
   return ok(c, { visibility: body.visibility, changed: true });
 });

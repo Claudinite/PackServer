@@ -18,7 +18,7 @@ export const ACCESS_CLIENT = String.raw`
     var account = addForm.elements.account_id.value.trim();
     var only = addForm.elements.private_repos_only.checked;
     PS.sensitive({
-      title: "Add a GitHub account", detail: "Account " + account + " will be able to read this pack.", action: "grant.add", target: pack.slice(1) + ":" + account,
+      title: "Add a GitHub account", detail: "Account " + account + " will be able to read this pack.", action: "grant.add", target: pack.slice(1) + ":" + account + ":" + (only ? "private" : "any"),
       run: function (assertion) { return PS.api("POST", base + "/grants", { account_id: account, private_repos_only: only }, withAssertion(assertion)); }
     }).then(function (done) { if (done) reload(); }, failed);
   });

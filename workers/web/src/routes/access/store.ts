@@ -39,6 +39,8 @@ export interface ChangeView {
 export interface AccessView {
   pack: string;
   visibility: "public" | "private";
+  /** Whether any version has been promoted; a pack with one cannot change visibility yet. */
+  published: boolean;
   grants: GrantView[];
   fetches: FetchView[];
   changes: ChangeView[];
@@ -53,7 +55,8 @@ const CHANGE_LIMIT = 100;
 /** What the pack's owner sees on the access page (REQ-PRIV-012, REQ-TELEM-008). */
 export async function loadAccess(d1: D1, pack: PackRow): Promise<AccessView> {
   const target = auditTarget(pack);
-  const [grants, lastFetch, fetches, changes] = await Promise.all([
+  const [published, grants, lastFetch, fetches, changes] = await Promise.all([
+    d1.query("select 1 from pack_versions where pack_id = ? and published_at is not null limit 1", [pack.id]),
     d1.query(
       "select g.principal_id as account_id, g.private_repos_only as private_repos_only, g.created_at as created_at, u.handle as added_by from grants g left join users u on u.id = g.created_by where g.pack_id = ? order by g.created_at, g.id",
       [pack.id],
@@ -71,6 +74,7 @@ export async function loadAccess(d1: D1, pack: PackRow): Promise<AccessView> {
   return {
     pack: target,
     visibility: pack.visibility,
+    published: published.rows.length > 0,
     grants: grants.rows.map((r) => ({
       account_id: String(r.account_id),
       private_repos_only: Boolean(r.private_repos_only),

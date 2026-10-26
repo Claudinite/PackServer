@@ -31,6 +31,7 @@ export interface FetchRecordView {
 /** The access page's data as the owner of a pack reads it. */
 export interface AccessView {
   readonly visibility: "public" | "private";
+  readonly published: boolean;
   readonly you: "owner" | "maintainer";
   readonly grants: ReadonlyArray<{ accountId: string; privateReposOnly: boolean; addedBy: string | null; lastFetchAt: number | null }>;
   readonly fetches: readonly FetchRecordView[];
@@ -66,6 +67,8 @@ export interface AccessVerbs {
   disallowAccount(pack: Pack, account: Pick<Account, "id">): Promise<void>;
   /** The pack's reads the registry logged, newest first. */
   fetches(pack: Pack): Promise<FetchRecordView[]>;
+  /** Gives the registry its signing key, so a reindex it is sent can run. */
+  seedRegistryKeys(): Promise<void>;
   /** The pack's access page and what it changes, as `by` uses them. */
   manage(pack: Pack, by: User): AccessManager;
   /** The writes a signed-in person may try on a pack, each as the registry answers it. */
@@ -120,13 +123,14 @@ export const createAccess = (driver: Driver, aliases: Aliases): AccessModule => 
         if (res.status === 404) return new NotFound();
         if (res.status !== 200) throw refused(res, "access.view");
         const b = res.json() as {
-          visibility: AccessView["visibility"]; you: AccessView["you"];
+          visibility: AccessView["visibility"]; published: boolean; you: AccessView["you"];
           grants: Array<{ account_id: string; private_repos_only: boolean; added_by: string | null; last_fetch_at: number | null }>;
           fetches: Array<{ kind: FetchRecordView["kind"]; outcome: FetchRecordView["outcome"]; account_id: string | null; repository: string | null; at: number }>;
           changes: Array<{ at: string; actor: string | null; action: AccessView["changes"][number]["action"]; change: string; account_id: string | null }>;
         };
         return {
           visibility: b.visibility,
+          published: b.published,
           you: b.you,
           grants: b.grants.map((g) => ({ accountId: g.account_id, privateReposOnly: g.private_repos_only, addedBy: g.added_by === null ? null : aliases.unalias(g.added_by), lastFetchAt: g.last_fetch_at })),
           fetches: b.fetches.map((f) => ({ kind: f.kind, outcome: f.outcome, accountId: f.account_id, repository: f.repository, at: f.at })),
@@ -145,7 +149,7 @@ export const createAccess = (driver: Driver, aliases: Aliases): AccessModule => 
         return { kind: "page", text: aliases.unalias(res.text) };
       },
       async allow(account, o) {
-        const headers = await callerOf(by).assertionHeaders("grant.add", o, `${bound}:${account.id}`);
+        const headers = await callerOf(by).assertionHeaders("grant.add", o, `${bound}:${account.id}:${account.privateReposOnly === false ? "any" : "private"}`);
         const json = { account_id: String(account.id), ...(account.privateReposOnly === undefined ? {} : { private_repos_only: account.privateReposOnly }) };
         return settle(await callerOf(by).call({ method: "POST", path: `${base}/grants`, json, headers }), "access.allow");
       },
@@ -162,6 +166,12 @@ export const createAccess = (driver: Driver, aliases: Aliases): AccessModule => 
 
   const access: AccessVerbs = {
     manage,
+    async seedRegistryKeys() {
+      const { db } = await driver.storage!();
+      const now = driver.fakes ? await driver.fakes.clock.call<number>("now") : Date.now();
+      const statement = db.prepare("insert into feature_flags (key, value, security, updated_at) values ('registry_keys', ?, 0, ?) on conflict (key) do update set value = excluded.value");
+      await (statement.bind(JSON.stringify([await seededRegistryKey()]), new Date(now).toISOString()) as { run(): Promise<unknown> }).run();
+    },
     account: (login, o = {}) => ({ id: nextAccountId++, login, ...o }),
     repository: (account, name, visibility = "private") => ({ ownerId: account.id, repository: `${account.login}/${name}`, visibility }),
     registryKey: seededRegistryKey,

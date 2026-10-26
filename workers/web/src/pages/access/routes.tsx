@@ -17,7 +17,8 @@ const NO_STORE = "private, no-store";
 const wasAt = (iso: string): number => Date.parse(iso);
 
 function Visibility(props: { view: AccessView; owner: boolean }) {
-  const { view, owner } = props;
+  const { view } = props;
+  const owner = props.owner && !view.published;
   const isPrivate = view.visibility === "private";
   return (
     <section>
@@ -38,7 +39,8 @@ function Visibility(props: { view: AccessView; owner: boolean }) {
           <p class="mt2"><button class="btn" type="button" data-do="make-private">Make private</button></p>
         </>
       ) : null}
-      {!owner ? <p class="muted small mt2">Only an owner of the scope can change this.</p> : null}
+      {props.owner && view.published ? <p class="muted small mt2">Visibility cannot change once a version is published. Moving published versions between the public and private stores comes later.</p> : null}
+      {!props.owner ? <p class="muted small mt2">Only an owner of the scope can change this.</p> : null}
     </section>
   );
 }
@@ -146,8 +148,8 @@ routes.get("/packs/:scope/:name/access", async (c: Context<WebEnv>) => {
   const scope = (c.req.param("scope") ?? "").replace(/^@/, "");
   const { d1 } = c.get("runtime").ports;
   const pack = await findPack(d1, scope, c.req.param("name") ?? "");
-  const decision = pack ? await authorize(d1, { scope, userId: who.userId, need: "maintainer", resource: "private" }) : undefined;
-  if (!pack || decision?.kind !== "allow") return notFoundPage(c);
+  const decision = await authorize(d1, { scope, userId: who.userId, need: "maintainer", resource: "private" });
+  if (!pack || decision.kind !== "allow") return notFoundPage(c);
 
   const view = await loadAccess(d1, pack);
   const nonce = c.get("cspNonce");

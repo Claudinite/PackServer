@@ -418,30 +418,34 @@ scenario("IT-PRIV-014 Maintainers manage grants; a person with no role in the or
 scenario("IT-PRIV-010 Making a pack public needs an assertion and a confirmation, and is permanent", async (world) => {
   const ann = await world.publishers.create({ handle: "ann" });
   await ann.orgs.create("acme");
-  const secret = await world.packs.public("@acme/secret", { visibility: "private", versions: ["1.0.0", "1.1.0"] });
-  const manage = world.access.manage(secret, ann);
-  const agent = world.agents.anonymous();
-  await expect(secret.read()).toBeNotFound();
+  await world.access.seedRegistryKeys();
+  const draft = await world.packs.public("@acme/draft", { visibility: "private", versions: [] });
+  const secret = await world.packs.public("@acme/secret", { visibility: "private", versions: ["1.0.0"] });
+  const stored = await secret.stored("1.0.0");
 
-  await expect(manage.setVisibility("public", { assertion: "none", confirmed: true })).toBeRefused("step-up");
-  await expect(manage.setVisibility("public")).toBeRefused("forbidden");
-  expect(await manage.view()).toMatchObject({ visibility: "private" });
-  await expect(secret.read()).toBeNotFound();
-
-  await manage.setVisibility("public", { confirmed: true });
-  expect(await manage.view()).toMatchObject({ visibility: "public" });
-  await expect(agent.pack(secret)).resolves.not.toBeInstanceOf(NotFound);
-
-  await manage.setVisibility("private");
-  expect(await manage.view()).toMatchObject({ visibility: "private" });
+  const bare = world.access.manage(draft, ann);
+  await expect(bare.setVisibility("public", { assertion: "none", confirmed: true })).toBeRefused("step-up");
+  await expect(bare.setVisibility("public")).toBeRefused("forbidden");
+  expect(await bare.view()).toMatchObject({ visibility: "private", published: false });
+  await bare.setVisibility("public", { confirmed: true });
+  expect(await bare.view()).toMatchObject({ visibility: "public" });
+  await bare.setVisibility("private");
+  expect(await bare.view()).toMatchObject({ visibility: "private" });
   const trail = (await ann.account.history()).filter((e) => e.action === "visibility.changed");
-  expect(trail.map((e) => e.target)).toEqual([secret.systemName, secret.systemName]);
+  expect(trail.map((e) => e.target)).toEqual([draft.systemName, draft.systemName]);
+
+  const published = world.access.manage(secret, ann);
+  const serial = await world.registry.serial(secret);
+  await expect(published.setVisibility("public", { confirmed: true })).toBeRefused("exists");
+  expect(await published.view()).toMatchObject({ visibility: "private", published: true });
+  expect((await secret.stored("1.0.0")).objects).toEqual(stored.objects);
+  expect(await world.registry.serial(secret)).toBe(serial);
 }, storage);
 
 scenario("IT-PUB-022 Only owners change a pack's visibility or offer it to another scope", async (world) => {
   const ann = await world.publishers.create({ handle: "ann" });
   const acme = await ann.orgs.create("acme");
-  const secret = await world.packs.public("@acme/secret", { visibility: "private", versions: ["1.0.0", "1.1.0"] });
+  const secret = await world.packs.public("@acme/secret", { visibility: "private", versions: [] });
   const manage = world.access.manage(secret, ann);
   const maintainer = await world.publishers.create({ handle: "mia" });
   await acme.invite(maintainer).as("maintainer");
@@ -460,21 +464,21 @@ scenario("IT-PUB-022 Only owners change a pack's visibility or offer it to anoth
   await world.transfers.offer(secret, { to: target, by: ann });
 }, storage);
 
-scenario("IT-PRIV-011 Making a pack private leaves the versions already public where they are", async (world) => {
+scenario("IT-PRIV-011 A pack with published versions keeps them where they are when its visibility is asked to change", async (world) => {
   const ann = await world.publishers.create({ handle: "ann" });
   await ann.orgs.create("acme");
   const open = await world.packs.public("@acme/open", { versions: ["1.0.0"] });
   const manage = world.access.manage(open, ann);
   const before = await open.stored("1.0.0");
+  const serial = await world.registry.serial(open);
   expect(before.objects.length).toBeGreaterThan(0);
-  expect(await world.packs.verify(before.canonicalSha256)).toMatchObject({ result: "canonical" });
 
-  await manage.setVisibility("private");
+  await expect(manage.setVisibility("private")).toBeRefused("exists");
 
-  await expect(open.read()).toBeNotFound();
+  expect(await manage.view()).toMatchObject({ visibility: "public", published: true });
   const after = await open.stored("1.0.0");
   expect(after.objects).toEqual(before.objects);
   expect(after.canonicalSha256).toBe(before.canonicalSha256);
-  expect(await world.packs.verify(before.canonicalSha256)).toEqual({ result: "unknown" });
-  expect(await manage.view()).toMatchObject({ visibility: "private", changes: [{ action: "visibility.changed", change: "public to private" }] });
+  expect(await world.packs.verify(before.canonicalSha256)).toMatchObject({ result: "canonical" });
+  expect(await world.registry.serial(open)).toBe(serial);
 }, storage);
