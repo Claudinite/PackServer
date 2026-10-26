@@ -31,10 +31,11 @@ export function createWorld(driver: Driver, title: string) {
       return filterInvocations(driver.recorder.invocations(filter), filter);
     },
   };
+  const people = createUsers(driver, aliases);
   return {
     driver,
-    ...createUsers(driver, aliases),
-    ...createScopes(driver, aliases),
+    ...people,
+    ...createScopes(driver, aliases, people),
     ...createPublishing(),
     ...createValidation(),
     ...createAccess(driver),
