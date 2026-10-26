@@ -59,10 +59,6 @@ export class PageAuthenticator {
   async credentials(): Promise<Array<{ credentialId: string; signCount: number }>> {
     return (await this.session.send("WebAuthn.getCredentials", { authenticatorId: this.id })).credentials;
   }
-
-  async refuseUserVerification(): Promise<void> {
-    await this.session.send("WebAuthn.setUserVerified", { authenticatorId: this.id, isUserVerified: false });
-  }
 }
 
 interface Fixtures {

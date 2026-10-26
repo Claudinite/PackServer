@@ -17,7 +17,7 @@ function setup() {
     worker: "web", environment: "test", version: { versionId: SHELL_VERSION, releaseId: SHELL_RELEASE }, missingBindings: [], missingSecrets: [],
     ports: {
       ...fakes, d1, rateLimits: { RATE_LIMIT: new FakeRateLimit(fakes.clock, 600, 60_000) },
-      githubLogin: { authorizeUrl: async () => "", profile: async () => { throw new Error("unused"); } },
+      githubLogin: { authorizeUrl: async () => "https://github.com/login/oauth/authorize?x=1", profile: async () => { throw new Error("unused"); } },
     },
     services: { mcp: {} as Fetcher, publish: {} as Fetcher },
     config: { oidc: oidcConfig({ ENVIRONMENT: "production" }), fetch, cdnOrigin: undefined, siteOrigins: [ORIGIN] },
@@ -56,8 +56,10 @@ describe("sign-in page (REQ-ACC-001)", () => {
     expect(res.headers.get("cache-control")).toBe("private, no-store");
     expect(html.indexOf("Sign in with a passkey")).toBeGreaterThan(-1);
     expect(html.indexOf("Sign in with a passkey")).toBeLessThan(html.indexOf("Continue with GitHub"));
-    expect(html).toMatch(/<form method="post" action="\/api\/auth\/github">/);
-    expect(html).toContain('name="next" value="/dashboard"');
+    expect(html).toContain('id="github-signin"');
+    expect(html).not.toMatch(/<form[^>]*action="\/api\/auth\/github"/);
+    expect(html).toContain('var next = root.getAttribute("data-next")');
+    expect(html).toContain('data-next="/dashboard"');
     expect(html).not.toMatch(/google|apple|one-time code|magic link|authenticator app|totp/i);
   });
 
@@ -67,9 +69,43 @@ describe("sign-in page (REQ-ACC-001)", () => {
     expect(html).toContain("This browser cannot use passkeys. Continue with GitHub.");
   });
 
+  it("renders the human check, and only this page's policy names Cloudflare's challenge host", async () => {
+    const h = setup();
+    const res = await h.request("/signin");
+    const html = await res.text();
+    const csp = res.headers.get("content-security-policy") ?? "";
+    expect(csp).toMatch(/script-src 'nonce-[0-9a-f]+' https:\/\/challenges\.cloudflare\.com;/);
+    expect(csp).toContain("frame-src https://challenges.cloudflare.com");
+    expect(html).toMatch(/<script nonce="[0-9a-f]+" id="turnstile-api" src="https:\/\/challenges\.cloudflare\.com\/turnstile\/v0\/api\.js\?render=explicit&(amp;)?onload=psTurnstile"/);
+    expect(html).toContain('id="human-check"');
+
+    const person = await signUp(h, "ann");
+    const others = ["/", "/browse", "/pricing", "/rules", "/claude-code", "/signin?step=handle", "/account", "/account/security", "/no/such/page"];
+    for (const path of others) {
+      const other = await person.get(path);
+      const policy = other.headers.get("content-security-policy") ?? "";
+      expect(policy, path).not.toContain("challenges.cloudflare.com");
+      expect(policy, path).not.toContain("frame-src");
+    }
+    const handleless = await signUp(setup());
+    const step = await handleless.get("/signin?step=handle");
+    expect(step.headers.get("content-security-policy")).not.toContain("challenges.cloudflare.com");
+  });
+
+  it("starts GitHub sign-in as JSON for the page script, and as a redirect for a form", async () => {
+    const h = setup();
+    const post = (accept: string) =>
+      h.request("/api/auth/github", { method: "POST", headers: { accept, "content-type": accept.includes("json") ? "application/json" : "application/x-www-form-urlencoded", "x-turnstile-unavailable": "1" }, body: accept.includes("json") ? JSON.stringify({ next: "/account" }) : "next=%2Faccount" });
+    const json = await post("application/json");
+    expect(json.status).toBe(200);
+    expect(json.headers.get("set-cookie")).toMatch(/__Host-github-state=/);
+    expect(await json.json()).toHaveProperty("redirect");
+    expect((await post("text/html")).status).toBe(303);
+  });
+
   it("keeps a return target on this site", async () => {
     const html = await (await setup().request("/signin?next=//evil.example/x")).text();
-    expect(html).toContain('name="next" value="/"');
+    expect(html).toContain('data-next="/"');
   });
 
   it("asks a new account for its handle and sends one who has it onward", async () => {
@@ -103,7 +139,7 @@ describe("account pages", () => {
     expect(html).toContain("@ann");
     expect(html).toContain('href="/account/security"');
     expect(html).toContain('data-do="sign-out"');
-    expect(html).toMatch(/<a href="\/account">Account<\/a>/);
+    expect(html).toContain('href="/signin?next=/account"');
   });
 });
 

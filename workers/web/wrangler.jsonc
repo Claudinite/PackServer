@@ -20,6 +20,7 @@
         "SITE_ORIGINS": "http://web.internal",
         "OIDC_ISSUER": "https://oidc.test",
         "OIDC_JWKS_URL": "https://oidc.test/.well-known/jwks",
+        "TURNSTILE_SITEKEY": "1x00000000000000000000AA",
         "TURNSTILE_SECRET": "1x0000000000000000000000000000000AA",
         "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
         "GITHUB_APP_CLIENT_ID": "fake-github-client-id",
@@ -124,6 +125,7 @@
         "ENVIRONMENT": "staging",
         "CDN_ORIGIN": "https://packs-staging.claudinite.com",
         "SITE_ORIGINS": "https://registry-staging.claudinite.com",
+        "TURNSTILE_SITEKEY": "SITEKEY_FROM_PROVISION",
         "MAIL_FROM": "noreply@claudinite.com"
       },
       "d1_databases": [
@@ -264,6 +266,7 @@
         "ENVIRONMENT": "production",
         "CDN_ORIGIN": "https://packs.claudinite.com",
         "SITE_ORIGINS": "https://registry.claudinite.com,https://registry-canary.claudinite.com",
+        "TURNSTILE_SITEKEY": "SITEKEY_FROM_PROVISION",
         "MAIL_FROM": "noreply@claudinite.com"
       },
       "d1_databases": [

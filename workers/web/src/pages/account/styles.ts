@@ -13,7 +13,6 @@ export const ACCOUNT_CSS = `
 .btn.danger { color: var(--fail); }
 .signin { max-width: 420px; }
 .signin form { display: contents; }
-.signin .or { color: var(--grey-2); font-size: ${typeScale.small}px; }
 .form { display: flex; flex-direction: column; gap: ${g(2)}; max-width: 420px; margin-top: ${g(3)}; }
 .form label { display: flex; flex-direction: column; gap: 4px; }
 .form input[type="text"], .form input[type="email"], .form input[type="number"], .dlg input[type="text"] { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px; padding: ${g(1)} 12px; min-width: 0; }
@@ -33,6 +32,5 @@ export const ACCOUNT_CSS = `
 .acct details > summary { cursor: pointer; }
 .acct details.fold > summary { color: var(--ink); }
 .acct details.fold > .body { margin-top: ${g(1)}; }
-.acct .head { display: flex; flex-wrap: wrap; gap: ${g(1)} ${g(2)}; align-items: baseline; }
 .acct .status { color: var(--grey-1); margin-top: ${g(2)}; min-height: 1.5em; }
 `;

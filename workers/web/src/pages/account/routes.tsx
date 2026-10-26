@@ -177,7 +177,7 @@ function Tokens(props: { data: SecurityData }) {
           <form class="form" id="mint-token">
             <label>
               <span>Pack or scope</span>
-              <input type="text" name="restrict" required placeholder="@acme/pack or @acme" autocomplete="off" spellcheck={false} />
+              <input type="text" name="restrict" required pattern="@[a-z0-9-]+(/[a-z0-9._-]+)?" placeholder="@acme/pack or @acme" autocomplete="off" spellcheck={false} />
             </label>
             <label>
               <span>Lasts for (days)</span>
@@ -241,7 +241,11 @@ routes.get("/account/security", async (c) => {
           <summary>Delete account</summary>
           <div class="body">
             <p class="lede">This removes your sign-in methods, sessions and tokens, and retires your handle.</p>
-            <p class="mt2"><button class="btn danger" type="button" data-do="delete-account">Delete account</button></p>
+            {data.passkeys.length > 0 || data.recovery.has_codes ? (
+              <p class="mt2"><button class="btn danger" type="button" data-do="delete-account">Delete account</button></p>
+            ) : (
+              <p class="lede mt2">Add a passkey first: deleting an account needs a confirmation.</p>
+            )}
           </div>
         </details>
         <p class="status" id="ps-status" role="status" />

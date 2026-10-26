@@ -59,7 +59,7 @@ brackets.
   [REQ-PRIV-020].
 - Only the validator writes the serving buckets; buckets unreachable except through the custom
   domain or a Worker [REQ-DELIV-015].
-- Attachments, no sniffing, no execution on a registry origin; strict CSP; sanitised README
+- Attachments, no sniffing, no execution on a registry origin; strict CSP (the sign-in page alone also names `challenges.cloudflare.com` for `script-src` and `frame-src`, to load the Turnstile widget, and no other page does); sanitised README
   [REQ-DELIV-012, 014, REQ-ABUSE-008].
 - Private responses never cacheable; 404 indistinguishable for private packs; 401 for invalid
   credentials; opaque version ids [REQ-DELIV-007, 013, REQ-PRIV-001, 002, 015].

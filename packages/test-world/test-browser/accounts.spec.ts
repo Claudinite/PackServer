@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { chromium, type BrowserContext, type Page } from "@playwright/test";
+import { TURNSTILE_PASS_TOKEN } from "@packserver/ports/fakes";
 import { expect, PageAuthenticator, test } from "../drivers/browser";
 
 test.skip(!existsSync(chromium.executablePath()), "Chromium is not installed (pnpm exec playwright install chromium)");
@@ -8,10 +9,24 @@ test.skip(!existsSync(chromium.executablePath()), "Chromium is not installed (pn
 const signedInAs = async (context: BrowserContext, session: { id: string }): Promise<void> =>
   context.addCookies([{ name: "__Host-session", value: session.id, domain: "localhost", path: "/", httpOnly: true, secure: true, sameSite: "Lax" }]);
 
+/** Cloudflare's script is not reachable from the harness, so the widget is a stub that hands out the token the fake verifier accepts. */
+async function stubTurnstile(page: Page, seen: string[] = []): Promise<string[]> {
+  await page.route("https://challenges.cloudflare.com/turnstile/v0/api.js*", (route) =>
+    route.fulfill({
+      contentType: "text/javascript",
+      body: `(function(){var cb;window.turnstile={render:function(el,o){cb=o.callback;setTimeout(function(){cb(${JSON.stringify(TURNSTILE_PASS_TOKEN)})},0);return "w1"},reset:function(){setTimeout(function(){cb(${JSON.stringify(TURNSTILE_PASS_TOKEN)})},0)}};if(window.psTurnstile)window.psTurnstile();})();`,
+    }));
+  page.on("request", (request) => {
+    if (request.url().includes("/api/auth/") && request.method() === "POST") seen.push(request.headers()["cf-turnstile-response"] ?? (request.headers()["x-turnstile-unavailable"] ? "unavailable" : "none"));
+  });
+  return seen;
+}
+
 const codesIn = async (page: Page): Promise<string[]> => ((await page.locator('#ps-secrets [data-ps="values"]').textContent()) ?? "").split("\n").filter(Boolean);
 
 /** Signs up with a passkey in the page, confirms the codes, picks a handle, and returns the codes. */
 async function signUp(page: Page, handle: string): Promise<string[]> {
+  await stubTurnstile(page);
   await page.goto("/signin");
   await page.getByRole("button", { name: "Create an account with a passkey" }).click();
   await expect(page.locator("#ps-secrets")).toBeVisible();
@@ -149,4 +164,39 @@ test("IT-ACC-020 (browser) linking GitHub asks for a confirmation of its own and
   await page.waitForURL((url) => url.pathname === "/account/security");
   await expect(page.getByText(github.login)).toBeVisible();
   await expect(page.getByRole("button", { name: "Link GitHub" })).toHaveCount(0);
+});
+
+test("IT-ACC-001 (browser) Continue with GitHub reaches GitHub's authorize URL and signs the person in", async ({ world, driver, page }) => {
+  const seen = await stubTurnstile(page);
+  const github = driver.fakes.githubLogin.register({
+    id: 7_100_002, login: world.alias("cy-gh"), name: "Cy", emails: [{ email: `${world.alias("cy")}@example.test`, verified: true, primary: true }], orgs: [],
+  });
+  let authorize = "";
+  await page.route("https://github.com/login/oauth/authorize*", (route) => {
+    authorize = route.request().url();
+    return route.fulfill({ status: 302, headers: { location: driver.fakes.githubLogin.approve(authorize, github.id) } });
+  });
+  await page.goto("/signin?next=/account");
+  await page.getByRole("button", { name: "Continue with GitHub" }).click();
+  await expect(page.getByRole("heading", { name: "Choose a handle" })).toBeVisible();
+  expect(authorize).toContain("https://github.com/login/oauth/authorize");
+  expect(seen).toContain(TURNSTILE_PASS_TOKEN);
+  expect(seen).not.toContain("unavailable");
+});
+
+test("REQ-ACC-019 (browser) the fallback flag is sent only when the widget fails to load", async ({ world, driver, page }) => {
+  const seen: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/auth/") && request.method() === "POST") seen.push(request.headers()["cf-turnstile-response"] ?? (request.headers()["x-turnstile-unavailable"] ? "unavailable" : "none"));
+  });
+  await page.route("https://challenges.cloudflare.com/**", (route) => route.abort());
+  const github = driver.fakes.githubLogin.register({
+    id: 7_100_003, login: world.alias("di-gh"), name: "Di", emails: [{ email: `${world.alias("di")}@example.test`, verified: true, primary: true }], orgs: [],
+  });
+  await page.route("https://github.com/login/oauth/authorize*", (route) =>
+    route.fulfill({ status: 302, headers: { location: driver.fakes.githubLogin.approve(route.request().url(), github.id) } }));
+  await page.goto("/signin");
+  await page.getByRole("button", { name: "Continue with GitHub" }).click();
+  await expect(page.getByRole("heading", { name: "Choose a handle" })).toBeVisible();
+  expect(seen).toEqual(["unavailable"]);
 });
