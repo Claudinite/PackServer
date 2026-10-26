@@ -8,10 +8,12 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@packserver/core": "workspace:*",
     "@packserver/http": "workspace:*",
     "@packserver/ports": "workspace:*",
     "@packserver/schema": "workspace:*",
-    "hono": "catalog:"
+    "hono": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:"
