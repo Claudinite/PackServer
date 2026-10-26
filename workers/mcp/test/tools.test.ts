@@ -208,17 +208,17 @@ describe("limits", () => {
   });
 
   it("lets a read token through about ten times as often as an address, and is still limited", async () => {
-    const { app, d1, runtime } = await build();
+    const { app, d1, runtime } = await build({ limit: 6 });
     await d1.query("INSERT INTO users (id, created_at) VALUES ('u', 'x')");
     await d1.query("INSERT INTO scope_members (scope_id, user_id, role, created_at) VALUES ('s', 'u', 'owner', 'x')");
     const minted = await mintToken({ d1, clock: runtime.tokenClock, rng: runtime.ports.rng }, { userId: "u", scope: "acme" });
     if (!minted.ok) throw new Error("the token was not minted");
     const authorization = `Bearer ${minted.token}`;
     const statuses: number[] = [];
-    for (let i = 0; i < 640; i++) statuses.push((await rpc(app, "tools/list", undefined, { authorization })).status);
+    for (let i = 0; i < 80; i++) statuses.push((await rpc(app, "tools/list", undefined, { authorization })).status);
     const answered = statuses.filter((s) => s === 200).length;
-    expect(answered).toBeGreaterThan(300);
-    expect(answered).toBeLessThan(640);
+    expect(answered).toBeGreaterThan(30);
+    expect(answered).toBeLessThan(80);
     expect(statuses.at(-1)).toBe(429);
   });
 
