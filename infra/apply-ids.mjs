@@ -42,6 +42,8 @@ export function idSlots(sourceFile, envName, kvNameByBinding, resourceEnv) {
   }
   const endpoint = prop(prop(block, "vars"), "AUDIT_S3_ENDPOINT");
   if (endpoint) slots.push({ label: "AUDIT_S3_ENDPOINT", node: endpoint, resource: ["audit_endpoint"], kind: "endpoint" });
+  const sitekey = prop(prop(block, "vars"), "TURNSTILE_SITEKEY");
+  if (sitekey && envName !== "test") slots.push({ label: "TURNSTILE_SITEKEY", node: sitekey, resource: ["turnstile_sitekey"], kind: "sitekey" });
   return slots.filter((s) => s.node && ts.isStringLiteral(s.node));
 }
 
@@ -51,6 +53,7 @@ function expectedValue(resources, slot) {
   if (slot.kind === "endpoint") {
     return resources.account_id && R2_HOST.test(slot.node.text) ? slot.node.text.replace(R2_HOST, `$1${resources.account_id}$2`) : undefined;
   }
+  if (slot.kind === "sitekey") return resources.turnstile?.sitekey;
   return idOf(resources, slot.resource);
 }
 
@@ -119,7 +122,7 @@ export function checkIds({ root = REPO, resourcesDir = join(root, "infra") } = {
       const resourceEnv = envName === "test" ? "production" : envName;
       for (const slot of idSlots(sf, envName, trust[worker]?.kv ?? {}, resourceEnv)) {
         // The account has one Secrets Store, so every environment legitimately names the same one.
-        if (slot.kind === "endpoint" || slot.resource[0] === "secrets_store_id") continue;
+        if (slot.kind === "endpoint" || slot.kind === "sitekey" || slot.resource[0] === "secrets_store_id") continue;
         const value = slot.node.text;
         if (!seen[envName].has(value)) seen[envName].set(value, `${worker} ${slot.label}`);
       }

@@ -1,3 +1,4 @@
+import { jwtAccessIdentity, policyFrom, isPlaceholder, type AccessPolicy } from "@packserver/core/admin";
 import { analyticsPrivateDownloads, type PrivateDownloads } from "@packserver/core/stats";
 import { analyticsAppendedPoints, ecdsaSigner, rekorTransparency, s3AuditBucket, type AppendedPoints, type AuditBucket } from "@packserver/core/audit";
 import { analyticsStats, createIsolateTelemetry } from "@packserver/http";
@@ -24,6 +25,14 @@ export interface Env {
   SITE_ORIGINS: string;
   VALIDATE_PACK: Workflow;
   ACCESS?: Fetcher;
+  /** `<team>.cloudflareaccess.com`, whose keys sign the assertions; unset or a placeholder leaves the app admitting no one outside `env.test`. */
+  ACCESS_TEAM_DOMAIN?: string;
+  /** The audience tag of the Access application that protects the admin host. */
+  ACCESS_AUDIENCE?: string;
+  /** Comma-separated emails allowed in, as the Access policy lists them. */
+  ADMIN_IDENTITIES?: string;
+  /** Comma-separated hostnames the Access application protects; a request addressed to any other host is answered as not found. */
+  ADMIN_HOSTS?: string;
   /** The test world's clock, bound only under `env.test`. */
   CLOCK?: Fetcher;
   REQUEST_OUTCOMES: AnalyticsEngineDataset;
@@ -87,6 +96,13 @@ function lazyTransparency(env: Env): Transparency {
   };
 }
 
+function accessIdentity(env: Env) {
+  const configured = !isPlaceholder(env.ACCESS_TEAM_DOMAIN) && !isPlaceholder(env.ACCESS_AUDIENCE);
+  return env.ENVIRONMENT !== "test" && configured
+    ? jwtAccessIdentity({ teamDomain: env.ACCESS_TEAM_DOMAIN!, audience: env.ACCESS_AUDIENCE! })
+    : accessPort(env.ENVIRONMENT, env.ACCESS);
+}
+
 const optional = <K extends string, V>(key: K, value: V | undefined): { [P in K]?: V } => (value === undefined ? {} : ({ [key]: value } as { [P in K]?: V }));
 
 function pointsReader(env: Env): AppendedPoints | undefined {
@@ -101,7 +117,7 @@ function downloadsReader(env: Env): PrivateDownloads | undefined {
   return analyticsPrivateDownloads({ accountId, dataset: env.DOWNLOADS_DATASET, token: () => readSecret(env.ANALYTICS_READ_TOKEN) });
 }
 
-export type AdminRuntime = WorkerRuntime<AdminPorts> & { config?: { siteOrigin: string } };
+export type AdminRuntime = WorkerRuntime<AdminPorts> & { config?: { siteOrigin: string; access?: AccessPolicy | null } };
 
 /** Signals leave as log lines, the same channel every Worker's other events take. */
 const logTelemetry = {
@@ -134,13 +150,13 @@ export function createRuntime(env: Env): AdminRuntime {
     dns: dohDns(),
     wellKnown: wellKnownPort(),
     workflows: { VALIDATE_PACK: workflowPort(env.VALIDATE_PACK) },
-    access: accessPort(env.ENVIRONMENT, env.ACCESS),
+    access: accessIdentity(env),
     auditBucket: lazyAuditBucket(env),
     transparency: lazyTransparency(env),
     ...optional("appendedPoints", pointsReader(env)),
     ...optional("privateDownloads", downloadsReader(env)),
   });
-  return { ...base, config: { siteOrigin: siteOriginOf(env.SITE_ORIGINS) } };
+  return { ...base, config: { siteOrigin: siteOriginOf(env.SITE_ORIGINS), access: policyFrom(env) } };
 }
 
 /** The first origin is the public one. */

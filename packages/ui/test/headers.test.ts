@@ -56,6 +56,9 @@ describe("security headers (IT-ABUSE-008, IT-ABUSE-009)", () => {
   it("builds nonces that are 32 hex digits", () => {
     expect(makeNonce()).toMatch(/^[0-9a-f]{32}$/);
     expect(contentSecurityPolicy("abc")).toContain("'nonce-abc'");
+    expect(contentSecurityPolicy("abc")).not.toContain("challenges.cloudflare.com");
+    expect(contentSecurityPolicy("abc", { turnstile: true })).toContain("script-src 'nonce-abc' https://challenges.cloudflare.com;");
+    expect(contentSecurityPolicy("abc", { turnstile: true })).toContain("frame-src https://challenges.cloudflare.com;");
   });
 });
 

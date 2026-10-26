@@ -216,17 +216,33 @@ export class FakeTurnstile implements Turnstile {
   }
 }
 
-/** Assertions are `<email>|<sub>|<signature>`, verified against a test key by recomputation. */
+/**
+ * Assertions are `<email>|<sub>|<signature>`, or `<email>|<sub>|<audiences>|<exp>|<signature>` when they name an
+ * audience and an expiry, verified against a test key by recomputation.
+ */
 export class FakeAccessIdentity implements AccessIdentity {
   constructor(private readonly testKey = "access-test-key") {}
+  private sign(parts: string[]): Promise<string> {
+    return sha256Hex(`${this.testKey}|${parts.join("|")}`);
+  }
   async assert(claims: AccessIdentityClaims): Promise<string> {
-    return `${claims.email}|${claims.sub}|${await sha256Hex(`${this.testKey}|${claims.email}|${claims.sub}`)}`;
+    const parts = claims.aud === undefined && claims.exp === undefined
+      ? [claims.email, claims.sub]
+      : [claims.email, claims.sub, (claims.aud ?? []).join(","), String(claims.exp ?? "")];
+    return `${parts.join("|")}|${await this.sign(parts)}`;
   }
   async verify(assertion: string) {
-    const [email, sub, sig] = assertion.split("|");
-    if (!email || !sub || sig !== (await sha256Hex(`${this.testKey}|${email}|${sub}`))) {
+    const parts = assertion.split("|");
+    const sig = parts.pop();
+    if ((parts.length !== 2 && parts.length !== 4) || parts.some((p, i) => i < 2 && !p) || sig !== (await this.sign(parts))) {
       throw new PortError("bad_assertion", "assertion signature does not verify");
     }
-    return { email, sub };
+    const [email, sub, aud, exp] = parts as [string, string, string?, string?];
+    return {
+      email,
+      sub,
+      ...(aud === undefined ? {} : { aud: aud === "" ? [] : aud.split(",") }),
+      ...(exp === undefined || exp === "" ? {} : { exp: Number(exp) }),
+    };
   }
 }

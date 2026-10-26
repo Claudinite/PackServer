@@ -1,7 +1,8 @@
 import { createShell, selfTestAccess, type WorkerShellOptions } from "@packserver/http";
 import type { Hono } from "hono";
 import type { AdminRuntime } from "./bindings";
-import { routes as access } from "./access";
+import { accessGuard, routes as access } from "./access";
+import type { AdminEnv } from "./access/context";
 import { routes as applications } from "./applications";
 import { routes as internal } from "./internal";
 import { routes as moderation } from "./moderation";
@@ -15,8 +16,8 @@ export interface AppOptions {
 }
 
 /** The internal API for service-binding callers is mounted at /internal; the app's own pages declare absolute paths. */
-export function createApp(runtime: AdminRuntime, options: AppOptions = {}): Hono {
-  const app = createShell({
+export function createApp(runtime: AdminRuntime, options: AppOptions = {}): Hono<AdminEnv> {
+  const app = createShell<AdminEnv>({
     worker: "admin",
     releaseId: runtime.version.releaseId,
     versionId: runtime.version.versionId,
@@ -27,7 +28,12 @@ export function createApp(runtime: AdminRuntime, options: AppOptions = {}): Hono
     selfTestAllowed: options.selfTestAllowed,
     selfTest: selfTestAccess(runtime),
   });
-  for (const page of [access, queue, applications, reports, moderation]) app.route("/", page);
+  app.use("/admin/*", accessGuard(runtime));
+  app.route("/", access);
+  app.route("/", queue);
+  app.route("/", applications);
+  app.route("/", reports);
+  app.route("/", moderation);
   app.route("/", recoveryRoutes(runtime));
   app.route("/internal", internal);
   return app;

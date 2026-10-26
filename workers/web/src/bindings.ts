@@ -14,6 +14,7 @@ export interface Env {
   CDN_ORIGIN?: string;
   /** Comma-separated origins this environment serves; the first is the public one. */
   SITE_ORIGINS: string;
+  TURNSTILE_SITEKEY?: string;
   /** The sender address on notices; unused under `env.test`. */
   MAIL_FROM?: string;
   /** Email Service; absent under `env.test`, which posts to the world's mail fake. */
@@ -58,6 +59,8 @@ export interface WebServices {
 export interface WebConfig {
   cdnOrigin: string | undefined;
   siteOrigins: readonly [string, ...string[]];
+  /** The public key of the Turnstile widget the sign-in page renders; absent where none is configured. */
+  turnstileSiteKey?: string;
   /** Whose Actions tokens private reads accept. */
   oidc: OidcConfig;
   fetch: typeof fetch;
@@ -106,7 +109,7 @@ export function createRuntime(env: Env): WebRuntime {
     },
     { mcp: env.MCP, publish: env.PUBLISH },
   );
-  return { ...base, config: { cdnOrigin: env.CDN_ORIGIN, siteOrigins: siteOriginsOf(env.SITE_ORIGINS), oidc: oidcConfig(env), fetch: (input, init) => fetch(input, init) } };
+  return { ...base, config: { cdnOrigin: env.CDN_ORIGIN, siteOrigins: siteOriginsOf(env.SITE_ORIGINS), ...(env.TURNSTILE_SITEKEY ? { turnstileSiteKey: env.TURNSTILE_SITEKEY } : {}), oidc: oidcConfig(env), fetch: (input, init) => fetch(input, init) } };
 }
 
 /** The credentials come from the Secrets Store, so they are read on first use rather than when the Worker starts. */

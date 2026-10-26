@@ -2,6 +2,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 import type { AccessIdentityClaims } from "@packserver/ports";
 import { FakeAccessIdentity } from "@packserver/ports/fakes";
 import { handleControl } from "../control";
+import { NEVER_EXPIRES_S, TEST_ACCESS_AUDIENCE } from "./audience";
 
 const access = new FakeAccessIdentity();
 
@@ -13,7 +14,7 @@ export default class FakeAccess extends WorkerEntrypoint {
 
   async fetch(request: Request): Promise<Response> {
     return handleControl(request, {
-      assert: (claims: AccessIdentityClaims) => access.assert(claims),
+      assert: (claims: AccessIdentityClaims) => access.assert({ aud: [TEST_ACCESS_AUDIENCE], exp: NEVER_EXPIRES_S, ...claims }),
       reset: () => undefined,
     });
   }

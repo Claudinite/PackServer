@@ -6,7 +6,7 @@ import { consume, formFields, rateLimitClient, rateLimited, refusal, sessionCook
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import { notifyUser, recordAudit, securityUrlOf, sessionPorts, siteOriginOf, type WebEnv } from "../../context";
-import { announceDevice } from "./ceremony";
+import { announceDevice, jsonBody } from "./ceremony";
 
 export const routes = new Hono<WebEnv>();
 
@@ -43,9 +43,12 @@ routes.post(
   },
   (c, next) => (turnstile({ verifier: c.get("runtime").ports.turnstile, fallbackLimiter: c.get("runtime").ports.rateLimits.RATE_LIMIT! }) as unknown as MiddlewareHandler<WebEnv>)(c, next),
   async (c) => {
-    const fields = await formFields(c);
+    // A page script cannot read a redirect, and the page's form-action forbids a form post that ends at GitHub, so it asks for the address as JSON.
+    const wantsJson = c.req.header("accept")?.includes("application/json") === true;
+    const fields = wantsJson ? await jsonBody(c) : await formFields(c);
     const next = safeReturnTarget(typeof fields.next === "string" ? fields.next : undefined);
     const { location, cookie: setCookie } = await beginGitHub(c, { next });
+    if (wantsJson) return c.json({ redirect: location }, 200, { "set-cookie": setCookie, "cache-control": "no-store" });
     return new Response(null, { status: 303, headers: { location, "set-cookie": setCookie, "cache-control": "no-store" } });
   },
 );

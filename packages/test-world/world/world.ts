@@ -55,7 +55,7 @@ export function createWorld(driver: Driver, title: string) {
     ...createCommunity(),
     ...createModeration(),
     ...createReportsModule(driver, aliases),
-    ...createAdmin(driver, (restore) => void undo.push(restore)),
+    ...createAdmin(driver, (restore) => void undo.push(restore), aliases),
     ...createRecoveries(driver),
     ...createMember(driver),
     ...createAgents(driver, aliases),

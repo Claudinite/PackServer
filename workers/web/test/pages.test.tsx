@@ -204,12 +204,6 @@ describe("claude-code and sign-in", () => {
     expect(html).toContain("claude mcp add");
     expect(html).toContain("600 a minute");
   });
-
-  it("shows both sign-in buttons disabled until the human check lands", async () => {
-    const { html } = await site().get("/signin?next=/dashboard");
-    expect(html).toMatch(/<button class="btn" type="button" disabled="">Continue with GitHub/);
-    expect(html).not.toContain("<form");
-  });
 });
 
 describe("approximate counts", () => {

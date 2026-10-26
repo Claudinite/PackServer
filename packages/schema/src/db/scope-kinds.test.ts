@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { MIGRATIONS_DIR } from "../../test/migrated-db";
 
-const MIGRATION = "20261026201903_foundation_scopes_kind_synthetic.sql";
+const MIGRATION = "20261026221123_foundation_scopes_kind_synthetic.sql";
 
 /** Every migration before the one that adds the synthetic kind, with rows in the tables that reference scopes. */
 function beforeKind(): DatabaseSync {
