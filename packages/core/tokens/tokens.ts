@@ -165,6 +165,19 @@ export async function authenticateToken(ports: Pick<TokenPorts, "d1" | "clock">,
   return { id: row.id as string, user_id: row.user_id as string, scope: row.scope as string, pack: (row.pack as string | null) ?? null };
 }
 
+/** Of these token ids, the ones that still authenticate: not revoked, not expired, and their minter still manages the scope. */
+export async function liveTokenIds(ports: Pick<TokenPorts, "d1" | "clock">, ids: readonly string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const roles = MINTING_ROLES.map(() => "?").join(", ");
+  const { rows } = await ports.d1.query(
+    `select t.id from read_tokens t
+      where t.id in (${ids.map(() => "?").join(", ")}) and t.revoked_at is null and t.expires_at > ?
+        and exists (select 1 from scope_members m where m.scope_id = t.scope_id and m.user_id = t.user_id and m.role in (${roles}))`,
+    [...ids, iso(ports.clock.now()), ...MINTING_ROLES],
+  );
+  return new Set(rows.map((r) => String(r.id)));
+}
+
 /** Whether a grant reaches a pack: a pack restriction names exactly that pack, a scope restriction any pack of the scope. */
 export const grantCovers = (grant: TokenGrant, target: { scope: string; pack: string }): boolean =>
   grant.scope === target.scope && (grant.pack === null || grant.pack === target.pack);

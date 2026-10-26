@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { check, index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { inList } from "./enum-check";
 import { packs } from "./packs";
+import { read_tokens } from "./tokens";
 import { users } from "./users";
 
 export const COUNTED_FETCH_KINDS = ["public", "private"] as const;
@@ -85,6 +86,9 @@ export const hash_mismatch_reports = sqliteTable(
     version: text("version").notNull(),
     kind: text("kind", { enum: MISMATCH_KINDS }).notNull(),
     reporter_id: text("reporter_id").references(() => users.id),
+    /** Whether the credential presented covered the pack when the report was filed, and which one it was, so a private pack can re-check it when counting. */
+    covering: integer("covering", { mode: "boolean" }).notNull(),
+    token_id: text("token_id").references(() => read_tokens.id),
     expected: text("expected").notNull(),
     observed: text("observed").notNull(),
     reported_at: text("reported_at").notNull(),
@@ -95,7 +99,7 @@ export const hash_mismatch_reports = sqliteTable(
   ],
 );
 
-/** A version held, or put up for review, because of a mismatch: what triggered it and when the signal went out. */
+/** A version held, or put up for review, because of a mismatch: what triggered it and when a person was paged (null for a review, which pages nobody). */
 export const hash_mismatch_cases = sqliteTable(
   "hash_mismatch_cases",
   {
@@ -105,7 +109,7 @@ export const hash_mismatch_cases = sqliteTable(
     version: text("version").notNull(),
     trigger: text("trigger", { enum: MISMATCH_TRIGGERS }).notNull(),
     opened_at: text("opened_at").notNull(),
-    paged_at: text("paged_at").notNull(),
+    paged_at: text("paged_at"),
   },
   (t) => [
     primaryKey({ columns: [t.pack_id, t.version] }),

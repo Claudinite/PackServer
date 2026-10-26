@@ -17,7 +17,7 @@ CREATE TABLE `hash_mismatch_cases` (
 	`version` text NOT NULL,
 	`trigger` text NOT NULL,
 	`opened_at` text NOT NULL,
-	`paged_at` text NOT NULL,
+	`paged_at` text,
 	PRIMARY KEY(`pack_id`, `version`),
 	FOREIGN KEY (`pack_id`) REFERENCES `packs`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "hash_mismatch_cases_trigger_check" CHECK("hash_mismatch_cases"."trigger" in ('reports', 'server', 'review'))
@@ -29,11 +29,14 @@ CREATE TABLE `hash_mismatch_reports` (
 	`version` text NOT NULL,
 	`kind` text NOT NULL,
 	`reporter_id` text,
+	`covering` integer NOT NULL,
+	`token_id` text,
 	`expected` text NOT NULL,
 	`observed` text NOT NULL,
 	`reported_at` text NOT NULL,
 	FOREIGN KEY (`pack_id`) REFERENCES `packs`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`reporter_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`token_id`) REFERENCES `read_tokens`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "hash_mismatch_reports_kind_check" CHECK("hash_mismatch_reports"."kind" in ('hash', 'signature'))
 );
 --> statement-breakpoint

@@ -281,14 +281,26 @@ describe("mismatch reports", () => {
   };
   const state = async (t: ReturnType<typeof setup>) => String(t.d1.rows("select state from pack_versions")[0]?.state);
   const user = (t: ReturnType<typeof setup>, id: string) => t.d1.query("insert into users (id, handle, created_at) values (?, ?, 'x')", [id, id]);
-  const by = (id: string, covers = true) => ({ id, covers });
-  const anonymous = { id: null, covers: false };
+  /** A reporter with a live read token for the acme scope; `covers: false` is a token that does not reach the pack. */
+  const by = (id: string, covers = true) => ({ id, token: `tok-${id}`, covers });
+  const anonymous = { id: null, token: null, covers: false };
+  const mint = async (t: ReturnType<typeof setup>, id: string) => {
+    await t.d1.query("insert or ignore into scope_members (scope_id, user_id, role, created_at) values ('scope-acme', ?, 'owner', 'x')", [id]);
+    await t.d1.query(
+      "insert into read_tokens (id, user_id, kind, token_hash, hint, scope_id, created_at, expires_at) values (?, ?, 'read', ?, 'abcd', 'scope-acme', 'x', '2099-01-01T00:00:00.000Z')",
+      [`tok-${id}`, id, `hash-${id}`],
+    );
+  };
 
   it("never quarantines a public version on client reports; two distinct principals open a review", async () => {
     const t = setup();
     await t.pack("@acme/x");
     await user(t, "u1");
     await user(t, "u2");
+    await user(t, "u3");
+    await mint(t, "u1");
+    await mint(t, "u2");
+    await mint(t, "u3");
     const d = deps(t);
     expect(await reportMismatch(d, report(), by("u1", false))).toEqual({ recorded: true, principals: 1, quarantined: false, reviewOpened: false });
     expect(await reportMismatch(d, report(), by("u1", false))).toMatchObject({ principals: 1, reviewOpened: false });
@@ -299,12 +311,18 @@ describe("mismatch reports", () => {
     expect(await mismatchesOf(t.d1, "@acme/x")).toMatchObject([{ reports: 4, principals: 2, held: "review" }]);
     expect(await reportMismatch(d, report(), by("u2", false))).toMatchObject({ reviewOpened: false });
     expect(t.d1.rows("select * from hash_mismatch_cases")).toHaveLength(1);
+    expect(t.d1.rows("select paged_at from hash_mismatch_cases")).toEqual([{ paged_at: null }]);
+    // A review that is already open still signals each further distinct principal.
+    expect(await reportMismatch(d, report(), by("u3", false))).toMatchObject({ principals: 3, reviewOpened: true });
   });
 
   it("holds a private version only for two principals whose credentials cover it", async () => {
     const t = setup();
     await t.pack("@acme/secret", { visibility: "private" });
-    for (const u of ["u1", "u2", "u3"]) await user(t, u);
+    for (const u of ["u1", "u2", "u3"]) {
+      await user(t, u);
+      await mint(t, u);
+    }
     const d = deps(t);
     const secret = (over = {}) => report({ pack: "@acme/secret", ...over });
     expect(await reportMismatch(d, secret(), by("u3", false))).toEqual({ recorded: false, principals: 0, quarantined: false, reviewOpened: false });
@@ -318,11 +336,36 @@ describe("mismatch reports", () => {
     expect(t.d1.rows("select * from hash_mismatch_cases")).toHaveLength(1);
   });
 
+  it("counts only reports that were covering when filed and still are", async () => {
+    const t = setup();
+    const id = await t.pack("@acme/x");
+    for (const u of ["u1", "u2", "u3", "u4"]) {
+      await user(t, u);
+      await mint(t, u);
+    }
+    const d = deps(t);
+    // Two principals reported while the pack was public: a review, and nothing that counts once it is private.
+    await reportMismatch(d, report(), by("u1", false));
+    expect(await reportMismatch(d, report(), by("u2", false))).toMatchObject({ reviewOpened: true });
+    await t.d1.query("update packs set visibility = 'private' where id = ?", [id]);
+    expect(await reportMismatch(d, report(), by("u3"))).toMatchObject({ recorded: true, principals: 1, quarantined: false });
+    expect(await state(t)).toBe("active");
+    // A covering reporter whose token is revoked stops counting.
+    await t.d1.query("update read_tokens set revoked_at = 'x' where id = 'tok-u3'");
+    expect(await reportMismatch(d, report(), by("u4"))).toMatchObject({ principals: 1, quarantined: false });
+    expect(await state(t)).toBe("active");
+    await t.d1.query("update read_tokens set revoked_at = null where id = 'tok-u3'");
+    expect(await reportMismatch(d, report(), by("u4"))).toMatchObject({ principals: 2, quarantined: true });
+    expect(await state(t)).toBe("quarantined");
+  });
+
   it("does not count reports that expected some other hash or are no mismatch", async () => {
     const t = setup();
     await t.pack("@acme/x");
     await user(t, "u1");
+    await mint(t, "u1");
     await user(t, "u2");
+    await mint(t, "u2");
     const d = deps(t);
     await reportMismatch(d, report({ expected: OTHER, observed: "c".repeat(64) }), by("u1"));
     expect(await reportMismatch(d, report({ expected: OTHER, observed: "c".repeat(64) }), by("u2"))).toMatchObject({ recorded: true, principals: 0, reviewOpened: false });
@@ -343,7 +386,9 @@ describe("mismatch reports", () => {
     const t = setup();
     await t.pack("@acme/x");
     await user(t, "u1");
+    await mint(t, "u1");
     await user(t, "u2");
+    await mint(t, "u2");
     const d = deps(t);
     await reportMismatch(d, report(), by("u1"));
     await reportMismatch(d, report(), by("u2"));

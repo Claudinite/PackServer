@@ -44,8 +44,8 @@ export interface MismatchReportOptions {
 
 export interface MismatchCase {
   version: string;
-  trigger: "reports" | "server";
-  pagedAt: string;
+  trigger: "reports" | "server" | "review";
+  pagedAt: string | null;
 }
 
 /** The fetch-count rollup, the Logpush archive it reads and the mismatch reports clients send. */
@@ -72,6 +72,8 @@ export interface RollupsModule {
     cases(pack: PackHandle): Promise<MismatchCase[]>;
     /** The serving Worker saw the archive's bytes differ from the recorded hash. */
     observedByServer(pack: PackHandle, version: string): Promise<{ quarantined: boolean }>;
+    /** The pack's owners switch it to private; a seeded state change, since the verb needs a sensitive-action assertion. */
+    makePrivate(pack: PackHandle): Promise<void>;
   };
 }
 
@@ -211,7 +213,10 @@ export function createRollups(driver: Driver): RollupsModule {
             where '@' || s.name || '/' || p.name = ? order by c.version`,
           [pack.systemName],
         );
-        return rows.map((r) => ({ version: String(r.version), trigger: r.trigger as MismatchCase["trigger"], pagedAt: String(r.paged_at) }));
+        return rows.map((r) => ({ version: String(r.version), trigger: r.trigger as MismatchCase["trigger"], pagedAt: r.paged_at === null ? null : String(r.paged_at) }));
+      },
+      async makePrivate(pack) {
+        await (await d1()).query("update packs set visibility = 'private' where id = (select p.id from packs p join scopes s on s.id = p.scope_id where '@' || s.name || '/' || p.name = ?)", [pack.systemName]);
       },
       async observedByServer(pack, version) {
         return observeServerMismatch({ d1: await d1(), clock: await fixedClock(), id: idOf() }, { pack: pack.systemName, version });

@@ -130,8 +130,8 @@ is the only gate before every Worker goes to 100% (Ariel B7 2026-10-22).
 ### IT-TELEM-009 Client mismatch reports never decide anything alone
 - **Covers:** REQ-TELEM-009
 - **Runs:** push
-- **Action:** on a public pack, one authenticated principal reports a hash mismatch for `1.0.0`, reports again, and an anonymous caller reports; then a second principal reports. On a private pack, a token that does not cover it reports, one covering principal reports, then a second covering principal reports. Separately, the serving Worker observes a mismatch on `2.0.0`.
-- **Assert:** the public version stays `active` through every report and its dashboard lists them all; after the second principal a review is open and nothing is quarantined. The private pack records nothing from the unrelated token and stays `active` after one covering principal; the second covering principal quarantines it and a page fires. `2.0.0` is quarantined immediately with no client report.
+- **Action:** on a public pack, one authenticated principal reports a hash mismatch for `1.0.0`, reports again, and an anonymous caller reports; then a second principal reports. On a private pack, a token that does not cover it reports, one covering principal reports, then a second covering principal reports. A pack with two public-era reports then goes private: one covering principal reports, then a second. Separately, the serving Worker observes a mismatch on `2.0.0`.
+- **Assert:** the public version stays `active` through every report and its dashboard lists them all; after the second principal a review is open and nothing is quarantined. The private pack records nothing from the unrelated token and stays `active` after one covering principal; the second covering principal quarantines it and a page fires. The public-era reports do not count after the flip: one covering report leaves the version `active`, the second quarantines it. `2.0.0` is quarantined immediately with no client report.
 
 ## Not covered by an integration test
 

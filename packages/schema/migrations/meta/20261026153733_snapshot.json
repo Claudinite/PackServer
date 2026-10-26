@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "ef5849d3-3455-49f3-bc34-8cad760d506e",
+  "id": "f56de23e-f391-4e9c-8e1e-960ac955f0f0",
   "prevId": "fb734dcc-41a8-4547-8a94-cfbac015a84c",
   "tables": {
     "credentials": {
@@ -5663,7 +5663,7 @@
           "name": "paged_at",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         }
       },
@@ -5738,6 +5738,20 @@
           "notNull": false,
           "autoincrement": false
         },
+        "covering": {
+          "name": "covering",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "token_id": {
+          "name": "token_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "expected": {
           "name": "expected",
           "type": "text",
@@ -5791,6 +5805,19 @@
           "tableTo": "users",
           "columnsFrom": [
             "reporter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "hash_mismatch_reports_token_id_read_tokens_id_fk": {
+          "name": "hash_mismatch_reports_token_id_read_tokens_id_fk",
+          "tableFrom": "hash_mismatch_reports",
+          "tableTo": "read_tokens",
+          "columnsFrom": [
+            "token_id"
           ],
           "columnsTo": [
             "id"

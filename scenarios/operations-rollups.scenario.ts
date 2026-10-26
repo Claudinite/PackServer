@@ -125,6 +125,20 @@ scenario(
     expect(await world.mismatches.cases(secret)).toMatchObject([{ version: "1.0.0", trigger: "reports" }]);
     expect(await world.mismatches.listing(secret)).toMatchObject([{ principals: 2, held: "reports" }]);
 
+    // Reports from a pack's public days do not count once it is private: one covering report leaves it served, a second holds it.
+    const flipped = await world.packs.public("@acme/flipped");
+    await world.mismatches.report(flipped, { token: ann.token });
+    await world.mismatches.report(flipped, { token: bob.token });
+    expect(await world.mismatches.cases(flipped)).toMatchObject([{ trigger: "review" }]);
+    await world.mismatches.makePrivate(flipped);
+    const carol = await holder(world, "carol", flipped);
+    await world.mismatches.report(flipped, { token: carol.token });
+    expect(await world.mismatches.cases(flipped)).toMatchObject([{ trigger: "review" }]);
+    expect((await flipped.read({ version: "1.0.0" })) instanceof Held).toBe(false);
+    const frank = await holder(world, "frank", flipped);
+    await world.mismatches.report(flipped, { token: frank.token });
+    expect(await world.mismatches.cases(flipped)).toMatchObject([{ trigger: "reports" }]);
+
     // A mismatch the serving Worker saw itself holds the version at once, with no client report.
     expect(await held("2.0.0")).toBe(false);
     expect(await world.mismatches.observedByServer(pack, "2.0.0")).toEqual({ quarantined: true });

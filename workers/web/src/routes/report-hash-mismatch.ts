@@ -47,7 +47,7 @@ report.post(
       const grant = presented?.startsWith(TOKEN_PREFIX) ? await authenticateToken({ d1, clock }, presented, clientIp(c)) : null;
       const [, scope = "", name = ""] = /^@([^/]+)\/(.+)$/.exec(parsed.pack) ?? [];
       const covers = grant !== null && grantCovers(grant, { scope, pack: name });
-      const outcome = await reportMismatch({ d1, clock, id: () => rng.uuid() }, parsed, { id: grant?.user_id ?? null, covers });
+      const outcome = await reportMismatch({ d1, clock, id: () => rng.uuid() }, parsed, { id: grant?.user_id ?? null, token: grant?.id ?? null, covers });
       if (outcome.recorded) {
         const telemetry = requestTelemetry(c);
         telemetry.emit("download.hash_mismatch_reported", { pack: parsed.pack, version: parsed.version, kind: parsed.kind, authenticated: grant !== null, principals: outcome.principals });

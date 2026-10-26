@@ -1,4 +1,5 @@
 import type { Clock, D1 } from "@packserver/ports";
+import { liveTokenIds } from "../tokens/tokens.ts";
 
 export interface MismatchDeps {
   d1: D1;
@@ -29,6 +30,8 @@ export interface MismatchOutcome {
 /** The credential behind a report: who it belongs to, and whether it covers the pack the report names. */
 export interface Reporter {
   id: string | null;
+  /** The token presented, when there was a valid one. */
+  token: string | null;
   covers: boolean;
 }
 
@@ -62,7 +65,7 @@ async function openCase(deps: MismatchDeps, found: VersionRow, version: string, 
   const at = new Date(deps.clock.now()).toISOString();
   const { meta } = await deps.d1.query(
     "insert or ignore into hash_mismatch_cases (pack_id, version, trigger, opened_at, paged_at) values (?, ?, ?, ?, ?)",
-    [found.packId, version, trigger, at, at],
+    [found.packId, version, trigger, at, trigger === "review" ? null : at],
   );
   return meta.changes > 0;
 }
@@ -80,6 +83,23 @@ async function quarantine(deps: MismatchDeps, found: VersionRow, version: string
 }
 
 /**
+ * Distinct authenticated principals whose reports named the registry's hash. A private pack counts
+ * only reports filed with a covering credential that still authenticates now, so reports from the
+ * pack's public days and from revoked reporters count for nothing.
+ */
+async function agreeingPrincipals(deps: MismatchDeps, found: VersionRow, version: string): Promise<number> {
+  const { rows } = await deps.d1.query(
+    "select reporter_id, token_id, covering from hash_mismatch_reports where pack_id = ? and version = ? and reporter_id is not null and expected = ?",
+    [found.packId, version, found.sha256],
+  );
+  if (found.visibility === "public") return new Set(rows.map((r) => String(r.reporter_id))).size;
+  const covering = rows.filter((r) => r.covering && r.token_id !== null);
+  const live = await liveTokenIds(deps, covering.map((r) => String(r.token_id)));
+  const counted = covering.filter((r) => live.has(String(r.token_id)));
+  return new Set(counted.map((r) => String(r.reporter_id))).size;
+}
+
+/**
  * Keeps a client's mismatch report. A private pack counts only reporters whose credential covers
  * it, and two of them hold the version. A public pack is open to anyone with an account, so its
  * reports never hold a version: two distinct authenticated principals put it up for a person's
@@ -90,20 +110,20 @@ export async function reportMismatch(deps: MismatchDeps, report: MismatchReport,
   if (report.expected === report.observed) return NOT_RECORDED;
   const found = await findVersion(deps.d1, report.pack, report.version);
   if (!found) return NOT_RECORDED;
-  const counts = reporter.id !== null && (found.visibility === "public" || reporter.covers);
-  if (found.visibility === "private" && !counts) return NOT_RECORDED;
+  if (found.visibility === "private" && !(reporter.id !== null && reporter.covers)) return NOT_RECORDED;
+  const returning =
+    reporter.id !== null &&
+    Number((await deps.d1.query("select count(*) as n from hash_mismatch_reports where pack_id = ? and version = ? and reporter_id = ? and expected = ?", [found.packId, report.version, reporter.id, found.sha256])).rows[0]?.n ?? 0) > 0;
   await deps.d1.query(
-    "insert into hash_mismatch_reports (id, pack_id, version, kind, reporter_id, expected, observed, reported_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
-    [deps.id(), found.packId, report.version, report.kind, reporter.id, report.expected, report.observed, new Date(deps.clock.now()).toISOString()],
+    "insert into hash_mismatch_reports (id, pack_id, version, kind, reporter_id, covering, token_id, expected, observed, reported_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    [deps.id(), found.packId, report.version, report.kind, reporter.id, reporter.covers ? 1 : 0, reporter.token, report.expected, report.observed, new Date(deps.clock.now()).toISOString()],
   );
-  const { rows } = await deps.d1.query(
-    "select count(distinct reporter_id) as n from hash_mismatch_reports where pack_id = ? and version = ? and reporter_id is not null and expected = ?",
-    [found.packId, report.version, found.sha256],
-  );
-  const principals = Number(rows[0]?.n ?? 0);
+  const principals = await agreeingPrincipals(deps, found, report.version);
   const agreed = principals >= REPORTING_PRINCIPALS;
   const quarantined = agreed && found.visibility === "private" && (await quarantine(deps, found, report.version, "reports"));
-  const reviewOpened = agreed && found.visibility === "public" && (await openCase(deps, found, report.version, "review"));
+  // Each new principal on a review is a report worth hearing about, whether or not the review was already open.
+  const opened = agreed && found.visibility === "public" && (await openCase(deps, found, report.version, "review"));
+  const reviewOpened = opened || (agreed && found.visibility === "public" && reporter.id !== null && report.expected === found.sha256 && !returning);
   return { recorded: true, principals, quarantined, reviewOpened };
 }
 
