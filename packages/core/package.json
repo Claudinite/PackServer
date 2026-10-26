@@ -15,6 +15,7 @@
     "./catalog": "./catalog/view.ts",
     "./github": "./github/index.ts",
     "./index": "./index/index.ts",
+    "./reports": "./reports/index.ts",
     "./scopes": "./scopes/index.ts",
     "./score": "./score/index.ts",
     "./tokens": "./tokens/index.ts",
