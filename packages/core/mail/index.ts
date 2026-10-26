@@ -9,6 +9,7 @@ import { packActioned } from "./templates/pack-actioned";
 import { reportStatusChanged } from "./templates/report-status-changed";
 import { securityReportReminder } from "./templates/security-report-reminder";
 import { securityReportUpdate } from "./templates/security-report-update";
+import { stepUpLocked } from "./templates/step-up-locked";
 import { trustedPublisherChanged } from "./templates/trusted-publisher-changed";
 import { validationVerdict } from "./templates/validation-verdict";
 import { verifiedPublisherDecision } from "./templates/verified-publisher-decision";
@@ -22,6 +23,7 @@ export { escapeHtml, render } from "./notice";
 export const NOTICES = {
   "factor-added": factorAdded,
   "new-device-sign-in": newDeviceSignIn,
+  "step-up-locked": stepUpLocked,
   "trusted-publisher-changed": trustedPublisherChanged,
   "validation-verdict": validationVerdict,
   "version-published": versionPublished,

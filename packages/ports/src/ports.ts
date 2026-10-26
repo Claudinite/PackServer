@@ -126,6 +126,8 @@ export interface MailMessage {
 export interface Mail {
   send(message: MailMessage): Promise<{ id: string }>;
 }
+/** Where `env.test` posts a message instead of sending it; the world's mail fake answers at this address. */
+export const TEST_MAIL_URL = "https://mail.test.invalid/send";
 
 export interface Dns {
   resolveTxt(name: string): Promise<string[]>;
