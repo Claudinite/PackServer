@@ -1,12 +1,11 @@
-import { extractArchive } from "@packserver/core/canonical";
 import { sha256Hex } from "@packserver/core/index";
 import { checkIntegrity } from "@packserver/core/publishing";
-import { scorePack } from "@packserver/core/score";
+import { scorePack, treeOfScoreInputs } from "@packserver/core/score";
 import {
   applyThresholds, buildReport, fetchRelease, findingFactory, loadFindings, MirrorError, readMirrorManifest, SandboxAReport, SandboxBReport, SandboxBRequest, selectEngines,
   staticOnly, stepOfRule, type StepName,
 } from "@packserver/core/validation";
-import { syncClock, type R2 } from "@packserver/ports";
+import { SANDBOX_DIED, syncClock, type R2, type Sandbox, type SandboxInspectRequest, type SandboxInspectResult } from "@packserver/ports";
 import { loadRules, RULES_VERSIONS } from "@packserver/rules";
 import { Finding, TreeFetchRequest, TreeFetchResponse, type Capability, type PreInstallManifest, type Provenance, type SignalName } from "@packserver/schema";
 import type { ValidatorRuntime } from "../bindings";
@@ -78,11 +77,17 @@ async function skipped(ctx: Context, step: StepName, detail: string): Promise<vo
   await milestone(ctx.rt.ports.d1, ctx.runId, step, "skipped", detail, await nowIso(ctx.rt));
 }
 
+/** The rules version a run is judged by when it has not yet read its own. */
+export const pinnedRules = (): string => {
+  const rules = RULES_VERSIONS.at(-1);
+  if (!rules) throw new Error("no rules version");
+  return rules;
+};
+
 /** Reads the run and fixes the rules version it will be judged by, so every later step and retry agrees. */
 export async function start(rt: ValidatorRuntime, runId: string): Promise<{ rules: string; startAfter: string; finished: boolean }> {
   const run = await readRun(rt.ports.d1, runId);
-  const rules = RULES_VERSIONS.at(-1);
-  if (!rules) throw new Error("no rules version");
+  const rules = pinnedRules();
   return { rules, startAfter: run.start_after, finished: run.status === "finished" };
 }
 
@@ -97,6 +102,19 @@ export async function integrity(ctx: Context): Promise<Outcome> {
   const checked = await checkIntegrity({ size: head.size, read: () => staging.get(run.staging_key) }, run.declared_sha256, sha256Hex);
   if (checked.ok) return { stop: false };
   return { stop: true, refused: checked.reason };
+}
+
+/**
+ * Asks container A. Only a container that died while decoding the upload is the archive's verdict;
+ * every other failure, an unwired port included, is the platform's and is thrown to be retried.
+ */
+export async function inspectArchive(sandbox: Sandbox, request: SandboxInspectRequest): Promise<SandboxInspectResult | "died"> {
+  try {
+    return await sandbox.inspect(request);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith(SANDBOX_DIED)) return "died";
+    throw error;
+  }
 }
 
 /** Step 3: container A, once. A refusal or a crash here is the archive's verdict and final; only a report the platform could not produce is retried. */
@@ -117,14 +135,13 @@ export async function extraction(ctx: Context): Promise<Outcome & { archiveReaso
     previous_capabilities: await previousPromoted(rt.ports.d1, { public: rt.ports.r2.PACKS_PUBLIC!, private: rt.ports.r2.PACKS_PRIVATE! }, run, newest),
   };
 
-  let answer;
-  try {
-    answer = await rt.ports.sandbox.inspect({ upload: bytes, request });
-  } catch {
+  const inspected = await inspectArchive(rt.ports.sandbox, { upload: bytes, request });
+  if (inspected === "died") {
     const finding = make("archive.unsafe", { hint: "The archive was refused (extract-crash)." });
     await conclude(ctx, "extraction", [finding], started, { detail: "archive.unsafe" });
     return { stop: true, archiveReason: "archive.unsafe" };
   }
+  const answer = inspected;
   const parsed = SandboxAReport.safeParse(answer.report);
   if (!parsed.success) throw new InfrastructureError("sandbox.report_invalid");
   const report = parsed.data;
@@ -368,7 +385,7 @@ export async function thresholds(ctx: Context): Promise<Outcome> {
   const applied = applyThresholds(result, [], rules, make);
   await putFindings(reports(rt), runId, "thresholds", applied.findings);
   await putJson(reports(rt), `runs/${runId}/admin.thresholds.json`, { tripped: applied.tripped });
-  await milestone(rt.ports.d1, runId, "thresholds", applied.findings.some((f) => f.class === "hold") ? "ok" : "ok", worst(applied.findings), await nowIso(rt));
+  await milestone(rt.ports.d1, runId, "thresholds", "ok", worst(applied.findings), await nowIso(rt));
   stat(rt, "validation.step", ["thresholds", "ok"], [Date.now() - started]);
   return { stop: false };
 }
@@ -396,26 +413,26 @@ export async function verdict(ctx: Context, facts: { sourceVerified: boolean; pr
   const committed = run.tree_hash !== null;
   if (committed && !failedSteps) {
     const a = await getJson<SandboxAReport>(bucket, runKeys.sandboxA(runId));
-    const bytes = await bucket.get(runKeys.canonical(runId));
-    if (!bytes || (await sha256Hex(bytes)) !== run.canonical_sha256) throw new InfrastructureError("sandbox.canonical_mismatch");
-    const tree = await extractArchive(bytes, { canonical: true });
     const caps = (a.capabilities ?? { capabilities: [], preinstall: null, widening: false }) as { capabilities: Capability[]; preinstall: PreInstallManifest | null; widening: boolean };
     widening = caps.widening;
-    const claimed = await claimsOf(rt, run);
-    const provenance: Provenance = claimed
-      ? {
-          source: "oidc",
-          repository: claimed.claims.repository,
-          repository_id: Number(claimed.claims.repository_id),
-          commit: claimed.claims.sha,
-          ref: claimed.claims.ref,
-          event: claimed.claims.event_name,
-          workflow_run: String(claimed.claims.run_id),
-          path: claimed.path,
-          source_verified: facts.sourceVerified,
-        }
-      : { source: "upload", source_verified: false };
-    score = scorePack({ tree, capabilities: caps.capabilities, provenance, linkedPublicRepository: claimed !== null, publishedAdvisory: false, rulesVersion: ctx.rules }).total;
+    if (a.tree_hash !== run.tree_hash) throw new InfrastructureError("sandbox.canonical_mismatch");
+    if (a.score_inputs) {
+      const claimed = await claimsOf(rt, run);
+      const provenance: Provenance = claimed
+        ? {
+            source: "oidc",
+            repository: claimed.claims.repository,
+            repository_id: Number(claimed.claims.repository_id),
+            commit: claimed.claims.sha,
+            ref: claimed.claims.ref,
+            event: claimed.claims.event_name,
+            workflow_run: String(claimed.claims.run_id),
+            path: claimed.path,
+            source_verified: facts.sourceVerified,
+          }
+        : { source: "upload", source_verified: false };
+      score = scorePack({ tree: treeOfScoreInputs(a.score_inputs), capabilities: caps.capabilities, provenance, linkedPublicRepository: claimed !== null, publishedAdvisory: false, rulesVersion: ctx.rules }).total;
+    }
   }
 
   const finishedAt = await nowIso(rt);

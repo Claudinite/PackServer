@@ -19,8 +19,10 @@ export interface WorkflowParams {
 }
 
 /** An infrastructure error retries twice, then the run ends `error` (REQ-VAL-014). */
-const infrastructure = (retryDelay: string): StepConfig => ({ retries: { limit: 2, delay: retryDelay, backoff: "exponential" }, timeout: "6 minutes" });
-const ONCE: StepConfig = { retries: { limit: 0, delay: "1 second" }, timeout: "1 minute" };
+const infrastructure = (retryDelay: string | undefined): StepConfig => {
+  if (typeof retryDelay !== "string" || !/^\d+ (milliseconds?|seconds?|minutes?)$/.test(retryDelay)) throw new Error(`STEP_RETRY_DELAY must look like "30 seconds", not ${JSON.stringify(retryDelay)}`);
+  return { retries: { limit: 2, delay: retryDelay, backoff: "exponential" }, timeout: "6 minutes" };
+};
 
 /**
  * ValidatePackWorkflow steps 2 to 12. Every step is a durable record keyed on the run id, hands
@@ -28,21 +30,23 @@ const ONCE: StepConfig = { retries: { limit: 0, delay: "1 second" }, timeout: "1
  * of docs/architecture/validation-pipeline.md. A step that finds an earlier failure writes a
  * `skipped` milestone instead of doing its work, so the dashboard shows the whole pipeline.
  */
-export async function runPipeline(rt: ValidatorRuntime, step: StepRunner, params: WorkflowParams, config: { retryDelay: string }): Promise<void> {
+export async function runPipeline(rt: ValidatorRuntime, step: StepRunner, params: WorkflowParams, config: { retryDelay: string | undefined }): Promise<void> {
   const INFRASTRUCTURE = infrastructure(config.retryDelay);
   const runId = params.run_id;
-  const begun = await step.do("start", ONCE, () => steps.start(rt, runId));
-  if (begun.finished) return;
-  const ctx: steps.Context = { rt, runId, rules: begun.rules };
-
-  await syncClock(rt.ports.clock);
-  if (Date.parse(begun.startAfter) > rt.ports.clock.now()) await step.sleepUntil("queued", new Date(begun.startAfter));
-  const startedAt = await step.do("began", ONCE, async () => new Date(rt.ports.clock.now()).toISOString());
+  const ctx: steps.Context = { rt, runId, rules: steps.pinnedRules() };
 
   try {
-    const checked = await step.do("integrity", ONCE, () => steps.integrity(ctx));
+    const begun = await step.do("start", INFRASTRUCTURE, () => steps.start(rt, runId));
+    if (begun.finished) return;
+    ctx.rules = begun.rules;
+
+    await syncClock(rt.ports.clock);
+    if (Date.parse(begun.startAfter) > rt.ports.clock.now()) await step.sleepUntil("queued", new Date(begun.startAfter));
+    const startedAt = await step.do("began", INFRASTRUCTURE, async () => new Date(rt.ports.clock.now()).toISOString());
+
+    const checked = await step.do("integrity", INFRASTRUCTURE, () => steps.integrity(ctx));
     if (checked.refused) {
-      await step.do("finish-refused", ONCE, () => steps.refuse(ctx, checked.refused!));
+      await step.do("finish-refused", INFRASTRUCTURE, () => steps.refuse(ctx, checked.refused!));
       return;
     }
 
@@ -56,7 +60,7 @@ export async function runPipeline(rt: ValidatorRuntime, step: StepRunner, params
     await step.do("canonical", INFRASTRUCTURE, () => steps.canonical(ctx, blocked));
     const loaded = await step.do("load", INFRASTRUCTURE, () => steps.load(ctx, blocked));
     if (loaded.infrastructure) {
-      await step.do("finish-error", ONCE, () => steps.fail(ctx, loaded.infrastructure!));
+      await step.do("finish-error", INFRASTRUCTURE, () => steps.fail(ctx, loaded.infrastructure!));
       return;
     }
     const sourced = await step.do("source", INFRASTRUCTURE, () => steps.source(ctx, blocked));
@@ -65,11 +69,11 @@ export async function runPipeline(rt: ValidatorRuntime, step: StepRunner, params
     await step.do("verdict", INFRASTRUCTURE, () => steps.verdict(ctx, { sourceVerified: sourced.sourceVerified === true, prose: prose.record, startedAt }));
   } catch (e) {
     const reason = steps.reasonOf(e);
-    await step.do("finish-error", ONCE, () => steps.fail(ctx, reason));
+    await step.do("finish-error", INFRASTRUCTURE, () => steps.fail(ctx, reason));
     return;
   }
 
   // Steps 13 and 14 wait on people; their names are declared now so the class never renames one.
-  await step.do("human-review", ONCE, async () => ({ waiting: false }));
-  await step.do("staged-approval", ONCE, async () => ({ waiting: false }));
+  await step.do("human-review", INFRASTRUCTURE, async () => ({ waiting: false }));
+  await step.do("staged-approval", INFRASTRUCTURE, async () => ({ waiting: false }));
 }

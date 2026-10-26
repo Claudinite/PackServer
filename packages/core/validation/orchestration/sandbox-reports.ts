@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { Finding, Sha256 } from "@packserver/schema";
+import { ScoreInputs } from "../../score/inputs.ts";
 
 /**
  * What the two sandbox containers return and are handed. The registry wrote nothing into a report:
@@ -50,6 +51,8 @@ export const SandboxAReport = z.strictObject({
   manifest: z.record(z.string(), z.unknown()).nullable(),
   urls: z.array(z.record(z.string(), z.unknown())),
   capabilities: z.unknown().nullable(),
+  /** What the score reads of the tree; null when the report had to shed it to fit. */
+  score_inputs: ScoreInputs.nullable(),
   inspectors: z.array(z.strictObject({ name: z.string(), status: z.enum(INSPECTOR_STATUSES), note: z.string().nullable() })),
   timings_ms: z.strictObject({ extract: z.number().int().nonnegative().nullable(), total: z.number().int().nonnegative() }),
   /** Short cause for `error`; never pack content. */

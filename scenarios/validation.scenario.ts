@@ -50,6 +50,12 @@ scenario("IT-VAL-023 Every known bomb shape is refused cheaply", async (world) =
     expect(await run.reason()).toBe(reason);
     expect((await run.milestones()).filter((m) => m.outcome === "skipped").map((m) => m.step)).toEqual(["manifest", "text", "capabilities", "canonical", "load", "source", "prose-screen", "thresholds"]);
   };
+  const flood = await validate(world, bombers, "bom", world.archive("bomb-skippable-frames"), "2.0.0");
+  expect(await flood.verdict()).toBe("fail");
+  expect(await flood.reason()).toBe("integrity.not_zstd");
+  expect((await world.sandbox.calls()).inspected).toEqual([]);
+  expect((await flood.milestones()).map((m) => `${m.step}:${m.outcome}`)).toEqual(["admission:ok", "integrity:fail"]);
+
   await Promise.all([
     ...bombs.map((fixture, n) => refused(bombers, "bom", fixture, n, "archive.bomb")),
     ...unsafe.map((fixture, n) => refused(crafters, "cra", fixture, n, "archive.unsafe")),
@@ -149,3 +155,29 @@ scenario("IT-VAL-035 Text addressed to a reviewer blocks the version with the ex
   expect(held[0]?.quote).toContain("reviewer");
 });
 
+
+scenario("IT-VAL-006 Disallowed files, foreign imports and undeclared actions hard-fail", async (world) => {
+  const publisher = await world.publishers.create({ handle: "dis" });
+  const task = JSON.stringify({ id: "x/rotate", trigger: { schedule: "weekly" }, worker: "worker.mjs", summary: "Rotate keys." }, null, 2);
+  const withAction = JSON.stringify({ id: "x/rotate", trigger: { schedule: "weekly" }, worker: "worker.mjs", summary: "Rotate keys.", steps: [{ uses: "actions/setup-node@v4" }] }, null, 2);
+  const worker = (body: string) => `import { task } from "@claudinite/sdk";\n${body}\nexport default task(async () => 1);\n`;
+  const cases: Array<{ files: Record<string, string>; rule: string; file: string; mention: string | null }> = [
+    { files: { "tools/blob": "\u007fELF\u0002\u0001\u0000\u0000" }, rule: "code.binary-file", file: "tools/blob", mention: null },
+    { files: { "checks/bad.go": 'package checks\n\nimport (\n\t"github.com/evil/lib"\n\t"claudinite.com/checksdk"\n)\n\nvar _ = lib.X\nvar _ checksdk.Repo\n' }, rule: "code.foreign-import", file: "checks/bad.go", mention: "github.com/evil/lib" },
+    { files: { "tasks/rotate/task.json": task, "tasks/rotate/worker.mjs": worker('import lodash from "lodash";') }, rule: "code.foreign-import", file: "tasks/rotate/worker.mjs", mention: "lodash" },
+    { files: { "tasks/rotate/task.json": withAction, "tasks/rotate/worker.mjs": worker("") }, rule: "code.undeclared-action", file: "tasks/rotate/task.json", mention: "actions/setup-node" },
+  ];
+  await Promise.all(
+    cases.map(async (c, n) => {
+      const run = await validate(world, publisher, "dis", world.archive("gcp", { files: c.files }), `1.0.${n}`);
+      expect(await run.verdict()).toBe("fail");
+      const hit = (await run.findings()).find((f) => f.rule === c.rule);
+      expect(hit).toMatchObject({ class: "fail", file: c.file });
+      if (c.mention) expect(hit?.quote).toContain(c.mention);
+    }),
+  );
+
+  const declared = await validate(world, publisher, "dis", world.archive("gcp", { version: "2.0.0", files: { "pack.json": JSON.stringify({ version: "2.0.0", minEngineVersion: "1.61001.1", githubActions: ["actions/setup-node"] }), "tasks/rotate/task.json": withAction, "tasks/rotate/worker.mjs": worker("") } }), "2.0.0");
+  expect(await rulesOf(declared)).not.toContain("code.undeclared-action");
+  expect(await declared.verdict()).not.toBe("fail");
+});

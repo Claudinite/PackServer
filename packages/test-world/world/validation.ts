@@ -31,9 +31,13 @@ export interface ValidationModule {
     of(version: Version): Promise<Run>;
     /** What `cn pack canonicalise` yields offline for the same tree: the form the registry must commit byte for byte. */
     offlineCanonical(archive: Archive): Promise<{ sha256: string; treeHash: string; bytes: Uint8Array }>;
+    /** The archive's files with their modes, to commit the same tree to a repository. */
+    sourceFiles(archive: Archive & { bytes: Uint8Array }): Promise<Record<string, { content: Uint8Array; executable: boolean }>>;
   };
   /** An address in prose a pack might link to. */
   link(path: string): string;
+  /** Stops the validator taking runs, so a scenario about admission alone leaves its runs queued instead of validating them. */
+  pauseValidation(): Promise<void>;
   rules: { list(): Promise<ReadonlyArray<{ id: string; class: "fail" | "hold" | "warn" }>> };
   proseScreen: { script(o: { file?: string; probabilities: Record<string, number> }): void; releaseModel(model: string): void };
   sandbox: {
@@ -89,11 +93,20 @@ export function createValidation(driver: Driver) {
   const module: ValidationModule = {
     validation: {
       of: runOf,
+      async sourceFiles(archive) {
+        const tree = await extractArchive(archive.bytes);
+        return Object.fromEntries(tree.files.map((f) => [f.path, { content: f.content, executable: f.executable }]));
+      },
       async offlineCanonical(archive) {
         const canonical = canonicalise(await extractArchive((archive as ArchiveHandle).bytes));
         return { sha256: canonical.sha256, treeHash: canonical.treeHash, bytes: canonical.archive };
       },
       completes: async (version) => (await runOf(version)).finished(),
+    },
+    pauseValidation: async () => {
+      await storage().sql("insert into feature_flags (key, value, security, updated_at) values ('validation_dispatch', 'paused', 0, ?) on conflict (key) do update set value = excluded.value", [
+        new Date().toISOString(),
+      ]);
     },
     link: (path) => `https://example.org/${path}`,
     rules: { list: async () => listRules(RULES_VERSIONS.at(-1)!).map(({ id, class: cls }) => ({ id, class: cls })) },

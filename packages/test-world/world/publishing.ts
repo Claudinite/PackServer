@@ -3,7 +3,7 @@ import { gzipSync } from "node:zlib";
 import { fixtureArchive, type FixtureName } from "@packserver/core/canonical/fixtures";
 import type { Driver } from "../drivers/driver";
 import type { Aliases } from "./alias";
-import type { CiModule, Presigned } from "./ci-workflow";
+import type { CiModule, Presigned, UploadCredential } from "./ci-workflow";
 import { InfrastructureError, NotImplemented } from "./errors";
 import type { Finding, ValidationReport } from "@packserver/schema";
 import { Refusal, type RefusalReason } from "./outcomes";
@@ -223,6 +223,29 @@ export function createPublishFlow(driver: Driver, aliases: Aliases, scopes: Pick
     throw new InfrastructureError(`${what}: the publish Worker answered ${res.status} with no refusal: ${res.text.slice(0, 200)}`);
   }
 
+  const sql = (query: string, params: unknown[] = []) => storage().sql(query, params);
+
+  const runWith = (id: string, view: () => Promise<RunView>) =>
+    new Run(
+      id,
+      view,
+      async () => {
+        const key = String((await sql("select report_key from validation_runs where id = ?", [id]))[0]?.report_key ?? "");
+        const bytes = key ? await storage().reports.get(key) : null;
+        return bytes ? (JSON.parse(new TextDecoder().decode(bytes)) as ValidationReport) : null;
+      },
+      async () => {
+        const row = (await sql("select tree_hash, canonical_sha256, canonical_key from validation_runs where id = ?", [id]))[0] ?? {};
+        const key = row.canonical_key ? String(row.canonical_key) : null;
+        return {
+          treeHash: row.tree_hash ? String(row.tree_hash) : null,
+          canonicalSha256: row.canonical_sha256 ? String(row.canonical_sha256) : null,
+          canonical: key ? await storage().reports.get(key) : null,
+        };
+      },
+    );
+
+
   async function createPublisher(opts: PublisherHandleOpts = {}): Promise<PublisherHandle> {
     const { verified, ...userOpts } = opts;
     const person = await scopes.publishers.create(userOpts);
@@ -263,28 +286,11 @@ export function createPublishFlow(driver: Driver, aliases: Aliases, scopes: Pick
     }
 
     const runHandle = (id: string) =>
-      new Run(
-        id,
-        async () => {
-          const res = await send(`/internal/runs/${id}?principal_id=${encodeURIComponent(userId)}`, { method: "GET" });
-          if (res.status !== 200) throw new InfrastructureError(`reading run ${id} answered ${res.status}: ${res.text.slice(0, 200)}`);
-          return res.json() as RunView;
-        },
-        async () => {
-          const key = String((await sql("select report_key from validation_runs where id = ?", [id]))[0]?.report_key ?? "");
-          const bytes = key ? await storage().reports.get(key) : null;
-          return bytes ? (JSON.parse(new TextDecoder().decode(bytes)) as ValidationReport) : null;
-        },
-        async () => {
-          const row = (await sql("select tree_hash, canonical_sha256, canonical_key from validation_runs where id = ?", [id]))[0] ?? {};
-          const key = row.canonical_key ? String(row.canonical_key) : null;
-          return {
-            treeHash: row.tree_hash ? String(row.tree_hash) : null,
-            canonicalSha256: row.canonical_sha256 ? String(row.canonical_sha256) : null,
-            canonical: key ? await storage().reports.get(key) : null,
-          };
-        },
-      );
+      runWith(id, async () => {
+        const res = await send(`/internal/runs/${id}?principal_id=${encodeURIComponent(userId)}`, { method: "GET" });
+        if (res.status !== 200) throw new InfrastructureError(`reading run ${id} answered ${res.status}: ${res.text.slice(0, 200)}`);
+        return res.json() as RunView;
+      });
 
     async function start(target: { scope: string; name: string; version: string }, action: "start" | "dry-run", declared: string, credentialId: string, proseScreen = false) {
       await ensureEngines();
@@ -351,9 +357,20 @@ export function createPublishFlow(driver: Driver, aliases: Aliases, scopes: Pick
     return handle;
   }
 
+  /** A CI workflow's publish: stages the archive through its credential and starts validation, then reads the run as the principal the registry recorded for it. */
+  async function publishFromCi(credential: UploadCredential, archive: ArchiveHandle): Promise<Run> {
+    await ensureEngines();
+    const staged = await credential.upload(archive.bytes);
+    if (staged instanceof Refusal) throw staged;
+    const started = await credential.start(archive.sha256);
+    if (started instanceof Refusal) throw started;
+    return runWith(started.runId, async () => (await credential.viewRun(started.runId)) as RunView);
+  }
+
   return {
     archive: (fixture: string, opts: ArchiveOptions = {}): ArchiveHandle => makeArchive(fixture, opts),
     publishers: { create: createPublisher },
+    publishFromCi,
   };
 }
 

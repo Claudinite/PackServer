@@ -29,6 +29,7 @@ export function emptyReport(base: ReportBase): SandboxAReport {
     manifest: null,
     urls: [],
     capabilities: null,
+    score_inputs: null,
     inspectors: [],
     timings_ms: { extract: null, total: 0 },
     error: null,
@@ -47,15 +48,17 @@ export function errorReport(base: ReportBase, error: string, timings: SandboxARe
 export function fitToCap(report: SandboxAReport): SandboxAReport | null {
   const fits = (r: SandboxAReport) => Buffer.byteLength(JSON.stringify(r)) <= A_LIMITS.reportBytes;
   if (fits(report)) return report;
+  const lean: SandboxAReport = { ...report, score_inputs: null };
+  if (fits(lean)) return lean;
   const trimmed: SandboxAReport = {
-    ...report,
+    ...lean,
     findings: report.findings.slice(0, A_LIMITS.findings),
     urls: report.urls.slice(0, A_LIMITS.urls),
     findings_truncated: report.findings_truncated || report.findings.length > A_LIMITS.findings,
   };
   if (fits(trimmed)) return trimmed;
   // Free-form fields go first so the run still yields a verdict.
-  const bare: SandboxAReport = { ...trimmed, urls: [], capabilities: null, manifest: null, findings: trimmed.findings.slice(0, 50), findings_truncated: true };
+  const bare: SandboxAReport = { ...trimmed, urls: [], capabilities: null, score_inputs: null, manifest: null, findings: trimmed.findings.slice(0, 50), findings_truncated: true };
   if (fits(bare)) return bare;
   const minimal: SandboxAReport = { ...bare, findings: [], inspectors: [] };
   return fits(minimal) ? minimal : null;

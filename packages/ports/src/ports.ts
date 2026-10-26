@@ -1,5 +1,8 @@
 import type { RESPONSE_HEADER_ALLOWLIST, QuotaRpc, RootCoordinatorRpc, ScopeCoordinatorRpc } from "@packserver/schema";
 
+/** The message a sandbox adapter's error starts with when the container died while decoding an upload: the archive's verdict, not the platform's. Errors cross a Worker boundary by name and message only, so the marker travels in the message. */
+export const SANDBOX_DIED = "sandbox_died";
+
 export class PortError extends Error {
   constructor(
     readonly code: string,

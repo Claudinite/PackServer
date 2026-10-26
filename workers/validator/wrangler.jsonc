@@ -160,7 +160,7 @@
       "vars": {
         "WORKER": "validator",
         "ENVIRONMENT": "staging",
-        "STEP_RETRY_DELAY": "1 second"
+        "STEP_RETRY_DELAY": "30 seconds"
       },
       "d1_databases": [
         {
@@ -337,7 +337,7 @@
       "vars": {
         "WORKER": "validator",
         "ENVIRONMENT": "production",
-        "STEP_RETRY_DELAY": "1 second"
+        "STEP_RETRY_DELAY": "30 seconds"
       },
       "d1_databases": [
         {

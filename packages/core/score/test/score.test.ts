@@ -2,7 +2,7 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadRules } from "@packserver/rules";
-import { scorePack } from "../index.ts";
+import { scoreInputsOf, ScoreInputs, scorePack, treeOfScoreInputs } from "../index.ts";
 import { cleanFiles, declared, GOOD_DESCRIPTION, input, readPackDir, RULES_VERSION, skill, TRUSTED, UPLOAD } from "./helpers.ts";
 
 const score = loadRules(RULES_VERSION).score;
@@ -287,6 +287,13 @@ describe("copies of canon packs (IT-SCORE-008, registry half)", () => {
       expect(a.parts.map((p) => p.points)).toEqual(pinned[name]!.parts);
       expect(a.losses.map((l) => [l.rule, l.file, l.points])).toEqual(pinned[name]!.losses);
       expect(a.total).toBe(100 - a.losses.reduce((n, l) => n + l.points, 0));
+    });
+
+    it(`${name} scores the same from the inputs a sandbox hands over as from the tree itself`, () => {
+      const tree = readPackDir(join(packsDir, name));
+      const args = { capabilities: [], provenance: TRUSTED, linkedPublicRepository: true, publishedAdvisory: false, rulesVersion: RULES_VERSION };
+      const inputs = ScoreInputs.parse(JSON.parse(JSON.stringify(scoreInputsOf(tree))));
+      expect(scorePack({ tree: treeOfScoreInputs(inputs), ...args })).toEqual(scorePack({ tree, ...args }));
     });
   }
 });

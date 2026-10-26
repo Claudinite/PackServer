@@ -120,8 +120,9 @@ past 20 MB; many small files exceeding 20 MB together; a tar header mis-stating 
 declaring an oversized window; concatenated frames exceeding the limit; a tiny archive declaring
 many entries; deeply nested directories. `archive.unsafe`: a nested archive; a self-referential or
 overlapping-entry archive; a sparse entry whose declared size differs from what its holes
-materialise; an oversized extended-header size field; an unknown entry type; a flood of skippable
-frames; a path over the length caps. The refusal costs no prose-screen call.
+materialise; an oversized extended-header size field; an unknown entry type; a path over the length
+caps. An archive that opens with skippable frames is not a zstd stream at all and fails at integrity
+as `integrity.not_zstd`, before any container starts. The refusal costs no prose-screen call.
 
 ## REQ-VAL-014 Infrastructure errors retry and cost nothing; an extraction failure is final
 
@@ -135,7 +136,8 @@ A validator timeout or infrastructure error outside extraction yields verdict `e
 twice, then offers "Re-run", and never counts against quotas; a crash or limit during
 extraction is a hard fail (`archive.bomb` or `archive.unsafe`), never retried, with no re-run and
 no prose-screen call. A run that crashes at any other step resumes from the last
-completed step.
+completed step; steps 3 to 6 are one sandbox A call, so a crash among them resumes from the start
+of that call.
 
 ## REQ-VAL-045 A sandbox run is bounded in time, and a timeout is a verdict
 

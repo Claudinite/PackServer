@@ -1,6 +1,6 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { sha256Hex } from "@packserver/core/canonical";
-import { PortError, type SandboxInspectRequest, type SandboxInspectResult } from "@packserver/ports";
+import { PortError, SANDBOX_DIED, type SandboxInspectRequest, type SandboxInspectResult } from "@packserver/ports";
 import { loadOptionalInspectors } from "@packserver/sandbox-runner/a-inspectors.ts";
 import { errorReport } from "@packserver/sandbox-runner/a-report.ts";
 import { runA, type RunRequest } from "@packserver/sandbox-runner/a-run.ts";
@@ -24,7 +24,7 @@ export default class FakeSandboxA extends WorkerEntrypoint {
     attempts.set(sha, seen);
     const asked = request.request as RunRequest;
     const base = { rulesVersion: asked.rules_version, imageDigest: IMAGE_DIGEST };
-    if (script.crash) throw new PortError("crashed", "the fake sandbox A container died");
+    if (script.crash) throw new PortError("crashed", `${SANDBOX_DIED}: the fake sandbox A container died`);
     if (script.errorTimes !== undefined && seen <= script.errorTimes) return { report: errorReport(base, "scripted failure", { extract: null, total: 0 }), canonical: null };
     if (script.timeout) return { report: errorReport(base, "scripted timeout", { extract: null, total: 300_001 }, "timeout"), canonical: null };
     const { inspectors, skipped } = await loadOptionalInspectors();

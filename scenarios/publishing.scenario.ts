@@ -168,6 +168,7 @@ scenario("IT-PUB-017 Versions are immutable; re-publishing a version is an error
 });
 
 scenario("IT-PUB-026 20 versions per pack a day; 5 new packs per scope a day, 20 for a Verified Publisher", async (world) => {
+  await world.pauseValidation();
   const versions = await world.publishers.create({ handle: "vers" });
   const plain = await world.publishers.create({ handle: "plain" });
   const verified = await world.publishers.create({ handle: "vp", verified: true });
@@ -201,6 +202,7 @@ scenario("IT-PUB-026 20 versions per pack a day; 5 new packs per scope a day, 20
 });
 
 scenario("IT-PUB-027 Concurrent publishes of one version yield one version and one new-pack count", async (world) => {
+  await world.pauseValidation();
   const z = await world.publishers.create({ handle: "z" });
   const y = await world.publishers.create({ handle: "y" });
   // Promotion does not exist yet, so a version is "one" when exactly one publish was admitted for it;
