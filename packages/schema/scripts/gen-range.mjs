@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const CONTRACT_MARKER = /^--\s*contract-of:\s*(\S+\.sql)\s*$/m;
+/** A contract is also named for it: an older build sees only migration names (REQ-OPS-011), and judges a database ahead of it by them. */
+export const CONTRACT_NAME = /^\d+_[a-z][a-z0-9-]*_(?:[a-z0-9_]*_)?contract(?:_[a-z0-9_]*)?\.sql$/;
 
 export function migrationFiles(dir) {
   return readdirSync(dir)

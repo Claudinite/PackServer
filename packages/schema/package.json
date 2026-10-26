@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./db": "./src/db/index.ts"
+    "./db": "./src/db/index.ts",
+    "./range": "./src/range.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

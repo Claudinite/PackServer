@@ -2,7 +2,7 @@
 // Enforces docs/architecture/repo-layout.md and tasks.md §2.2 on packages/schema/migrations.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { CONTRACT_MARKER, migrationFiles, renderRange } from "../packages/schema/scripts/gen-range.mjs";
+import { CONTRACT_MARKER, CONTRACT_NAME, migrationFiles, renderRange } from "../packages/schema/scripts/gen-range.mjs";
 
 const dir = process.argv[2] ?? join(import.meta.dirname, "../packages/schema/migrations");
 const FOUNDATION = "foundation";
@@ -135,6 +135,8 @@ files.forEach((file, index) => {
 
   const marker = CONTRACT_MARKER.exec(raw);
   isContract.set(file, Boolean(marker));
+  if (marker && !CONTRACT_NAME.test(file)) problems.push(`${file}: a contract migration carries "contract" as a word of its name (e.g. 20270101000000_search_contract_drop_old.sql), because a build that predates it judges the database by names alone`);
+  if (!marker && CONTRACT_NAME.test(file)) problems.push(`${file}: named a contract but carries no "-- contract-of:" marker`);
   if (unsafe.length > 0) {
     if (!marker) problems.push(`${file}: ${unsafe.join(", ")} breaks the running Worker; make it a contract migration with "-- contract-of: <earlier expand>.sql"`);
     else {

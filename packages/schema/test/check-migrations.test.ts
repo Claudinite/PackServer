@@ -93,6 +93,18 @@ describe("check-migrations", () => {
     expect(run({ ...base, ...expand, "20260103000000_foundation_contract.sql": `-- contract-of: 20260101999999_foundation_expand.sql\nALTER TABLE packs DROP COLUMN id;` }).ok).toBe(false);
   });
 
+  it("requires a contract to be named for it, and a migration named for it to be one", () => {
+    const expand = { "20260102000000_foundation_expand.sql": "ALTER TABLE packs ADD COLUMN slug text;" };
+    const drop = "-- contract-of: 20260102000000_foundation_expand.sql\nALTER TABLE packs DROP COLUMN id;";
+    const unnamed = run({ ...base, ...expand, "20260103000000_foundation_cleanup.sql": drop });
+    expect(unnamed.ok).toBe(false);
+    expect(unnamed.out).toMatch(/carries "contract" as a word of its name/);
+    const unmarked = run({ ...base, ...expand, "20260103000000_foundation_contract_slug.sql": "ALTER TABLE packs ADD COLUMN other text;" });
+    expect(unmarked.ok).toBe(false);
+    expect(unmarked.out).toMatch(/named a contract but carries no/);
+    expect(run({ ...base, ...expand, "20260103000000_foundation_contract_slug.sql": drop }).ok).toBe(true);
+  });
+
   it("rejects a contract marker on a migration that is safe", () => {
     const r = run({ ...base, "20260102000000_foundation_expand.sql": "-- contract-of: 20260101000000_foundation_tables.sql\nALTER TABLE packs ADD COLUMN slug text;" });
     expect(r.ok).toBe(false);

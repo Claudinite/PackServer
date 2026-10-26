@@ -1,4 +1,4 @@
-import { createShell, type WorkerShellOptions } from "@packserver/http";
+import { createShell, selfTestAccess, type WorkerShellOptions } from "@packserver/http";
 import type { Hono } from "hono";
 import type { AdminRuntime } from "./bindings";
 import { routes as access } from "./access";
@@ -25,6 +25,7 @@ export function createApp(runtime: AdminRuntime, options: AppOptions = {}): Hono
     telemetry: runtime.ports.telemetry,
     checks: () => selfTestChecks(runtime),
     selfTestAllowed: options.selfTestAllowed,
+    selfTest: selfTestAccess(runtime),
   });
   for (const page of [access, queue, applications, reports, moderation]) app.route("/", page);
   app.route("/", recoveryRoutes(runtime));

@@ -1,4 +1,4 @@
-import { createShell, type WorkerShellOptions } from "@packserver/http";
+import { createShell, selfTestAccess, type WorkerShellOptions } from "@packserver/http";
 import type { Hono } from "hono";
 import type { PublishRuntime } from "./bindings";
 import { startRoutes, wizardRoutes } from "./admission";
@@ -22,6 +22,8 @@ export function createApp(runtime: PublishRuntime, options: AppOptions = {}): Ho
     telemetry: runtime.ports.telemetry,
     checks: () => selfTestChecks(runtime),
     selfTestAllowed: options.selfTestAllowed,
+    selfTest: selfTestAccess(runtime),
+    selfTestPaths: ["/api/publish/__selftest"],
   });
   app.route("/api/oidc", oidcRoutes(runtime));
   app.route("/api/publish", runRoutes(runtime));

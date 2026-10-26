@@ -1,4 +1,4 @@
-import { createShell, type WorkerShellOptions } from "@packserver/http";
+import { createShell, selfTestAccess, type WorkerShellOptions } from "@packserver/http";
 import type { Hono } from "hono";
 import type { GithubRuntime } from "./bindings";
 import { selfTestChecks } from "./selftest";
@@ -20,6 +20,7 @@ export function createApp(runtime: GithubRuntime, options: AppOptions = {}): Hon
     telemetry: runtime.ports.telemetry,
     checks: () => selfTestChecks(runtime),
     selfTestAllowed: options.selfTestAllowed,
+    selfTest: selfTestAccess(runtime),
   });
   app.post("/hooks/github", webhookRoute(runtime));
   app.post("/internal/tree", treeRoute(runtime));

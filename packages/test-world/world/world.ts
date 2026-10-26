@@ -39,6 +39,7 @@ export function createWorld(driver: Driver, title: string) {
   const people = createUsers(driver, aliases);
   const scopes = createScopes(driver, aliases, people);
   const ci = createCi(driver, (name) => aliases.alias(name));
+  const undo: Array<() => Promise<void>> = [];
   return {
     driver,
     ...people,
@@ -50,7 +51,7 @@ export function createWorld(driver: Driver, title: string) {
     ...createCommunity(),
     ...createModeration(),
     ...createReportsModule(driver, aliases),
-    ...createAdmin(driver),
+    ...createAdmin(driver, (restore) => void undo.push(restore)),
     ...createRecoveries(driver),
     ...createMember(driver),
     ...createAgents(driver, aliases),
@@ -68,7 +69,10 @@ export function createWorld(driver: Driver, title: string) {
     recorder,
     alias: (name: string) => aliases.alias(name),
     unalias: (text: string) => aliases.unalias(text),
-    async dispose(): Promise<void> {},
+    /** Puts back what a verb changed that the next scenario would otherwise inherit. */
+    async dispose(): Promise<void> {
+      for (const restore of undo.splice(0).reverse()) await restore();
+    },
   };
 }
 

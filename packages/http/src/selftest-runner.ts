@@ -10,10 +10,16 @@ export type SelfTestDetail = (typeof SELFTEST_DETAILS)[number];
 /** REQ-OPS-010: a shallow run skips every check that calls another host or Worker, named by prefix. */
 export const SHALLOW_SKIPPED_PREFIXES = ["outbound.", "service."] as const;
 
+/** A check that reports under a different name than it was listed by, for a result a closed `detail` cannot carry. */
+export interface LabelledOutcome {
+  ok: boolean;
+  label: string;
+}
+
 export interface SelfTestCheck {
   name: string;
   /** Resolves false (or rejects) to fail; must not write outside the canary objects. */
-  run: () => Promise<boolean | void>;
+  run: () => Promise<boolean | void | LabelledOutcome>;
 }
 
 export interface SelfTestCheckResult {
@@ -41,7 +47,13 @@ export interface SelfTestOptions {
 // The timer catches a check that never settles; the injected clock catches one that overran while it ran.
 const TIMED_OUT = Symbol("timed-out");
 
-async function runOne(check: SelfTestCheck, budgetMs: number, clock: Clock): Promise<{ ok: boolean; detail: SelfTestDetail }> {
+interface Ran {
+  ok: boolean;
+  detail: SelfTestDetail;
+  label?: string;
+}
+
+async function runOne(check: SelfTestCheck, budgetMs: number, clock: Clock): Promise<Ran> {
   if (budgetMs <= 0) return { ok: false, detail: "timeout" };
   const began = clock.now();
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -51,6 +63,7 @@ async function runOne(check: SelfTestCheck, budgetMs: number, clock: Clock): Pro
   try {
     const outcome = await Promise.race([check.run(), timeout]);
     if (outcome === TIMED_OUT || clock.now() - began > budgetMs) return { ok: false, detail: "timeout" };
+    if (typeof outcome === "object") return outcome.ok ? { ok: true, detail: "ok" } : { ok: false, detail: "failed", label: outcome.label };
     return outcome === false ? { ok: false, detail: "failed" } : { ok: true, detail: "ok" };
   } catch {
     return { ok: false, detail: "error" };
@@ -67,8 +80,8 @@ export async function runSelfTest(options: SelfTestOptions): Promise<SelfTestRes
   for (const check of selected) {
     const checkStarted = options.clock.now();
     const remaining = SELFTEST_TOTAL_TIMEOUT_MS - (checkStarted - started);
-    const { ok, detail } = await runOne(check, Math.min(SELFTEST_CHECK_TIMEOUT_MS, remaining), options.clock);
-    checks.push({ name: check.name, ok, ms: Math.max(0, options.clock.now() - checkStarted), detail });
+    const { ok, detail, label } = await runOne(check, Math.min(SELFTEST_CHECK_TIMEOUT_MS, remaining), options.clock);
+    checks.push({ name: label ?? check.name, ok, ms: Math.max(0, options.clock.now() - checkStarted), detail });
   }
   return {
     version_id: options.versionId,
