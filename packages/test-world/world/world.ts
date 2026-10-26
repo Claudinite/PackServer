@@ -37,7 +37,7 @@ export function createWorld(driver: Driver, title: string) {
     ...createScopes(driver, aliases),
     ...createPublishing(),
     ...createValidation(),
-    ...createAccess(),
+    ...createAccess(driver),
     ...createCommunity(),
     ...createModeration(),
     ...createAdmin(),

@@ -15,6 +15,7 @@
     "./github": "./github/index.ts",
     "./index": "./index/index.ts",
     "./score": "./score/index.ts",
+    "./tokens": "./tokens/index.ts",
     "./search": "./search/index.ts",
     "./mail": "./mail/index.ts",
     "./publishing": "./publishing/index.ts",
