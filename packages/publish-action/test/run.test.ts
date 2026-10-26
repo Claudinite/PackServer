@@ -30,7 +30,7 @@ function fakeRegistry(options: { verdict?: "pass" | "hold" | "fail"; exchange?: 
 }
 
 const steps = (fetchFn: typeof fetch, order: string[] = []): Steps => ({
-  env: { ACTIONS_ID_TOKEN_REQUEST_URL: "https://token.actions.test/oidc?x=1", ACTIONS_ID_TOKEN_REQUEST_TOKEN: "runner", GITHUB_RUN_ID: "999", GITHUB_JOB: "publish" },
+  runner: { ACTIONS_ID_TOKEN_REQUEST_URL: "https://token.actions.test/oidc?x=1", ACTIONS_ID_TOKEN_REQUEST_TOKEN: "runner", GITHUB_RUN_ID: "999", GITHUB_JOB: "publish" },
   fetch: fetchFn,
   vendor: async () => void order.push("vendor"),
   pack: async () => (order.push("pack"), samplePack()),

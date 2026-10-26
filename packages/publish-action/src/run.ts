@@ -9,7 +9,7 @@ export interface Inputs {
 }
 
 export interface Steps {
-  env: RunnerEnv & { GITHUB_RUN_ID?: string; GITHUB_JOB?: string };
+  runner: RunnerEnv & { GITHUB_RUN_ID?: string; GITHUB_JOB?: string };
   fetch: typeof fetch;
   vendor(): Promise<void>;
   pack(): Promise<Canonical>;
@@ -29,7 +29,7 @@ export interface Outcome {
 /** Nothing here writes to GitHub: the verdict is read in the registry's dashboard and mailed. */
 export async function publish(inputs: Inputs, steps: Steps): Promise<Outcome> {
   const { log } = steps;
-  const runner = steps.env;
+  const runner = steps.runner;
   const io: api.Fetching = { fetch: steps.fetch, registry: inputs.registry, versionKey: runner.GITHUB_RUN_ID };
 
   await steps.vendor();

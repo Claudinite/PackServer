@@ -16,7 +16,7 @@ async function main(): Promise<void> {
   const outcome = await publish(
     { pack: input("pack"), version: input("version"), registry: input("registry", "https://registry.claudinite.com") },
     {
-      env: process.env,
+      runner: process.env,
       fetch,
       async vendor() {
         cn = await installCn({ version: cnVersion, sha256: input("cn-sha256"), url: input("cn-url", defaultCnUrl(cnVersion)) }, fetch);
