@@ -170,6 +170,7 @@ export class FakeDurableObjects implements DurableObjects {
 
 export class FakeWorkflow implements Workflow {
   readonly instances = new Map<string, { params: unknown; status: string }>();
+  readonly events: Array<{ id: string; type: string; payload: unknown }> = [];
   async create(request: { id?: string; params: unknown }) {
     const id = request.id ?? `wf-${this.instances.size + 1}`;
     if (!this.instances.has(id)) this.instances.set(id, { params: request.params, status: "running" });
@@ -179,6 +180,10 @@ export class FakeWorkflow implements Workflow {
     const i = this.instances.get(id);
     if (!i) throw new PortError("not_found", `no workflow instance ${id}`);
     return { status: i.status };
+  }
+  async sendEvent(id: string, event: { type: string; payload: unknown }) {
+    if (!this.instances.has(id)) throw new PortError("not_found", `no workflow instance ${id}`);
+    this.events.push({ id, ...event });
   }
 }
 
