@@ -188,8 +188,8 @@ Ariel's budgets, kept from PR #9: every push under 2 minutes wall-clock (lint, t
 sharded in-process tests, the coverage check); nightly and weekly jobs each under 15–20 minutes with
 a hard `timeout-minutes`; everything inside the free Actions minutes of a private repository, about
 1,850 minutes a month with ~150 push runs, ~20 changed nights and 4 weekly runs. Each job is billed
-rounded up to a whole minute, so a job past 60 s bills 2: a push run is 14 jobs (`check`, `changes`,
-`coverage`, `checks`, two `typecheck`, three `unit`, `infra`, three `scenarios`, `summary`). Two `unit`
+rounded up to a whole minute, so a job past 60 s bills 2: a push run is 15 jobs (`check`, `changes`,
+`coverage`, `checks`, two `typecheck`, three `unit`, `infra`, four `scenarios`, `summary`). Two `unit`
 legs ran about 100 s each and left the run at 111-140 s, so there are three; the measured bill is in
 PR #146. ~150 push runs at about 16 minutes are about 2,400 minutes, more than the 1,850 before any
 nightly or weekly job, so the estimate is **over the free budget**; the shard counts are the lever
@@ -197,7 +197,8 @@ nightly or weekly job, so the estimate is **over the free budget**; the shard co
 skip CI; a newer push cancels the older run; nothing nightly or weekly runs on forks. Shards grow by
 one when the scenario job's p90 passes 90 s for a week; shards cost billed minutes, not wall-clock.
 The third `scenarios` leg came when two legs ran 100-138 s and pushed the run past 2 minutes; while
-the repository is public its standard-runner minutes are not billed.
+the repository is public its standard-runner minutes are not billed. The fourth came when the
+slowest of three ran 131 s and left a fully green run at 137 s.
 A monthly job opens an issue at 80 % of the included minutes. The heavy suites (sandbox corpus, real
 GitHub, Rekor, Vectorize, and the model-screen calibration once it exists) are weekly or
 image-change-triggered only, and the `cn`-driven tests are nightly because they need the engine
