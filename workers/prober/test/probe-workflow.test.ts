@@ -8,7 +8,7 @@ import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
 import { ProbeResult } from "../../judge/src/api/routes";
 
-const path = join(import.meta.dirname, "..", "..", "..", PROBE_WORKFLOW);
+const path = join(import.meta.dirname, "..", "probe-repo", "probe-dry-run.yml");
 const text = readFileSync(path, "utf8");
 type Step = { id?: string; run?: string; uses?: string; with?: Record<string, string>; env?: Record<string, string> };
 type Job = { if?: string; permissions: Record<string, string>; needs?: string; steps: Step[] };
@@ -16,6 +16,7 @@ const workflow = parse(text) as { on: Record<string, unknown>; permissions: unkn
 
 describe("the dry-run workflow template", () => {
   it("is the workflow the probe tenant registers, on the events it registers", async () => {
+    expect(PROBE_WORKFLOW.endsWith("/probe-dry-run.yml")).toBe(true);
     const { d1 } = migratedD1();
     await provisionProbeTenant(d1, { repository: { slug: `Claudinite/${PROBE_REPOSITORY_NAME}`, id: "9001", ownerId: "42" }, nowMs: Date.now() });
     const row = (await d1.query(`select pack_name, workflow, events, refs from trusted_publishers`)).rows[0] as { pack_name: string; workflow: string; events: string; refs: string };

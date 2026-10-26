@@ -1,7 +1,9 @@
-# TEMPLATE for the private repository Claudinite/packserver-probe, where this file is copied
-# verbatim to the same path: the registry matches the path, `main`, and the `schedule` and
-# `workflow_dispatch` events against the trusted-publisher registration of @probe/p, and nothing
-# else. In any other repository every job below is skipped by its first condition.
+# TEMPLATE for the private repository Claudinite/packserver-probe, where this file is copied to
+# .github/workflows/probe-dry-run.yml: the registry matches that path, `main`, and the `schedule`
+# and `workflow_dispatch` events against the trusted-publisher registration of @probe/p, and
+# nothing else. It lives outside this repository's .github/workflows because this repository
+# permits no cron of its own; in any other repository every job below is skipped by its first
+# condition.
 #
 # Once an hour it publishes a new version of @probe/p through the same Action a customer uses,
 # then tells the gate judge whether the registry reached a verdict (POST /probe-results). The
