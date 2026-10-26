@@ -113,7 +113,7 @@ describe("GET /api/packs", () => {
 
   it("leaves a sub-path that is not a version to the routers mounted after it", async () => {
     const { app: a, fakes } = app({});
-    expect((await a.request("/api/packs/@acme/gcp/contents")).status).toBe(404);
+    expect((await a.request("/api/packs/@acme/gcp/reviews")).status).toBe(404);
     expect(fakes.d1.executed).toEqual([]);
   });
 
