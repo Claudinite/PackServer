@@ -6,7 +6,7 @@ import type { McpClient } from "./mcp";
 export type DriverKind = "inprocess" | "http" | "browser" | "mcp";
 
 /** What a driver can offer; a scenario that needs more is skipped with the reason, never passed. */
-export type Capability = "fakes" | "clock" | "reset" | "recorder" | "mcp" | "ui" | "telemetry" | "storage";
+export type Capability = "fakes" | "clock" | "reset" | "recorder" | "mcp" | "ui" | "telemetry" | "storage" | "selftest";
 
 export interface ApiRequest {
   /** Which Worker answers in-process; ignored by a driver that reaches the system through one public host. */
@@ -15,6 +15,10 @@ export interface ApiRequest {
   path: string;
   headers?: Record<string, string>;
   body?: unknown;
+  /** Sent as an outsider would send it: a driver that signs its requests leaves this one unsigned. */
+  unsigned?: boolean;
+  /** The key id a signing driver signs this request as, so the call spends that principal's self-test budget. */
+  signAs?: string;
 }
 
 export interface ApiResponse {

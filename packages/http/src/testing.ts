@@ -2,6 +2,7 @@ import { expectedBindings, TRUST_TABLE, type WorkerName } from "@packserver/port
 import testFakes from "@packserver/ports/test-fakes" with { type: "json" };
 import { expect, it, describe } from "vitest";
 import { baseSecurityHeaders, NON_HTML_CSP } from "@packserver/ui/headers";
+import { SELFTEST_DETAILS } from "./selftest-runner";
 import { VERSION_HEADER } from "./version";
 
 type Fetchable = { fetch(request: Request): Response | Promise<Response> };
@@ -53,15 +54,19 @@ export function describeWorkerShell({ worker, build }: WorkerShellContract): voi
       expect(res.headers.get(VERSION_HEADER)).toBe(RELEASE);
       const body = (await res.json()) as { version_id: string; release_id: string; ok: boolean; checks: Array<{ name: string; ok: boolean; ms: number; detail: string }> };
       expect(Object.keys(body).sort()).toEqual(["checks", "ok", "release_id", "version_id"]);
-      expect(body).toMatchObject({ version_id: "version-test", release_id: RELEASE, ok: true });
-      for (const c of body.checks) expect(Object.keys(c).sort()).toEqual(["detail", "name", "ok", "ms"].sort());
+      expect(body).toMatchObject({ version_id: "version-test", release_id: RELEASE });
+      expect(body.ok).toBe(body.checks.every((c) => c.ok));
+      for (const c of body.checks) {
+        expect(Object.keys(c).sort()).toEqual(["detail", "name", "ok", "ms"].sort());
+        expect(SELFTEST_DETAILS).toContain(c.detail);
+      }
     });
 
     it("IT-OPS-010 shallow mode runs the local checks and none that call out", async () => {
       const res = await build({ allowSelfTest: true }).fetch(new Request("https://registry.test/__selftest?shallow=1"));
       const body = (await res.json()) as { checks: Array<{ name: string }> };
       const names = body.checks.map((c) => c.name);
-      expect(names).toEqual(expect.arrayContaining(["config.environment", "bindings.present", "secrets.present"]));
+      expect(names).toEqual(expect.arrayContaining(["config.environment", "bindings.present", "secrets.SELFTEST_HMAC_KEY"]));
       expect(names.filter((n) => n.startsWith("outbound.") || n.startsWith("service."))).toEqual([]);
     });
 

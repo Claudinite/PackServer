@@ -2,7 +2,9 @@ import { Hono, type Env } from "hono";
 import { createHasher, createTelemetry, scrubIp } from "@packserver/core/telemetry";
 import type { Clock, Stats, TelemetryConfig } from "@packserver/ports";
 import { securityHeaders } from "@packserver/ui/headers";
+import { rateLimited } from "./ratelimit";
 import { recorder } from "./recorder-middleware";
+import type { SelfTestAccess } from "./selftest-auth";
 import { runSelfTest, type SelfTestCheck } from "./selftest-runner";
 import { versionHeader } from "./version";
 
@@ -16,8 +18,12 @@ export interface WorkerShellOptions {
   /** The hash keys and `telemetry_mode`; without it a hash is left out and the mode is `normal`. */
   telemetry?: TelemetryConfig;
   checks: () => readonly SelfTestCheck[];
-  /** Whether a request may reach the self-test. Everything else answers as an unknown path. */
+  /** Who may read the self-test, and the candidate gate; without it the self-test answers as an unknown path to everyone. */
+  selfTest?: SelfTestAccess;
+  /** Overrides `selfTest` where a test stands in for authentication. Everything else answers as an unknown path. */
   selfTestAllowed?: (request: Request) => boolean | Promise<boolean>;
+  /** Paths beyond `/__selftest` and `/<worker>/__selftest` the self-test is served at, for a Worker whose public routes sit elsewhere. */
+  selfTestPaths?: readonly string[];
 }
 
 /** The one answer to a path the Worker does not serve; the self-test gives it to anyone not allowed in. */
@@ -54,8 +60,16 @@ export function createShell<E extends Env = Env>(options: WorkerShellOptions): H
     );
   }
   app.notFound(() => unknownPath());
+  const gate = options.selfTest?.open;
+  if (gate) app.use(async (c, next) => ((await gate(c.req.raw)) ? next() : unknownPath()));
+  const admit = async (request: Request) => {
+    if (options.selfTestAllowed) return (await options.selfTestAllowed(request)) ? "granted" : "denied";
+    return (await options.selfTest?.admit(request)) ?? "denied";
+  };
   const selfTest = async (c: { req: { raw: Request; query(name: string): string | undefined } }) => {
-    if (!(await (options.selfTestAllowed?.(c.req.raw) ?? false))) return unknownPath();
+    const admission = await admit(c.req.raw);
+    if (admission === "rate-limited") return rateLimited();
+    if (admission !== "granted") return unknownPath();
     const result = await runSelfTest({
       versionId: options.versionId,
       releaseId: options.releaseId,
@@ -65,8 +79,7 @@ export function createShell<E extends Env = Env>(options: WorkerShellOptions): H
     });
     return Response.json(result, { headers: { "cache-control": "no-store" } });
   };
-  app.get("/__selftest", selfTest);
-  app.get(`/${options.worker}/__selftest`, selfTest);
+  for (const path of new Set(["/__selftest", `/${options.worker}/__selftest`, ...(options.selfTestPaths ?? [])])) app.get(path, selfTest);
   return app;
 }
 

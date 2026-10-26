@@ -145,8 +145,12 @@ fanning out further; it answers in the same shape as a full run, with `version_i
 - source: release plan §5, §6.2 (PR #8, `docs/release/README.md`)
 - coverage: scenario (the World sets the registry's migration head above and below the compiled range)
 
-Each version carries `SCHEMA_MIN..SCHEMA_MAX`; when the applied migration head is outside that range
-the full self-test reports `ok: false` naming the head and the range.
+Each version carries `SCHEMA_MIN..SCHEMA_MAX`. The full self-test passes when the applied migration
+head is inside that range, or beyond `SCHEMA_MAX` while every migration past `SCHEMA_MAX` is an
+expand (the database is one release ahead and the old code still serves it, as an expand-first
+deploy and a rollback both require). It reports `ok: false`, with a check naming the head and the
+range, when the head is below `SCHEMA_MIN`, or beyond `SCHEMA_MAX` with a contract migration past
+it (an older build knows a contract migration only by the `_contract_` in its name).
 
 ## REQ-OPS-012 A recorded invocation never holds a personal, customer-content or secret value in clear
 

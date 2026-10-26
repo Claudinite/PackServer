@@ -1,0 +1,7 @@
+{
+  "candidateMirror": "selftest/candidate",
+  "kvWritePropagationSeconds": 60,
+  "kvEdgeCacheSeconds": 60,
+  "isolateCacheSeconds": 10,
+  "marginSeconds": 20
+}

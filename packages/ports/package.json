@@ -8,7 +8,8 @@
     "./fakes": "./fakes/index.ts",
     "./cloudflare": "./cloudflare/index.ts",
     "./domain-proof": "./cloudflare/domain-proof.ts",
-    "./test-fakes": "./test-fakes.json"
+    "./test-fakes": "./test-fakes.json",
+    "./release-keys": "./release-keys.json"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

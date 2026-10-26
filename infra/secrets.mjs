@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Key ceremony: generate the registry signing keys and HMAC keys in memory and upload them to
 // Secrets Store. Only public halves are printed; nothing is written to disk.
+import { spawnSync } from "node:child_process";
 import { generateKeyPairSync, randomBytes } from "node:crypto";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
@@ -26,10 +27,23 @@ sees exactly one account; CLOUDFLARE_SECRETS_STORE_ID picks a store when there a
 
   --kid            key id of the active key (default: current UTC month)
   --dry-run        print the secret names that would be created; no network, no keys generated
+  --set-github-secret  also store the new SELFTEST_HMAC_KEY as the GitHub environment secret
+                   SELFTEST_HMAC_KEY of the environment named like --env (through \`gh\`, the value
+                   piped and never printed): the release flow signs its self-test with it. A key
+                   that already existed cannot be read back, so this applies to a key created now.
   --skip-existing  upload only names not already present; without it, any existing name aborts
                    the run before anything is written
   --help           this text
 `;
+
+export const GITHUB_REPO = "Claudinite/PackServer";
+export const SELFTEST_SECRET = "SELFTEST_HMAC_KEY";
+
+/** The value goes in on stdin, so it is on no command line and in no log. */
+export function setGithubSecret({ environment, name, value }) {
+  const r = spawnSync("gh", ["secret", "set", name, "--env", environment, "--repo", GITHUB_REPO], { input: value, encoding: "utf8" });
+  if (r.status !== 0) throw new Error(`gh secret set ${name} --env ${environment} failed: ${(r.stderr || r.error?.message || "").trim()}; the Secrets Store copy now exists and its value cannot be read back, so delete ${SELFTEST_SECRET} from Secrets Store and re-run`);
+}
 
 export function kidFor(date) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
@@ -83,6 +97,7 @@ export async function main(argv, envVars, deps = {}) {
         kid: { type: "string" },
         "dry-run": { type: "boolean" },
         "skip-existing": { type: "boolean" },
+        "set-github-secret": { type: "boolean" },
         help: { type: "boolean" },
       },
       strict: true,
@@ -151,6 +166,16 @@ export async function main(argv, envVars, deps = {}) {
       await store.create(name, value, comment);
       out(`created ${name}`);
       if (publicLine.has(name)) out(`  ${publicLine.get(name)}`);
+    }
+    const selftest = uploads.find(([n]) => n === `${plan.prefix}${SELFTEST_SECRET}`);
+    if (values["set-github-secret"]) {
+      if (existing.has(selftest[0])) err(`${selftest[0]} already existed and cannot be read back, so the GitHub secret was not set; delete it from Secrets Store and re-run, or set the GitHub secret from the value you hold`);
+      else {
+        (deps.setGithubSecret ?? setGithubSecret)({ environment: values.env, name: SELFTEST_SECRET, value: selftest[1] });
+        out(`set GitHub environment secret ${SELFTEST_SECRET} in ${values.env}`);
+      }
+    } else if (!existing.has(selftest[0])) {
+      out(`${selftest[0]} was created without a GitHub copy; the release flow needs one, so delete it and re-run with --set-github-secret`);
     }
     out("Bind only the active key to the validator; the standby stays bound to nothing.");
     return 0;
