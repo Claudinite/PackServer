@@ -133,6 +133,19 @@ export interface Dns {
   resolveTxt(name: string): Promise<string[]>;
 }
 
+/** What the one `.well-known` fetch of a domain proof found; only `found` can prove anything. */
+export type AuthFileAnswer =
+  | { status: "found"; body: string }
+  | { status: "absent"; reason: "not_found" | "redirected" | "too_large" | "unreachable" };
+
+/**
+ * The registry's only server-side fetch on a user's behalf besides GitHub's (REQ-SCOPE-017):
+ * `https://<host>/.well-known/packserver-auth`, with no redirect followed and the body capped.
+ */
+export interface WellKnown {
+  authFile(host: string): Promise<AuthFileAnswer>;
+}
+
 export interface Turnstile {
   verify(token: string, remoteIp?: string): Promise<{ success: boolean; codes: string[] }>;
 }
@@ -278,6 +291,7 @@ export interface SinglePorts {
   proseScreen: ProseScreen;
   mail: Mail;
   dns: Dns;
+  wellKnown: WellKnown;
   turnstile: Turnstile;
   access: AccessIdentity;
   stats: Stats;

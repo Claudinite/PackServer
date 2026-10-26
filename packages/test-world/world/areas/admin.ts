@@ -1,9 +1,9 @@
+import type { Driver } from "../../drivers/driver";
 import { stubModule } from "../errors";
+import { createCron, type CronJob } from "../proofs";
 import type { Admin, Notification } from "../types";
 
-export type CronJob =
-  | "domain-rechecks" | "stats-rollup" | "staging-expiry" | "rescan" | "domain-drift"
-  | "adoption-scan" | "audit-head" | "audit-verify" | "activity-prune";
+export type { CronJob };
 
 /** The admin host, scheduled jobs and the registry's own state. */
 export interface AdminModule {
@@ -14,9 +14,9 @@ export interface AdminModule {
   staging: { objects(): Promise<string[]> };
 }
 
-export const createAdmin = (): AdminModule => ({
+export const createAdmin = (driver: Driver): AdminModule => ({
   admins: stubModule("admins"),
-  cron: stubModule("cron"),
+  cron: createCron(driver),
   database: stubModule("database"),
   storage: stubModule("storage"),
   staging: stubModule("staging"),

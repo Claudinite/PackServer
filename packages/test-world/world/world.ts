@@ -20,6 +20,7 @@ import { createCi } from "./ci-workflow";
 import { InfrastructureError } from "./errors";
 import { createMail } from "./mail";
 import { createPlatform } from "./platform";
+import { createDns } from "./proofs";
 import { filterInvocations, type InvocationFilter, type InvocationView, type RecorderView } from "./recorder";
 
 /** One per scenario: owns the driver handle, the clock, the recorder view, the aliases and the area modules. */
@@ -41,10 +42,11 @@ export function createWorld(driver: Driver, title: string) {
     ...createAccess(driver),
     ...createCommunity(),
     ...createModeration(),
-    ...createAdmin(),
+    ...createAdmin(driver),
     ...createMember(),
     ...createAgents(),
     ...createGitHub(driver),
+    dns: createDns(driver, aliases),
     ...createAuditModule(driver),
     ...createSearch(driver, aliases),
     ...createTelemetry(),

@@ -1,6 +1,6 @@
 import type { Driver } from "../../drivers/driver";
 import { GITHUB_TEST_APP_ID, type FakeFile, type FakeRepo, type RecordedRequest } from "../../fakes/github-app";
-import { InfrastructureError, stubModule } from "../errors";
+import { InfrastructureError } from "../errors";
 import { Ignored } from "../outcomes";
 
 export interface GitHubRepoHandle {
@@ -93,7 +93,6 @@ export interface GitHubModule {
     /** What the validator asks the `github` Worker for. */
     fetchTree(o: { repository: string | GitHubRepoHandle; commit: string; path: string }): Promise<TreeFetchResponse>;
   };
-  dns: { publishTxt(name: string, value: string): void; remove(name: string): void };
 }
 
 /** The `github` Worker's answer to a tree request (the `TreeFetchResponse` contract). */
@@ -213,6 +212,5 @@ export function createGitHub(driver: Driver): GitHubModule {
         return res.json() as TreeFetchResponse;
       },
     },
-    dns: stubModule("dns"),
   };
 }

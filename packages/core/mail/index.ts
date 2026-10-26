@@ -2,11 +2,14 @@ import type { Mail } from "@packserver/ports";
 import { render, type Notice } from "./notice";
 import { appealDecided } from "./templates/appeal-decided";
 import { domainDriftWarning } from "./templates/domain-drift-warning";
+import { domainProofMoved } from "./templates/domain-proof-moved";
 import { domainProofWarning } from "./templates/domain-proof-warning";
 import { factorAdded } from "./templates/factor-added";
+import { githubOrgProofAlert } from "./templates/github-org-proof-alert";
 import { newDeviceSignIn } from "./templates/new-device-sign-in";
 import { packActioned } from "./templates/pack-actioned";
 import { reportStatusChanged } from "./templates/report-status-changed";
+import { scopeNameDisputed } from "./templates/scope-name-disputed";
 import { stepUpLocked } from "./templates/step-up-locked";
 import { trustedPublisherChanged } from "./templates/trusted-publisher-changed";
 import { validationVerdict } from "./templates/validation-verdict";
@@ -32,6 +35,9 @@ export const NOTICES = {
   "pack-actioned": packActioned,
   "appeal-decided": appealDecided,
   "domain-drift-warning": domainDriftWarning,
+  "domain-proof-moved": domainProofMoved,
+  "github-org-proof-alert": githubOrgProofAlert,
+  "scope-name-disputed": scopeNameDisputed,
 } as const;
 
 export type NoticeKind = keyof typeof NOTICES;

@@ -1,7 +1,7 @@
 import { githubLogin, type GitHubLogin } from "@packserver/core/identity";
 import { analyticsStats, createIsolateTelemetry } from "@packserver/http";
 import {
-  clockFrom, cryptoRng, d1Port, kvPort, mailPort, queuePort, r2ReadPort, rateLimitPort, readSecret, systemClock, turnstilePort, workerRuntime,
+  clockFrom, cryptoRng, d1Port, dohDns, kvPort, mailPort, queuePort, r2ReadPort, rateLimitPort, readSecret, systemClock, turnstilePort, wellKnownPort, workerRuntime,
   type SendEmailBinding, type WorkerRuntime,
 } from "@packserver/ports/cloudflare";
 import type { Ports, R2Read } from "@packserver/ports";
@@ -25,6 +25,7 @@ export interface Env {
   MCP: Fetcher;
   PUBLISH: Fetcher;
   AUDIT_QUEUE: Queue;
+  REINDEX_QUEUE: Queue;
   RATE_LIMIT: RateLimit;
   REQUEST_OUTCOMES: AnalyticsEngineDataset;
   DOMAIN_EVENTS: AnalyticsEngineDataset;
@@ -42,7 +43,7 @@ export interface Env {
 }
 
 /** Both public buckets are read-only here: the type has no write method. */
-export type WebPorts = Pick<Ports, "clock" | "rng" | "d1" | "stats" | "turnstile" | "kv" | "rateLimits" | "telemetry" | "mail" | "queues"> & {
+export type WebPorts = Pick<Ports, "clock" | "rng" | "d1" | "stats" | "turnstile" | "kv" | "rateLimits" | "telemetry" | "mail" | "queues" | "dns" | "wellKnown"> & {
   r2: Readonly<Record<string, R2Read>>;
   githubLogin: GitHubLogin;
 };
@@ -87,7 +88,9 @@ export function createRuntime(env: Env): WebRuntime {
       kv: { SESSIONS_KV: kvPort(env.SESSIONS_KV), CACHE_KV: kvPort(env.CACHE_KV), TELEMETRY_KV: telemetryKv },
       r2: { PACKS_PUBLIC: r2ReadPort(env.PACKS_PUBLIC), PACKS_PRIVATE: r2ReadPort(env.PACKS_PRIVATE) },
       rateLimits: { RATE_LIMIT: rateLimitPort(env.RATE_LIMIT) },
-      queues: { AUDIT_QUEUE: queuePort(env.AUDIT_QUEUE) },
+      queues: { AUDIT_QUEUE: queuePort(env.AUDIT_QUEUE), REINDEX_QUEUE: queuePort(env.REINDEX_QUEUE) },
+      dns: dohDns(),
+      wellKnown: wellKnownPort(),
       githubLogin: lazyGitHubLogin(() => Promise.all([readSecret(env.GITHUB_APP_CLIENT_ID), readSecret(env.GITHUB_APP_CLIENT_SECRET)])),
     },
     { mcp: env.MCP, publish: env.PUBLISH },

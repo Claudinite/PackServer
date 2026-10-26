@@ -1,5 +1,5 @@
 import { analyticsStats, createIsolateTelemetry } from "@packserver/http";
-import { cryptoRng, d1Port, kvPort, readSecret, systemClock, workerRuntime, type WorkerRuntime } from "@packserver/ports/cloudflare";
+import { clockFrom, cryptoRng, d1Port, kvPort, readSecret, systemClock, workerRuntime, type WorkerRuntime } from "@packserver/ports/cloudflare";
 import type { Ports } from "@packserver/ports";
 
 export interface Env {
@@ -17,6 +17,8 @@ export interface Env {
   REQUEST_OUTCOMES: AnalyticsEngineDataset;
   DOMAIN_EVENTS: AnalyticsEngineDataset;
   CF_VERSION_METADATA: WorkerVersionMetadata;
+  /** The fake clock Worker, bound only under `env.test`. */
+  CLOCK?: Fetcher;
 }
 
 export type GithubPorts = Pick<Ports, "clock" | "rng" | "d1" | "stats" | "telemetry" | "kv">;
@@ -37,7 +39,7 @@ export function createRuntime(env: Env): GithubRuntime {
     "github",
     env,
     {
-      clock: systemClock,
+      clock: clockFrom(env.ENVIRONMENT, env.CLOCK),
       rng: cryptoRng,
       d1: d1Port(env.DB),
       kv: { TELEMETRY_KV: telemetryKv },
