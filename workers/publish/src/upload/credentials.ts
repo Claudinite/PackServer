@@ -1,4 +1,5 @@
 import { base64url } from "jose";
+import { publishingFrozen } from "@packserver/core/identity";
 import { CREDENTIAL_TTL_MS, dryRunStagingKey, objectExpiry, stagingKey, type StagingLifetime } from "@packserver/core/publishing";
 import type { Clock, D1, Rng } from "@packserver/ports";
 
@@ -42,6 +43,8 @@ export interface IssueRequest {
 }
 
 export class TokenAlreadyUsed extends Error {}
+/** An owner of the scope has a recovery under review (REQ-ACC-015). */
+export class PublishingFrozen extends Error {}
 
 export interface Issued {
   id: string;
@@ -52,6 +55,7 @@ export interface Issued {
 
 /** Mints a credential whose secret is returned once and stored only as a hash. */
 export async function issueCredential(ports: { d1: D1; rng: Rng; clock: Clock }, request: IssueRequest): Promise<Issued> {
+  if (await publishingFrozen(ports, request.scope.id)) throw new PublishingFrozen();
   const id = ports.rng.uuid().replace(/-/g, "");
   const secret = `${CREDENTIAL_PREFIX}${toBase64Url(ports.rng.bytes(32))}`;
   const now = ports.clock.now();
