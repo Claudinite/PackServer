@@ -98,6 +98,10 @@
           {
             "binding": "AUDIT_QUEUE",
             "queue": "audit-test"
+          },
+          {
+            "binding": "REINDEX_QUEUE",
+            "queue": "reindex-test"
           }
         ]
       },
@@ -230,6 +234,10 @@
           {
             "binding": "AUDIT_QUEUE",
             "queue": "audit-staging"
+          },
+          {
+            "binding": "REINDEX_QUEUE",
+            "queue": "reindex-staging"
           }
         ]
       },
@@ -366,6 +374,10 @@
           {
             "binding": "AUDIT_QUEUE",
             "queue": "audit"
+          },
+          {
+            "binding": "REINDEX_QUEUE",
+            "queue": "reindex"
           }
         ]
       },

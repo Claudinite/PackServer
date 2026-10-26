@@ -3,7 +3,9 @@ import {
   PortError,
   type AccessIdentity,
   type AccessIdentityClaims,
+  type AuthFileAnswer,
   type Dns,
+  type WellKnown,
   type Embedder,
   type GitHub,
   type GitHubRepo,
@@ -194,6 +196,15 @@ export class FakeDns implements Dns {
   readonly txt = new Map<string, string[]>();
   async resolveTxt(name: string) {
     return this.txt.get(name) ?? [];
+  }
+}
+
+export class FakeWellKnown implements WellKnown {
+  readonly files = new Map<string, AuthFileAnswer>();
+  readonly fetched: string[] = [];
+  async authFile(host: string): Promise<AuthFileAnswer> {
+    this.fetched.push(host);
+    return this.files.get(host) ?? { status: "absent", reason: "not_found" };
   }
 }
 

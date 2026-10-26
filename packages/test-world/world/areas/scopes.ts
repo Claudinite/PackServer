@@ -1,7 +1,7 @@
 import { createPacks, type PacksModule } from "../packs";
 import type { Aliases } from "../alias";
 import type { Driver } from "../../drivers/driver";
-import { createScopeVerbs, type InvitationsModule, type OrgHandle, type OrgsModule, type ScopeViewsModule, type TransfersModule } from "../scopes";
+import { createScopeVerbs, type InvitationsModule, type ReviewModule, type OrgHandle, type OrgsModule, type ScopeViewsModule, type TransfersModule } from "../scopes";
 import type { Scope, Sensitive, User, UserOpts } from "../types";
 import type { UsersModule } from "./users";
 
@@ -14,6 +14,7 @@ export interface ScopeOwner extends User {
 /** Scopes, organisations, the packs they own, and the people who manage them. */
 export interface ScopesModule {
   packs: PacksModule;
+  verifiedPublishers: ReviewModule;
   orgs: OrgsModule;
   transfers: TransfersModule;
   invitations: InvitationsModule;

@@ -20,6 +20,8 @@ export const github_installations = sqliteTable(
     status: text("status", { enum: GITHUB_INSTALLATION_STATUSES }).notNull(),
     installed_at: text("installed_at").notNull(),
     uninstalled_at: text("uninstalled_at"),
+    /** When the App first stopped counting (suspended or removed); set once, cleared by an unsuspend or a reinstall. Starts the proof grace. */
+    inactive_since: text("inactive_since"),
     updated_at: text("updated_at").notNull(),
   },
   (t) => [

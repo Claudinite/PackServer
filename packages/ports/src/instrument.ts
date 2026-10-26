@@ -215,6 +215,11 @@ export const PORT_SPECS: { [K in Exclude<keyof SinglePorts, "durableObjects">]: 
     },
   },
   dns: { kind: "http", target: "dns-over-https", methods: { resolveTxt: { effect: "read", args: [op], result: { "*": op } } } },
+  wellKnown: {
+    kind: "http",
+    target: "well-known",
+    methods: { authFile: { effect: "read", args: [op], result: { status: op, body: content, reason: op } } },
+  },
   turnstile: {
     kind: "http",
     target: "challenges.cloudflare.com",
