@@ -232,10 +232,18 @@ describe("runScan", () => {
     expect(h.scans.get("scan-1")!.truncated).toBe(false);
   });
 
-  it("marks a scan truncated when one byte size alone still overflows", async () => {
-    const h = harness({ "a/one": { file: settings("'@acme/gcp'") } }, ["@acme/gcp"], { totalFor: () => 5000 });
-    await runScan(h.deps);
+  it("completes a scan and marks it truncated when one byte size still overflows the search", async () => {
+    const h = harness({ "a/one": { file: settings("'@acme/gcp'") } }, ["@acme/gcp"], {
+      totalFor: (q) => {
+        const from = /size:(\d+)\.\.\d+/.exec(q)?.[1];
+        return from === undefined || from === "0" ? 5000 : undefined;
+      },
+    });
+    const result = await runScan(h.deps);
+    expect(result.outcome).toBe("completed");
+    expect(h.queries.some((q) => q.includes("size:0..0"))).toBe(true);
     expect(h.scans.get("scan-1")!.truncated).toBe(true);
+    expect(h.scans.get("scan-1")!.completedAt).not.toBeNull();
   });
 
   it("stops at its request allowance mid-page and redoes the unfinished page next run without duplicating", async () => {

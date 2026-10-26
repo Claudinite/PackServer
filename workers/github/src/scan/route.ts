@@ -34,13 +34,11 @@ export function scanRoute(runtime: GithubRuntime) {
     const telemetry = requestTelemetry(c);
     if (result.rateRemaining !== null) telemetry.emit("github.rate_limit_remaining", { remaining: result.rateRemaining });
     if (result.outcome !== "idle") {
-      telemetry.emit("github.scan_completed", {
-        outcome: result.outcome,
-        repositories: result.summary?.repositories ?? 0,
-        packs: result.summary?.packs ?? 0,
-        pages: result.pages,
-        duration_ms: Math.max(0, runtime.ports.clock.now() - started),
-      });
+      const durationMs = Math.max(0, runtime.ports.clock.now() - started);
+      telemetry.emit("github.scan_run", { outcome: result.outcome, pages: result.pages, declarations: result.declarations, duration_ms: durationMs });
+      if (result.outcome === "completed") {
+        telemetry.emit("github.scan_completed", { repositories: result.summary?.repositories ?? 0, packs: result.summary?.packs ?? 0, pages: result.pages, duration_ms: durationMs });
+      }
     }
     return c.json(result);
   };

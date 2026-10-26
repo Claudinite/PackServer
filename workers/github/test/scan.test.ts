@@ -3,6 +3,7 @@ import { createFakePorts } from "@packserver/ports/fakes";
 import { describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import type { GithubRuntime } from "../src/bindings";
+import { expectScanRan } from "../src/scan/scheduled";
 import { githubScanSource } from "../src/scan/github-source";
 
 interface Call {
@@ -49,14 +50,33 @@ describe("the scan's GitHub source", () => {
   });
 });
 
+describe("the request timeout", () => {
+  it("abandons a request that never answers instead of carrying the run past its stop", async () => {
+    const hung = ((_url: string, init: RequestInit) =>
+      new Promise((_resolve, reject) => init.signal?.addEventListener("abort", () => reject(new Error("aborted"))))) as unknown as typeof fetch;
+    const source = githubScanSource({ fetch: hung, token: "t", timeoutMs: 20 });
+    await expect(source.search("q", 1)).rejects.toThrow(/aborted/);
+    await expect(source.readFile("a/b", "x")).rejects.toThrow(/aborted/);
+  }, 2000);
+});
+
+describe("what a cron fire does with the scan's answer", () => {
+  const answer = (outcome: string, status = 200) => Response.json({ outcome }, { status });
+  it("fails only when GitHub could not be reached", async () => {
+    await expect(expectScanRan(answer("unreachable"))).rejects.toThrow(/unreachable/);
+    await expect(expectScanRan(answer("unconfigured", 503))).rejects.toThrow();
+    for (const outcome of ["completed", "idle", "deadline", "request_budget", "rate_limited"]) await expect(expectScanRan(answer(outcome))).resolves.toBeUndefined();
+  });
+});
+
 describe("the scan route", () => {
-  const runtime = (token: string | null, fetchFn: typeof fetch) => {
+  const runtime = (token: string | null, fetchFn: typeof fetch, packs: string[] = []) => {
     const ports = createFakePorts({ worker: "github" });
     ports.d1
       .on(/from adoption_scans where completed_at is null/, () => ({ rows: [] }))
       .on(/max\(completed_at\)/, () => ({ rows: [{ at: null }] }))
       .on(/insert into adoption_scans/, () => ({}))
-      .on(/from packs p join scopes/, () => ({ rows: [] }))
+      .on(/from packs p join scopes/, (params) => ({ rows: packs.filter((n) => n > String(params[0])).slice(0, 1).map((name) => ({ name })) }))
       .on(/update adoption_scans set completed_at/, () => ({}))
       .on(/delete from/, () => ({}))
       .on(/count\(distinct repository\)/, () => ({ rows: [{ repositories: 0, packs: 0 }] }))
@@ -82,6 +102,25 @@ describe("the scan route", () => {
     expect(await res.json()).toMatchObject({ outcome: "completed" });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(ports.stats.points.map((p) => p.name)).toContain("github.scan_completed");
+  });
+
+  const runOutcome = async (fetchFn: typeof fetch, packs: string[]) => {
+    const { rt, ports } = runtime("tok", fetchFn, packs);
+    const res = await createApp(rt).fetch(new Request("https://github.internal/internal/scan", { method: "POST" }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const attrs = (name: string) => ports.stats.points.filter((p) => p.name === name).map((p) => JSON.parse(p.blobs[3]!) as Record<string, unknown>);
+    return { body: (await res.json()) as { outcome: string }, run: attrs("github.scan_run"), completed: attrs("github.scan_completed") };
+  };
+
+  it("records every run with its outcome and a completion only for a completed scan", async () => {
+    const done = await runOutcome(stubFetch(() => Response.json({ total_count: 0, items: [] })).fetchFn, ["@a/b"]);
+    expect(done.run).toEqual([expect.objectContaining({ outcome: "completed" })]);
+    expect(done.completed).toHaveLength(1);
+
+    const down = await runOutcome(stubFetch(() => new Response("", { status: 502 })).fetchFn, ["@a/b"]);
+    expect(down.body.outcome).toBe("unreachable");
+    expect(down.run).toEqual([expect.objectContaining({ outcome: "unreachable" })]);
+    expect(down.completed).toEqual([]);
   });
 
   it("answers 503 and searches nothing when the code-search token cannot be read", async () => {

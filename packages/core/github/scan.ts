@@ -401,7 +401,7 @@ export async function adoptionOf(d1: D1, pack: string): Promise<PackAdoption> {
     [pack],
   );
   const createdAt = (published[0] as { created_at: string } | undefined)?.created_at;
-  // A pack that did not exist when the scan began was never searched for: unknown, not zero.
+  // The pack list is read as the scan walks it, so a pack created after the scan began may have been passed over: unknown, not zero.
   if (createdAt !== undefined && createdAt > latest.started_at) return unknown;
   const { rows } = await d1.query("select pinned_version from pack_declarations where scan_id = ? and pack = ?", [latest.id, pack]);
   const pinnedVersions: Record<string, number> = {};
