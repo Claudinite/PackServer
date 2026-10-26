@@ -1,4 +1,8 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import { check, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { inList } from "./enum-check";
+
+export const NOTICE_STATUSES = ["sending", "sent"] as const;
 
 /**
  * The last document the validator signed under each key (`scope:<name>`, `private:<pack>`), so the
@@ -21,7 +25,7 @@ export const notice_deliveries = sqliteTable(
     /** When the row was claimed, which is when the send began. */
     sent_at: text("sent_at").notNull(),
     /** `sending` from the claim until the mail is accepted; a `sending` row older than the lease is claimed again. */
-    status: text("status", { enum: ["sending", "sent"] }).notNull().default("sent"),
+    status: text("status", { enum: NOTICE_STATUSES }).notNull().default("sent"),
   },
-  (t) => [index("notice_deliveries_sent_idx").on(t.sent_at)],
+  (t) => [index("notice_deliveries_sent_idx").on(t.sent_at), check("notice_deliveries_status_check", sql`${t.status} in (${inList(NOTICE_STATUSES)})`)],
 );

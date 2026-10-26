@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "4d354b78-5d0a-4265-b977-fc0cd27c3fa3",
-  "prevId": "0f13d9a6-4a61-4d1e-be3e-e62c52eb6e26",
+  "id": "108585c4-601f-4d8e-ac10-cbd273cd7830",
+  "prevId": "4ec8d269-6df2-469f-a3a7-6c6cbbda4063",
   "tables": {
     "credentials": {
       "name": "credentials",
@@ -653,34 +653,6 @@
         },
         "report_key": {
           "name": "report_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "preinstall": {
-          "name": "preinstall",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "status_reason": {
-          "name": "status_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "status_security": {
-          "name": "status_security",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "status_changed_at": {
-          "name": "status_changed_at",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -6089,7 +6061,12 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "notice_deliveries_status_check": {
+          "name": "notice_deliveries_status_check",
+          "value": "\"notice_deliveries\".\"status\" in ('sending', 'sent')"
+        }
+      }
     },
     "signed_documents": {
       "name": "signed_documents",

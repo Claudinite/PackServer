@@ -70,14 +70,14 @@
           {
             "queue": "notify-test",
             "max_batch_size": 10,
-            "max_batch_timeout": 5,
+            "max_batch_timeout": 1,
             "max_retries": 5,
             "dead_letter_queue": "notify-dlq-test"
           },
           {
             "queue": "reindex-test",
             "max_batch_size": 10,
-            "max_batch_timeout": 5,
+            "max_batch_timeout": 1,
             "max_retries": 5,
             "dead_letter_queue": "reindex-dlq-test"
           }

@@ -108,15 +108,15 @@ export class ScopeCoordinatorLogic implements ScopeCoordinatorRpc {
     await this.rebuild(scope);
   }
 
-  /**
-   * One rebuild at a time: a request that arrives while one runs asks for exactly one more
-   * after it, and is answered with that one's result, so the newest change is always signed last.
-   */
   /** The synthetic tenant keeps its own signed index but stays out of the root's list of scopes. */
   private async isPublic(scope: string): Promise<boolean> {
     return (await this.deps.d1.query(`select 1 from scopes s where s.name = ? and ${publicScopeOnly("s")}`, [scope])).rows.length > 0;
   }
 
+  /**
+   * One rebuild at a time: a request that arrives while one runs asks for exactly one more
+   * after it, and is answered with that one's result, so the newest change is always signed last.
+   */
   private rebuild(scope: string): Promise<{ sha256: string; serial: number }> {
     if (this.running) {
       this.again = scope;

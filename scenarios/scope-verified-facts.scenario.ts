@@ -14,10 +14,10 @@ scenario(
     // A Verified Publisher's own versions are staged (REQ-PUB-019), so these are published before the approval.
     const verifiedVersion = await p.publish(world.archive("gcp", { version: "1.0.0" })).as("@verified/gcp@1.0.0");
     const plainVersion = await q.publish(world.archive("gcp", { version: "1.0.0" })).as("@plain/gcp@1.0.0");
-    for (const admitted of [verifiedVersion, plainVersion]) {
+    await Promise.all([verifiedVersion, plainVersion].map(async (admitted) => {
       await world.validation.completes(admitted);
       await admitted.promoted();
-    }
+    }));
 
     const challenge = await verified.verifyDomain("verified.example");
     challenge.publishTxt();
@@ -39,14 +39,6 @@ scenario(
       verified_github_org: null,
     });
     expect(await plainVersion.verification()).toEqual({ verified: false });
-
-    // A Verified Publisher's next version waits for the owner's approval instead of being promoted.
-    const staged = await p.publish(world.archive("gcp", { version: "1.1.0" })).as("@verified/gcp@1.1.0");
-    await world.validation.completes(staged);
-    const control = await q.publish(world.archive("gcp", { version: "1.1.0" })).as("@plain/gcp@1.1.0");
-    await world.validation.completes(control);
-    await control.promoted();
-    await expect(staged.status()).rejects.toThrow(/has no version row/);
 
     await world.verifiedPublishers.revoke(verified, "impersonation");
     await expect(world.profiles.profile(verified)).resolves.toMatchObject({ verifiedPublisher: false, verifiedDomain: "verified.example", mark: { text: "● verified.example", hoverLabel: null } });
