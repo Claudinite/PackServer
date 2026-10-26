@@ -320,7 +320,7 @@ scenario("IT-PAY-018 A grant on a private pack asks for no payment", async (worl
 
 scenario("IT-PRIV-019 Changing the allowlist needs a passkey and is audited", async (world) => {
   const ann = await world.publishers.create({ handle: "ann" });
-  const acme = await ann.orgs.create("acme");
+  await ann.orgs.create("acme");
   const secret = await world.packs.public("@acme/secret", { visibility: "private", versions: ["1.0.0", "1.1.0"] });
   const bob = world.access.account("bob");
   const bobRepo = world.access.repository(bob, "app");
@@ -401,7 +401,6 @@ scenario("IT-PRIV-014 Maintainers manage grants; a person with no role in the or
   const secret = await world.packs.public("@acme/secret", { visibility: "private", versions: ["1.0.0", "1.1.0"] });
   const bob = world.access.account("bob");
   const bobRepo = world.access.repository(bob, "app");
-  const manage = world.access.manage(secret, ann);
   const maintainer = await world.publishers.create({ handle: "mia" });
   const outsider = await world.publishers.create({ handle: "xavier" });
   await acme.invite(maintainer).as("maintainer");
@@ -418,10 +417,8 @@ scenario("IT-PRIV-014 Maintainers manage grants; a person with no role in the or
 
 scenario("IT-PRIV-010 Making a pack public needs an assertion and a confirmation, and is permanent", async (world) => {
   const ann = await world.publishers.create({ handle: "ann" });
-  const acme = await ann.orgs.create("acme");
+  await ann.orgs.create("acme");
   const secret = await world.packs.public("@acme/secret", { visibility: "private", versions: ["1.0.0", "1.1.0"] });
-  const bob = world.access.account("bob");
-  const bobRepo = world.access.repository(bob, "app");
   const manage = world.access.manage(secret, ann);
   const agent = world.agents.anonymous();
   await expect(secret.read()).toBeNotFound();
@@ -445,8 +442,6 @@ scenario("IT-PUB-022 Only owners change a pack's visibility or offer it to anoth
   const ann = await world.publishers.create({ handle: "ann" });
   const acme = await ann.orgs.create("acme");
   const secret = await world.packs.public("@acme/secret", { visibility: "private", versions: ["1.0.0", "1.1.0"] });
-  const bob = world.access.account("bob");
-  const bobRepo = world.access.repository(bob, "app");
   const manage = world.access.manage(secret, ann);
   const maintainer = await world.publishers.create({ handle: "mia" });
   await acme.invite(maintainer).as("maintainer");
