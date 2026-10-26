@@ -26,7 +26,8 @@
     "mcp": {
       "d1": { "DB": "registry" },
       "kv": { "OAUTH_KV": "oauth", "TELEMETRY_KV": "telemetry" },
-      "r2": { "PACKS_PRIVATE": { "bucket": "packs-private", "access": "read" } },
+      "r2": { "PACKS_PUBLIC": { "bucket": "packs-public", "access": "read" },
+        "PACKS_PRIVATE": { "bucket": "packs-private", "access": "read" } },
       "queues": {},
       "queue_consumers": [],
       "workflows": {},
