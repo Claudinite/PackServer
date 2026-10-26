@@ -1,6 +1,5 @@
 import { handleWebhook } from "@packserver/core/github";
 import { refusal } from "@packserver/http";
-import { syncClock } from "@packserver/ports";
 import type { Context } from "hono";
 import type { GithubRuntime } from "../bindings";
 import { d1GithubStore } from "./d1-store";
@@ -41,7 +40,6 @@ export function webhookRoute(runtime: GithubRuntime) {
   return async (c: Context): Promise<Response> => {
     const body = await readCappedBody(c.req.raw);
     if (!body) return ignored();
-    await syncClock(runtime.ports.clock);
     const [secret, appId] = await Promise.all([runtime.services.secrets.webhook(), runtime.services.secrets.appId()]);
     const outcome = await handleWebhook(
       {

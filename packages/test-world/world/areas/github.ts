@@ -1,6 +1,9 @@
+import { adoptionOf, ownsDeclaringRepository, type Cursor, type PackAdoption, type ScanOutcome } from "@packserver/core/github";
+import type { D1 } from "@packserver/ports";
 import type { Driver } from "../../drivers/driver";
 import { GITHUB_TEST_APP_ID, type FakeFile, type FakeRepo, type RecordedRequest } from "../../fakes/github-app";
-import { InfrastructureError } from "../errors";
+import { createClock } from "../clock";
+import { InfrastructureError, stubModule } from "../errors";
 import { Ignored } from "../outcomes";
 
 export interface GitHubRepoHandle {
@@ -75,6 +78,26 @@ export interface IssueRow {
   state: "open" | "closed" | "deleted";
 }
 
+export interface PublicRepoOptions {
+  /** Packs the repository's Claudinite settings declare; `version` freezes the pack to it. */
+  declares?: Array<PackRef | { pack: PackRef; version: string }>;
+  /** Replaces the whole settings file, for a spelling the declarations above cannot express (an unscoped id). */
+  settings?: string;
+  /** Where the settings file sits; the repository root by default. */
+  directory?: string;
+  id?: number;
+  private?: boolean;
+}
+export type PackRef = string | { systemName: string };
+
+/** One run of the weekly adoption scan, as the registry reported it. */
+export interface ScanRun {
+  outcome: ScanOutcome;
+  pages: number;
+  declarations: number;
+  rateRemaining: number | null;
+}
+
 /** The faked GitHub: accounts, repos, webhooks and the proof that PackServer never writes. */
 export interface GitHubModule {
   github: {
@@ -95,6 +118,34 @@ export interface GitHubModule {
     webhook(event: string, o?: WebhookOptions): Promise<Delivered | IgnoredDelivery>;
     installation(id: number): Promise<InstallationRow | null>;
     issue(repo: string, number: number): Promise<IssueRow | null>;
+    /** A repository whose default branch holds Claudinite settings declaring these packs, as code search finds it. */
+    publicRepo(slug: string, o?: PublicRepoOptions): GitHubRepoHandle;
+    codeSearch: {
+      /** Every code search answers only after this much time has passed (`null` restores it). */
+      slowBy(duration: string | null): void;
+      /** Code search also returns private repositories, as a token that could see them would. */
+      leakPrivateRepositories(on?: boolean): void;
+      /** Searches allowed before GitHub refuses with a rate limit. */
+      allowance(searches: number): void;
+      /** The query text of every search made, in order. */
+      queries(): string[];
+      /** The credential every request to GitHub carried. */
+      credentials(): string[];
+      /** Requests that named a private repository. */
+      privateRepositoryRequests(): RecordedRequest[];
+    };
+    scan: {
+      /** One run of the weekly scan; `again` starts a new scan although one finished recently. */
+      run(o?: { again?: true }): Promise<ScanRun>;
+      /** The latest completed scan's count for the pack, against the one before. */
+      adoption(pack: PackRef): Promise<PackAdoption>;
+      /** Whether the login owns a public repository the latest completed scan found declaring the pack. */
+      verifiedAdopter(login: string, pack: PackRef): Promise<boolean>;
+      /** Where the scan in progress resumes; null when none is. */
+      cursor(): Promise<Cursor | null>;
+      /** How many scans have completed and are still kept. */
+      completed(): Promise<number>;
+    };
     /** What the validator asks the `github` Worker for. */
     fetchTree(o: { repository: string | GitHubRepoHandle; commit: string; path: string }): Promise<TreeFetchResponse>;
   };
@@ -157,6 +208,25 @@ export function createGitHub(driver: Driver): GitHubModule {
     return { status: res.status, result: (res.json() as { result: Delivered["result"] }).result };
   };
 
+  const d1: D1 = {
+    async query(sql, params = []) {
+      return { rows: await query(sql, params), meta: { changes: 0, last_row_id: null } };
+    },
+    async batch() {
+      throw new InfrastructureError("the World reads the scan's tables and never writes them");
+    },
+  };
+  const nameOf = (pack: PackRef) => (typeof pack === "string" ? pack : pack.systemName);
+  const settingsOf = (o: PublicRepoOptions): string => {
+    if (o.settings !== undefined) return o.settings;
+    const entries = (o.declares ?? []).map((d) => {
+      const declared = typeof d === "object" && "pack" in d ? { name: nameOf(d.pack), version: d.version } : { name: nameOf(d) };
+      return declared.version === undefined ? `    - "${declared.name}"` : `    - name: "${declared.name}"\n      version: "${declared.version}"`;
+    });
+    return `engine:\n  channel: "stable"\npacks:\n  channel: "canary"\n  declared:\n${entries.join("\n")}\n`;
+  };
+  const DURATION = /^(\d+(?:ms|s|m|h|d))+$/;
+
   const repoHandle = (repo: FakeRepo): GitHubRepoHandle => ({
     id: repo.id,
     slug: repo.slug,
@@ -175,6 +245,46 @@ export function createGitHub(driver: Driver): GitHubModule {
         app().failWith = status ?? undefined;
       },
       repo: (slug, o) => repoHandle(app().repo(slug, o)),
+      publicRepo(slug, o = {}) {
+        const repo = app().repo(slug, { ...(o.id === undefined ? {} : { id: o.id }), private: o.private ?? false });
+        const path = `${o.directory ? `${o.directory}/` : ""}.claudinite/settings.yaml`;
+        app().commit(repo, { [path]: settingsOf(o) });
+        return repoHandle(repo);
+      },
+      codeSearch: {
+        slowBy(duration) {
+          if (duration !== null && !DURATION.test(duration)) throw new InfrastructureError(`not a duration: ${duration} (use e.g. 11m)`);
+          const clock = createClock(driver);
+          app().beforeSearch = duration === null ? undefined : () => clock.advance(duration);
+        },
+        leakPrivateRepositories(on = true) {
+          app().leakPrivate = on;
+        },
+        allowance(searches) {
+          app().allowance = searches;
+          app().searches = 0;
+        },
+        queries: () => app().requests.filter((r) => r.path.startsWith("/search/code")).map((r) => new URLSearchParams(r.path.split("?")[1]).get("q") ?? ""),
+        credentials: () => [...new Set(app().requests.map((r) => r.credential ?? "none"))],
+        privateRepositoryRequests: () => app().privateRepositoryRequests(),
+      },
+      scan: {
+        async run(o = {}) {
+          const res = await driver.http.request({ surface: "github", method: "POST", path: `/internal/scan${o.again ? "?force=1" : ""}`, headers: { "content-type": "application/json" }, body: {} });
+          if (res.status !== 200) throw new InfrastructureError(`the github Worker answered a scan run with ${res.status}: ${res.text}`);
+          return res.json() as ScanRun;
+        },
+        adoption: (pack) => adoptionOf(d1, nameOf(pack)),
+        verifiedAdopter: (login, pack) => ownsDeclaringRepository(d1, login, nameOf(pack)),
+        async cursor() {
+          const rows = await query("select cursor from adoption_scans where completed_at is null order by started_at desc limit 1", []);
+          const raw = (rows[0] as { cursor: string | null } | undefined)?.cursor;
+          return raw ? (JSON.parse(raw) as Cursor) : null;
+        },
+        async completed() {
+          return Number((await query("select count(*) as n from adoption_scans where completed_at is not null", []))[0]!.n);
+        },
+      },
       async installApp(login, o = {}) {
         const id = o.installationId ?? ++installations;
         const delivered = await deliver("installation", installationPayload("created", id, login, o));
