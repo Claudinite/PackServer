@@ -1,13 +1,14 @@
 import { z } from "zod";
 import { ABUSE_CATEGORIES, ABUSE_TARGET_KINDS } from "@packserver/schema/db";
-import { WIDELY_DECLARED, isHighSeverity, MAX_DETAILS, STANDING_REPORTERS } from "./constants.ts";
+import { isEstablished } from "../community/standing.ts";
+import { ABUSE_REPORTS_PER_DAY, isHighSeverity, MAX_DETAILS } from "./constants.ts";
 import { declaredBy } from "./declared.ts";
 import { recordAction } from "./actions.ts";
-import { nowIso, type ModerationPorts } from "./ports.ts";
+import { isoOf, nowIso, type ModerationPorts } from "./ports.ts";
 import { prioritisedAttrs } from "./signals.ts";
-import { standingOf } from "./standing.ts";
+import { groundsFor, type Grounds } from "./standing.ts";
+import { holdVersion } from "./status.ts";
 import { findPackById, findPublicPack, hasVersion, newestVersion, type PackInfo } from "./targets.ts";
-import { transitionVersion } from "./transition.ts";
 
 export const AbuseInput = z.object({
   kind: z.enum(ABUSE_TARGET_KINDS),
@@ -31,7 +32,7 @@ export interface AbuseReportView {
 
 export type FileOutcome =
   | { ok: true; report: AbuseReportView }
-  | { ok: false; reason: "unknown_target" | "unknown_version" | "blocked" | "duplicate"; message: string };
+  | { ok: false; reason: "unknown_target" | "unknown_version" | "blocked" | "duplicate" | "young_account" | "daily_limit"; message: string };
 
 const refuse = (reason: Extract<FileOutcome, { ok: false }>["reason"], message: string): FileOutcome => ({ ok: false, reason, message });
 
@@ -78,6 +79,10 @@ export async function fileAbuseReport(ports: ModerationPorts, reporterId: string
   if ((await d1.query("select 1 from abuse_reporter_blocks where reporter_id = ?", [reporterId])).rows.length > 0) {
     return refuse("blocked", "You can no longer file reports.");
   }
+  const now = ports.clock.now();
+  if (!(await isEstablished(d1, reporterId, now))) return refuse("young_account", "Accounts under 24 hours old cannot file abuse reports yet.");
+  const today = await d1.query("select count(*) as n from abuse_reports where reporter_id = ? and created_at > ?", [reporterId, isoOf(now - 24 * 60 * 60 * 1000)]);
+  if (Number(today.rows[0]?.n) >= ABUSE_REPORTS_PER_DAY) return refuse("daily_limit", `You can file ${ABUSE_REPORTS_PER_DAY} abuse reports a day.`);
   const found = await resolve(ports, input);
   if ("ok" in found) return found;
   const key = await detailsKey(input.category, input.details);
@@ -97,26 +102,10 @@ export async function fileAbuseReport(ports: ModerationPorts, reporterId: string
   if (prioritised && found.pack && found.version) {
     const declared = await declaredBy(d1, found.pack.name);
     ports.emit("moderation.report_prioritised", prioritisedAttrs({ id, pack: found.pack.name, version: found.version, declaredBy: declared }));
-    const grounds = await holdGrounds(ports, reporterId, found.pack, found.version, declared);
+    const grounds = await groundsFor(d1, found.pack, found.version, declared, now);
     if (grounds) await holdOnStanding(ports, found.pack, found.version, grounds);
   }
   return { ok: true, report: view };
-}
-
-type Grounds = "verified_publisher" | "reporters";
-
-/** Which standing, if any, holds the version now: never when the declaring count is unknown or above 100. */
-async function holdGrounds(ports: ModerationPorts, reporterId: string, pack: PackInfo, version: string, declared: number | null): Promise<Grounds | null> {
-  if (declared === null || declared > WIDELY_DECLARED) return null;
-  const now = ports.clock.now();
-  if ((await standingOf(ports.d1, reporterId, pack, now)) === "verified_publisher") return "verified_publisher";
-  const { rows } = await ports.d1.query(
-    "select distinct reporter_id from abuse_reports where pack_id = ? and version = ? and target_kind = 'pack' and state = 'open' and collapsed_into is null and prioritised_at is not null",
-    [pack.id, version],
-  );
-  let counted = 0;
-  for (const row of rows) if ((await standingOf(ports.d1, String(row.reporter_id), pack, now)) === "established") counted += 1;
-  return counted >= STANDING_REPORTERS ? "reporters" : null;
 }
 
 const GROUNDS: Record<Grounds, string> = {
@@ -126,9 +115,9 @@ const GROUNDS: Record<Grounds, string> = {
 
 async function holdOnStanding(ports: ModerationPorts, pack: PackInfo, version: string, grounds: Grounds): Promise<void> {
   const reason = GROUNDS[grounds];
-  const moved = await transitionVersion(ports, "quarantine", { pack: pack.name, version, reason });
-  if (!moved.ok || !moved.changed) return;
+  const held = await holdVersion(ports, "quarantine", { pack: pack.name, version, reason });
+  if (!held.ok || !held.change) return;
   const actor = { kind: "system" as const, id: "moderation" };
-  await recordAction(ports, { pack, version, kind: "quarantine", reason, trigger: "report_standing", actor });
+  await recordAction(ports, { scope: { id: pack.scope_id, name: pack.scope }, pack, version, kind: "quarantine", reason, trigger: "report_standing", actor, change: held.change });
   await ports.audit(actor, "admin.action", `version:${pack.name}@${version}`, { detail: { verb: "version.quarantine", reason } });
 }

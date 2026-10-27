@@ -12,4 +12,4 @@ export * from "./reported.ts";
 export * from "./signals.ts";
 export * from "./standing.ts";
 export * from "./targets.ts";
-export * from "./transition.ts";
+export * from "./status.ts";

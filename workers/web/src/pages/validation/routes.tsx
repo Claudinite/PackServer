@@ -121,8 +121,8 @@ routes.get("/validation/:id", async (c) => {
           </details>
         )}
         <p class="status" id="ps-status" role="status" />
-        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: CLIENT_LIB }} />
         <ActionDialog />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: CLIENT_LIB }} />
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: VALIDATION_CLIENT }} />
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: APPROVE_CLIENT }} />
       </div>

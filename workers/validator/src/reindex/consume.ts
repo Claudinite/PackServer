@@ -1,4 +1,6 @@
+import { reconcileRemoved } from "@packserver/core/publishing";
 import { publicScopeOnly } from "@packserver/core/synthetic";
+import { syncClock } from "@packserver/ports";
 import { acceptQueueMessage, queueMessage } from "@packserver/schema";
 import { z } from "zod";
 import type { ValidatorRuntime } from "../bindings";
@@ -6,8 +8,23 @@ import type { ValidatorRuntime } from "../bindings";
 export const REINDEX_SCHEMA = 1;
 export const ScopeProofChanged = queueMessage({ type: z.literal("scope.proof_changed"), scope: z.string().min(1), change: z.string().min(1) });
 
-/** The coordinator refreshes the scope's verification facts and has its index and private entries signed. */
+/**
+ * The bytes of removed versions are deleted and purged first, then the coordinator refreshes the scope's verification
+ * facts and has its index and private entries signed. A purge that cannot be made stays owed and is tried at the next reindex; a failure there never keeps the index from being signed.
+ */
 export async function reindexScope(rt: ValidatorRuntime, scope: string): Promise<{ sha256: string; serial: number }> {
+  await syncClock(rt.ports.clock);
+  const { r2, d1, clock } = rt.ports;
+  try {
+    const removed = await reconcileRemoved(
+      { d1, clock, publicBucket: r2.PACKS_PUBLIC, privateBucket: r2.PACKS_PRIVATE, cdnOrigin: rt.config.cdnOrigin(), purge: rt.config.purge },
+      scope,
+    );
+    if (removed.purgePending > 0) console.log(JSON.stringify({ event: "validator.purge_pending", scope, versions: removed.purgePending }));
+    if (removed.remaining > 0) console.log(JSON.stringify({ event: "validator.reconcile_remaining", scope, versions: removed.remaining }));
+  } catch (error) {
+    console.log(JSON.stringify({ event: "validator.reconcile_failed", scope, reason: String(error) }));
+  }
   const built = await rt.ports.durableObjects.call("ScopeCoordinator", scope, "rebuildIndex", [{ scope }]);
   return { sha256: built.sha256, serial: built.serial };
 }

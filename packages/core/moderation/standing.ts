@@ -1,7 +1,7 @@
 import type { D1 } from "@packserver/ports";
 import { hasVerifiedAdoption } from "../community/adoption.ts";
 import { verificationFacts } from "../scopes/verified-publisher.ts";
-import { DISMISSALS_FOR_LOSS, REPORTER_MIN_AGE_MS, STANDING_LOSS_MS } from "./constants.ts";
+import { DISMISSALS_FOR_LOSS, REPORTER_MIN_AGE_MS, STANDING_LOSS_MS, STANDING_REPORTERS, STANDING_SCAN, STANDING_SCAN_PAGES, WIDELY_DECLARED } from "./constants.ts";
 import { isoOf } from "./ports.ts";
 import type { PackInfo } from "./targets.ts";
 
@@ -23,10 +23,25 @@ async function hasPromotedPack(d1: D1, userId: string): Promise<boolean> {
   return rows.length > 0;
 }
 
-/** Reporters whose reports were dismissed twice lose the ability to count toward a hold for 90 days. */
+/** A reporter whose reports were dismissed twice cannot count toward a hold until 90 days after the second dismissal. */
 export async function lostStanding(d1: D1, userId: string, nowMs: number): Promise<boolean> {
-  const { rows } = await d1.query("select count(*) as n from abuse_reports where reporter_id = ? and state = 'dismissed' and decided_at > ?", [userId, isoOf(nowMs - STANDING_LOSS_MS)]);
-  return Number(rows[0]?.n ?? 0) >= DISMISSALS_FOR_LOSS;
+  const { rows } = await d1.query("select 1 from abuse_standing_losses where reporter_id = ? and lost_at > ?", [userId, isoOf(nowMs - STANDING_LOSS_MS)]);
+  return rows.length > 0;
+}
+
+/** Called as dismissals land: the second inside the window, counted from the last loss, starts a new loss. */
+export async function recordDismissals(d1: D1, reporterIds: readonly string[], nowMs: number): Promise<void> {
+  for (const userId of reporterIds) {
+    if (await lostStanding(d1, userId, nowMs)) continue;
+    const { rows } = await d1.query(
+      `select count(*) as n from abuse_reports where reporter_id = ? and state = 'dismissed' and decided_at > ?
+         and decided_at > coalesce((select lost_at from abuse_standing_losses where reporter_id = ?), '')`,
+      [userId, isoOf(nowMs - STANDING_LOSS_MS), userId],
+    );
+    if (Number(rows[0]?.n ?? 0) >= DISMISSALS_FOR_LOSS) {
+      await d1.query("insert into abuse_standing_losses (reporter_id, lost_at) values (?, ?) on conflict (reporter_id) do update set lost_at = excluded.lost_at", [userId, isoOf(nowMs)]);
+    }
+  }
 }
 
 /**
@@ -42,4 +57,35 @@ export async function standingOf(d1: D1, userId: string, pack: PackInfo, nowMs: 
   if (typeof created !== "string" || nowMs - Date.parse(created) < REPORTER_MIN_AGE_MS) return "none";
   if (await lostStanding(d1, userId, nowMs)) return "none";
   return (await hasVerifiedAdoption(d1, userId, { id: pack.id, name: pack.name })) || (await hasPromotedPack(d1, userId)) ? "established" : "none";
+}
+
+export type Grounds = "verified_publisher" | "reporters";
+
+/**
+ * Which standing, if any, holds the version on the open prioritised reports it has now: never when the declaring count
+ * is unknown or above 100. Blocked reporters count for nothing, and the look stops at the first grounds it finds or
+ * after a bounded number of reporters.
+ */
+export async function groundsFor(d1: D1, pack: PackInfo, version: string, declared: number | null, nowMs: number): Promise<Grounds | null> {
+  if (declared === null || declared > WIDELY_DECLARED) return null;
+  let counted = 0;
+  let after = "";
+  for (let page = 0; page < STANDING_SCAN_PAGES; page += 1) {
+    const { rows } = await d1.query(
+      `select distinct reporter_id from abuse_reports
+       where pack_id = ? and version = ? and target_kind = 'pack' and state = 'open' and collapsed_into is null and prioritised_at is not null
+         and reporter_id > ? and reporter_id not in (select reporter_id from abuse_reporter_blocks)
+       order by reporter_id limit ?`,
+      [pack.id, version, after, STANDING_SCAN],
+    );
+    for (const row of rows) {
+      const standing = await standingOf(d1, String(row.reporter_id), pack, nowMs);
+      if (standing === "verified_publisher") return "verified_publisher";
+      if (standing === "established") counted += 1;
+      if (counted >= STANDING_REPORTERS) return "reporters";
+    }
+    if (rows.length < STANDING_SCAN) break;
+    after = String(rows[rows.length - 1]!.reporter_id);
+  }
+  return null;
 }

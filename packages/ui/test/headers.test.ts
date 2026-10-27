@@ -60,6 +60,11 @@ describe("security headers (IT-ABUSE-008, IT-ABUSE-009)", () => {
     expect(contentSecurityPolicy("abc", { turnstile: true })).toContain("script-src 'nonce-abc' https://challenges.cloudflare.com;");
     expect(contentSecurityPolicy("abc", { turnstile: true })).toContain("frame-src https://challenges.cloudflare.com;");
   });
+
+  it("lets only a direct-upload page connect to the staging bucket", () => {
+    expect(contentSecurityPolicy("abc")).toContain("connect-src 'self';");
+    expect(contentSecurityPolicy("abc", { directUpload: true })).toContain("connect-src 'self' https://*.r2.cloudflarestorage.com;");
+  });
 });
 
 async function nonceOf(res: Response): Promise<string> {

@@ -98,15 +98,19 @@ export async function admit(runtime: PublishRuntime, request: AdmissionRequest):
   }
 }
 
-/** Whether a version is a version already: published, retired, or carried by a publish run that has neither failed nor expired. */
+/**
+ * Whether a version is a version already: published, retired, carried by a publish run that has neither failed nor expired,
+ * or belonging to a pack its owner deleted, whose name nothing is published under again.
+ */
 export async function versionTaken(d1: PublishRuntime["ports"]["d1"], scope: { id: string; name: string }, packName: string, version: string, now: number): Promise<boolean> {
   const taken = await d1.query(
     `select 1 from pack_versions v join packs p on p.id = v.pack_id where p.scope_id = ? and p.name = ? and v.version = ?
      union all select 1 from retired_names where kind = 'version' and name = ?
+     union all select 1 from packs where scope_id = ? and name = ? and removed_at is not null
      union all select 1 from validation_runs where scope_id = ? and pack_name = ? and version = ? and kind = 'publish'
        and not (status = 'finished' and verdict in ('fail', 'error'))
        and (expires_at is null or expires_at > ?)`,
-    [scope.id, packName, version, `@${scope.name}/${packName}@${version}`, scope.id, packName, version, new Date(now).toISOString()],
+    [scope.id, packName, version, `@${scope.name}/${packName}@${version}`, scope.id, packName, scope.id, packName, version, new Date(now).toISOString()],
   );
   return taken.rows.length > 0;
 }

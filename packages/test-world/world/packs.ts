@@ -7,7 +7,8 @@ import type { Aliases } from "./alias";
 import { InfrastructureError, NotImplemented } from "./errors";
 import { Held, NotFound, Refusal, type Observation } from "./outcomes";
 import { viewOfPackPage, type PackPageView } from "./page-view";
-import type { Pack, Verification, Version } from "./types";
+import { lifecycleCall } from "./lifecycle-call";
+import type { Pack, Sensitive, User, Verification, Version } from "./types";
 
 export interface PublicPackOptions {
   versions?: string[];
@@ -387,12 +388,21 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
     if (change.security !== undefined) v.security = change.security;
     v.statusChangedAt = change.status === "active" ? null : new Date(await nowMs()).toISOString();
     const { db } = await storage();
-    await db.batch([db.prepare("UPDATE pack_versions SET state = ? WHERE id = ?").bind(change.status, v.id)]);
+    await db.batch([
+      db
+        .prepare("UPDATE pack_versions SET state = ?, status_reason = ?, status_security = ?, status_changed_at = ? WHERE id = ?")
+        .bind(change.status, change.reason ?? null, change.security ?? null, v.statusChangedAt, v.id),
+    ]);
     await writeHistory(pack);
   }
 
   function versionHandle(pack: SeededPack, owner: PackHandle, version: string): VersionHandle {
     const exact = (o?: Pick<ReadOptions, "session">) => get(pathFor(pack.systemName, version), headersFor(o));
+    const target = `${pack.systemName.slice(1)}@${version}`;
+    const act = async (o: (Sensitive & { by?: User }) | undefined, action: string, verb: string, asserted: string, json: unknown): Promise<void | NotFound> => {
+      const out = await lifecycleCall(o?.by, `version.${verb}`, action, asserted, `/api/packs/${pack.systemName}/versions/${version}/${verb}`, json, o);
+      if (out instanceof NotFound) return out;
+    };
     const body = async (): Promise<VersionBody> => {
       const res = await exact();
       if (res.status !== 200) throw new InfrastructureError(`${pack.name}@${version} did not answer a view (${res.status})`);
@@ -443,10 +453,10 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
       },
       seed: (change) => changeState(pack, version, change),
       approve: notYet("version.approve"),
-      deprecate: notYet("version.deprecate"),
-      yank: notYet("version.yank"),
-      unyank: notYet("version.unyank"),
-      delete: notYet("version.delete"),
+      deprecate: (reason, o) => act(o, "version.deprecate", "deprecate", target, { reason }),
+      yank: (o) => act(o, "version.yank", "yank", `${target}:${o.security ? "security" : "plain"}`, { reason: o.reason, ...(o.security ? { security: true } : {}) }),
+      unyank: (o) => act(o, "version.unyank", "unyank", target, {}),
+      delete: (o) => act(o, "version.delete", "delete", target, {}),
     };
   }
 

@@ -167,7 +167,7 @@ journey is [JT-004](journeys.md).
 - **Runs:** push
 - **Action:** a signed-in person reports a pack as `spam`, a review as `impersonation`, a profile as `other`; an anonymous visitor clicks report.
 - **Faked:** Turnstile.
-- **Assert:** the three reports exist with their categories; the visitor is redirected to sign-in.
+- **Assert:** the three reports exist with their categories; the visitor is redirected to sign-in. A report with a failed human check, one from an account under a day old and the eleventh of a day are each refused.
 
 ### IT-MOD-009 A high-severity report labels and jumps the queue; downloads are held only on standing, the judge's timer, or an admin
 - **Covers:** REQ-MOD-009

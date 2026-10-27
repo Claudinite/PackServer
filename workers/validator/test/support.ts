@@ -20,7 +20,7 @@ export async function testRuntime(o: { seed?: Uint8Array; withKeys?: boolean } =
   const rt = {
     ports: { ...fakes, d1 },
     services: {},
-    config: { signingSeed: async () => seed, siteOrigin: () => "https://registry.example", rescanBatch: () => 50 },
+    config: { signingSeed: async () => seed, siteOrigin: () => "https://registry.example", cdnOrigin: () => "https://packs.example", rescanBatch: () => 50, purge: async () => true },
   } as unknown as ValidatorRuntime;
   return { rt, db, fakes, publicBucket: fakes.r2.PACKS_PUBLIC!, privateBucket: fakes.r2.PACKS_PRIVATE!, signer: createSigner({ kid: KID, seed: SEED }) };
 }

@@ -42,7 +42,14 @@ CREATE TABLE `abuse_reports` (
 CREATE INDEX `abuse_reports_pack_idx` ON `abuse_reports` (`pack_id`,`version`,`state`);--> statement-breakpoint
 CREATE INDEX `abuse_reports_target_idx` ON `abuse_reports` (`target_kind`,`target_id`,`details_key`);--> statement-breakpoint
 CREATE INDEX `abuse_reports_reporter_idx` ON `abuse_reports` (`reporter_id`,`decided_at`);--> statement-breakpoint
+CREATE INDEX `abuse_reports_filed_idx` ON `abuse_reports` (`reporter_id`,`created_at`);--> statement-breakpoint
 CREATE INDEX `abuse_reports_open_idx` ON `abuse_reports` (`state`,`prioritised_at`);--> statement-breakpoint
+CREATE TABLE `abuse_standing_losses` (
+	`reporter_id` text PRIMARY KEY NOT NULL,
+	`lost_at` text NOT NULL,
+	FOREIGN KEY (`reporter_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
 CREATE TABLE `comment_removals` (
 	`comment_id` text PRIMARY KEY NOT NULL,
 	`reason` text NOT NULL,
@@ -70,20 +77,27 @@ CREATE UNIQUE INDEX `dmca_cases_action_unique` ON `dmca_cases` (`action_id`);-->
 CREATE INDEX `dmca_cases_state_idx` ON `dmca_cases` (`state`,`counter_filed_at`);--> statement-breakpoint
 CREATE TABLE `moderation_actions` (
 	`id` text PRIMARY KEY NOT NULL,
-	`pack_id` text NOT NULL,
-	`version` text NOT NULL,
+	`scope_id` text NOT NULL,
+	`pack_id` text,
+	`version` text,
 	`kind` text NOT NULL,
 	`reason` text NOT NULL,
 	`trigger` text NOT NULL,
 	`actor` text NOT NULL,
 	`taken_at` text NOT NULL,
 	`restored_at` text,
+	`from_state` text,
+	`from_reason` text,
+	`to_state` text,
+	`to_reason` text,
+	FOREIGN KEY (`scope_id`) REFERENCES `scopes`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`pack_id`) REFERENCES `packs`(`id`) ON UPDATE no action ON DELETE no action,
-	CONSTRAINT "moderation_actions_kind_check" CHECK("moderation_actions"."kind" in ('quarantine', 'yank', 'dmca_removal')),
+	CONSTRAINT "moderation_actions_kind_check" CHECK("moderation_actions"."kind" in ('quarantine', 'yank', 'dmca_removal', 'hide_pack', 'suspend')),
 	CONSTRAINT "moderation_actions_trigger_check" CHECK("moderation_actions"."trigger" in ('report_standing', 'judge', 'admin', 'dmca'))
 );
 --> statement-breakpoint
 CREATE INDEX `moderation_actions_version_idx` ON `moderation_actions` (`pack_id`,`version`,`taken_at`);--> statement-breakpoint
+CREATE INDEX `moderation_actions_scope_idx` ON `moderation_actions` (`scope_id`,`kind`);--> statement-breakpoint
 CREATE TABLE `moderation_appeals` (
 	`action_id` text PRIMARY KEY NOT NULL,
 	`note` text NOT NULL,

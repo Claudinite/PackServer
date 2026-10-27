@@ -1,6 +1,7 @@
+import { TURNSTILE_PASS_TOKEN } from "@packserver/ports/fakes";
 import { createAudit } from "@packserver/core/audit";
 import { holdEligibility, overdueReports, type PrioritisedReport } from "@packserver/core/alerts";
-import { declaredBy, fileAbuseReport, sweepDmca, type ModerationPorts } from "@packserver/core/moderation";
+import { declaredBy, fileAbuseReport, recordDismissals, sweepDmca, type ModerationPorts } from "@packserver/core/moderation";
 import type { D1, Queue } from "@packserver/ports";
 import type { ApiResponse, Driver } from "../../drivers/driver";
 import type { Aliases } from "../alias";
@@ -28,6 +29,8 @@ export interface AbuseDraft {
   details: string;
   /** The version a pack report is about; the newest the pack offers by default. */
   version?: string;
+  /** The reporter's human check fails, as a script's would. */
+  humanCheck?: "fail";
 }
 
 export interface MassReports {
@@ -69,6 +72,8 @@ export interface ModerationModule {
     seed: {
       /** The person has had `count` of their reports dismissed by a moderator. */
       dismissed(user: User, count: number): Promise<void>;
+      /** The person has already filed `count` abuse reports today, all since closed. */
+      filedToday(user: User, count: number): Promise<void>;
       /** Reports the person filed on the pack's earlier versions, which a publisher can see in the inbox. */
       reportsFiled(user: User, pack: Pack, count: number): Promise<void>;
       /** Made-up accounts, each reporting the pack with the same words through the shipped filing code. */
@@ -157,7 +162,10 @@ export function createModeration(driver: Driver, aliases: Aliases, admins: Pick<
           : "profile" in target
             ? { kind: "profile", target: aliases.alias(target.profile.name) }
             : { kind: "pack", target: target.systemName, ...(draft.version === undefined ? {} : { version: draft.version }) };
-      const res = await user.request("POST", "/api/abuse/reports", { json: { ...body, category: draft.category, details: draft.details } });
+      const res = await user.request("POST", "/api/abuse/reports", {
+        json: { ...body, category: draft.category, details: draft.details },
+        headers: { "cf-turnstile-response": draft.humanCheck === "fail" ? "not-a-passing-token" : TURNSTILE_PASS_TOKEN },
+      });
       if (res.status === 404) return new NotFound();
       if (res.status !== 201) return refusalOf(res, "reportAbuse");
       return (JSON.parse(aliases.unalias(res.text)) as { report: AbuseInfo }).report;
@@ -246,6 +254,18 @@ export function createModeration(driver: Driver, aliases: Aliases, admins: Pick<
               sql: `insert into abuse_reports (id, target_kind, target_id, reporter_id, category, details, details_key, state, decided_by, decided_at, created_at)
                     values (?, 'profile', ?, ?, 'spam', 'dismissed', ?, 'dismissed', 'seed', ?, ?)`,
               params: [crypto.randomUUID(), target, id, `seed-${i}`, at, at],
+            })),
+          );
+          await recordDismissals(await d1(), [id], (await now()) - DAY_MS);
+        },
+        async filedToday(user, count) {
+          const id = await userId(user);
+          const at = iso(await now());
+          await run(
+            Array.from({ length: count }, (_, i) => ({
+              sql: `insert into abuse_reports (id, target_kind, target_id, reporter_id, category, details, details_key, state, decided_by, decided_at, created_at)
+                    values (?, 'profile', ?, ?, 'other', 'closed', ?, 'actioned', 'seed', ?, ?)`,
+              params: [crypto.randomUUID(), crypto.randomUUID(), id, `today-${i}`, at, at],
             })),
           );
         },

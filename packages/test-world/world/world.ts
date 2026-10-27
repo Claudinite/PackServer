@@ -7,6 +7,7 @@ import { createAuditModule } from "./areas/audit";
 import { createCommunity } from "./areas/community";
 import { createDashboard } from "./areas/dashboard";
 import { createGitHub } from "./areas/github";
+import { createLifecycle } from "./areas/lifecycle";
 import { createMember } from "./areas/member";
 import { createModeration } from "./areas/moderation";
 import { createOperator, createProbe } from "./areas/operator";
@@ -18,6 +19,7 @@ import { createScopes } from "./areas/scopes";
 import { createSearch } from "./areas/search";
 import { createTelemetry } from "./areas/telemetry";
 import { createUsers } from "./areas/users";
+import { createWizard } from "./areas/wizard";
 import { createValidation } from "./validation";
 import { createPublishFlow } from "./publishing";
 import { createClock } from "./clock";
@@ -44,6 +46,8 @@ export function createWorld(driver: Driver, title: string) {
   const ci = createCi(driver, (name) => aliases.alias(name));
   const validation = createValidation(driver);
   const publishFlow = createPublishFlow(driver, aliases, scopes, ci, validation.ensureEngines);
+  const reports = createReportsModule(driver, aliases);
+  const lifecycle = createLifecycle(driver, aliases, people, reports);
   const undo: Array<() => Promise<void>> = [];
   const admin = createAdmin(driver, (restore) => void undo.push(restore), aliases);
   return {
@@ -57,8 +61,10 @@ export function createWorld(driver: Driver, title: string) {
     ...createAccess(driver, aliases),
     ...createCommunity(driver, aliases),
     ...createDashboard(),
+    ...createWizard(driver, aliases, ci, validation.ensureEngines),
     ...createModeration(driver, aliases, admin.admins),
-    ...createReportsModule(driver, aliases),
+    ...lifecycle,
+    ...reports,
     ...admin,
     ...createRecoveries(driver),
     ...createMember(driver),

@@ -5,6 +5,8 @@ declare module "hono" {
     cspNonce: string;
     /** Set by a page that renders the Turnstile widget; only such a page's policy names Cloudflare's challenge host. */
     turnstilePage?: boolean;
+    /** Set by a page whose script PUTs an archive straight to the staging bucket (REQ-PUB-016). */
+    directUploadPage?: boolean;
   }
 }
 
@@ -15,8 +17,11 @@ export function makeNonce(): string {
 /** The one third-party origin any page may name, and only the pages that render the human check. */
 export const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
 
+/** The staging bucket's S3 endpoint, which a presigned PUT from the publish wizard goes to. */
+export const STAGING_UPLOAD_ORIGIN = "https://*.r2.cloudflarestorage.com";
+
 /** No `unsafe-inline` for script or style: an inline block runs only under the per-response nonce. */
-export function contentSecurityPolicy(nonce: string, options: { turnstile?: boolean } = {}): string {
+export function contentSecurityPolicy(nonce: string, options: { turnstile?: boolean; directUpload?: boolean } = {}): string {
   return [
     "default-src 'none'",
     `script-src 'nonce-${nonce}'${options.turnstile ? ` ${TURNSTILE_ORIGIN}` : ""}`,
@@ -24,7 +29,7 @@ export function contentSecurityPolicy(nonce: string, options: { turnstile?: bool
     `style-src 'self' 'nonce-${nonce}'`,
     "img-src 'self' data:",
     "font-src 'self'",
-    "connect-src 'self'",
+    `connect-src 'self'${options.directUpload ? ` ${STAGING_UPLOAD_ORIGIN}` : ""}`,
     "manifest-src 'self'",
     "base-uri 'none'",
     "form-action 'self'",
@@ -61,7 +66,7 @@ export function securityHeaders(): MiddlewareHandler {
     const html = (c.res.headers.get("content-type") ?? "").toLowerCase().startsWith("text/html");
     const apply = (headers: Headers): void => {
       for (const [name, value] of Object.entries(baseSecurityHeaders)) headers.set(name, value);
-      headers.set("content-security-policy", html ? contentSecurityPolicy(nonce, { turnstile: c.get("turnstilePage") === true }) : NON_HTML_CSP);
+      headers.set("content-security-policy", html ? contentSecurityPolicy(nonce, { turnstile: c.get("turnstilePage") === true, directUpload: c.get("directUploadPage") === true }) : NON_HTML_CSP);
       headers.delete("access-control-allow-credentials");
       const origin = headers.get("access-control-allow-origin");
       if (origin !== null && origin !== "*") headers.delete("access-control-allow-origin");

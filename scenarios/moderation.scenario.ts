@@ -3,9 +3,10 @@ import { expect, scenario, type ScenarioOpts, type World } from "@packserver/tes
 const NEEDS: ScenarioOpts = { needs: ["fakes", "clock", "storage"] };
 
 /** A signed-in person with the system's own name for them. */
-async function person(world: World) {
+async function person(world: World, age = "3d") {
   const who = await world.users.create();
   await who.signIn();
+  await world.community.setAge(who, age);
   return who;
 }
 
@@ -102,6 +103,13 @@ scenario("IT-MOD-008 Report abuse with a category; anonymous visitors sign in fi
   expect(String(form.body)).toContain(pack.systemName);
   // A category outside the list is refused.
   await expect(world.reportAbuse(reporter, pack, { category: "annoying" as never, details: "I do not like it." })).toBeRefusedSaying("category");
+  // A failed human check, an account under a day old and the eleventh report of a day are each refused.
+  await expect(world.reportAbuse(reporter, pack, { category: "spam", details: "Sent by a script.", humanCheck: "fail" })).toBeRefused("human-check");
+  await expect(world.reportAbuse(await person(world, "2h"), pack, { category: "spam", details: "Brand new account." })).toBeRefusedSaying("24 hours");
+  const busy = await person(world);
+  await world.moderation.seed.filedToday(busy, 9);
+  expect(await world.reportAbuse(busy, pack, { category: "other", details: "The tenth concern." })).toMatchObject({ category: "other" });
+  await expect(world.reportAbuse(busy, pack, { category: "other", details: "One concern too many." })).toBeRefused("quota");
 }, NEEDS);
 
 scenario("IT-MOD-009 A high-severity report labels and jumps the queue; downloads are held only on standing, the judge's timer, or an admin", async (world) => {
@@ -186,7 +194,7 @@ scenario("IT-MOD-010 Mass identical reports collapse into one", async (world) =>
   const admin = await world.admins.create();
   const pack = await reportedPack(world, "@acme/gcp", 3);
   const words = "Steals tokens on install.";
-  await world.moderation.seed.identicalReports(pack, { count: 30, category: "malware", details: words, accountAge: "1h" });
+  await world.moderation.seed.identicalReports(pack, { count: 30, category: "malware", details: words, accountAge: "2d" });
 
   const ours = async () => (await admin.moderation.abuse()).filter((r) => r.pack === pack.name);
   expect(await ours()).toMatchObject([{ category: "malware", count: 30, priority: true }]);

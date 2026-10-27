@@ -1,12 +1,12 @@
 import type { D1 } from "@packserver/ports";
 import type { AuditActor } from "../audit/index.ts";
 import { hideReview } from "../community/reviews.ts";
-import { liftProvisionalHolds, markRestored, recordAction, settleTargetReports, settleVersionReports, type ActionKind } from "./actions.ts";
+import { liftProvisionalHolds, markVersionRestored, recordAction, settleReport, settleTargetReports, settleVersionReports, type ActionKind } from "./actions.ts";
 import { moderationReason } from "./constants.ts";
-import { notifyOwners } from "./notify.ts";
-import { publicUrl, type ModerationPorts } from "./ports.ts";
+import type { ModerationPorts } from "./ports.ts";
+import { holdVersion } from "./status.ts";
 import { findPack, findPackById } from "./targets.ts";
-import { transitionVersion } from "./transition.ts";
+import { transitionVersion } from "../publishing/lifecycle.ts";
 
 export interface QueuedAbuse {
   id: string;
@@ -67,18 +67,18 @@ async function openHead(d1: D1, id: string): Promise<Head | null> {
 export type DismissResult = { ok: true } | { ok: false; reason: "unknown" };
 
 /**
- * A person finds nothing wrong: the report and every report collapsed into it close, their reporters count a dismissal,
- * and a hold the registry placed on its own comes off.
+ * A person finds nothing wrong with one report: it and the reports collapsed into it close, their reporters count a
+ * dismissal, and a hold the registry placed on its own comes off only when no other open report still justifies it.
  */
 export async function dismissAbuse(ports: ModerationPorts, id: string, admin: string): Promise<DismissResult> {
   const head = await openHead(ports.d1, id);
   if (!head) return { ok: false, reason: "unknown" };
   const pack = head.pack_id ? await findPackById(ports.d1, head.pack_id) : null;
   if (head.target_kind === "pack" && pack && head.version) {
-    await settleVersionReports(ports, pack, head.version, "dismissed", admin);
+    await settleReport(ports, pack, head.id, "dismissed", admin);
     await liftProvisionalHolds(ports, pack, head.version);
   } else if (head.target_kind !== "pack") {
-    await settleTargetReports(ports, head.target_kind, head.target_id, "dismissed", admin);
+    await settleReport(ports, pack, head.id, "dismissed", admin);
   }
   await ports.audit({ kind: "admin", id: admin }, "admin.action", `abuse:${head.id}`, { detail: { verb: "abuse.dismiss" } });
   return { ok: true };
@@ -96,15 +96,18 @@ export async function moveVersion(
   input: { pack: string; version: string; transition: "quarantine" | "yank" | "unquarantine"; reason: string },
 ): Promise<MoveResult> {
   const stored = input.transition === "yank" ? moderationReason(input.reason) : input.reason;
-  const moved = await transitionVersion(ports, input.transition, { pack: input.pack, version: input.version, reason: stored });
-  if (!moved.ok) return { ok: false, message: moved.message };
   const pack = await findPack(ports.d1, input.pack);
-  if (!pack || !moved.changed) return { ok: true, changed: false };
-  if (input.transition === "unquarantine") await markRestored(ports, pack.id, input.version);
-  else {
-    const kind: ActionKind = input.transition === "yank" ? "yank" : "quarantine";
-    await recordAction(ports, { pack, version: input.version, kind, reason: stored, trigger: actor.kind === "admin" ? "admin" : "judge", actor });
+  if (input.transition === "unquarantine") {
+    const lifted = await transitionVersion(ports, "unquarantine", { pack: input.pack, version: input.version, reason: null });
+    if (!lifted.ok) return { ok: false, message: lifted.message };
+    if (pack && lifted.changed) await markVersionRestored(ports, pack.id, input.version);
+    return { ok: true, changed: lifted.changed };
   }
+  const held = await holdVersion(ports, input.transition, { pack: input.pack, version: input.version, reason: stored });
+  if (!held.ok) return { ok: false, message: held.message };
+  if (!pack || !held.change) return { ok: true, changed: false };
+  const kind: ActionKind = input.transition === "yank" ? "yank" : "quarantine";
+  await recordAction(ports, { scope: { id: pack.scope_id, name: pack.scope }, pack, version: input.version, kind, reason: stored, trigger: actor.kind === "admin" ? "admin" : "judge", actor, change: held.change });
   return { ok: true, changed: true };
 }
 
@@ -121,12 +124,16 @@ export async function quarantinePack(ports: ModerationPorts, actor: AuditActor, 
   return { ok: true, changed: versions.length > 0, versions };
 }
 
-/** Takes a pack to the bottom of search results and out of the exploration slot until it is restored. */
-export async function hidePack(ports: Pick<ModerationPorts, "d1">, packName: string): Promise<MoveResult> {
+/** Takes a pack to the bottom of search results and out of the exploration slot until it is restored; the publisher is told why and how to appeal. */
+export async function hidePack(ports: ModerationPorts, actor: AuditActor, packName: string, reason: string): Promise<MoveResult> {
   const pack = await findPack(ports.d1, packName);
   if (!pack) return { ok: false, message: `${packName} is not a pack.` };
-  const changed = await ports.d1.query("update pack_search set demotion = 'abuse_hold' where pack_id = ? and (demotion is null or demotion <> 'abuse_hold')", [pack.id]);
-  return { ok: true, changed: changed.meta.changes > 0 };
+  const before = (await ports.d1.query("select demotion from pack_search where pack_id = ?", [pack.id])).rows[0];
+  if (!before || before.demotion === "abuse_hold") return { ok: true, changed: false };
+  await ports.d1.query("update pack_search set demotion = 'abuse_hold' where pack_id = ?", [pack.id]);
+  const from = before.demotion === null ? null : String(before.demotion);
+  await recordAction(ports, { scope: { id: pack.scope_id, name: pack.scope }, pack, version: null, kind: "hide_pack", reason, trigger: "admin", actor, change: { from: { state: from, reason: null }, to: { state: "abuse_hold", reason: null } } });
+  return { ok: true, changed: true };
 }
 
 /** A moderator takes a review down with a reason; reports on it close as actioned. */
@@ -137,14 +144,25 @@ export async function hideReviewByModerator(ports: ModerationPorts, admin: strin
   return { ok: true };
 }
 
-/** Holds publishing under the scope's name; the publisher is told. */
+/** Holds publishing under the scope's name; the publisher is told why and how to appeal. */
 export async function suspendPublisher(ports: ModerationPorts, admin: string, scopeName: string, reason: string): Promise<{ ok: true; changed: boolean } | { ok: false; message: string }> {
-  const scope = (await ports.d1.query("select id, state from scopes where name = ?", [scopeName.replace(/^@/, "")])).rows[0];
+  const name = scopeName.replace(/^@/, "");
+  const scope = (await ports.d1.query("select id, state from scopes where name = ?", [name])).rows[0];
   if (!scope) return { ok: false, message: `${scopeName} is not a scope.` };
   if (scope.state === "held") return { ok: true, changed: false };
   await ports.d1.query("update scopes set state = 'held' where id = ?", [scope.id]);
-  await notifyOwners(ports, String(scope.id), "pack-actioned", { pack: `@${scopeName.replace(/^@/, "")}`, action: "suspended from publishing", reason, appealUrl: publicUrl(ports, "/") });
-  await settleTargetReports(ports, "profile", String(scope.id), "actioned", admin);
+  const id = String(scope.id);
+  await recordAction(ports, {
+    scope: { id, name },
+    pack: null,
+    version: null,
+    kind: "suspend",
+    reason,
+    trigger: "admin",
+    actor: { kind: "admin", id: admin },
+    change: { from: { state: String(scope.state), reason: null }, to: { state: "held", reason: null } },
+  });
+  await settleTargetReports(ports, "profile", id, "actioned", admin);
   return { ok: true, changed: true };
 }
 

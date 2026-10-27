@@ -43,10 +43,11 @@ export function moderationRoutes(runtime: AdminRuntime) {
   routes.post("/admin/moderation/packs/hide", async (c) => {
     const body = await jsonBody(c.req.raw);
     const pack = body && stringField(body, "pack");
-    if (!pack) return c.json(BAD_REQUEST, 400, NO_STORE);
-    const result = await hidePack(ports(), pack);
+    const reason = body && reasonOf(body);
+    if (!pack || !reason) return c.json(BAD_REQUEST, 400, NO_STORE);
+    const result = await hidePack(ports(), actorOf(c.get("admin")), pack, reason);
     if (!result.ok) return c.json({ ok: false, reason: "unknown", message: result.message }, 404, NO_STORE);
-    await ports().audit(actorOf(c.get("admin")), "admin.action", `pack:${pack}`, { detail: { verb: "pack.hide" } });
+    await ports().audit(actorOf(c.get("admin")), "admin.action", `pack:${pack}`, { detail: { verb: "pack.hide", reason } });
     return c.json(result, 200, NO_STORE);
   });
 

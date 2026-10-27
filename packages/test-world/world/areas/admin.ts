@@ -181,7 +181,7 @@ export interface AdminSession extends Admin {
     dismiss(report: { id: string }): Promise<void>;
     /** Acts on the reported pack, review or publisher and settles the report. */
     act(report: { id: string }, decision: { action: "quarantine" | "yank" | "hide_review" | "suspend"; reason: string }): Promise<void>;
-    hidePack(pack: { systemName: string }): Promise<void>;
+    hidePack(pack: { systemName: string }, reason?: string): Promise<void>;
     quarantinePack(pack: { systemName: string }, reason: string): Promise<void>;
     hideReview(review: { id: string }, reason: string): Promise<void>;
     suspend(scope: { name: string }, reason: string): Promise<void>;
@@ -527,8 +527,8 @@ export function createAdmin(driver: Driver, onDispose: (undo: () => Promise<void
       async act(report, decision) {
         await json("moderation.act", "POST", `/admin/moderation/abuse/${report.id}/action`, decision);
       },
-      async hidePack(pack) {
-        await json("moderation.hidePack", "POST", "/admin/moderation/packs/hide", { pack: pack.systemName });
+      async hidePack(pack, reason = "Not what it claims to be") {
+        await json("moderation.hidePack", "POST", "/admin/moderation/packs/hide", { pack: pack.systemName, reason });
       },
       async quarantinePack(pack, reason) {
         await json("moderation.quarantinePack", "POST", "/admin/moderation/packs/quarantine", { pack: pack.systemName, reason });

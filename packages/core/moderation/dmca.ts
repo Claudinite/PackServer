@@ -1,10 +1,10 @@
 import { sendNotice } from "../mail/index.ts";
-import { MAX_NOTE, DMCA_RESTORE_BUSINESS_DAYS, moderationReason } from "./constants.ts";
+import { DMCA_RESTORE_BUSINESS_DAYS, DMCA_SWEEP_LIMIT, MAX_NOTE, moderationReason } from "./constants.ts";
 import { actionFor } from "./appeals.ts";
-import { markRestored, recordAction } from "./actions.ts";
+import { recordAction, restoreAction } from "./actions.ts";
 import { nowIso, publicUrl, type ModerationPorts } from "./ports.ts";
 import { findPack, findPackById } from "./targets.ts";
-import { restoreVersion, transitionVersion } from "./transition.ts";
+import { holdVersion } from "./status.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -31,10 +31,11 @@ export type DmcaResult = { ok: true; case_id: string; action_id: string } | { ok
  */
 export async function removeOnCopyrightNotice(ports: ModerationPorts, admin: string, input: { pack: string; version: string; complainant: string }): Promise<DmcaResult> {
   const reason = moderationReason("copyright notice");
-  const moved = await transitionVersion(ports, "quarantine", { pack: input.pack, version: input.version, reason });
-  if (!moved.ok) return { ok: false, message: moved.message };
+  const held = await holdVersion(ports, "quarantine", { pack: input.pack, version: input.version, reason });
+  if (!held.ok) return { ok: false, message: held.message };
+  if (!held.change) return { ok: false, message: `${input.pack}@${input.version} is already held; a removal changes nothing there, so no case was opened.` };
   const pack = (await findPack(ports.d1, input.pack))!;
-  const action = await recordAction(ports, { pack, version: input.version, kind: "dmca_removal", reason, trigger: "dmca", actor: { kind: "admin", id: admin } });
+  const action = await recordAction(ports, { scope: { id: pack.scope_id, name: pack.scope }, pack, version: input.version, kind: "dmca_removal", reason, trigger: "dmca", actor: { kind: "admin", id: admin }, change: held.change });
   const id = ports.rng.uuid();
   await ports.d1.query("insert into dmca_cases (id, action_id, complainant, created_at) values (?, ?, ?, ?)", [id, action.id, input.complainant, nowIso(ports)]);
   await ports.audit({ kind: "admin", id: admin }, "admin.action", `version:${pack.name}@${input.version}`, { detail: { verb: "dmca.remove" } });
@@ -62,7 +63,7 @@ export async function fileCounterNotice(ports: ModerationPorts, actionId: string
   const address = String(kase.complainant);
   await sendNotice(ports.mail, address, "dmca-counter-notice", {
     pack: action.pack,
-    version: action.version,
+    version: action.version ?? "",
     notice,
     restoreAfterBusinessDays: DMCA_RESTORE_BUSINESS_DAYS,
     url: publicUrl(ports, `/packs/${action.pack}`),
@@ -84,20 +85,23 @@ export async function recordSuit(ports: ModerationPorts, caseId: string, admin: 
   return { ok: true };
 }
 
-/** Restores every version whose counter-notice has waited out the window and whose complainant has not filed suit. */
+/**
+ * Restores the versions whose counter-notice has waited out the window and whose complainant has not filed suit, oldest
+ * first and at most a bounded number a run; the next run carries the rest.
+ */
 export async function sweepDmca(ports: ModerationPorts): Promise<{ restored: number }> {
   const { rows } = await ports.d1.query(
-    "select c.id, c.counter_filed_at, a.id as action_id, a.pack_id, a.version from dmca_cases c join moderation_actions a on a.id = c.action_id where c.state = 'counter_filed' order by c.counter_filed_at, c.id",
+    "select c.id, c.counter_filed_at, a.id as action_id, a.pack_id, a.version from dmca_cases c join moderation_actions a on a.id = c.action_id where c.state = 'counter_filed' order by c.counter_filed_at, c.id limit ?",
+    [DMCA_SWEEP_LIMIT],
   );
   let restored = 0;
   for (const row of rows) {
-    if (businessDaysBetween(Date.parse(String(row.counter_filed_at)), ports.clock.now()) < DMCA_RESTORE_BUSINESS_DAYS) continue;
+    if (businessDaysBetween(Date.parse(String(row.counter_filed_at)), ports.clock.now()) < DMCA_RESTORE_BUSINESS_DAYS) break;
     const won = await ports.d1.query("update dmca_cases set state = 'restored', restored_at = ? where id = ? and state = 'counter_filed'", [nowIso(ports), row.id]);
     if (won.meta.changes === 0) continue;
     const pack = (await findPackById(ports.d1, String(row.pack_id)))!;
     const version = String(row.version);
-    await restoreVersion(ports, pack.name, version);
-    await markRestored(ports, pack.id, version);
+    await restoreAction(ports, String(row.action_id));
     await ports.audit({ kind: "system", id: "moderation" }, "admin.action", `version:${pack.name}@${version}`, { detail: { verb: "dmca.restore" } });
     restored += 1;
   }

@@ -243,8 +243,22 @@
     {
       "idx": 34,
       "version": "6",
-      "when": 1793069949144,
-      "tag": "20261027025909_moderation_abuse_reports",
+      "when": 1793069485517,
+      "tag": "20261027025125_foundation_lifecycle_removal",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "6",
+      "when": 1793069487576,
+      "tag": "20261027025127_publishing_lifecycle_notices",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1793071415473,
+      "tag": "20261027032335_moderation_abuse_reports",
       "breakpoints": true
     }
   ]

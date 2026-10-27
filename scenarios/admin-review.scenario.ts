@@ -177,6 +177,7 @@ scenario("IT-ADMIN-002 Review-queue actions are audited with the actor", async (
   const pack = await world.packs.public("@gcp/pack", { versions: ["1.0.0"] });
   const reporter = await world.users.create();
   await reporter.signIn();
+  await world.community.setAge(reporter, "3d");
   const filed = await world.reports.file(reporter, pack, { kind: "security", version: "1.0.0", severity: "high", title: "Token leaks to logs" });
   const [hidden, rival, pinned, miner] = [
     await world.packs.public("@gcp/hidden", { versions: ["1.0.0"] }),

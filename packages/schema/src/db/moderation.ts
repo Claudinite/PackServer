@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { check, index, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { inList } from "./enum-check";
 import { packs } from "./packs";
+import { scopes } from "./scopes";
 import { APPEAL_STATES } from "./review";
 import { users } from "./users";
 
@@ -10,7 +11,7 @@ export const ABUSE_CATEGORIES = ["malware", "prompt_injection", "secrets_leak", 
 export const HIGH_SEVERITY_CATEGORIES = ["malware", "prompt_injection", "secrets_leak"] as const;
 export const ABUSE_TARGET_KINDS = ["pack", "review", "profile"] as const;
 export const ABUSE_STATES = ["open", "actioned", "dismissed"] as const;
-export const MODERATION_ACTION_KINDS = ["quarantine", "yank", "dmca_removal"] as const;
+export const MODERATION_ACTION_KINDS = ["quarantine", "yank", "dmca_removal", "hide_pack", "suspend"] as const;
 export const MODERATION_TRIGGERS = ["report_standing", "judge", "admin", "dmca"] as const;
 export const DMCA_STATES = ["removed", "counter_filed", "restored", "suit_filed"] as const;
 
@@ -48,6 +49,7 @@ export const abuse_reports = sqliteTable(
     index("abuse_reports_pack_idx").on(t.pack_id, t.version, t.state),
     index("abuse_reports_target_idx").on(t.target_kind, t.target_id, t.details_key),
     index("abuse_reports_reporter_idx").on(t.reporter_id, t.decided_at),
+    index("abuse_reports_filed_idx").on(t.reporter_id, t.created_at),
     index("abuse_reports_open_idx").on(t.state, t.prioritised_at),
     check("abuse_reports_target_check", sql`${t.target_kind} in (${inList(ABUSE_TARGET_KINDS)})`),
     check("abuse_reports_category_check", sql`${t.category} in (${inList(ABUSE_CATEGORIES)})`),
@@ -55,15 +57,20 @@ export const abuse_reports = sqliteTable(
   ],
 );
 
-/** A version moved out of reach by moderation: what was done, why, by whom or what, and whether it was undone. */
+/**
+ * Something moderation took out of reach: a version, a pack's place in search or a publisher's right to publish. The
+ * `from_*` and `to_*` columns say what the action found and what it wrote, so that undoing it puts back what was there
+ * and only while nothing else has changed it since.
+ */
 export const moderation_actions = sqliteTable(
   "moderation_actions",
   {
     id: text("id").primaryKey(),
-    pack_id: text("pack_id")
+    scope_id: text("scope_id")
       .notNull()
-      .references(() => packs.id),
-    version: text("version").notNull(),
+      .references(() => scopes.id),
+    pack_id: text("pack_id").references(() => packs.id),
+    version: text("version"),
     kind: text("kind", { enum: MODERATION_ACTION_KINDS }).notNull(),
     /** What the publisher is told. */
     reason: text("reason").notNull(),
@@ -72,9 +79,14 @@ export const moderation_actions = sqliteTable(
     actor: text("actor").notNull(),
     taken_at: text("taken_at").notNull(),
     restored_at: text("restored_at"),
+    from_state: text("from_state"),
+    from_reason: text("from_reason"),
+    to_state: text("to_state"),
+    to_reason: text("to_reason"),
   },
   (t) => [
     index("moderation_actions_version_idx").on(t.pack_id, t.version, t.taken_at),
+    index("moderation_actions_scope_idx").on(t.scope_id, t.kind),
     check("moderation_actions_kind_check", sql`${t.kind} in (${inList(MODERATION_ACTION_KINDS)})`),
     check("moderation_actions_trigger_check", sql`${t.trigger} in (${inList(MODERATION_TRIGGERS)})`),
   ],
@@ -137,6 +149,14 @@ export const abuse_reporter_flags = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.reporter_id, t.flagged_by] })],
 );
+
+/** When a reporter lost the ability to count toward a hold: 90 days from the dismissal that took it (REQ-MOD-009). */
+export const abuse_standing_losses = sqliteTable("abuse_standing_losses", {
+  reporter_id: text("reporter_id")
+    .primaryKey()
+    .references(() => users.id),
+  lost_at: text("lost_at").notNull(),
+});
 
 /** A reporter moderation has blocked; their new reports are refused. */
 export const abuse_reporter_blocks = sqliteTable("abuse_reporter_blocks", {

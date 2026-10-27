@@ -29,6 +29,7 @@ export const FACTOR_ACTIONS = {
  */
 export const HELD_ACTION_NAMES = {
   publishApprove: "publish.approve",
+  publishStart: "publish.start",
   ownerChange: "owner.change",
   trustedPublisherChange: "trusted-publisher.change",
   allowlistChange: "allowlist.change",

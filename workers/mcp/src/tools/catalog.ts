@@ -5,6 +5,7 @@ import {
   needsNote,
   objectKey,
   parseVersionRow,
+  statusNotesOf,
   type PackListing,
   type StatusNote,
   type VersionRow,
@@ -67,8 +68,11 @@ export async function findPublicPack(runtime: McpRuntime, name: string): Promise
   const notes = new Map<string, StatusNote>();
   if (rows.some((r) => needsNote(r.state))) {
     const parsed = VersionsDocument.safeParse(await readJson(runtime, objectKey(name, "versions")));
-    if (!parsed.success) return { kind: "unavailable" };
-    for (const v of parsed.data.versions) notes.set(v.version, { reason: v.reason, security: v.security });
+    const read =
+      (await statusNotesOf(runtime.ports.d1, String(row.id))) ??
+      (parsed.success ? new Map(parsed.data.versions.map((v) => [v.version, { reason: v.reason, security: v.security }])) : undefined);
+    if (!read) return { kind: "unavailable" };
+    for (const [version, note] of read) notes.set(version, note);
   }
   return { kind: "found", pack: { id: row.id, name, rows, notes, listing: buildListing(name, rows, notes) } };
 }

@@ -1,6 +1,6 @@
 import { AbuseInput, actionFor, fileAbuseReport, fileAppeal, fileCounterNotice, flagReporter, findPublicPack } from "@packserver/core/moderation";
-import { consume, idempotency, rateLimited, refusal, requireSession, sessionCaller, sessionCsrf } from "@packserver/http";
-import { Hono, type Context } from "hono";
+import { consume, idempotency, rateLimited, refusal, requireSession, sessionCaller, sessionCsrf, turnstile } from "@packserver/http";
+import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { runtimeOf, siteOriginOf, type WebEnv } from "../../context";
 import { moderationPorts } from "./ports";
 
@@ -13,11 +13,13 @@ const REPORT_COST = 6;
 const userId = (c: Context<WebEnv>): string => c.get("session")!.record.user_id;
 const csrfGuard = (c: Context<WebEnv>, next: () => Promise<void>) => sessionCsrf<WebEnv>(siteOriginOf)(c, next);
 const once = (c: Context<WebEnv>, next: () => Promise<void>) => idempotency({ kv: runtimeOf(c).ports.kv.SESSIONS_KV!, caller: sessionCaller })(c, next);
+const humanCheck: MiddlewareHandler<WebEnv> = (c, next) =>
+  (turnstile({ verifier: runtimeOf(c).ports.turnstile, fallbackLimiter: runtimeOf(c).ports.rateLimits.RATE_LIMIT! }) as unknown as MiddlewareHandler<WebEnv>)(c, next);
 const notFound = () => Response.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
 const invalid = (message: string) => refusal("forbidden", { status: 422, message });
 
-/** Files an abuse report on a pack, a review or a profile; an anonymous caller is sent to sign in by `requireSession`. */
-api.post("/abuse/reports", requireSession(), csrfGuard, once, async (c) => {
+/** Files an abuse report on a pack, a review or a profile; an anonymous caller is sent to sign in by `requireSession`, and a human check guards the filing (REQ-ABUSE-002). */
+api.post("/abuse/reports", requireSession(), csrfGuard, humanCheck, once, async (c) => {
   const parsed = AbuseInput.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return invalid(`format: ${parsed.error.issues[0]?.path.join(".") || "report"} is not valid.`);
   const { RATE_LIMIT } = runtimeOf(c).ports.rateLimits;
@@ -26,6 +28,7 @@ api.post("/abuse/reports", requireSession(), csrfGuard, once, async (c) => {
   if (filed.ok) return c.json({ report: filed.report }, 201, NO_STORE);
   if (filed.reason === "unknown_target") return notFound();
   if (filed.reason === "duplicate") return refusal("exists", { message: filed.message });
+  if (filed.reason === "daily_limit") return refusal("quota", { message: filed.message });
   return filed.reason === "blocked" ? refusal("forbidden", { message: filed.message }) : invalid(filed.message);
 });
 

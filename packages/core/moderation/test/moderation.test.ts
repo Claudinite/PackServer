@@ -1,11 +1,12 @@
 import { FakeMail, FakeQueue } from "@packserver/ports/fakes";
 import { describe, expect, it } from "vitest";
 import { createAudit } from "../../audit/index.ts";
+import { transitionVersion } from "../../publishing/lifecycle.ts";
 import { migratedD1 } from "../../identity/testing.ts";
 import type { SignalAttrs, SignalName } from "../../telemetry/index.ts";
 import {
   actOnAbuse, businessDaysBetween, decideModerationAppeal, dismissAbuse, fileAbuseReport, fileAppeal, fileCounterNotice, heldComments, openAbuseReports,
-  moveVersion, prioritisedAttrs, recordSuit, releaseComment, removeComment, removeOnCopyrightNotice, sweepDmca, transitionVersion, type AbuseInput, type ModerationPorts,
+  moveVersion, prioritisedAttrs, recordDismissals, recordSuit, releaseComment, removeComment, removeOnCopyrightNotice, sweepDmca, hidePack, suspendPublisher, blockReporter, type AbuseInput, type ModerationPorts,
 } from "../index.ts";
 
 const START = Date.parse("2026-10-23T10:00:00.000Z");
@@ -124,16 +125,21 @@ describe("standing", () => {
     expect(await f.state()).toBe("active");
   });
 
-  it("loses standing after two dismissals for 90 days", async () => {
+  it("loses standing for 90 days from the second dismissal, not from the first", async () => {
     const f = await fixture(3);
     const d = await f.user("d", { adopts: true });
-    await f.d1.batch([0, 1].map((i) => ({ sql: "insert into abuse_reports (id, target_kind, target_id, reporter_id, category, details, details_key, state, decided_at, created_at) values (?, 'profile', 'x', ?, 'spam', 'x', ?, 'dismissed', ?, ?)", params: [`old-${i}`, d, `k${i}`, iso(START - DAY), iso(START - DAY)] })));
+    const dismiss = (i: number, ago: number) =>
+      f.d1.query("insert into abuse_reports (id, target_kind, target_id, reporter_id, category, details, details_key, state, decided_at, created_at) values (?, 'profile', 'x', ?, 'spam', 'x', ?, 'dismissed', ?, ?)", [`old-${i}`, d, `k${i}`, iso(START - ago), iso(START - ago)]);
+    await dismiss(0, 80 * DAY);
+    await dismiss(1, 0);
+    await recordDismissals(f.d1, [d], START);
     const [a, b] = [await f.user("a", { adopts: true }), await f.user("b", { adopts: true })] as const;
     await f.report(a, "1");
     await f.report(b, "2");
+    f.advance(11 * DAY);
     await f.report(d, "3");
     expect(await f.state()).toBe("active");
-    f.advance(91 * DAY);
+    f.advance(80 * DAY);
     const e = await f.user("e", { adopts: true });
     await f.report(e, "4");
     expect(await f.state()).toBe("quarantined");
@@ -170,7 +176,7 @@ describe("actions, appeals and dismissals", () => {
     const filed = await f.report(await f.user("vp-less", { adopts: true }), "x");
     if (!filed.ok) throw new Error("not filed");
     await f.d1.query("update pack_versions set state = 'quarantined', status_reason = 'held' where id = 'v1'");
-    await f.d1.query("insert into moderation_actions (id, pack_id, version, kind, reason, trigger, actor, taken_at) values ('act', 'pack-gcp', '1.0.0', 'quarantine', 'held', 'judge', 'system', ?)", [iso(START)]);
+    await f.d1.query("insert into moderation_actions (id, scope_id, pack_id, version, kind, reason, trigger, actor, taken_at, from_state, to_state, to_reason) values ('act', 'scope-acme', 'pack-gcp', '1.0.0', 'quarantine', 'held', 'judge', 'system', ?, 'active', 'quarantined', 'held')", [iso(START)]);
     await dismissAbuse(f.ports, filed.report.id, "admin@example.test");
     expect(await f.state()).toBe("active");
     expect(f.mail.inbox("vp-less@example.test").map((m) => m.subject)).toEqual(["Update on your report about @acme/gcp"]);
@@ -197,7 +203,7 @@ describe("actions, appeals and dismissals", () => {
     const owner = await f.user("own", { role: "owner" });
     await removeOnCopyrightNotice(f.ports, "admin@example.test", { pack: "@acme/gcp", version: "1.0.0", complainant: "c@claim.test" });
     expect(await f.state()).toBe("quarantined");
-    await f.d1.query("insert into moderation_actions (id, pack_id, version, kind, reason, trigger, actor, taken_at) values ('q', 'pack-gcp', '1.0.0', 'quarantine', 'held', 'admin', 'a', ?)", [iso(START)]);
+    await f.d1.query("insert into moderation_actions (id, scope_id, pack_id, version, kind, reason, trigger, actor, taken_at, from_state, to_state, to_reason) values ('q', 'scope-acme', 'pack-gcp', '1.0.0', 'quarantine', 'held', 'admin', 'a', ?, 'active', 'quarantined', 'held')", [iso(START)]);
     await f.d1.query("update pack_versions set state = 'revoked' where id = 'v1'");
     await fileAppeal(f.ports, "q", owner, "fine");
     await decideModerationAppeal(f.ports, "q", "admin@example.test", "upheld");
@@ -266,5 +272,142 @@ describe("the yank prefix", () => {
     await f.d1.query("update pack_versions set state = 'active', status_reason = null where id = 'v1'");
     await moveVersion(f.ports, { kind: "admin", id: "admin@example.test" }, { pack: "@acme/gcp", version: "1.0.0", transition: "yank", reason: "malware" });
     expect(await reasonOf()).toBe("Removed by PackServer: malware");
+  });
+});
+
+describe("one decision, one report", () => {
+  it("dismissing a junk report leaves a standing hold and the other reports alone", async () => {
+    const f = await fixture(3);
+    const sockless = [await f.user("a", { adopts: true }), await f.user("b", { adopts: true }), await f.user("c", { adopts: true })] as const;
+    for (const who of sockless) await f.report(who, `text ${who}`);
+    expect(await f.state()).toBe("quarantined");
+    const junk = await f.report(await f.user("j"), "junk", "spam");
+    if (!junk.ok) throw new Error("not filed");
+    await dismissAbuse(f.ports, junk.report.id, "admin@example.test");
+    expect(await f.state()).toBe("quarantined");
+    expect((await f.d1.query("select count(*) as n from abuse_reports where state = 'open'")).rows[0]?.n).toBe(3);
+  });
+
+  it("lifts a standing hold once the reports that justified it are gone, and charges only those reporters", async () => {
+    const f = await fixture(3);
+    const ids = ["a", "b", "c"];
+    const filed = [];
+    for (const id of ids) filed.push(await f.report(await f.user(id, { adopts: true }), `text ${id}`));
+    expect(await f.state()).toBe("quarantined");
+    for (const r of filed) if (r.ok) await dismissAbuse(f.ports, r.report.id, "admin@example.test");
+    expect(await f.state()).toBe("active");
+    const bystander = await f.report(await f.user("z", { adopts: true }), "other words");
+    if (!bystander.ok) throw new Error("not filed");
+    await dismissAbuse(f.ports, bystander.report.id, "admin@example.test");
+    expect((await f.d1.query("select count(*) as n from abuse_reports where reporter_id = 'z' and state = 'dismissed'")).rows[0]?.n).toBe(1);
+  });
+
+  it("keeps a judge hold while another prioritised report is still open", async () => {
+    const f = await fixture(3);
+    const one = await f.report(await f.user("a"), "one");
+    const two = await f.report(await f.user("b"), "two");
+    if (!one.ok || !two.ok) throw new Error("not filed");
+    await f.d1.query("update pack_versions set state = 'quarantined', status_reason = 'held' where id = 'v1'");
+    await f.d1.query("insert into moderation_actions (id, scope_id, pack_id, version, kind, reason, trigger, actor, taken_at, from_state, to_state, to_reason) values ('act', 'scope-acme', 'pack-gcp', '1.0.0', 'quarantine', 'held', 'judge', 'system', ?, 'active', 'quarantined', 'held')", [iso(START)]);
+    await dismissAbuse(f.ports, one.report.id, "admin@example.test");
+    expect(await f.state()).toBe("quarantined");
+    await dismissAbuse(f.ports, two.report.id, "admin@example.test");
+    expect(await f.state()).toBe("active");
+  });
+});
+
+describe("undoing an action", () => {
+  async function appealed(f: Awaited<ReturnType<typeof fixture>>, action: string) {
+    const owner = await f.user("own", { role: "owner" });
+    await fileAppeal(f.ports, action, owner, "fine");
+    return decideModerationAppeal(f.ports, action, "admin@example.test", "upheld");
+  }
+
+  it("returns a deprecated version to deprecated", async () => {
+    const f = await fixture(3);
+    await f.d1.query("update pack_versions set state = 'deprecated', status_reason = 'old' where id = 'v1'");
+    await moveVersion(f.ports, { kind: "admin", id: "admin@example.test" }, { pack: "@acme/gcp", version: "1.0.0", transition: "quarantine", reason: "Looking" });
+    const id = String((await f.d1.query("select id from moderation_actions")).rows[0]?.id);
+    await appealed(f, id);
+    expect(await f.state()).toBe("deprecated");
+    expect(String((await f.d1.query("select status_reason from pack_versions where id = 'v1'")).rows[0]?.status_reason)).toBe("old");
+  });
+
+  it("leaves a version another hold took over where it is", async () => {
+    const f = await fixture(3);
+    await moveVersion(f.ports, { kind: "admin", id: "admin@example.test" }, { pack: "@acme/gcp", version: "1.0.0", transition: "quarantine", reason: "Looking" });
+    const id = String((await f.d1.query("select id from moderation_actions")).rows[0]?.id);
+    await f.d1.query("update pack_versions set status_reason = 'rescan: new finding' where id = 'v1'");
+    await appealed(f, id);
+    expect(await f.state()).toBe("quarantined");
+  });
+
+  it("opens no copyright case for a version that was already held, and the sweep never lifts someone else's hold", async () => {
+    const f = await fixture(3);
+    await f.d1.query("update pack_versions set state = 'quarantined', status_reason = 'rescan' where id = 'v1'");
+    const refused = await removeOnCopyrightNotice(f.ports, "admin@example.test", { pack: "@acme/gcp", version: "1.0.0", complainant: "c@claim.test" });
+    expect(refused.ok).toBe(false);
+    expect((await f.d1.query("select count(*) as n from dmca_cases")).rows[0]?.n).toBe(0);
+    expect(await f.state()).toBe("quarantined");
+  });
+
+  it("bounds a sweep and carries the rest to the next", async () => {
+    const f = await fixture(3);
+    const owner = await f.user("own", { role: "owner" });
+    const removed = await removeOnCopyrightNotice(f.ports, "admin@example.test", { pack: "@acme/gcp", version: "1.0.0", complainant: "c@claim.test" });
+    if (!removed.ok) throw new Error("not removed");
+    await fileCounterNotice(f.ports, removed.action_id, owner, "mine");
+    f.advance(30 * DAY);
+    expect(await sweepDmca(f.ports)).toEqual({ restored: 1 });
+    expect(await sweepDmca(f.ports)).toEqual({ restored: 0 });
+  });
+
+  it("suspends with an appealable action and lifts only the suspension when upheld", async () => {
+    const f = await fixture(3);
+    await suspendPublisher(f.ports, "admin@example.test", "acme", "Repeated malware");
+    const owner = await f.user("own", { role: "owner" });
+    const row = (await f.d1.query("select id, kind from moderation_actions")).rows[0];
+    expect(row?.kind).toBe("suspend");
+    expect((await f.d1.query("select state from scopes where id = 'scope-acme'")).rows[0]?.state).toBe("held");
+    await fileAppeal(f.ports, String(row?.id), owner, "mistake");
+    await decideModerationAppeal(f.ports, String(row?.id), "admin@example.test", "upheld");
+    expect((await f.d1.query("select state from scopes where id = 'scope-acme'")).rows[0]?.state).toBe("active");
+  });
+
+  it("tells the publisher a pack was hidden, with the reason and an appeal link, and lifts the demotion on appeal", async () => {
+    const f = await fixture(3);
+    await f.d1.query("insert into pack_search (pack_id, name, pitch, category, tags, skills, parts, has_repository, card, updated_at) values ('pack-gcp', '@acme/gcp', 'p', 'cloud', '', '', '', 0, '{}', ?)", [iso(START)]);
+    const owner = await f.user("own", { role: "owner" });
+    expect(await hidePack(f.ports, { kind: "admin", id: "admin@example.test" }, "@acme/gcp", "Misleading listing")).toEqual({ ok: true, changed: true });
+    const mail = f.mail.inbox("own@example.test");
+    expect(mail).toHaveLength(1);
+    expect(mail[0]?.text).toContain("Misleading listing");
+    expect(mail[0]?.text).toMatch(/https:\/\/registry\.test\/appeals\//);
+    const id = String((await f.d1.query("select id from moderation_actions")).rows[0]?.id);
+    await fileAppeal(f.ports, id, owner, "it is accurate");
+    await decideModerationAppeal(f.ports, id, "admin@example.test", "upheld");
+    expect((await f.d1.query("select demotion from pack_search where pack_id = 'pack-gcp'")).rows[0]?.demotion).toBeNull();
+  });
+});
+
+describe("who may file", () => {
+  it("refuses a young account and a reporter past ten reports in a day", async () => {
+    const f = await fixture(3);
+    expect(await f.report(await f.user("kid", { age: 0.5 }), "x")).toMatchObject({ ok: false, reason: "young_account" });
+    const busy = await f.user("busy");
+    for (let i = 0; i < 10; i++) expect((await f.report(busy, `text ${i}`, "spam")).ok).toBe(true);
+    expect(await f.report(busy, "one more", "spam")).toMatchObject({ ok: false, reason: "daily_limit" });
+    f.advance(DAY + 1000);
+    expect((await f.report(busy, "tomorrow", "spam")).ok).toBe(true);
+  });
+
+  it("does not count a blocked reporter's open reports toward a hold", async () => {
+    const f = await fixture(3);
+    const [a, b, c] = [await f.user("a", { adopts: true }), await f.user("b", { adopts: true }), await f.user("c", { adopts: true })] as const;
+    await f.report(a, "1");
+    await f.report(b, "2");
+    await blockReporter(f.ports, a, "admin@example.test");
+    await f.report(c, "3");
+    expect(await f.state()).toBe("active");
   });
 });
