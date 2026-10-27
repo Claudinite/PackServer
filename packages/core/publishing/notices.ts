@@ -58,14 +58,15 @@ export async function drainLifecycleNotices(ports: { d1: D1; clock: Clock }, del
     if (delivery.hasRoom && !delivery.hasRoom(2)) break;
     try {
       await sendNotice(delivery.mail, address, "version-withdrawn", { items });
-      sent += 1;
-      // Marked at once: a later stop must not leave a sent digest looking unsent.
-      await ports.d1.batch(ids.map((id) => ({ sql: "update lifecycle_notices set sent_at = ? where id = ?", params: [at, id] })));
     } catch (error) {
       failed += 1;
       console.log(JSON.stringify({ event: "cron.lifecycle.send_failed", user_id: userId, reason: String(error) }));
       mark("update lifecycle_notices set attempts = attempts + 1 where id = ?", []);
+      continue;
     }
+    sent += 1;
+    // Marked at once, and outside the send's catch: a failed mark is not a failed send.
+    await ports.d1.batch(ids.map((id) => ({ sql: "update lifecycle_notices set sent_at = ? where id = ?", params: [at, id] })));
   }
   if (statements.length > 0) await ports.d1.batch(statements);
   return { sent, skipped, failed };

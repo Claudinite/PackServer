@@ -60,12 +60,14 @@ export async function drainNotices(ports: ReportPorts, delivery: NoticeDelivery,
       } else {
         skipped += 1;
       }
-      await ports.d1.query("update report_notices set sent_at = ? where id = ?", [isoNow(ports), row.id]);
     } catch (error) {
       failed += 1;
       console.log(JSON.stringify({ event: "cron.report-notices.send_failed", notice_id: String(row.id), kind: String(row.kind), reason: String(error) }));
       await ports.d1.query("update report_notices set attempts = attempts + 1 where id = ?", [row.id]);
+      continue;
     }
+    // Outside the send's catch: a failed mark is not a failed send.
+    await ports.d1.query("update report_notices set sent_at = ? where id = ?", [isoNow(ports), row.id]);
   }
   return { sent, skipped, failed };
 }

@@ -5,7 +5,7 @@ import { SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
 import { createFakePorts } from "@packserver/ports/fakes";
 import { describe, expect, it, vi } from "vitest";
 import type { AdminRuntime } from "../src/bindings";
-import { queryBudget } from "../src/crons/budget";
+import { BudgetExhausted, queryBudget } from "../src/crons/budget";
 import { CRON_HOURLY, CRON_JOBS, CRON_REPORTS, CRON_ROLLUP, INVOCATION_QUERIES, JOB_QUERIES, runCron, type CronJob } from "../src/crons";
 import { community } from "../src/crons/community";
 import { githubProofLapse } from "../src/crons/github-proof-lapse";
@@ -47,7 +47,7 @@ async function measure(runtime: AdminRuntime, job: CronJob, limit = Number.POSIT
   const quiet = vi.spyOn(console, "log").mockImplementation(() => {});
   try {
     await job({ ...runtime, ports: { ...runtime.ports, d1: budget.d1 }, budget }).catch((e: unknown) => {
-      if (!(e instanceof Error && e.name === "Error" && /share of/.test(e.message))) throw e;
+      if (!(e instanceof BudgetExhausted)) throw e;
     });
   } finally {
     quiet.mockRestore();
@@ -153,11 +153,17 @@ describe("the share of D1 queries each cron job is held to", () => {
     expect(m.used).toBeGreaterThan(JOB_QUERIES.get(moderation)!);
     expect(restored(whole)).toEqual({ n: 50 });
 
-    const f = await seed();
-    await measure(f.runtime, moderation, JOB_QUERIES.get(moderation));
-    expect(restored(f)).not.toEqual({ n: 50 });
-    for (let i = 0; i < 4; i++) await measure(f.runtime, moderation, JOB_QUERIES.get(moderation));
-    expect(restored(f)).toEqual({ n: 50 });
+    // Wherever a stop lands, a case is restored together with its version and its action, never alone.
+    for (const limit of [13, 20, 31, JOB_QUERIES.get(moderation)!]) {
+      const f = await seed();
+      for (let run = 0; run < 60 && (restored(f) as { n: number }).n < 50; run++) {
+        await measure(f.runtime, moderation, limit);
+        expect(f.db.prepare("select count(*) as n from dmca_cases where state = 'restored'").get()).toEqual(f.db.prepare("select count(*) as n from pack_versions where state = 'active'").get());
+        expect(f.db.prepare("select count(*) as n from moderation_actions where restored_at is not null").get()).toEqual(f.db.prepare("select count(*) as n from dmca_cases where state = 'restored'").get());
+      }
+      expect(restored(f)).toEqual({ n: 50 });
+      expect(f.db.prepare("select count(*) as n from pack_versions where state = 'active'").get()).toEqual({ n: 50 });
+    }
   });
 
   it("github proof lapse: 80 App-proven organisations, each needing a repair", async () => {
