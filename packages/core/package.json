@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./access": "./access/index.ts",
+    "./alerts": "./alerts/index.ts",
     "./admin": "./admin/index.ts",
     "./audit": "./audit/index.ts",
     "./audit/testing": "./audit/testing.ts",
