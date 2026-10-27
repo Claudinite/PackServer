@@ -149,6 +149,14 @@ describe("the in-process driver", () => {
     expect(driver.fakes.net.unfaked()).toEqual([]);
   });
 
+  it("beginScenario lifts a validation pause a failed scenario left behind", async () => {
+    const flag = () => driver.publishStorage.sql("select value from feature_flags where key = 'validation_dispatch'");
+    await driver.publishStorage.sql("insert into feature_flags (key, value, security, updated_at) values ('validation_dispatch', 'paused', 0, ?)", [new Date().toISOString()]);
+    expect(await flag()).toHaveLength(1);
+    await driver.beginScenario();
+    expect(await flag()).toEqual([]);
+  });
+
   it("strips credentials from the logs it attaches to a failure", () => {
     const text = 'authorization: Bearer pks_abc123 cf-access-client-secret="s3cr3t" cookie=sid=1 token eyJhbGciOi.eyJzdWIi.sig plain';
     const out = stripCredentials(text);

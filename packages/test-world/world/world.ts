@@ -5,6 +5,7 @@ import { createAdmin } from "./areas/admin";
 import { createAgents } from "./areas/agents";
 import { createAuditModule } from "./areas/audit";
 import { createCommunity } from "./areas/community";
+import { createDashboard } from "./areas/dashboard";
 import { createGitHub } from "./areas/github";
 import { createMember } from "./areas/member";
 import { createModeration } from "./areas/moderation";
@@ -55,6 +56,7 @@ export function createWorld(driver: Driver, title: string) {
     ...createProbe(driver, ci, (name) => aliases.alias(name), publishFlow.publishFromCi),
     ...createAccess(driver, aliases),
     ...createCommunity(driver, aliases),
+    ...createDashboard(),
     ...createModeration(driver, aliases, admin.admins),
     ...createReportsModule(driver, aliases),
     ...admin,

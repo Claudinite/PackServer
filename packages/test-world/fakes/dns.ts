@@ -3,6 +3,7 @@ import type { NetHandler } from "./net";
 const DOH_HOST = "cloudflare-dns.com";
 const AUTH_FILE_PATH = "/.well-known/packserver-auth";
 const TXT = 16;
+const ADDRESS_TYPES: Record<string, number> = { A: 1, AAAA: 28 };
 
 /** What a host answers at the one path a domain proof reads. */
 export type AuthFileSite =
@@ -23,6 +24,7 @@ export interface DomainRequest {
  */
 export class FakeDomains {
   private txt = new Map<string, string[]>();
+  private hosts = new Set<string>();
   private sites = new Map<string, AuthFileSite>();
   private seen: DomainRequest[] = [];
   private resolverDown = false;
@@ -35,6 +37,13 @@ export class FakeDomains {
   }
   removeTxt(name: string): void {
     this.txt.delete(name);
+  }
+  /** The name has an address, as a linked site's domain does while it is registered. */
+  resolveHost(name: string): void {
+    this.hosts.add(name);
+  }
+  unresolveHost(name: string): void {
+    this.hosts.delete(name);
   }
   serve(host: string, site: AuthFileSite): void {
     this.sites.set(host, site);
@@ -51,6 +60,7 @@ export class FakeDomains {
   }
   reset(): void {
     this.txt = new Map();
+    this.hosts = new Set();
     this.sites = new Map();
     this.seen = [];
     this.resolverDown = false;
@@ -62,6 +72,11 @@ export class FakeDomains {
       this.seen.push({ host: url.host, path: `${url.pathname}?name=${url.searchParams.get("name") ?? ""}` });
       if (this.resolverDown) return new Response("unavailable", { status: 503 });
       const name = url.searchParams.get("name") ?? "";
+      const address = ADDRESS_TYPES[url.searchParams.get("type") ?? ""];
+      if (address !== undefined) {
+        if (!this.hosts.has(name)) return Response.json({ Status: 3 });
+        return Response.json({ Status: 0, Answer: address === 1 ? [{ name, type: 1, TTL: 60, data: "203.0.113.7" }] : [] });
+      }
       const values = this.txt.get(name);
       if (!values) return Response.json({ Status: 3 });
       return Response.json({ Status: 0, Answer: values.map((v) => ({ name, type: TXT, TTL: 60, data: `"${v}"` })) });

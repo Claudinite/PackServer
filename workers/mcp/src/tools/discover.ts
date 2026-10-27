@@ -1,8 +1,11 @@
 import { SearchConfigError, SearchRequestError, SearchUnavailableError, type PackCard } from "@packserver/core/search";
 import type { McpServer } from "@modelcontextprotocol/server";
+import { readablePacks } from "@packserver/core/access";
 import { z } from "zod";
 import type { McpRuntime } from "../bindings";
 import { categories, search } from "../search";
+import type { Caller } from "../limits";
+import { accessCallerOf } from "../privileged";
 import { answer, describe, failure, unavailable } from "./result";
 
 /** The pitch is the publisher's text: it leaves the card for `publisher_text`, the rest is the registry's. */
@@ -13,7 +16,8 @@ export function mcpCard(card: PackCard) {
   return { ...rest, publisher_text: { pitch: pitch.slice(0, PITCH_LIMIT) } };
 }
 
-export function registerDiscovery(server: McpServer, runtime: McpRuntime): void {
+export function registerDiscovery(server: McpServer, runtime: McpRuntime, caller: Caller): void {
+  const access = accessCallerOf(caller);
   server.registerTool(
     "search_packs",
     {
@@ -32,7 +36,8 @@ export function registerDiscovery(server: McpServer, runtime: McpRuntime): void 
     },
     async (args) => {
       try {
-        const { cards, degraded } = await search(runtime, args);
+        const readable = access ? await readablePacks(runtime.ports.d1, access) : [];
+        const { cards, degraded } = await search(runtime, args, access ? { privatePackIds: readable.map((p) => p.id) } : undefined);
         return answer({ cards: cards.map(mcpCard), degraded });
       } catch (error) {
         if (error instanceof SearchRequestError) {

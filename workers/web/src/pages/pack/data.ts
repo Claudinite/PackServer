@@ -48,6 +48,8 @@ export interface PackData {
   adoptVersion: string | null;
   kid: string | null;
   report: ReportFacts;
+  /** Domains linked from the version's prose that a weekly rescan found resolving differently from when they were first seen. */
+  changedDomains: string[];
   versionExtras: Map<string, VersionExtras>;
   /** Repositories declaring the pack in the latest completed weekly scan; null until one has covered it. */
   declaringRepositories: number | null;
@@ -182,6 +184,12 @@ FROM pack_search ps LEFT JOIN pack_stats st ON st.pack_id = ps.pack_id LEFT JOIN
   );
   const parsedAttestation = Attestation.safeParse(attestation);
   const shownReport = await readWarnings(c, name, version?.version);
+  const changed = version
+    ? await d1.query(
+        `SELECT w.subject AS subject FROM version_warnings w JOIN pack_versions v ON v.id = w.version_id WHERE v.pack_id = ? AND v.version = ? AND w.kind = 'domain-drift' ORDER BY w.subject`,
+        [packId, version.version],
+      )
+    : { rows: [] };
 
   return {
     kind: "ok",
@@ -209,6 +217,7 @@ FROM pack_search ps LEFT JOIN pack_stats st ON st.pack_id = ps.pack_id LEFT JOIN
       adoptVersion,
       kid: parsedAttestation.success ? parsedAttestation.data.kid : null,
       report: shownReport,
+      changedDomains: changed.rows.map((r) => String(r.subject)),
       versionExtras,
       declaringRepositories: adoption.declaringRepositories,
     },

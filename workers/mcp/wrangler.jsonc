@@ -6,7 +6,8 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": [
-    "nodejs_compat"
+    "nodejs_compat",
+    "global_fetch_strictly_public"
   ],
   "env": {
     "test": {
@@ -16,6 +17,7 @@
       "vars": {
         "WORKER": "mcp",
         "ENVIRONMENT": "test",
+        "MCP_RESOURCE": "http://localhost/mcp",
         "CDN_ORIGIN": "https://packs.test.invalid",
         "EMBEDDING_MODEL": "@cf/baai/bge-m3",
         "EMBEDDING_DIMENSIONS": "1024",
@@ -35,6 +37,10 @@
         {
           "binding": "OAUTH_KV",
           "id": "00000000000000000000020000000005"
+        },
+        {
+          "binding": "SESSIONS_KV",
+          "id": "00000000000000000000020000000002"
         },
         {
           "binding": "TELEMETRY_KV",
@@ -75,6 +81,14 @@
           "dataset": "downloads_test"
         }
       ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "AUDIT_QUEUE",
+            "queue": "audit-test"
+          }
+        ]
+      },
       "ratelimits": [
         {
           "name": "RATE_LIMIT",
@@ -110,6 +124,7 @@
       "vars": {
         "WORKER": "mcp",
         "ENVIRONMENT": "staging",
+        "MCP_RESOURCE": "https://registry-staging.claudinite.com/mcp",
         "CDN_ORIGIN": "https://packs-staging.claudinite.com",
         "EMBEDDING_MODEL": "@cf/baai/bge-m3",
         "EMBEDDING_DIMENSIONS": "1024"
@@ -126,6 +141,10 @@
         {
           "binding": "OAUTH_KV",
           "id": "00000000000000000000120000000005"
+        },
+        {
+          "binding": "SESSIONS_KV",
+          "id": "00000000000000000000120000000002"
         },
         {
           "binding": "TELEMETRY_KV",
@@ -165,6 +184,14 @@
           "dataset": "downloads_staging"
         }
       ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "AUDIT_QUEUE",
+            "queue": "audit-staging"
+          }
+        ]
+      },
       "ratelimits": [
         {
           "name": "RATE_LIMIT",
@@ -229,6 +256,7 @@
       "vars": {
         "WORKER": "mcp",
         "ENVIRONMENT": "production",
+        "MCP_RESOURCE": "https://registry.claudinite.com/mcp",
         "CDN_ORIGIN": "https://packs.claudinite.com",
         "EMBEDDING_MODEL": "@cf/baai/bge-m3",
         "EMBEDDING_DIMENSIONS": "1024"
@@ -245,6 +273,10 @@
         {
           "binding": "OAUTH_KV",
           "id": "00000000000000000000220000000005"
+        },
+        {
+          "binding": "SESSIONS_KV",
+          "id": "00000000000000000000220000000002"
         },
         {
           "binding": "TELEMETRY_KV",
@@ -284,6 +316,14 @@
           "dataset": "downloads"
         }
       ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "AUDIT_QUEUE",
+            "queue": "audit"
+          }
+        ]
+      },
       "ratelimits": [
         {
           "name": "RATE_LIMIT",

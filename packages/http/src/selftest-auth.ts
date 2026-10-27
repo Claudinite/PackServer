@@ -1,5 +1,5 @@
 import { SELFTEST_SIGNATURE_HEADER, verifySelfTestSignature } from "@packserver/core/selftest";
-import { CANDIDATE_MIRROR_KEY, PortError, syncClock, type AccessIdentity, type Clock, type KV } from "@packserver/ports";
+import { CANDIDATE_MIRROR_KEY, PortError, syncClock, type AccessIdentity, type Clock, type KVRead } from "@packserver/ports";
 import { candidateGating, type CandidateGatingOptions } from "./candidate-gating";
 
 export const SELFTEST_RATE_LIMIT = 10;
@@ -129,7 +129,7 @@ export interface SelfTestRuntime {
   version: { versionId: string; releaseId: string };
   /** Absent where the Worker has no `SELFTEST_HMAC_KEY`; the signed path is then closed. */
   selfTestKey?: () => Promise<string>;
-  ports: { clock: Clock; access?: AccessIdentity; kv?: Partial<Record<string, KV>> };
+  ports: { clock: Clock; access?: AccessIdentity; kv?: Partial<Record<string, KVRead>> };
 }
 
 export interface SelfTestAccessExtras {
@@ -139,7 +139,7 @@ export interface SelfTestAccessExtras {
   wallClock?: Clock;
 }
 
-function mirrorReader(kv: KV | undefined): CandidateGatingOptions["readManifest"] {
+function mirrorReader(kv: KVRead | undefined): CandidateGatingOptions["readManifest"] {
   if (!kv) return undefined;
   return async () => {
     const raw = await kv.get(CANDIDATE_MIRROR_KEY);

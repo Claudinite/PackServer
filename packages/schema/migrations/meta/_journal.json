@@ -229,8 +229,22 @@
     {
       "idx": 32,
       "version": "6",
-      "when": 1793066049691,
-      "tag": "20261027015409_moderation_abuse_reports",
+      "when": 1793065108765,
+      "tag": "20261027013828_foundation_pack_version_score_breakdown",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1793065109865,
+      "tag": "20261027013829_validation_rescans",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1793069949144,
+      "tag": "20261027025909_moderation_abuse_reports",
       "breakpoints": true
     }
   ]

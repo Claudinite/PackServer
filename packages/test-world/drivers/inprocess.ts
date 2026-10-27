@@ -46,6 +46,9 @@ interface PackStore {
 const HARNESS_RELEASE = "unreleased";
 const MIGRATION_BINDING = "DB";
 
+/** The flag that stops the validator taking runs; it lives in the shared database, so a scenario that fails while it is set would otherwise leave it set for the next. */
+export const VALIDATION_DISPATCH_FLAG = "validation_dispatch";
+
 /**
  * All Workers in one local workerd under `createTestHarness`, each under its `env.test`, with
  * the fake Workers behind their service bindings and every outbound fetch answered by the fakes.
@@ -221,6 +224,7 @@ export class InProcessDriver implements Driver {
 
   async beginScenario(): Promise<void> {
     await this.fakes.reset();
+    if (this.harness.workers.includes("publish")) await this.publishStorage.sql("delete from feature_flags where key = ?", [VALIDATION_DISPATCH_FLAG]);
     this.harness.server.clearLogs();
     this.logCursor = 0;
     this.versions.clear();

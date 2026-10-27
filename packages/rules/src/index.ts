@@ -1,9 +1,14 @@
 import { z } from "zod";
 import proseScreenJson from "../2026.10.1/prose_screen.json" with { type: "json" };
+import proseScreenJson2 from "../2026.10.2/prose_screen.json" with { type: "json" };
 import questionsJson from "../2026.10.1/questions.json" with { type: "json" };
+import questionsJson2 from "../2026.10.2/questions.json" with { type: "json" };
 import scoreJson from "../2026.10.1/score.json" with { type: "json" };
+import scoreJson2 from "../2026.10.2/score.json" with { type: "json" };
 import staticRulesJson from "../2026.10.1/static-rules.json" with { type: "json" };
+import staticRulesJson2 from "../2026.10.2/static-rules.json" with { type: "json" };
 import thresholdsJson from "../2026.10.1/thresholds.json" with { type: "json" };
+import thresholdsJson2 from "../2026.10.2/thresholds.json" with { type: "json" };
 
 const version = z.string().regex(/^\d{4}\.\d+\.\d+$/);
 
@@ -129,6 +134,13 @@ const sources: Record<string, Record<string, unknown>> = {
     questions: questionsJson,
     thresholds: thresholdsJson,
     proseScreen: proseScreenJson,
+  },
+  "2026.10.2": {
+    staticRules: staticRulesJson2,
+    score: scoreJson2,
+    questions: questionsJson2,
+    thresholds: thresholdsJson2,
+    proseScreen: proseScreenJson2,
   },
 };
 

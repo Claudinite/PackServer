@@ -15,19 +15,45 @@ import { turnstileHandler } from "./turnstile";
 
 export { EPOCH } from "../fake-workers/epoch";
 
+/** Control ops that leave the fake in the same state when the server sees them twice. */
+const REPEATABLE_OPS = new Set(["reset", "now", "set", "script", "calls"]);
+
+/** A request on a pooled keep-alive socket the server had already closed, or that it reset. */
+const isDroppedConnection = (error: unknown): boolean => {
+  const code = ((error as { cause?: { code?: string } })?.cause?.code) ?? "";
+  return error instanceof TypeError && (code === "UND_ERR_SOCKET" || code === "ECONNRESET");
+};
+
 /** The test process's handle on one fake Worker's control plane. */
 export class FakeWorkerClient {
+  /** Calls that were repeated once after the connection dropped; the retry succeeding shows the Worker itself stayed up. */
+  static droppedConnectionRetries = 0;
+
   constructor(
     private readonly server: TestHarness,
     readonly name: string,
   ) {}
 
-  async call<T = unknown>(op: string, args?: object): Promise<T> {
-    const res = await this.server.getWorker(this.name).fetch(`http://${this.name}.fake/__control/${op}`, {
+  private send(op: string, args: object | undefined): Promise<Response> {
+    return this.server.getWorker(this.name).fetch(`http://${this.name}.fake/__control/${op}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(args ?? {}),
     });
+  }
+
+  async call<T = unknown>(op: string, args?: object): Promise<T> {
+    let res: Response;
+    try {
+      res = await this.send(op, args);
+    } catch (error) {
+      if (!REPEATABLE_OPS.has(op) || !isDroppedConnection(error)) throw error;
+      FakeWorkerClient.droppedConnectionRetries++;
+      const cause = (error as { cause?: { code?: string; message?: string } }).cause;
+      console.warn(`[fake-worker-client] ${this.name}.${op}: connection dropped (${cause?.code}: ${cause?.message}); repeating once on a fresh socket`);
+      res = await this.send(op, args);
+      console.warn(`[fake-worker-client] ${this.name}.${op}: repeat answered ${res.status}, so the Worker stayed up`);
+    }
     if (!res.ok) throw new Error(`${this.name} control ${op} answered ${res.status}: ${await res.text()}`);
     return ((await res.json()) as { result: T }).result;
   }

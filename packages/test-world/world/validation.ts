@@ -5,6 +5,7 @@ import { RULES_VERSIONS } from "@packserver/rules";
 import type { AScript } from "../fake-workers/sandbox/scripts";
 import type { BScript } from "../fake-workers/sandbox/scripts";
 import type { Driver } from "../drivers/driver";
+import { VALIDATION_DISPATCH_FLAG } from "../drivers/inprocess";
 import { InfrastructureError } from "./errors";
 import { AdmittedVersion, type ArchiveHandle, type Run } from "./publishing";
 import { stubModule } from "./errors";
@@ -39,6 +40,8 @@ export interface ValidationModule {
   link(path: string): string;
   /** Stops the validator taking runs, so a scenario about admission alone leaves its runs queued instead of validating them. */
   pauseValidation(): Promise<void>;
+  /** Lets the validator take runs again, for a scenario that paused it and must not leave the pause to the next one. */
+  resumeValidation(): Promise<void>;
   rules: { list(): Promise<ReadonlyArray<{ id: string; class: "fail" | "hold" | "warn" }>> };
   proseScreen: { script(o: { file?: string; probabilities: Record<string, number> }): void; releaseModel(model: string): void };
   sandbox: {
@@ -109,9 +112,13 @@ export function createValidation(driver: Driver) {
       completes: async (version) => (await runOf(version)).finished(),
     },
     pauseValidation: async () => {
-      await storage().sql("insert into feature_flags (key, value, security, updated_at) values ('validation_dispatch', 'paused', 0, ?) on conflict (key) do update set value = excluded.value", [
+      await storage().sql("insert into feature_flags (key, value, security, updated_at) values (?, 'paused', 0, ?) on conflict (key) do update set value = excluded.value", [
+        VALIDATION_DISPATCH_FLAG,
         new Date().toISOString(),
       ]);
+    },
+    resumeValidation: async () => {
+      await storage().sql("delete from feature_flags where key = ?", [VALIDATION_DISPATCH_FLAG]);
     },
     link: (path) => `https://example.org/${path}`,
     rules: { list: async () => listRules(RULES_VERSIONS.at(-1)!).map(({ id, class: cls }) => ({ id, class: cls })) },

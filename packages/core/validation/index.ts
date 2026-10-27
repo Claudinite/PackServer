@@ -13,3 +13,4 @@ export * from "./orchestration/index.ts";
 export { staticOnly, chunkFiles, delimited, CHUNK_TOKENS, type ProseChunk, type ProseScreen, type ProseScreenResult } from "./prose-screen/index.ts";
 export { applyThresholds, UnknownQuestion, type ThresholdResult, type Tripped } from "./thresholds.ts";
 export * from "./promotion.ts";
+export * from "./rescan/index.ts";

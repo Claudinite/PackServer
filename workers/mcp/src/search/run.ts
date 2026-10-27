@@ -1,4 +1,4 @@
-import { listCategories, search as coreSearch, trending as coreTrending, type SearchPorts, type SearchRequestBody, type SearchResponseBody } from "@packserver/core/search";
+import { listCategories, search as coreSearch, trending as coreTrending, type SearchAccess, type SearchPorts, type SearchRequestBody, type SearchResponseBody } from "@packserver/core/search";
 import type { McpRuntime } from "../bindings";
 
 function portsOf(runtime: McpRuntime): SearchPorts {
@@ -9,8 +9,8 @@ function portsOf(runtime: McpRuntime): SearchPorts {
 }
 
 /** The one search both the site (over its service binding) and the MCP tools answer from. */
-export function search(runtime: McpRuntime, request: SearchRequestBody): Promise<SearchResponseBody> {
-  return coreSearch(portsOf(runtime), runtime.config.search, request);
+export function search(runtime: McpRuntime, request: SearchRequestBody, access?: SearchAccess): Promise<SearchResponseBody> {
+  return coreSearch(portsOf(runtime), runtime.config.search, request, access);
 }
 
 export const categories = (runtime: McpRuntime) => listCategories(runtime.ports.d1);
