@@ -49,10 +49,10 @@ jobs:
       verdict: ${{ steps.publish.outputs.verdict }}
       run-id: ${{ steps.publish.outputs.run-id }}
     steps:
-      # A version later than every earlier one, which the registry requires of a second publish.
+      # A version later than every earlier one, which the registry requires of a second publish; a re-run is a new attempt, so it is a new version.
       - id: pack
         run: |
-          version="1.${GITHUB_RUN_NUMBER}.0"
+          version="1.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
           mkdir -p pack/skills/probe
           printf '{\n  "name": "%s",\n  "version": "%s",\n  "minEngineVersion": "1.61001.1"\n}\n' "$PROBE_PACK" "$version" > pack/pack.json
           printf '# %s\n\nA synthetic pack the registry publishes to prove it can.\n' "$PROBE_PACK" > pack/README.md

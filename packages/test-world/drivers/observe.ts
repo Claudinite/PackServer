@@ -1,5 +1,6 @@
 import { VERSION_HEADER } from "@packserver/http";
 import type { ApiResponse } from "./driver";
+import { releaseProblem } from "./http/runtime-neutral";
 import { InfrastructureError } from "../world/errors";
 
 /** Every response names the release that produced it (REQ-OPS-006); a driver checks it on each one. */
@@ -9,11 +10,9 @@ export class VersionObserver {
 
   check(url: string, res: ApiResponse): void {
     const release = res.headers.get(VERSION_HEADER);
-    if (!release) throw new InfrastructureError(`${url} answered ${res.status} without ${VERSION_HEADER}`);
-    this.seen.add(release);
-    if (this.expected && !this.expected.has(release)) {
-      throw new InfrastructureError(`${url} answered with ${VERSION_HEADER} ${release}, expected ${[...this.expected].join(" or ")}`);
-    }
+    const problem = releaseProblem(this.expected, url, res.status, release);
+    if (release) this.seen.add(release);
+    if (problem) throw new InfrastructureError(problem);
   }
 
   clear(): void {

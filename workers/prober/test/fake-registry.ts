@@ -50,7 +50,11 @@ export interface Flaws {
   searchDegraded?: boolean;
   archiveBytes?: Uint8Array;
   githubAnswers?: number;
+  /** What GitHub said of the refused code; the registry names it in its 502. */
+  githubError?: string;
   selftestFails?: SelfTestWorker;
+  /** A Worker whose self-test answers this status instead of its body. */
+  selftestStatus?: Partial<Record<SelfTestWorker, number>>;
   /** The gated host ignores the version override, as Cloudflare does on any mistake. */
   ignoreOverride?: boolean;
 }
@@ -108,13 +112,17 @@ export class FakeRegistry {
       return new Response("", { status: 404 });
     }
     const override = url.origin === GATED && !this.flaws.ignoreOverride ? headers["cloudflare-workers-version-overrides"] : undefined;
-    const release = override ? CANDIDATE_RELEASE : PRODUCTION_RELEASE;
+    // Each Worker names its own release: one the override does not name answers as production.
+    const handler: SelfTestWorker = WORKERS.find((w) => url.pathname === SELFTEST_PATHS[w]) ?? (url.pathname === "/mcp" ? "mcp" : "web");
+    const release = override?.includes(`${handler}="`) ? CANDIDATE_RELEASE : PRODUCTION_RELEASE;
     const reply = (body: unknown, status = 200, extra: Record<string, string> = {}): Response =>
       new Response(typeof body === "string" ? body : JSON.stringify(body), { status, headers: { "x-packserver-version": release, "content-type": "application/json", ...extra } });
 
     const worker = WORKERS.find((w) => url.pathname === SELFTEST_PATHS[w]);
     if (worker) {
       const overridden = override?.includes(`${worker}="`) ?? false;
+      const status = this.flaws.selftestStatus?.[worker];
+      if (status) return reply({}, status);
       const bad = this.flaws.selftestFails === worker;
       return reply({ version_id: overridden ? candidateVersion(worker) : productionVersion(worker), release_id: overridden ? CANDIDATE_RELEASE : PRODUCTION_RELEASE, ok: !bad, checks: [{ name: "d1.query", ok: !bad, ms: 3, detail: "ok" }] });
     }
@@ -127,7 +135,8 @@ export class FakeRegistry {
       const state = url.searchParams.get("state") ?? "";
       const spent = this.states.has(state);
       this.states.add(state);
-      return reply({}, spent ? 400 : (this.flaws.githubAnswers ?? 502));
+      const status = spent ? 400 : (this.flaws.githubAnswers ?? 502);
+      return reply({ reason: "forbidden", message: status === 502 ? `GitHub sign-in did not complete (${this.flaws.githubError ?? "bad_verification_code"}). Start again.` : "expired" }, status);
     }
     return reply({}, 404);
   };

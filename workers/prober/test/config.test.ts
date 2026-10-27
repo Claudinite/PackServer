@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ConfigError, parseTrustedKeys, readConfig, CANARY_PACK, CANARY_VERSION } from "../src/config";
 import { SELFTEST_PATHS } from "../src/probes/selftest";
-import { overrideHeader, readCandidate } from "../src/targets";
+import { overrideHeader, readCandidate, RELEASE_WORKERS } from "../src/targets";
 import { createFakePorts } from "@packserver/ports/fakes";
 import { CANDIDATE_MIRROR_KEY } from "@packserver/ports";
 
@@ -49,6 +49,11 @@ describe("the probing configuration", () => {
     expect(Object.entries(SELFTEST_PATHS).sort()).toEqual(released.sort());
   });
 
+  it("believes exactly the Workers the release tooling ships", async () => {
+    const { WORKERS: RELEASE } = await tool<{ WORKERS: Array<{ name: string }> }>("tools/release/common.mjs");
+    expect([...RELEASE_WORKERS].sort()).toEqual(RELEASE.map((w) => w.name).sort());
+  });
+
   it("runs every minute and decides itself which passes are due", () => {
     for (const env of ["staging", "production"]) expect(wrangler.env[env]!.triggers?.crons, env).toEqual(["* * * * *"]);
   });
@@ -78,9 +83,9 @@ describe("the candidate the release tooling mirrors", () => {
     expect(await readCandidate(store)).toBeNull();
   });
 
-  it("drops a name or version that could not be written into a header safely", async () => {
+  it("drops a name or version that could not be written into a header safely, and any name that is no Worker", async () => {
     const store = kv();
-    await store.put(CANDIDATE_MIRROR_KEY, record({ web: { changed: true, version_id: 'x", admin="y' }, 'a"b': { changed: true, version_id: "ok" }, mcp: { changed: true, version_id: "good-1" } }));
+    await store.put(CANDIDATE_MIRROR_KEY, record({ web: { changed: true, version_id: 'x", admin="y' }, 'a"b': { changed: true, version_id: "ok" }, "made-up": { changed: true, version_id: "ok" }, mcp: { changed: true, version_id: "good-1" } }));
     expect((await readCandidate(store))?.changed).toEqual({ mcp: "good-1" });
   });
 });

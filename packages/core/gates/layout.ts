@@ -61,6 +61,8 @@ export interface ProbeAttrs {
   run: string;
   scenario: string;
   ok: boolean;
+  /** Set on a per-pass summary row, which carries the index fetch's own outcome; null on a row that is one scenario. */
+  indexOk: boolean | null;
   staleS: number | null;
 }
 
@@ -68,7 +70,7 @@ export interface ProbeAttrs {
 export function parseProbeAttrs(attrs: string): ProbeAttrs | null {
   const v = parseObject(attrs);
   if (!v || typeof v.target !== "string" || typeof v.run !== "string" || typeof v.scenario !== "string" || typeof v.ok !== "boolean") return null;
-  return { target: v.target, run: v.run, scenario: v.scenario, ok: v.ok, staleS: typeof v.stale_s === "number" && v.stale_s >= 0 ? v.stale_s : null };
+  return { target: v.target, run: v.run, scenario: v.scenario, ok: v.ok, indexOk: typeof v.index_ok === "boolean" ? v.index_ok : null, staleS: typeof v.stale_s === "number" && v.stale_s >= 0 ? v.stale_s : null };
 }
 
 export function parseQueueAttrs(attrs: string): string | null {

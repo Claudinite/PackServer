@@ -12,11 +12,12 @@ export default {
     const runtime = createRuntime(env);
     const kv = runtime.ports.kv["TELEMETRY_KV"];
     if (!kv) throw new Error("the prober's KV namespace is not bound");
-    const config = runtime.config();
-    const [access, selfTestKey] = await Promise.all([config.accessToken(), config.selfTestKey()]);
     await runCycle({
-      config,
-      credentials: { access, selfTestKey },
+      load: async () => {
+        const config = runtime.config();
+        const [access, selfTestKey] = await Promise.all([config.accessToken(), config.selfTestKey()]);
+        return { config, credentials: { access, selfTestKey } };
+      },
       clock: runtime.ports.clock,
       kv,
       fetch: outbound,

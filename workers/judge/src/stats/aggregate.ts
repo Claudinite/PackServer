@@ -131,7 +131,7 @@ export function probeFacts(rows: readonly ProbeRow[]): ProbeFacts {
     const key = `${p.target}\u0000${p.run}`;
     const seen = byRun.get(key);
     byRun.set(key, { target: p.target, ok: (seen?.ok ?? true) && p.ok, at: Math.max(seen?.at ?? 0, row.ts) });
-    if (p.scenario === INDEX_SCENARIO) indexFetches.set(p.target, [...(indexFetches.get(p.target) ?? []), { ok: p.ok, at: row.ts, staleS: p.staleS }]);
+    if (p.scenario === INDEX_SCENARIO || p.indexOk !== null) indexFetches.set(p.target, [...(indexFetches.get(p.target) ?? []), { ok: p.indexOk ?? p.ok, at: row.ts, staleS: p.staleS }]);
   }
   const runs = new Map<string, ProbeRun[]>();
   for (const { target, ok, at } of byRun.values()) runs.set(target, [...(runs.get(target) ?? []), { ok, at }]);

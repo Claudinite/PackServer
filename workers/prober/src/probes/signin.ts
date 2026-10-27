@@ -3,6 +3,8 @@ import { fail, pass, type Probe } from "./types";
 export const SIGNIN_SCENARIO = "auth.github_signin_roundtrip";
 
 const STATE_COOKIE = "__Host-github-state";
+/** What GitHub says of a code it never issued, once the client id and secret are accepted. */
+export const REFUSED_CODE = "bad_verification_code";
 const AUTHORIZE = "https://github.com/login/oauth/authorize";
 
 /**
@@ -28,10 +30,12 @@ export const signInProbe: Probe = async (ctx) => {
   const cookie = begin.headers.get("set-cookie") ?? "";
   if (!cookie.startsWith(`${STATE_COOKIE}=${state};`)) return fail("the sign-in sets no state cookie for the state it sent");
 
-  const back = (): Promise<{ status: number }> =>
+  const back = (): Promise<{ status: number; text: string }> =>
     ctx.registry({ surface: "web", method: "GET", path: `/api/auth/github/callback?state=${encodeURIComponent(state)}&code=packserver-probe`, headers: { cookie: `${STATE_COOKIE}=${state}` } });
   const first = await back();
   if (first.status !== 502) return fail(`a code GitHub refuses came back as ${first.status}, not a failed sign-in`);
+  // Any other reason GitHub gives (wrong client credentials, a mismatched redirect) means sign-in is broken for everyone.
+  if (!first.text.includes(`(${REFUSED_CODE})`)) return fail(`GitHub did not refuse the code as ${REFUSED_CODE}`);
   const replay = await back();
   if (replay.status !== 400) return fail(`a spent state came back as ${replay.status}, not a refusal`);
   return pass("went to GitHub and back, and refused what GitHub refused");

@@ -1,11 +1,11 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { migratedD1 } from "@packserver/core/identity/testing";
 import { PROBE_PACK, PROBE_REPOSITORY_NAME, PROBE_SCOPE, PROBE_WORKFLOW, provisionProbeTenant } from "@packserver/core/synthetic";
 import { parse } from "yaml";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { ProbeResult } from "../../judge/src/api/routes";
 
 const path = join(import.meta.dirname, "..", "probe-repo", "probe-dry-run.yml");
@@ -43,6 +43,12 @@ describe("the dry-run workflow template", () => {
     for (const word of ["PUBLISH_PACK_SHA", "CN_VERSION", "CN_SHA256"]) expect(header).toContain(`#   ${word}`);
   });
 
+  it("publishes a version no re-run of an earlier run can repeat", () => {
+    const script = workflow.jobs.publish!.steps.find((s) => s.id === "pack")!.run!;
+    expect(script).toContain("${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}");
+    expect(script).not.toContain("RUN_NUMBER");
+  });
+
   it("does not write to GitHub", () => {
     expect(text).not.toMatch(/gh (api|pr|issue)|api\.github\.com|contents: write|pull-requests: write|issues: write/);
   });
@@ -50,6 +56,7 @@ describe("the dry-run workflow template", () => {
   describe("reporting", () => {
     const script = workflow.jobs.report!.steps.find((s) => s.run)!.run!;
     const dir = mkdtempSync(join(tmpdir(), "probe-report-"));
+    afterAll(() => rmSync(dir, { recursive: true, force: true }));
     const posted = join(dir, "posted.json");
     // A curl that answers the self-test with a version and keeps what is posted, so the script's own jq and bash run for real.
     writeFileSync(join(dir, "curl"), `#!/bin/bash\ncase "$*" in\n  *__selftest*) echo '{"version_id":"${process.env.SELFTEST_VERSION ?? "abc-123"}"}' ;;\n  *) cat > "${posted}" ;;\nesac\n`);

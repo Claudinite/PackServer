@@ -11,7 +11,9 @@ export interface Candidate {
 
 /** A release is probed while it is being verified or rolled out; before that nothing is uploaded, after it the candidate is production. */
 const PROBED_STATES = new Set(["verifying", "rolling"]);
-const SAFE_NAME = /^[a-z][a-z0-9-]{0,40}$/;
+/** The Workers a release can contain; the record is writable by every Worker, so no other name is believed. */
+export const RELEASE_WORKERS = ["validator", "publish", "github", "mcp", "web", "admin", "judge", "prober"] as const;
+const KNOWN_WORKERS: ReadonlySet<string> = new Set(RELEASE_WORKERS);
 const SAFE_VERSION = /^[A-Za-z0-9-]{1,64}$/;
 
 /** The release tooling's mirror of the manifest; null when there is none, nothing is changing, or it cannot be read as one. */
@@ -31,7 +33,7 @@ export async function readCandidate(kv: KV): Promise<Candidate | null> {
     const entry = w as { changed?: unknown; version_id?: unknown } | null;
     if (entry?.changed !== true) continue;
     // These are interpolated into a request header: anything unexpected is dropped, never repaired.
-    if (SAFE_NAME.test(name) && typeof entry.version_id === "string" && SAFE_VERSION.test(entry.version_id)) changed[name] = entry.version_id;
+    if (KNOWN_WORKERS.has(name) && typeof entry.version_id === "string" && SAFE_VERSION.test(entry.version_id)) changed[name] = entry.version_id;
   }
   return Object.keys(changed).length > 0 ? { releaseId: record.release_id, changed } : null;
 }

@@ -24,8 +24,8 @@ export const cycleDue = (nowMs: number, candidate: Candidate | null): boolean =>
 export const fullSelfTestDue = (nowMs: number): boolean => new Date(nowMs).getUTCMinutes() % 5 === 0;
 
 export interface CycleDeps {
-  config: ProberConfig;
-  credentials: Credentials;
+  /** Called only when a pass is due, so an off-minute reads no secret and validates no configuration. */
+  load(): Promise<{ config: ProberConfig; credentials: Credentials }>;
   clock: Clock;
   kv: KV;
   fetch: typeof fetch;
@@ -34,8 +34,8 @@ export interface CycleDeps {
 
 export interface CycleResult {
   ran: boolean;
-  /** Per target: scenario to outcome, for the log and the tests. */
-  targets: Array<{ target: string; outcomes: Record<string, boolean> }>;
+  /** Per target: version to the scenarios that failed for it, for the log and the tests. */
+  targets: Array<{ target: string; failed: Record<string, string[]> }>;
 }
 
 async function attempt(probe: Probe, ctx: ProbeContext): Promise<ProbeOutcome> {
@@ -47,6 +47,8 @@ async function attempt(probe: Probe, ctx: ProbeContext): Promise<ProbeOutcome> {
   }
 }
 
+const versionKey = (worker: string): string => `prober/version/${worker}`;
+
 function selfTestOutcome(result: SelfTestResult, expected: { versionId: string; releaseId: string } | null): ProbeOutcome {
   if (!result.ok) return fail(result.detail);
   if (expected && (result.versionId !== expected.versionId || result.releaseId !== expected.releaseId)) return fail(`${result.worker} answered as another version than the candidate`);
@@ -55,24 +57,26 @@ function selfTestOutcome(result: SelfTestResult, expected: { versionId: string; 
 
 /**
  * One probing pass: production as a visitor sees it, and the candidate through the gated host when
- * a release is in flight. Every scenario's outcome is written once per Worker version the target is
- * made of, which is what the judge's `gate.synthetic` counts per version.
+ * a release is in flight. Each Worker version the target is made of gets one summary row per pass,
+ * `ok` only when every scenario held and naming the ones that did not: the judge reads this dataset
+ * with a row limit, so a row per scenario would stop every gate within a day.
  */
 export async function runCycle(deps: CycleDeps): Promise<CycleResult> {
   const now = deps.clock.now();
   const candidate = await readCandidate(deps.kv);
   if (!cycleDue(now, candidate)) return { ran: false, targets: [] };
 
-  const targets = targetsFor(deps.config, deps.credentials, candidate);
+  const { config, credentials } = await deps.load();
+  const targets = targetsFor(config, credentials, candidate);
   const full = fullSelfTestDue(now);
   const minute = Math.floor(now / 60_000);
   // The index and the CDN do not depend on which Workers answer, so they are asked once per pass.
-  const index = attempt(indexProbe, { config: deps.config, registry: unreachable, clock: deps.clock, kv: deps.kv, fetch: deps.fetch });
+  const index = attempt(indexProbe, { config, registry: unreachable, clock: deps.clock, kv: deps.kv, fetch: deps.fetch });
   const result: CycleResult = { ran: true, targets: [] };
 
   const run = async (target: Target, selfTests: Send, expected: Candidate | null): Promise<void> => {
     const registry = registrySender({ reach: target.reach, expectedRelease: target.expectedRelease, clock: deps.clock, fetch: deps.fetch });
-    const ctx: ProbeContext = { config: deps.config, registry, clock: deps.clock, kv: deps.kv, fetch: deps.fetch };
+    const ctx: ProbeContext = { config, registry, clock: deps.clock, kv: deps.kv, fetch: deps.fetch };
     const runId = `${target.name}-${minute}`;
     const [shared, selfResults] = await Promise.all([
       Promise.all(SHARED_SCENARIOS.map(async ([name, probe]) => [name, name === INDEX_SCENARIO ? await index : await attempt(probe, ctx)] as const)),
@@ -82,33 +86,48 @@ export async function runCycle(deps: CycleDeps): Promise<CycleResult> {
     // Production is whatever answered; a candidate is the versions its release uploaded.
     const versions = new Map<string, ProbeOutcome | null>();
     if (expected) {
+      const confirmed = selfResults.some((r) => expected.changed[r.worker] === r.versionId && r.releaseId === expected.releaseId);
       for (const [worker, versionId] of Object.entries(expected.changed)) {
         const found = selfResults.find((r) => r.worker === worker);
-        // A Worker with no self-test on the gated host (admin) is judged by the shared scenarios alone.
-        versions.set(versionId, found ? selfTestOutcome(found, { versionId, releaseId: expected.releaseId }) : null);
+        if (found) versions.set(versionId, selfTestOutcome(found, { versionId, releaseId: expected.releaseId }));
+        // A Worker with no self-test on the gated host (admin) is credited with the shared scenarios only
+        // once another changed Worker has proved, in this pass, that the override reached the candidate.
+        else if (confirmed) versions.set(versionId, null);
+        else console.error(JSON.stringify({ event: "prober.unconfirmed_candidate", worker }));
       }
     } else {
       for (const r of selfResults) {
-        if (r.versionId !== null) versions.set(r.versionId, selfTestOutcome(r, null));
+        if (r.versionId !== null) {
+          versions.set(r.versionId, selfTestOutcome(r, null));
+          await deps.kv.put(versionKey(r.worker), r.versionId);
+          continue;
+        }
+        // A self-test that answered nothing usable still fails the version it last answered as.
+        const last = await deps.kv.get(versionKey(r.worker));
+        if (last !== null) versions.set(last, fail(r.detail));
         else console.error(JSON.stringify({ event: "prober.selftest_unattributed", worker: r.worker, detail: r.detail }));
       }
     }
 
-    const outcomes: Record<string, boolean> = Object.fromEntries(shared.map(([name, o]) => [name, o.ok]));
+    const sharedFailed = shared.filter(([, o]) => !o.ok).map(([name]) => name);
+    const indexOutcome = shared.find(([name]) => name === INDEX_SCENARIO)![1];
+    const failedByVersion: Record<string, string[]> = {};
     for (const [versionId, selfTest] of versions) {
-      for (const [scenario, outcome] of selfTest ? [...shared, [`selftest.${versionId}`, selfTest] as const] : shared) {
-        deps.emit("synthetic.probe", {
-          target: versionId,
-          run: runId,
-          scenario,
-          ok: outcome.ok,
-          ...(typeof outcome.staleS === "number" ? { stale_s: outcome.staleS } : {}),
-        });
-        if (!outcome.ok) console.error(JSON.stringify({ event: "prober.failed", target: target.name, scenario, detail: outcome.detail }));
-      }
-      if (selfTest) outcomes[`selftest.${versionId}`] = selfTest.ok;
+      const failed = [...sharedFailed, ...(selfTest && !selfTest.ok ? ["selftest"] : [])];
+      failedByVersion[versionId] = failed;
+      deps.emit("synthetic.probe", {
+        target: versionId,
+        run: runId,
+        scenario: "summary",
+        ok: failed.length === 0,
+        index_ok: indexOutcome.ok,
+        ...(failed.length > 0 ? { failed: failed.join(",") } : {}),
+        ...(typeof indexOutcome.staleS === "number" ? { stale_s: indexOutcome.staleS } : {}),
+      });
     }
-    result.targets.push({ target: target.name, outcomes });
+    for (const [name, o] of shared) if (!o.ok) console.error(JSON.stringify({ event: "prober.failed", target: target.name, scenario: name, detail: o.detail }));
+    for (const r of selfResults) if (!r.ok) console.error(JSON.stringify({ event: "prober.failed", target: target.name, scenario: `selftest.${r.worker}`, detail: r.detail }));
+    result.targets.push({ target: target.name, failed: failedByVersion });
   };
 
   const selfTestSender = (reach: Target["reach"], expectedRelease: string | null): Send => registrySender({ reach, expectedRelease, clock: deps.clock, fetch: deps.fetch });
