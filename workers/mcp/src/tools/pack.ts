@@ -3,8 +3,10 @@ import { StoredCard } from "@packserver/core/search";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { McpRuntime } from "../bindings";
-import { adoptVersionFlag, EXCERPT_LIMIT, findPublicPack, readExcerpts, readMeta, type PublicPack } from "./catalog";
+import { adoptVersionFlag, EXCERPT_LIMIT, findPublicPack, readExcerpts, readMeta, versionsOf, type PublicPack } from "./catalog";
 import type { Advisory, PackExtras } from "./extras";
+import type { Caller } from "../limits";
+import { accessCallerOf, privatePackView } from "../privileged";
 import { answer, describe, failure, unavailable } from "./result";
 
 export const REPORTED_LABEL = "Reported, under review";
@@ -24,14 +26,6 @@ FROM pack_search ps LEFT JOIN pack_stats st ON st.pack_id = ps.pack_id WHERE ps.
     [packId],
   );
   return rows[0];
-}
-
-function versionsOf(pack: PublicPack) {
-  return pack.listing.versions.map((v) => {
-    const { reason, security, ...rest } = v;
-    const text = { ...(reason !== undefined ? { reason } : {}), ...(security !== undefined ? { security } : {}) };
-    return { ...rest, ...(Object.keys(text).length > 0 ? { publisher_text: text } : {}) };
-  });
 }
 
 async function detail(runtime: McpRuntime, extras: PackExtras, pack: PublicPack, row: VersionRow) {
@@ -95,7 +89,8 @@ async function detail(runtime: McpRuntime, extras: PackExtras, pack: PublicPack,
   };
 }
 
-export function registerPack(server: McpServer, runtime: McpRuntime, extras: PackExtras): void {
+export function registerPack(server: McpServer, runtime: McpRuntime, extras: PackExtras, caller: Caller): void {
+  const access = accessCallerOf(caller);
   server.registerTool(
     "get_pack",
     {
@@ -110,7 +105,7 @@ export function registerPack(server: McpServer, runtime: McpRuntime, extras: Pac
     async ({ name, version }) => {
       try {
         const found = await findPublicPack(runtime, name);
-        if (found.kind === "missing") return failure("not_found", "No public pack has that name.");
+        if (found.kind === "missing") return access ? await privatePackView(runtime, name, version, access) : failure("not_found", "No public pack has that name.");
         if (found.kind === "unavailable") return unavailable();
         const { pack } = found;
         if (pack.listing.status === "removed") return failure("removed", "That pack has been removed.");

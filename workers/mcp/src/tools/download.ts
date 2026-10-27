@@ -1,11 +1,15 @@
+import { recordAuthenticatedDownload } from "@packserver/core/community";
 import { lookupVersion, objectKey, summarise } from "@packserver/core/catalog";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { McpRuntime } from "../bindings";
 import { findPublicPack } from "./catalog";
+import type { Caller } from "../limits";
+import { accessCallerOf, privateDownload } from "../privileged";
 import { answer, describe, failure, unavailable } from "./result";
 
-export function registerDownload(server: McpServer, runtime: McpRuntime): void {
+export function registerDownload(server: McpServer, runtime: McpRuntime, caller: Caller): void {
+  const access = accessCallerOf(caller);
   const origin = runtime.config.cdnOrigin.replace(/\/$/, "");
   server.registerTool(
     "get_download",
@@ -21,7 +25,7 @@ export function registerDownload(server: McpServer, runtime: McpRuntime): void {
     async ({ name, version }) => {
       try {
         const found = await findPublicPack(runtime, name);
-        if (found.kind === "missing") return failure("not_found", "No public pack has that name.");
+        if (found.kind === "missing") return access ? await privateDownload(runtime, caller, access, name, version) : failure("not_found", "No public pack has that name.");
         if (found.kind === "unavailable") return unavailable();
         const { pack } = found;
         if (pack.listing.status === "removed") return failure("removed", "That pack has been removed.");
@@ -39,6 +43,9 @@ export function registerDownload(server: McpServer, runtime: McpRuntime): void {
         if (lookup.kind === "held") return answer({ id: name, version: target, status: "quarantined", under_review: true, ...text });
         if (summary.status === "revoked") return answer({ id: name, version: target, status: "revoked", ...text });
 
+        if (caller.kind === "oauth") {
+          await recordAuthenticatedDownload(runtime.ports.d1, { packId: pack.id, userId: caller.grant.userId, at: new Date(runtime.tokenClock.now()).toISOString() });
+        }
         return answer({
           id: name,
           version: target,
