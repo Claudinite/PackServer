@@ -164,12 +164,12 @@ export async function actionRow(d1: D1, id: string): Promise<ActionRow | null> {
   return { id: String(r.id), kind: String(r.kind), scope_id: String(r.scope_id), pack_id: text(r.pack_id), version: text(r.version), from_state: text(r.from_state), from_reason: text(r.from_reason), from_security: text(r.from_security), to_state: text(r.to_state), to_reason: text(r.to_reason) };
 }
 
-/** Undoes one action and marks it so; whatever now holds the thing for another reason stays. */
-export async function restoreAction(ports: Ports, id: string): Promise<boolean> {
+/** Undoes one action and marks it so; whatever now holds the thing for another reason stays. An undo that changed nothing marks the action only when asked to. */
+export async function restoreAction(ports: Ports, id: string, o: { keepIfUnchanged?: boolean } = {}): Promise<boolean> {
   const row = await actionRow(ports.d1, id);
   if (!row) return false;
   const changed = await undoAction(ports, row);
-  await markRestored(ports, id);
+  if (changed || !o.keepIfUnchanged) await markRestored(ports, id);
   return changed;
 }
 

@@ -29,6 +29,7 @@ const SAMPLES: { [K in NoticeKind]: NoticeData<K> } = {
   "scope-renamed": { was: "@acme", now: "@acme-prior", scopeUrl: url },
   "review-removed": { pack: "@acme/pack", reason: "Spam", packUrl: url },
   "abuse-report-outcome": { target: "@acme/pack", outcome: "actioned", url },
+  "dmca-case-closed": { pack: "@acme/pack", version: "1.0.0", because: "the notice was withdrawn", url },
   "dmca-counter-notice": { pack: "@acme/pack", version: "1.0.0", notice: "I own this work.", restoreAfterBusinessDays: 14, url },
 };
 

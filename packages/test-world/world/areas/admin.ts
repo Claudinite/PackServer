@@ -195,6 +195,8 @@ export interface AdminSession extends Admin {
       remove(version: Version, complainant: string): Promise<void>;
       /** Records that the complainant filed suit, which keeps the version removed. */
       suit(version: Version): Promise<void>;
+      /** Closes the version's copyright case: the version returns to what it was before the notice. */
+      close(version: Version, reason: "withdrawn" | "resolved_for_publisher" | "entered_in_error"): Promise<void>;
     };
     /** Reporters publishers flagged. */
     flags(): Promise<FlaggedReporter[]>;
@@ -559,6 +561,11 @@ export function createAdmin(driver: Driver, onDispose: (undo: () => Promise<void
           const row = (await sqlOf()("select c.id from dmca_cases c where c.action_id = ?", [await latestAction(version)]))[0];
           if (!row) throw new InfrastructureError("no copyright removal on the version");
           await json("moderation.dmca.suit", "POST", `/admin/moderation/dmca/${String(row.id)}/suit`, {});
+        },
+        async close(version, reason) {
+          const row = (await sqlOf()("select c.id from dmca_cases c where c.action_id = ?", [await latestAction(version)]))[0];
+          if (!row) throw new InfrastructureError("no copyright removal on the version");
+          await json("moderation.dmca.close", "POST", `/admin/moderation/dmca/${String(row.id)}/close`, { reason });
         },
       },
       async flags() {

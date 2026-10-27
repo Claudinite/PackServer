@@ -1,6 +1,6 @@
 import { actorOf } from "@packserver/core/admin";
 import {
-  actOnAbuse, blockReporter, decideModerationAppeal, dismissAbuse, flaggedReporters, heldComments, hidePack, hideReviewByModerator, MAX_REASON, openAbuseReports,
+  actOnAbuse, blockReporter, closeCopyrightCase, DMCA_CLOSE_REASONS, type DmcaCloseReason, decideModerationAppeal, dismissAbuse, flaggedReporters, heldComments, hidePack, hideReviewByModerator, MAX_REASON, openAbuseReports,
   openModerationAppeals, quarantinePack, recordSuit, releaseComment, removeComment, removeOnCopyrightNotice, suspendPublisher, type AbuseAction,
 } from "@packserver/core/moderation";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
@@ -104,6 +104,14 @@ export function moderationRoutes(runtime: AdminRuntime) {
 
   routes.post("/admin/moderation/dmca/:caseId/suit", async (c) => {
     const result = await recordSuit(ports(), c.req.param("caseId"), c.get("admin").email);
+    return result.ok ? c.json(result, 200, NO_STORE) : c.json({ ok: false, reason: "not_open", message: result.message }, 409, NO_STORE);
+  });
+
+  routes.post("/admin/moderation/dmca/:caseId/close", async (c) => {
+    const body = await jsonBody(c.req.raw);
+    const reason = body && stringField(body, "reason");
+    if (!reason || !Object.hasOwn(DMCA_CLOSE_REASONS, reason)) return c.json(BAD_REQUEST, 400, NO_STORE);
+    const result = await closeCopyrightCase(ports(), c.req.param("caseId"), c.get("admin").email, reason as DmcaCloseReason);
     return result.ok ? c.json(result, 200, NO_STORE) : c.json({ ok: false, reason: "not_open", message: result.message }, 409, NO_STORE);
   });
 

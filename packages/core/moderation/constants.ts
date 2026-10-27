@@ -34,3 +34,11 @@ export const moderationReason = (reason: string): string => `${MODERATION_PREFIX
 export const DMCA_RESTORE_BUSINESS_DAYS = 14;
 
 export const isHighSeverity = (category: string): boolean => (HIGH_SEVERITY_CATEGORIES as readonly string[]).includes(category);
+
+/** Why an admin closes a copyright case, and how the publisher is told. */
+export const DMCA_CLOSE_REASONS = {
+  withdrawn: "the notice was withdrawn",
+  resolved_for_publisher: "it was resolved in the publisher's favour",
+  entered_in_error: "the removal was entered in error",
+} as const;
+export type DmcaCloseReason = keyof typeof DMCA_CLOSE_REASONS;

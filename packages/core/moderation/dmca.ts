@@ -1,7 +1,8 @@
 import { sendNotice } from "../mail/index.ts";
-import { DMCA_RESTORE_BUSINESS_DAYS, DMCA_SWEEP_LIMIT, MAX_NOTE, moderationReason } from "./constants.ts";
+import { DMCA_CLOSE_REASONS, DMCA_RESTORE_BUSINESS_DAYS, DMCA_SWEEP_LIMIT, MAX_NOTE, moderationReason, type DmcaCloseReason } from "./constants.ts";
 import { actionFor } from "./appeals.ts";
 import { recordAction, restoreAction } from "./actions.ts";
+import { notifyOwners } from "./notify.ts";
 import { nowIso, publicUrl, type ModerationPorts } from "./ports.ts";
 import { findPack, findPackById } from "./targets.ts";
 import { holdVersion } from "./status.ts";
@@ -84,6 +85,26 @@ export async function recordSuit(ports: ModerationPorts, caseId: string, admin: 
   const kase = (await ports.d1.query("select a.pack_id, a.version from dmca_cases c join moderation_actions a on a.id = c.action_id where c.id = ?", [caseId])).rows[0]!;
   const pack = (await findPackById(ports.d1, String(kase.pack_id)))!;
   await ports.audit({ kind: "admin", id: admin }, "admin.action", `version:${pack.name}@${String(kase.version)}`, { detail: { verb: "dmca.suit" } });
+  return { ok: true };
+}
+
+/**
+ * An admin ends a case for a reason (the notice was withdrawn, it was resolved for the publisher, or the removal was a
+ * mistake): the version goes back to what it was before the notice, whatever the case's state, and the publisher is told.
+ * Without this a case whose complainant filed suit would hold the version for ever.
+ */
+export async function closeCopyrightCase(ports: ModerationPorts, caseId: string, admin: string, reason: DmcaCloseReason): Promise<{ ok: true } | { ok: false; message: string }> {
+  const kase = (
+    await ports.d1.query("select c.action_id, a.pack_id, a.scope_id, a.version from dmca_cases c join moderation_actions a on a.id = c.action_id where c.id = ?", [caseId])
+  ).rows[0];
+  if (!kase) return { ok: false, message: "No case by that id." };
+  const closed = await ports.d1.query("update dmca_cases set state = 'restored', restored_at = ? where id = ? and state in ('removed', 'counter_filed', 'suit_filed')", [nowIso(ports), caseId]);
+  if (closed.meta.changes === 0) return { ok: false, message: "The case is already closed." };
+  const pack = (await findPackById(ports.d1, String(kase.pack_id)))!;
+  const version = String(kase.version);
+  await restoreAction(ports, String(kase.action_id));
+  await ports.audit({ kind: "admin", id: admin }, "admin.action", `version:${pack.name}@${version}`, { detail: { verb: "dmca.close", reason } });
+  await notifyOwners(ports, String(kase.scope_id), "dmca-case-closed", { pack: pack.name, version, because: DMCA_CLOSE_REASONS[reason], url: publicUrl(ports, `/packs/${pack.name}`) });
   return { ok: true };
 }
 

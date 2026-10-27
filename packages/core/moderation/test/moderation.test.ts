@@ -6,7 +6,7 @@ import { migratedD1 } from "../../identity/testing.ts";
 import type { SignalAttrs, SignalName } from "../../telemetry/index.ts";
 import {
   actOnAbuse, businessDaysBetween, decideModerationAppeal, dismissAbuse, fileAbuseReport, fileAppeal, fileCounterNotice, heldComments, openAbuseReports,
-  moveVersion, prioritisedAttrs, recordDismissals, recordSuit, releaseComment, removeComment, removeOnCopyrightNotice, sweepDmca, hidePack, suspendPublisher, blockReporter, type AbuseInput, type ModerationPorts,
+  moveVersion, prioritisedAttrs, recordDismissals, recordSuit, releaseComment, removeComment, removeOnCopyrightNotice, closeCopyrightCase, sweepDmca, hidePack, suspendPublisher, blockReporter, type AbuseInput, type ModerationPorts,
 } from "../index.ts";
 
 const START = Date.parse("2026-10-23T10:00:00.000Z");
@@ -465,5 +465,47 @@ describe("a person takes over what the registry or the publisher did", () => {
     await fileAppeal(f.ports, id, owner, "ours");
     await decideModerationAppeal(f.ports, id, "admin@example.test", "upheld");
     expect(await row()).toMatchObject({ state: "yanked", status_reason: "broken", status_security: "cve-1" });
+  });
+});
+
+describe("closing a copyright case", () => {
+  const admin = "admin@example.test";
+  const reasonOf = async (f: Awaited<ReturnType<typeof fixture>>) => String((await f.d1.query("select status_reason from pack_versions where id = 'v1'")).rows[0]?.status_reason);
+
+  it.each(["withdrawn", "resolved_for_publisher", "entered_in_error"] as const)("returns the version and tells the publisher when the case closes as %s, even after suit", async (reason) => {
+    const f = await fixture(3);
+    await f.user("own", { role: "owner" });
+    const removed = await removeOnCopyrightNotice(f.ports, admin, { pack: "@acme/gcp", version: "1.0.0", complainant: "c@claim.test" });
+    if (!removed.ok) throw new Error("not removed");
+    const caseId = String((await f.d1.query("select id from dmca_cases")).rows[0]?.id);
+    await recordSuit(f.ports, caseId, admin);
+    expect(await moveVersion(f.ports, { kind: "admin", id: admin }, { pack: "@acme/gcp", version: "1.0.0", transition: "unquarantine", reason: "x" })).toMatchObject({ ok: false, message: expect.stringContaining(`/admin/moderation/dmca/${caseId}/close`) });
+    expect(await closeCopyrightCase(f.ports, caseId, admin, reason)).toEqual({ ok: true });
+    expect(await f.state()).toBe("active");
+    expect(f.mail.inbox("own@example.test").some((m) => m.subject.startsWith("Copyright case closed"))).toBe(true);
+    expect((await f.d1.query("select detail from recent_activity where target = 'version:@acme/gcp@1.0.0' order by at, id")).rows.map((r) => (JSON.parse(String(r.detail)) as { verb: string; reason?: string }).reason)).toContain(reason);
+    expect(await closeCopyrightCase(f.ports, caseId, admin, reason)).toMatchObject({ ok: false });
+  });
+
+  it("puts an earlier quarantine back when the case closes", async () => {
+    const f = await fixture(3);
+    await f.d1.query("update pack_versions set state = 'quarantined', status_reason = 'rescan' where id = 'v1'");
+    await removeOnCopyrightNotice(f.ports, admin, { pack: "@acme/gcp", version: "1.0.0", complainant: "c@claim.test" });
+    const caseId = String((await f.d1.query("select id from dmca_cases")).rows[0]?.id);
+    await closeCopyrightCase(f.ports, caseId, admin, "withdrawn");
+    expect(await f.state()).toBe("quarantined");
+    expect(await reasonOf(f)).toBe("rescan");
+  });
+
+  it("does not mark an earlier admin quarantine restored when an upheld appeal undid nothing", async () => {
+    const f = await fixture(3);
+    const owner = await f.user("own", { role: "owner" });
+    await moveVersion(f.ports, { kind: "admin", id: admin }, { pack: "@acme/gcp", version: "1.0.0", transition: "quarantine", reason: "Looking" });
+    const first = String((await f.d1.query("select id from moderation_actions")).rows[0]?.id);
+    await removeOnCopyrightNotice(f.ports, admin, { pack: "@acme/gcp", version: "1.0.0", complainant: "c@claim.test" });
+    await fileAppeal(f.ports, first, owner, "fine");
+    await decideModerationAppeal(f.ports, first, admin, "upheld");
+    expect(await f.state()).toBe("quarantined");
+    expect((await f.d1.query("select restored_at from moderation_actions where id = ?", [first])).rows[0]?.restored_at).toBeNull();
   });
 });

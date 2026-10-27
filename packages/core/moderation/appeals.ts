@@ -92,7 +92,7 @@ export async function decideModerationAppeal(ports: ModerationPorts, actionId: s
   if (!action || (await ports.d1.query("select 1 from moderation_appeals where action_id = ?", [actionId])).rows.length === 0) return { ok: false, reason: "unknown" };
   const changed = await ports.d1.query("update moderation_appeals set state = ?, decided_by = ?, decided_at = ? where action_id = ? and state = 'open'", [outcome, admin, nowIso(ports), actionId]);
   if (changed.meta.changes === 0) return { ok: false, reason: "not_open" };
-  if (outcome === "upheld") await restoreAction(ports, actionId);
+  if (outcome === "upheld") await restoreAction(ports, actionId, { keepIfUnchanged: true });
   const pack = action.pack_id === null ? null : await findPackById(ports.d1, action.pack_id);
   const scopeName = String((await ports.d1.query("select name from scopes where id = ?", [action.scope_id])).rows[0]?.name);
   const label = pack?.name ?? `@${scopeName}`;
