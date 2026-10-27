@@ -110,7 +110,7 @@ scenario("IT-PUB-008 Trusted-publishing-only refuses web uploads", async (world)
   expect(world.mail.inbox(p).latest().text).toContain("turned off");
 });
 
-scenario("IT-VAL-038 The next version after a publisher-change event is a first publish (emitter half)", async (world) => {
+scenario("IT-VAL-038 The next version after a publisher-change event is a first publish", async (world) => {
   const { p } = await acmeOrg(world);
   await world.packs.public("@acme/changed");
   await world.packs.public("@acme/quiet");
@@ -125,4 +125,27 @@ scenario("IT-VAL-038 The next version after a publisher-change event is a first 
 
   await expect(world.trusted.register("@acme/changed", { by: p, repo, workflow: WORKFLOW, path: "packs/changed", assertion: "none" })).toBeRefused("step-up");
   await expect(world.trusted.changes("@acme/changed")).resolves.toHaveLength(2);
-});
+
+  const publish = async (pack: string, version: string) => {
+    const admitted = await p.publish(world.archive("gcp")).as(`@acme/${pack}@${version}`);
+    await world.validation.completes(admitted);
+    return admitted;
+  };
+  const [real, calm, old] = await Promise.all([publish("real", "1.0.0"), publish("calm", "1.0.0"), publish("old", "1.0.0")]);
+  await Promise.all([real, calm, old].map((version) => version.promoted()));
+  await world.trusted.register("@acme/real", { by: p, repo, workflow: WORKFLOW, path: "packs/real" });
+
+  const [next, contrast] = await Promise.all([publish("real", "1.0.1"), publish("calm", "1.0.1")]);
+  expect(await next.approval()).toMatchObject({ state: "awaiting", reasons: ["publisher-change"] });
+  expect(await contrast.approval()).toBeNull();
+  await contrast.promoted();
+  await next.approve({ by: p });
+  await next.promoted();
+  await expect(world.trusted.changes("@acme/real")).resolves.toEqual([{ kind: "trusted-publisher", consumed: true }]);
+  const after = await publish("real", "1.0.2");
+  expect(await after.approval()).toBeNull();
+
+  await old.backdate(181, await world.clock.now());
+  const dormant = await publish("old", "1.0.1");
+  expect(await dormant.approval()).toMatchObject({ state: "awaiting", reasons: ["dormant"] });
+}, { needs: ["fakes", "clock", "storage", "reset"] });

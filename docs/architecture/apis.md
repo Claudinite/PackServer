@@ -35,7 +35,7 @@ Notable endpoints:
 | `POST /api/publish/@scope/name/<version>` | Start validation with the declared SHA-256 |
 | `GET /api/publish/runs/<run_id>` | Live progress and the report |
 | `POST /api/dry-run` | Dry-run validation (REQ-VAL-043) |
-| `POST /api/publish/runs/<run_id>/approve` | Staged approval or capability-widening approval with a passkey assertion |
+| `POST /api/publish/runs/<run_id>/approve` | Staged approval or capability-widening approval with a passkey assertion, from an owner only; the web Worker also serves it at `/api/approvals/runs/<run_id>/approve` and takes the appeal at `.../appeal` (at most 2,000 characters, one per rejected version) |
 
 The GitHub Action `claudinite/publish-pack` wraps the first three calls and runs `cn vendor`
 before packing; the workflow YAML the dashboard hands out pins it by commit SHA and pins `cn` by

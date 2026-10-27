@@ -9,6 +9,7 @@ import { SANDBOX_DIED, syncClock, type R2, type Sandbox, type SandboxInspectRequ
 import { loadRules, RULES_VERSIONS } from "@packserver/rules";
 import { Finding, TreeFetchRequest, TreeFetchResponse, type Capability, type PreInstallManifest, type Provenance, type SignalName } from "@packserver/schema";
 import type { ValidatorRuntime } from "../bindings";
+import { loadPromotion } from "../promote/load";
 import { lookupsFor, newestPublished, previousPromoted } from "./lookups";
 import { milestone } from "./milestones";
 import { getFindings, getJson, putFindings, putJson, runKeys } from "./report";
@@ -479,6 +480,14 @@ async function stepRecords(rt: ValidatorRuntime, runId: string) {
       outcome: (r.outcome === "ok" ? "pass" : r.outcome === "fail" ? "fail" : "skipped") as "pass" | "fail" | "skipped",
       ms: 0,
     }));
+}
+
+/** A finished publish's verdict as an earlier instance left it, for an instance that resumes after the people who had to decide have; none when the run has no verdict to resume from. */
+export async function verdictedRun(rt: ValidatorRuntime, runId: string): Promise<Verdicted | null> {
+  const run = await loadPromotion(rt.ports.d1, runId);
+  if (run.kind !== "publish" || run.status !== "finished" || !run.report_key) return null;
+  if (run.verdict !== "pass" && run.verdict !== "warn" && run.verdict !== "hold") return null;
+  return { verdict: run.verdict, reportKey: run.report_key, score: run.score };
 }
 
 /** The run ends without a verdict about the pack: a sandbox or the platform failed, or the same inputs would fail again. */

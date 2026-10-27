@@ -134,6 +134,20 @@ export interface Version {
   verification(): Promise<Verification>;
 }
 
+/** A version this run published, with what the approval and appeal loops let a scenario do to it. */
+export interface PublishedVersion extends Version {
+  /** An owner approves a validated version that waits for one; `passkey` makes the assertion with that factor. */
+  approve(o?: Sensitive & { by?: User; passkey?: Passkey }): Promise<void>;
+  promoted(timeoutMs?: number): Promise<PublishedVersion>;
+  downloadable(): Promise<boolean>;
+  backdate(days: number, from: Date): Promise<void>;
+  approval(): Promise<import("./publishing").ApprovalState | null>;
+  approvalSheet(by: User): Promise<import("./publishing").ApprovalSheet>;
+  appeal(note: string, by: User): Promise<void>;
+  abandonInstance(): Promise<void>;
+  resume(): Promise<Array<{ source: string; delivered: "event" | "instance" | "nothing" }>>;
+}
+
 export interface UserOpts {
   email?: string;
   ageDays?: number;
@@ -235,7 +249,7 @@ export interface User {
 }
 export interface Publisher extends User {
   scope: Scope;
-  publish(archive: Archive): { as(nameAtVersion: string, o?: { visibility?: "private"; staged?: true }): Promise<Version> };
+  publish(archive: Archive): { as(nameAtVersion: string, o?: { visibility?: "private"; staged?: true }): Promise<PublishedVersion> };
   dryRun(archive: Archive, o?: { proseScreen?: boolean }): Promise<Report>;
 }
 

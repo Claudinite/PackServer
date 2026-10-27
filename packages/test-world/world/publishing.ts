@@ -4,15 +4,16 @@ import { objectKey, type ObjectKind } from "@packserver/core/catalog";
 import { verifyAttestation } from "@packserver/core/index";
 import { contentsKey } from "@packserver/core/validation";
 import { fixtureArchive, type FixtureName } from "@packserver/core/canonical/fixtures";
-import type { Driver, StorageAccess } from "../drivers/driver";
+import type { ApiResponse, Driver, StorageAccess } from "../drivers/driver";
 import type { Aliases } from "./alias";
 import type { CiModule, Presigned, UploadCredential } from "./ci-workflow";
 import { InfrastructureError, NotImplemented } from "./errors";
 import type { Finding, ValidationReport } from "@packserver/schema";
 import { Refusal, type RefusalReason } from "./outcomes";
+import { callerOf } from "./areas/users";
 import { seededRegistryKey } from "./packs";
 import type { ScopeOwner, ScopesModule } from "./areas/scopes";
-import type { Archive, Pack, PublisherOpts, UserOpts, ValidationRun, Version, VersionStatus, Verification } from "./types";
+import type { Archive, Passkey, Pack, PublisherOpts, Sensitive, User, UserOpts, ValidationRun, Version, VersionStatus, Verification } from "./types";
 
 export interface ArchiveOptions {
   version?: string;
@@ -38,6 +39,26 @@ export interface RunMilestone {
   detail?: string;
   at: string;
 }
+/** Why a validated version waits for an owner, and whether one has approved it. */
+export interface ApprovalState {
+  state: "awaiting" | "approved";
+  reasons: string[];
+}
+/** What an owner is shown before approving. */
+export interface ApprovalSheet {
+  state: "awaiting" | "approved";
+  reasons: string[];
+  sheet: {
+    pack: string;
+    version: string;
+    widening: boolean;
+    against: string | null;
+    /** Pre-install entries the previous promoted version lacked, listed first. */
+    new: string[];
+    capabilities: { added: string[]; removed: string[] };
+    files: Array<{ path: string; change: "added" | "removed" | "modified"; added_lines: number; removed_lines: number }>;
+  };
+}
 export interface RunView {
   run_id: string;
   kind: "publish" | "dry-run";
@@ -47,6 +68,7 @@ export interface RunView {
   verdict: "pass" | "warn" | "hold" | "fail" | "error" | null;
   reason: string | null;
   queued: { reason: string; start_after: string; until: string } | null;
+  approval: ApprovalState | null;
   milestones: RunMilestone[];
 }
 
@@ -111,6 +133,18 @@ export class Run implements ValidationRun {
   }
 }
 
+/** A refusal the site gave, or a harness error when it said nothing a scenario could assert on. */
+function refusalOfResponse(res: ApiResponse, what: string): Refusal {
+  let body: { reason?: RefusalReason; message?: string } = {};
+  try {
+    body = res.json() as typeof body;
+  } catch {
+    /* reported below */
+  }
+  if (!body.reason) throw new InfrastructureError(`${what}: ${res.status} without a refusal: ${res.text.slice(0, 160)}`);
+  return new Refusal(body.reason, body.message === undefined ? {} : { message: body.message });
+}
+
 export interface PublishedVersion {
   objects: Array<{ kind: ObjectKind; key: string; size: number; contentType?: string; contentDisposition?: string; cacheControl?: string }>;
   archive: Uint8Array;
@@ -129,6 +163,7 @@ export class AdmittedVersion implements Version {
     readonly run: Run,
     private readonly declaredSha256: () => Promise<string>,
     private readonly storage: () => StorageAccess,
+    private readonly driver?: Driver,
   ) {}
   private sql(statement: string, params: unknown[] = []) {
     return this.storage().sql(statement, params);
@@ -207,8 +242,57 @@ export class AdmittedVersion implements Version {
     if (!row) throw new InfrastructureError(`${this.pack.systemName}@${this.version} has no version row`);
     return String(row.state) as VersionStatus;
   }
-  approve(): Promise<void> {
-    return this.missing("approve");
+  /**
+   * An owner's approval of a version that waits for one, made through the site with a passkey assertion for this run.
+   * `by` is the person approving; the assertion is made for them unless `assertion` says otherwise.
+   */
+  async approve(o: Sensitive & { by?: User; passkey?: Passkey } = {}): Promise<void> {
+    if (!o.by) throw new InfrastructureError("version.approve: say who approves, with { by: user }");
+    const caller = callerOf(o.by);
+    const how: Sensitive = o.passkey ? { assertion: await o.by.assertionFor({ action: "publish.approve", target: this.run.id }, { passkey: o.passkey }) } : o;
+    const headers = await caller.assertionHeaders("publish.approve", how, this.run.id);
+    const res = await caller.call({ method: "POST", path: `/api/publish/runs/${this.run.id}/approve`, json: {}, headers });
+    if (res.status >= 200 && res.status < 300) return;
+    throw refusalOfResponse(res, "version.approve");
+  }
+  /** Dates this version's promotion `days` before `from`, the faked now: the scope's coordinator stamps promotions with the host's own clock. */
+  async backdate(days: number, from: Date): Promise<void> {
+    await this.sql("update pack_versions set published_at = ? where id = ?", [new Date(from.getTime() - days * 86_400_000).toISOString(), String((await this.row())?.id)]);
+  }
+  /** Whether the version's archive is in the public bucket, which is what a download is served from. */
+  async downloadable(): Promise<boolean> {
+    return (await this.storage().packs.public.head(objectKey(this.pack.systemName, "archive", this.version))) !== null;
+  }
+  /** Whether the version waits for an owner, and why; none when nothing stages it. */
+  async approval(): Promise<ApprovalState | null> {
+    return (await this.run.view()).approval;
+  }
+  /** The sheet an owner is shown, read as that owner. */
+  async approvalSheet(by: User): Promise<ApprovalSheet> {
+    const res = await callerOf(by).call({ method: "GET", path: `/api/publish/runs/${this.run.id}/approval` });
+    if (res.status !== 200) throw refusalOfResponse(res, "version.approvalSheet");
+    return res.json() as ApprovalSheet;
+  }
+  /** The publisher's one appeal against a rejection of this version. */
+  async appeal(note: string, by: User): Promise<void> {
+    const res = await callerOf(by).call({ method: "POST", path: `/api/publish/runs/${this.run.id}/appeal`, json: { note } });
+    if (res.status >= 200 && res.status < 300) return;
+    throw refusalOfResponse(res, "version.appeal");
+  }
+  private internal(method: "POST" | "DELETE", path: string, body?: unknown): Promise<ApiResponse> {
+    if (!this.driver) throw new InfrastructureError("this version cannot reach the validator");
+    return this.driver.http.request({ surface: "validator", method, path, headers: { "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  }
+  /** Ends the run's workflow instance where it stands, as a Workflow class migration leaves a decision with no instance waiting. */
+  async abandonInstance(): Promise<void> {
+    const res = await this.internal("DELETE", `/internal/runs/${this.run.id}/instance`);
+    if (res.status !== 200) throw new InfrastructureError(`version.abandonInstance: the validator answered ${res.status}: ${res.text.slice(0, 120)}`);
+  }
+  /** Runs the validator's resumer for this run, as its cron does for every run, and answers how each decision was applied. */
+  async resume(): Promise<Array<{ source: string; delivered: "event" | "instance" | "nothing" }>> {
+    const res = await this.internal("POST", "/internal/resume", { run_id: this.run.id });
+    if (res.status !== 200) throw new InfrastructureError(`version.resume: the validator answered ${res.status}: ${res.text.slice(0, 120)}`);
+    return (res.json() as { resumed: Array<{ source: string; delivered: "event" | "instance" | "nothing" }> }).resumed;
   }
   deprecate(): Promise<void> {
     return this.missing("deprecate");
@@ -424,7 +508,7 @@ export function createPublishFlow(driver: Driver, aliases: Aliases, scopes: Pick
           return new AdmittedVersion(packOf(target), target.version, run, async () => {
             const rows = await sql("select declared_sha256 from validation_runs where id = ?", [run.id]);
             return String(rows[0]?.declared_sha256);
-          }, storage);
+          }, storage, driver);
         },
       };
     }

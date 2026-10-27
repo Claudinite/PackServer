@@ -37,11 +37,81 @@ describe("GET /api/publish/runs/<id>", () => {
   });
 });
 
-describe("POST /api/publish/runs/<id>/approve", () => {
-  it("is a stub that says it is not available", async () => {
+describe("the internal approval and appeal of a run", () => {
+  const internal = (world: TestWorld, path: string, body: unknown) =>
+    world.app.request(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+
+  async function awaiting() {
     const world = createWorld();
-    const res = await world.post("/api/publish/runs/r1/approve", {});
-    expect(res.status).toBe(501);
+    const owner = world.seed.user();
+    const maintainer = world.seed.user();
+    const outsider = world.seed.user();
+    world.seed.scope("acme", { members: [[owner, "owner"], [maintainer, "maintainer"]] });
+    const { res, credential } = await world.publish({ scope: "acme", pack: "gcp", version: "1.0.0", userId: owner });
+    const run = await json(res);
+    world.db.prepare(`update validation_runs set status = 'finished', verdict = 'pass' where id = ?`).run(run.run_id);
+    world.db.prepare(`insert into run_approvals (run_id, reasons, sheet, requested_at) values (?, '["verified-publisher"]', '{}', 'x')`).run(run.run_id);
+    world.validator.requests.length = 0;
+    return { world, owner, maintainer, outsider, run: run.run_id, credential };
+  }
+
+  it("records an owner's approval once, wakes the validator, and shows the approval on the run", async () => {
+    const { world, owner, run, credential } = await awaiting();
+    const before = await json(await world.get(`/api/publish/runs/${run}`, credential.secret));
+    expect(before.approval).toEqual({ state: "awaiting", reasons: ["verified-publisher"] });
+
+    const res = await internal(world, `/internal/runs/${run}/approve`, { principal_id: owner });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ run_id: run, state: "approved" });
+    expect(world.db.prepare(`select approved_by from run_approvals`).get()).toEqual({ approved_by: owner });
+    expect(world.validator.requests).toEqual([{ run_id: run }]);
+    expect((await json(await world.get(`/api/publish/runs/${run}`, credential.secret))).approval).toEqual({ state: "approved", reasons: ["verified-publisher"] });
+
+    const first = world.db.prepare(`select approved_at from run_approvals`).get();
+    world.clock.advance(60_000);
+    expect((await internal(world, `/internal/runs/${run}/approve`, { principal_id: owner })).status).toBe(200);
+    expect(world.db.prepare(`select approved_at from run_approvals`).get()).toEqual(first);
+  });
+
+  it("refuses a maintainer, hides the run from an outsider, and finds nothing to approve for a run that waits for no one", async () => {
+    const { world, maintainer, outsider, run, owner } = await awaiting();
+    const refused = await internal(world, `/internal/runs/${run}/approve`, { principal_id: maintainer });
+    expect(refused.status).toBe(403);
+    expect((await json(refused))).toMatchObject({ reason: "forbidden" });
+    expect((await internal(world, `/internal/runs/${run}/approve`, { principal_id: outsider })).status).toBe(404);
+    expect((await internal(world, `/internal/runs/nope/approve`, { principal_id: owner })).status).toBe(404);
+    world.db.exec("delete from run_approvals");
+    expect((await internal(world, `/internal/runs/${run}/approve`, { principal_id: owner })).status).toBe(404);
+    expect(world.validator.requests).toEqual([]);
+  });
+
+  it("still records an approval when the validator cannot be reached, for its cron to apply", async () => {
+    const { world, owner, run } = await awaiting();
+    world.validator.status = 503;
+    expect((await internal(world, `/internal/runs/${run}/approve`, { principal_id: owner })).status).toBe(200);
+    expect(world.db.prepare(`select approved_at is not null as done, event_sent_at from run_approvals`).get()).toEqual({ done: 1, event_sent_at: null });
+  });
+
+  it("takes one appeal of at most 2,000 characters for a rejected version, from a member of its scope", async () => {
+    const { world, maintainer, outsider, run } = await awaiting();
+    const appeal = (principal_id: string, note: string) => internal(world, `/internal/runs/${run}/appeal`, { principal_id, note });
+    expect((await appeal(maintainer, "x")).status).toBe(409);
+    world.db.prepare(`insert into review_decisions (run_id, decision, reason, decided_by, decided_at) values (?, 'reject', 'no', 'admin@example.test', 'x')`).run(run);
+
+    expect((await appeal(outsider, "x")).status).toBe(404);
+    expect((await appeal(maintainer, "x".repeat(2001))).status).toBe(400);
+    expect((await appeal(maintainer, "   ")).status).toBe(400);
+    expect((await appeal(maintainer, "y".repeat(2000))).status).toBe(201);
+    const again = await appeal(maintainer, "once more");
+    expect(again.status).toBe(409);
+    expect(await json(again)).toMatchObject({ reason: "exists" });
+    expect(world.db.prepare(`select length(note) as n, state, submitted_by from review_appeals`).all()).toEqual([{ n: 2000, state: "open", submitted_by: maintainer }]);
+  });
+
+  it("does not take an appeal for a version an admin approved", async () => {
+    const { world, maintainer, run } = await awaiting();
+    world.db.prepare(`insert into review_decisions (run_id, decision, decided_by, decided_at) values (?, 'approve', 'admin@example.test', 'x')`).run(run);
+    expect((await internal(world, `/internal/runs/${run}/appeal`, { principal_id: maintainer, note: "x" })).status).toBe(409);
   });
 });
 
