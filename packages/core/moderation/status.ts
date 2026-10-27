@@ -37,12 +37,12 @@ export async function holdVersion(ports: Ports, transition: "quarantine" | "yank
   const before = await statusOf(ports.d1, input.pack, input.version);
   const moved: VersionOutcome = await transitionVersion(ports, transition, input);
   if (!moved.ok) return { ok: false, message: moved.message };
-  const to = { state: transition === "yank" ? "yanked" : "quarantined", reason: input.reason, security: null };
-  if (moved.changed && before) return { ok: true, changed: true, change: { from: before, to }, before };
-  if (transition === "yank" && before?.state === "yanked" && !isModeration(before.reason) && isModeration(input.reason)) {
+  const to = { state: transition === "yank" ? "yanked" : "quarantined", reason: input.reason, security: before?.security ?? null };
+  if (moved.changed && before) return { ok: true, changed: true, change: { from: before, to: { ...to, security: null } }, before };
+  if (before?.state === to.state && !isModeration(before.reason) && isModeration(input.reason)) {
     const done = await ports.d1.query(
-      "update pack_versions set status_reason = ?, status_security = null, status_changed_at = ? where pack_id = (select p.id from packs p join scopes s on s.id = p.scope_id where '@' || s.name || '/' || p.name = ?) and version = ? and state = 'yanked' and status_reason is ?",
-      [input.reason, new Date(ports.clock.now()).toISOString(), input.pack, input.version, before.reason],
+      "update pack_versions set status_reason = ?, status_changed_at = ? where pack_id = (select p.id from packs p join scopes s on s.id = p.scope_id where '@' || s.name || '/' || p.name = ?) and version = ? and state = ? and status_reason is ?",
+      [input.reason, new Date(ports.clock.now()).toISOString(), input.pack, input.version, to.state, before.reason],
     );
     if (done.meta.changes > 0) {
       await ports.reindex.send({ schema: 1, type: "scope.proof_changed", scope: input.pack.slice(1).split("/")[0]!, change: "version_status_changed" });

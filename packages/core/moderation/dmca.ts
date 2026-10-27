@@ -33,7 +33,7 @@ export async function removeOnCopyrightNotice(ports: ModerationPorts, admin: str
   const reason = moderationReason("copyright notice");
   const held = await holdVersion(ports, "quarantine", { pack: input.pack, version: input.version, reason });
   if (!held.ok) return { ok: false, message: held.message };
-  // A version already out of reach for another reason still gets its case: the notice stands whatever else holds it.
+  // A version held for another reason is re-held under the copyright reason, which undoes to that hold; only a notice repeated on its own hold changes nothing.
   const change = held.change ?? (held.before ? { from: held.before, to: held.before } : null);
   if (!change) return { ok: false, message: `${input.pack}@${input.version} is not a version.` };
   const pack = (await findPack(ports.d1, input.pack))!;

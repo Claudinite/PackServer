@@ -342,18 +342,35 @@ describe("undoing an action", () => {
     expect(await f.state()).toBe("quarantined");
   });
 
-  it("keeps a copyright case for a version already held for another reason, and the sweep never lifts that hold", async () => {
+  it("re-holds a version already quarantined under the copyright reason, and the sweep puts the earlier quarantine back", async () => {
     const f = await fixture(3);
     const owner = await f.user("own", { role: "owner" });
+    const reasonOf = async () => String((await f.d1.query("select status_reason from pack_versions where id = 'v1'")).rows[0]?.status_reason);
     await f.d1.query("update pack_versions set state = 'quarantined', status_reason = 'rescan' where id = 'v1'");
     const removed = await removeOnCopyrightNotice(f.ports, "admin@example.test", { pack: "@acme/gcp", version: "1.0.0", complainant: "c@claim.test" });
     if (!removed.ok) throw new Error("not removed");
-    expect((await f.d1.query("select count(*) as n from dmca_cases")).rows[0]?.n).toBe(1);
+    expect(await reasonOf()).toBe("Removed by PackServer: copyright notice");
     await fileCounterNotice(f.ports, removed.action_id, owner, "mine");
     f.advance(30 * DAY);
     expect(await sweepDmca(f.ports)).toEqual({ restored: 1 });
     expect(await f.state()).toBe("quarantined");
-    expect(String((await f.d1.query("select status_reason from pack_versions where id = 'v1'")).rows[0]?.status_reason)).toBe("rescan");
+    expect(await reasonOf()).toBe("rescan");
+  });
+
+  it("refuses to lift the earlier quarantine while the case is open, and lifts it once the case has resolved", async () => {
+    const f = await fixture(3);
+    const owner = await f.user("own", { role: "owner" });
+    const admin = { kind: "admin" as const, id: "admin@example.test" };
+    await f.d1.query("update pack_versions set state = 'quarantined', status_reason = 'rescan' where id = 'v1'");
+    const removed = await removeOnCopyrightNotice(f.ports, "admin@example.test", { pack: "@acme/gcp", version: "1.0.0", complainant: "c@claim.test" });
+    if (!removed.ok) throw new Error("not removed");
+    expect(await moveVersion(f.ports, admin, { pack: "@acme/gcp", version: "1.0.0", transition: "unquarantine", reason: "cleared" })).toMatchObject({ ok: false });
+    expect(await f.state()).toBe("quarantined");
+    await fileCounterNotice(f.ports, removed.action_id, owner, "mine");
+    f.advance(30 * DAY);
+    await sweepDmca(f.ports);
+    expect(await moveVersion(f.ports, admin, { pack: "@acme/gcp", version: "1.0.0", transition: "unquarantine", reason: "cleared" })).toMatchObject({ ok: true, changed: true });
+    expect(await f.state()).toBe("active");
   });
 
   it("bounds a sweep and carries the rest to the next", async () => {
@@ -441,7 +458,7 @@ describe("a person takes over what the registry or the publisher did", () => {
     if (!filed.ok) throw new Error("not filed");
     expect(await actOnAbuse(f.ports, "admin@example.test", filed.report.id, { action: "yank", reason: "malware" })).toEqual({ ok: true });
     const row = async () => (await f.d1.query("select state, status_reason, status_security from pack_versions where id = 'v1'")).rows[0];
-    expect(await row()).toMatchObject({ state: "yanked", status_reason: "Removed by PackServer: malware" });
+    expect(await row()).toMatchObject({ state: "yanked", status_reason: "Removed by PackServer: malware", status_security: "cve-1" });
     expect(await transitionVersion(f.ports, "unyank", { pack: "@acme/gcp", version: "1.0.0", reason: null, by: "publisher" })).toMatchObject({ ok: false });
     expect(f.mail.inbox("own@example.test").some((m) => m.subject.startsWith("Action taken"))).toBe(true);
     const id = String((await f.d1.query("select id from moderation_actions")).rows[0]?.id);

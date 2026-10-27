@@ -84,6 +84,14 @@ export async function dismissAbuse(ports: ModerationPorts, id: string, admin: st
   return { ok: true };
 }
 
+async function openCopyrightCase(d1: D1, packId: string, version: string): Promise<boolean> {
+  const { rows } = await d1.query(
+    "select 1 from dmca_cases c join moderation_actions a on a.id = c.action_id where a.pack_id = ? and a.version = ? and c.state in ('removed', 'counter_filed', 'suit_filed') limit 1",
+    [packId, version],
+  );
+  return rows.length > 0;
+}
+
 export type MoveResult = { ok: true; changed: boolean } | { ok: false; message: string };
 
 /**
@@ -98,6 +106,7 @@ export async function moveVersion(
   const stored = input.transition === "yank" ? moderationReason(input.reason) : input.reason;
   const pack = await findPack(ports.d1, input.pack);
   if (input.transition === "unquarantine") {
+    if (pack && (await openCopyrightCase(ports.d1, pack.id, input.version))) return { ok: false, message: `${input.pack}@${input.version} is held by an open copyright case; it returns when the case resolves.` };
     const lifted = await transitionVersion(ports, "unquarantine", { pack: input.pack, version: input.version, reason: null });
     if (!lifted.ok) return { ok: false, message: lifted.message };
     if (pack && lifted.changed) await markVersionRestored(ports, pack.id, input.version);
