@@ -12,6 +12,7 @@ export type { ScopeOwner } from "./world/areas/scopes";
 export type { ListingSeed, SignalsSeed, Filters as SearchFilters, Results as SearchResults, ResultCard } from "./world/areas/search";
 export type { Run, RunView, RunMilestone } from "./world/publishing";
 export type { DashboardView } from "./world/areas/dashboard";
+export type { WizardPageView, WizardRun, WizardUpload } from "./world/areas/wizard";
 export type { DownloadOptions, MismatchCase, MismatchReportOptions, PrivateDownloadOptions } from "./world/areas/rollups";
 export type { PublisherChangeEvent, RegistrationFields, TrustedRegistration } from "./world/trusted-publishers";
 export { validate, rulesOf, type Publisher } from "./world/validation-helpers";
