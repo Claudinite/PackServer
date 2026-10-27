@@ -42,6 +42,7 @@ export function leadOf(data: PackData): Lead | null {
       ...(advisory ? { advisory: { href: `/packs/${data.name}/versions#advisory-${advisory.id}` } } : {}),
     };
   }
+  if (newest && data.listing.latest_eligible === null) return { tone: "warn", text: "Unavailable: no version can be adopted right now" };
   if (data.reported === true) return { tone: "warn", text: "Reported, under review" };
   return null;
 }
@@ -75,6 +76,7 @@ const TABS = [
   { key: "overview", label: "Overview", path: "" },
   { key: "contents", label: "Contents", path: "/contents" },
   { key: "versions", label: "Versions", path: "/versions" },
+  { key: "reviews", label: "Reviews", path: "/reviews" },
 ] as const;
 export type Tab = (typeof TABS)[number]["key"];
 
@@ -158,7 +160,8 @@ export function Glance(props: { data: PackData; version: VersionView }) {
         {...(version.score.cap ? { capReason: version.score.cap.reason } : {})}
       />
       <ShapeGlyph counts={counts} />
-      {s.rating === null ? <span class="rating muted">—</span> : <span class="rating" title="Rating"><b>{s.rating.toFixed(1)}</b> <span class="muted">rating</span></span>}
+      {s.rating === null ? <span class="rating muted">—</span> : <span class="rating" title="Rating"><b>{s.rating.toFixed(1)}</b> <span class="muted">{s.ratingCount === null ? "rating" : `(${s.ratingCount}) rating`}</span></span>}
+      <a class="plain" href={`/packs/${data.name}/star`} rel="nofollow">Star</a>
       {s.fetches30d === null ? null : (
         <HoverCard label={<span class="pulse">{fetchesLine(s.fetches30d)}</span>}>
           <ul>

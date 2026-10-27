@@ -9,6 +9,7 @@
     "./audit": "./audit/index.ts",
     "./audit/testing": "./audit/testing.ts",
     "./canonical": "./canonical/index.ts",
+    "./community": "./community/index.ts",
     "./canonical/fixtures": "./canonical/fixtures.ts",
     "./capabilities": "./validation/capabilities/inspector.ts",
     "./identity": "./identity/index.ts",
