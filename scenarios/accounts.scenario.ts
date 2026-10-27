@@ -268,7 +268,31 @@ scenario("IT-ACC-005 A first passkey enrols freely; every further factor is a se
   const pages = await p.mfa.pages();
   expect(pages).toContain('"offered":["passkey"]');
   expect(pages).not.toMatch(/totp/i);
-});
+
+  const admin = await world.admins.create();
+  const q = await world.publishers.create({ handle: "acc" });
+  await world.admins.proveDomain(q.scope, "acc.example");
+  await admin.applications.grant(q.scope);
+  const k1 = await q.mfa.enrol();
+  const waiting = await Promise.all(["one", "two"].map(async (name) => {
+    const admitted = await q.publish(world.archive("gcp")).as(`@acc/${name}@1.0.0`);
+    await world.validation.completes(admitted);
+    return admitted;
+  }));
+  const qid = (await q.account.show()).id;
+  const confirmedBySession = await q.assertionFor({ action: "factor.add", target: qid }, { recoveryCode: k1.recoveryCodes[0]! });
+  const qk2 = await q.mfa.enrol({ assertion: confirmedBySession });
+  await world.clock.advance("1h");
+  await expect(waiting[0]!.approve({ by: q, passkey: qk2 })).toBeRefused("step-up");
+  await world.clock.advance("23h1m");
+  await q.signIn();
+  await waiting[0]!.approve({ by: q, passkey: qk2 });
+  await waiting[0]!.promoted();
+
+  const qk3 = await q.mfa.enrol();
+  await waiting[1]!.approve({ by: q, passkey: qk3 });
+  await waiting[1]!.promoted();
+}, { needs: ["fakes", "clock", "storage", "reset"] });
 
 scenario("IT-ACC-006 Ten recovery codes shown once, with a reminder until saved", async (world) => {
   const person = world.users.newcomer();

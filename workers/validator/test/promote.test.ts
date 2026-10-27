@@ -5,6 +5,7 @@ import { scoreInputsOf } from "@packserver/core/score";
 import { RULES_VERSIONS } from "@packserver/rules";
 import { describe, expect, it } from "vitest";
 import type { ValidatorRuntime } from "../src/bindings";
+import { request } from "../src/approval";
 import { commit, notify, prepare, reindex, search, writeObjects, type Context } from "../src/promote/promote";
 import { runKeys } from "../src/workflow/report";
 import { testRuntime } from "./support";
@@ -233,5 +234,98 @@ describe("promotion", () => {
     const id = (s.db.prepare(`select id from pack_versions`).get() as { id: string }).id;
     expect(s.privateBucket.objects.has(privateArchiveKey(id))).toBe(true);
     expect(rowsOf(s.db, "pack_search")).toBe(0);
+  });
+});
+
+describe("the clearance people give a version", () => {
+  it("promotes a hold only once an admin has released it, and a widening only once an owner has approved it", async () => {
+    const held = await finishedRun({ verdict: "hold" });
+    expect(await prepare(held.ctx)).toEqual({ promote: false });
+    expect(await prepare(held.ctx, { approved: true })).toEqual({ promote: false });
+    expect(await prepare(held.ctx, { released: true })).toMatchObject({ promote: true });
+
+    const widening = await finishedRun({ widening: 1 });
+    expect(await prepare(widening.ctx, { released: true })).toEqual({ promote: false });
+    expect(await prepare(widening.ctx, { approved: true })).toMatchObject({ promote: true });
+  });
+
+  it("promotes a staged version once an owner has approved it, although the reason that staged it still stands", async () => {
+    const s = await finishedRun();
+    s.db.exec(`insert into publisher_changes (id, scope_id, pack_name, kind, occurred_at) values ('pc1', 's-acme', 'gcp', 'maintainer-added', 'x')`);
+    expect(await prepare(s.ctx)).toEqual({ promote: false });
+    expect(await prepare(s.ctx, { approved: true })).toMatchObject({ promote: true });
+  });
+});
+
+describe("the wait for an owner's approval", () => {
+  const rows = (s: Seeded) => s.db.prepare(`select reasons, sheet from run_approvals`).all() as Array<{ reasons: string; sheet: string }>;
+
+  it("is not asked for a version nothing stages", async () => {
+    const s = await finishedRun();
+    expect(await request(s.rt, "run1")).toEqual({ required: false });
+    expect(rows(s)).toEqual([]);
+  });
+
+  it("is asked for once for a publisher change, which the version then consumes, with the sheet written down", async () => {
+    const s = await finishedRun();
+    s.db.exec(`insert into publisher_changes (id, scope_id, pack_name, kind, occurred_at) values ('pc1', 's-acme', 'gcp', 'maintainer-added', 'x')`);
+    expect(await request(s.rt, "run1")).toEqual({ required: true });
+    expect(await request(s.rt, "run1")).toEqual({ required: true });
+    expect(rows(s)).toHaveLength(1);
+    expect(JSON.parse(rows(s)[0]!.reasons)).toEqual(["publisher-change"]);
+    expect(JSON.parse(rows(s)[0]!.sheet)).toMatchObject({ pack: "@acme/gcp", version: "1.0.0", widening: false, against: null, new: [], files: expect.arrayContaining([{ path: "pack.json", change: "added", added_lines: expect.any(Number), removed_lines: 0 }]) });
+    expect(s.db.prepare(`select consumed_at from publisher_changes`).get()).not.toEqual({ consumed_at: null });
+  });
+
+  it("names a widening first among the reasons", async () => {
+    const s = await finishedRun({ widening: 1 });
+    s.db.exec(`insert into publisher_changes (id, scope_id, pack_name, kind, occurred_at) values ('pc1', 's-acme', 'gcp', 'maintainer-added', 'x')`);
+    await request(s.rt, "run1");
+    expect(JSON.parse(rows(s)[0]!.reasons)).toEqual(["widening", "publisher-change"]);
+    expect(JSON.parse(rows(s)[0]!.sheet)).toMatchObject({ widening: true });
+  });
+
+  it("is asked for a pack declared by more repositories than the threshold, and only once a scan has counted", async () => {
+    const s = await finishedRun();
+    const declare = (from: number, to: number) => {
+      s.db.exec(`insert or ignore into adoption_scans (id, started_at, updated_at, completed_at) values ('scan1', 'x', 'x', 'x')`);
+      for (let i = from; i < to; i++) s.db.prepare(`insert into pack_declarations (scan_id, pack, repository, owner, settings_path) values ('scan1', '@acme/gcp', ?, 'o', 'p')`).run(`r${i}`);
+    };
+    expect(await request(s.rt, "run1")).toEqual({ required: false });
+    declare(0, 100);
+    expect(await request(s.rt, "run1")).toEqual({ required: false });
+    declare(100, 101);
+    expect(await request(s.rt, "run1")).toEqual({ required: true });
+    expect(JSON.parse(rows(s)[0]!.reasons)).toEqual(["declared-threshold"]);
+  });
+
+  it("follows the threshold an admin sets", async () => {
+    const s = await finishedRun();
+    s.db.exec(`insert into adoption_scans (id, started_at, updated_at, completed_at) values ('scan1', 'x', 'x', 'x')`);
+    for (let i = 0; i < 6; i++) s.db.prepare(`insert into pack_declarations (scan_id, pack, repository, owner, settings_path) values ('scan1', '@acme/gcp', ?, 'o', 'p')`).run(`r${i}`);
+    const flag = (value: string) => s.db.prepare(`insert into feature_flags (key, value, security, updated_at) values ('staged_publishing_declared_threshold', ?, 0, 'x') on conflict (key) do update set value = excluded.value`).run(value);
+    flag("5");
+    expect(await request(s.rt, "run1")).toEqual({ required: true });
+  });
+
+  it("is off when an admin turned the flag off, and uses the flag's default when it is missing, malformed or invalid", async () => {
+    const s = await finishedRun();
+    s.db.exec(`insert into adoption_scans (id, started_at, updated_at, completed_at) values ('scan1', 'x', 'x', 'x')`);
+    const declare = (n: number) => {
+      s.db.exec("delete from pack_declarations");
+      for (let i = 0; i < n; i++) s.db.prepare(`insert into pack_declarations (scan_id, pack, repository, owner, settings_path) values ('scan1', '@acme/gcp', ?, 'o', 'p')`).run(`r${i}`);
+    };
+    const flag = (value: string) => s.db.prepare(`insert into feature_flags (key, value, security, updated_at) values ('staged_publishing_declared_threshold', ?, 0, 'x') on conflict (key) do update set value = excluded.value`).run(value);
+    for (const value of ["{not json", '"off"', "-3", "1.5"]) {
+      flag(value);
+      s.db.exec("delete from run_approvals");
+      declare(100);
+      expect(await request(s.rt, "run1"), `${value} at 100`).toEqual({ required: false });
+      declare(101);
+      expect(await request(s.rt, "run1"), `${value} at 101`).toEqual({ required: true });
+    }
+    flag("null");
+    s.db.exec("delete from run_approvals");
+    expect(await request(s.rt, "run1")).toEqual({ required: false });
   });
 });

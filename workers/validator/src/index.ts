@@ -6,10 +6,13 @@ import { signEntrypoints } from "./entrypoints/sign";
 import { consumeNotify } from "./notify/consume";
 import { consumeReindex, refreshAllScopes } from "./reindex/consume";
 import { tick } from "./rescan/tick";
+import { resume } from "./resumer";
 
 export { SandboxA, SandboxB, ValidatePackWorkflow } from "./objects";
 
 const DAILY_CRON = "0 4 * * *";
+/** Applies the decisions that found no instance waiting. */
+const RESUME_CRON = "*/5 * * * *";
 /** Each fire advances the open rescan passes by a batch; the weekly fire is one more, so a week's passes begin on schedule even if the others were missed. */
 const RESCAN_CRONS: readonly string[] = ["*/15 * * * *", "0 5 * * 1"];
 
@@ -23,6 +26,10 @@ export default class Validator extends WorkerEntrypoint<Env> {
   }
 
   async scheduled(controller: ScheduledController): Promise<void> {
+    if (controller.cron === RESUME_CRON) {
+      await resume(createRuntime(this.env));
+      return;
+    }
     if (RESCAN_CRONS.includes(controller.cron)) {
       await tick(createRuntime(this.env));
       return;

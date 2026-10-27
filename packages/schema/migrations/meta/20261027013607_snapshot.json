@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "7543aaa9-3b87-4c2c-9fed-5a121b31f990",
-  "prevId": "d68c227e-f1be-4b5d-a25f-278cb98468b6",
+  "id": "c7a9bf57-bcca-4bf9-b242-4a51f2babd0b",
+  "prevId": "55c4a722-861c-42e1-9684-2ae9b1a7fc95",
   "tables": {
     "credentials": {
       "name": "credentials",
@@ -7041,6 +7041,82 @@
         "review_decisions_decision_check": {
           "name": "review_decisions_decision_check",
           "value": "\"review_decisions\".\"decision\" in ('approve', 'reject', 'quarantine_publisher')"
+        }
+      }
+    },
+    "run_approvals": {
+      "name": "run_approvals",
+      "columns": {
+        "run_id": {
+          "name": "run_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "reasons": {
+          "name": "reasons",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sheet": {
+          "name": "sheet",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "requested_at": {
+          "name": "requested_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "approved_by": {
+          "name": "approved_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "approved_at": {
+          "name": "approved_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "event_sent_at": {
+          "name": "event_sent_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "run_approvals_open_idx": {
+          "name": "run_approvals_open_idx",
+          "columns": [
+            "approved_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "run_approvals_approved_check": {
+          "name": "run_approvals_approved_check",
+          "value": "(\"run_approvals\".\"approved_by\" is null) = (\"run_approvals\".\"approved_at\" is null)"
+        },
+        "run_approvals_reasons_check": {
+          "name": "run_approvals_reasons_check",
+          "value": "json_valid(\"run_approvals\".\"reasons\") and json_valid(\"run_approvals\".\"sheet\")"
         }
       }
     },

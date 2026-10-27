@@ -286,6 +286,8 @@ export interface Workflow {
   status(id: string): Promise<{ status: string }>;
   /** Wakes the instance's `waitForEvent` of this type; rejects with `not_found` when the instance does not exist or has finished. */
   sendEvent(id: string, event: { type: string; payload: unknown }): Promise<void>;
+  /** Ends the instance where it stands; what it decided stays in the registry database. Rejects with `not_found` when there is no such instance. */
+  terminate(id: string): Promise<void>;
 }
 
 export interface RateLimit {

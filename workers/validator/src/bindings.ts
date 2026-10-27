@@ -12,6 +12,8 @@ export interface Env {
   STEP_RETRY_DELAY: string;
   /** How many packs one rescan fire visits, and how many full-pipeline runs it starts. */
   RESCAN_BATCH: string;
+  /** How long one wait for an admin or an owner lasts before the workflow arms it again, such as "7 days". */
+  WAIT_REARM: string;
   DB: D1Database;
   PACKS_STAGING: R2Bucket;
   PACKS_PUBLIC: R2Bucket;

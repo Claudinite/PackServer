@@ -19,6 +19,7 @@ export * from "./adoption";
 export * from "./stats";
 export * from "./promotion";
 export * from "./review";
+export * from "./approvals";
 export * from "./admin-ops";
 export * from "./rescan";
 export * from "../range";

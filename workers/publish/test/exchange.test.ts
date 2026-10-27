@@ -49,7 +49,7 @@ function setup(options: { visibility?: string; insert?: () => never; limit?: num
     missingBindings: [],
     missingSecrets: [],
     ports: { ...ports, clock: { now: () => NOW_S * 1000 } },
-    services: { validator: {} as Fetcher },
+    services: { validator: {} as Fetcher, web: {} as Fetcher },
     config: {
       oidc: { issuer: ISSUER, jwksUrl: `${ISSUER}/jwks`, audience: OIDC_AUDIENCE },
       presigner: { presignPut: async () => ({ url: "https://s3.example/x", headers: {} }) },

@@ -18,6 +18,7 @@
         "ENVIRONMENT": "test",
         "STEP_RETRY_DELAY": "10 milliseconds",
         "RESCAN_BATCH": "50",
+        "WAIT_REARM": "3 seconds",
         "SITE_ORIGINS": "http://web.internal",
         "SIGNING_KEY_ACTIVE": "BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU",
         "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
@@ -177,6 +178,7 @@
         "crons": [
           "0 4 * * *",
           "0 5 * * 1",
+          "*/5 * * * *",
           "*/15 * * * *"
         ]
       },
@@ -185,6 +187,7 @@
         "ENVIRONMENT": "staging",
         "STEP_RETRY_DELAY": "30 seconds",
         "RESCAN_BATCH": "50",
+        "WAIT_REARM": "7 days",
         "SITE_ORIGINS": "https://registry-staging.claudinite.com",
         "MAIL_FROM": "noreply@claudinite.com"
       },
@@ -383,6 +386,7 @@
         "crons": [
           "0 4 * * *",
           "0 5 * * 1",
+          "*/5 * * * *",
           "*/15 * * * *"
         ]
       },
@@ -391,6 +395,7 @@
         "ENVIRONMENT": "production",
         "STEP_RETRY_DELAY": "30 seconds",
         "RESCAN_BATCH": "50",
+        "WAIT_REARM": "7 days",
         "SITE_ORIGINS": "https://registry.claudinite.com",
         "MAIL_FROM": "noreply@claudinite.com"
       },

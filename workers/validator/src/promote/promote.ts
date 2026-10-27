@@ -17,7 +17,7 @@ import { loadSigning } from "../sign/keys";
 import { getJson, runKeys } from "../workflow/report";
 import { claimsOf, InfrastructureError, nowIso, provenanceOf, reports, stat } from "../workflow/steps";
 import { NOTIFY_SCHEMA, type VersionPromoted } from "../notify/message";
-import { loadPromotion, packOf, promotable, stagingReason, versionRow, type PromotionRun } from "./load";
+import { loadPromotion, packOf, promotable, stagingReasons, versionRow, type Clearance, type PromotionRun } from "./load";
 
 export interface Context {
   rt: ValidatorRuntime;
@@ -67,14 +67,15 @@ async function materialOf(rt: ValidatorRuntime, run: PromotionRun): Promise<Mate
 /**
  * The version row promotion commits: written `approved` here, before anything is put in a bucket,
  * because a private archive's key is the row's opaque id. A version some other run already holds
- * is not this run's to promote. A version REQ-VAL-038 or REQ-PUB-019 stages gets no row here and
- * is left for the owner's approval.
+ * is not this run's to promote. A version REQ-VAL-038, REQ-VAL-052 or REQ-PUB-019 stages gets no row
+ * here until an owner has approved it (`cleared.approved`), and one still held waits for an admin's
+ * release (`cleared.released`).
  */
-export async function prepare(ctx: Context): Promise<{ promote: false } | { promote: true; versionId: string }> {
+export async function prepare(ctx: Context, cleared: Clearance = {}): Promise<{ promote: false } | { promote: true; versionId: string }> {
   const { rt, runId } = ctx;
   const d1 = rt.ports.d1;
   const run = await loadPromotion(d1, runId);
-  if (!promotable(run)) return { promote: false };
+  if (!promotable(run, cleared)) return { promote: false };
 
   const existing = await versionRow(d1, run);
   if (existing) return existing.sha256 === run.canonical_sha256 ? { promote: true, versionId: existing.id } : { promote: false };
@@ -84,7 +85,7 @@ export async function prepare(ctx: Context): Promise<{ promote: false } | { prom
   const facts = await verificationFacts(d1, run.scope_id);
   if (!facts) throw new InfrastructureError("promote.scope_missing");
   const at = await nowIso(rt);
-  if (await stagingReason(d1, run, facts.verified, at)) return { promote: false };
+  if (!cleared.approved && (await stagingReasons(d1, run, facts.verified, at)).length > 0) return { promote: false };
   const claimed = await claimsOf(rt, run);
   const manifest = (a.manifest ?? {}) as { minEngineVersion?: unknown; requires?: unknown };
   const requires = Array.isArray(manifest.requires) ? manifest.requires.filter((r): r is string => typeof r === "string") : [];
