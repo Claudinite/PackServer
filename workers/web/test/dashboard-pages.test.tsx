@@ -268,6 +268,16 @@ describe("validation page (REQ-VAL-016, REQ-VAL-040, REQ-VAL-001)", () => {
     expect(wordsOf(html)).toContain("New in this version task nightly");
   });
 
+  it("renders the passkey dialog before the client library that looks it up", async () => {
+    const h = setup();
+    const { owner, scope } = await seed(h);
+    await run(h, scope.id, "r1", { verdict: "pass" });
+    const html = await (await owner.get("/validation/r1")).text();
+    const dialog = html.indexOf('id="ps-dialog"');
+    expect(dialog).toBeGreaterThan(-1);
+    expect(dialog).toBeLessThan(html.indexOf("PS.sensitive"));
+  });
+
   it("offers the appeal for a quarantined run but no Resubmit", async () => {
     const h = setup();
     const { owner, scope } = await seed(h);
