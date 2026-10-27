@@ -1,4 +1,4 @@
-import { sha256Hex, type Clock, type D1, type KV, type Rng } from "@packserver/ports";
+import { sha256Hex, type Clock, type D1, type KV, type KVRead, type Rng } from "@packserver/ports";
 
 export const SESSION_IDLE_MS = 12 * 3_600_000;
 export const SESSION_ABSOLUTE_MS = 7 * 24 * 3_600_000;
@@ -83,7 +83,7 @@ export async function isRevoked(ports: Pick<SessionPorts, "d1">, sidHash: string
 }
 
 /** The stored record of a session id, or null when the store has none; no expiry check, since the caller is ending it. */
-export async function loadSessionRecord(ports: Pick<SessionPorts, "kv">, sidHash: string): Promise<SessionRecord | null> {
+export async function loadSessionRecord(ports: { kv: KVRead }, sidHash: string): Promise<SessionRecord | null> {
   const raw = await ports.kv.get(recordKey(sidHash));
   return raw === null ? null : (JSON.parse(raw) as SessionRecord);
 }
@@ -93,7 +93,7 @@ export async function loadSessionRecord(ports: Pick<SessionPorts, "kv">, sidHash
  * its absolute limit nor idle, and it was not signed out or rotated away. Reads only; it does not
  * count as activity.
  */
-export async function isSessionLive(ports: Pick<SessionPorts, "kv" | "d1" | "clock">, sidHash: string): Promise<boolean> {
+export async function isSessionLive(ports: { kv: KVRead } & Pick<SessionPorts, "d1" | "clock">, sidHash: string): Promise<boolean> {
   const raw = await ports.kv.get(recordKey(sidHash));
   if (raw === null) return false;
   const record = JSON.parse(raw) as SessionRecord;

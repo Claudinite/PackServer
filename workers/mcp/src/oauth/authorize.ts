@@ -3,6 +3,7 @@ import { syncClock } from "@packserver/ports";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import type { McpRuntime } from "../bindings";
 import type { OAuthApi } from "./grant";
+import { recordGrantEvent } from "./audit";
 import { consentPage, errorPage, PAGE_HEADERS } from "./page";
 import { SCOPE_READ, SUPPORTED_SCOPES } from "./scopes";
 import { webSession } from "./session";
@@ -19,6 +20,11 @@ function page(html: string, status = 200, extra: Headers | Record<string, string
 const isAuthorizationError = (error: unknown): boolean => error instanceof Error && error.name === "AuthorizationError";
 
 /** The OAuth error redirect for a declined request, built from the request the provider validated. */
+/** The provider's codes read `userId:grantId:secret`. */
+function grantIdOfCode(redirectTo: string): string {
+  return new URL(redirectTo, "http://redirect.invalid").searchParams.get("code")?.split(":")[1] ?? "unknown";
+}
+
 function deniedRedirect(request: { redirectUri: string; state: string; issuer?: string | undefined }, consumed: Headers): Response {
   const target = new URL(request.redirectUri);
   target.searchParams.set("error", "access_denied");
@@ -69,6 +75,8 @@ export function routes(runtime: McpRuntime, oauth: OAuthApi): Hono {
     }
     // A request without `state` cannot be told apart from a forged one by the client that sent it.
     if (request.state === "") return refuse("This authorization request is not valid: it carries no state.");
+    // The provider asks for a challenge only of clients that hold no secret; every client here proves possession of the code.
+    if (!request.codeChallenge || request.codeChallengeMethod !== "S256") return refuse("This authorization request is not valid: it carries no S256 code challenge.");
     const scope = requestedScopes(request.scope);
     if (!scope) return refuse("This authorization request asks for a scope this registry does not offer.");
 
@@ -124,6 +132,7 @@ export function routes(runtime: McpRuntime, oauth: OAuthApi): Hono {
           props: { userId: session.record.user_id },
         });
         const headers = new Headers(approved.headers);
+        await recordGrantEvent(runtime, session.record.user_id, grantIdOfCode(done.redirectTo), { action: "token.minted", clientId: approved.request.clientId, scope });
         headers.set("location", done.redirectTo);
         headers.set("cache-control", "no-store");
         return new Response(null, { status: 303, headers });
@@ -145,7 +154,11 @@ export function routes(runtime: McpRuntime, oauth: OAuthApi): Hono {
   app.post("/oauth/grants/:id/revoke", sessionCsrf, async (c) => {
     const session = await webSession(runtime, c);
     if (!session) return refusal("signed-out");
-    await oauth.revokeGrant(c.req.param("id"), session.record.user_id);
+    const grantId = c.req.param("id");
+    const { items } = await oauth.listUserGrants(session.record.user_id);
+    const grant = items.find((g) => g.id === grantId);
+    await oauth.revokeGrant(grantId, session.record.user_id);
+    if (grant) await recordGrantEvent(runtime, session.record.user_id, grantId, { action: "token.revoked", clientId: grant.clientId, reason: "owner" });
     return c.json({ revoked: true }, 200, { "cache-control": "no-store" });
   });
 

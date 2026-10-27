@@ -274,6 +274,9 @@ export interface KV {
   list(prefix: string): Promise<string[]>;
 }
 
+/** A namespace a Worker may only read: the type has no write method, so a write cannot be written. */
+export type KVRead = Pick<KV, "get" | "list">;
+
 export interface Queue {
   send(message: unknown): Promise<void>;
   sendBatch(messages: unknown[]): Promise<void>;

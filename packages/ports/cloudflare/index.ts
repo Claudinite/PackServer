@@ -13,6 +13,7 @@ import {
   type Queue,
   type R2,
   type R2PutOptions,
+  type KVRead,
   type R2Read,
   type RateLimit,
   type Rng,
@@ -99,6 +100,11 @@ export function r2Port(bucket: R2Bucket): R2 {
       await bucket.delete(key);
     },
   };
+}
+
+export function kvReadPort(namespace: KVNamespace): KVRead {
+  const { get, list } = kvPort(namespace);
+  return { get, list };
 }
 
 export function kvPort(namespace: KVNamespace): KV {

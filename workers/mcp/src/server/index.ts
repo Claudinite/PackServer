@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
 import { Hono, type Context } from "hono";
+import { BodyTooLarge, readBoundedBody } from "@packserver/http";
 import { syncClock } from "@packserver/ports";
 import type { McpRuntime } from "../bindings";
 import { admit, insufficientScope, unauthorised, type Caller } from "../limits";
@@ -23,15 +24,8 @@ export function createServer(runtime: McpRuntime, caller: Caller = { kind: "anon
   return server;
 }
 
-/** The privileged tools a request names to call, wherever in a batch they sit. */
-async function privilegedCalls(request: Request): Promise<PrivilegedTool[]> {
-  if (request.method !== "POST") return [];
-  let body: unknown;
-  try {
-    body = await request.clone().json();
-  } catch {
-    return [];
-  }
+/** The privileged tools a request body names to call, wherever in a batch they sit. */
+function privilegedCalls(body: unknown): PrivilegedTool[] {
   const messages: unknown[] = Array.isArray(body) ? body : [body];
   return messages.flatMap((m) => {
     const message = m as { method?: unknown; params?: { name?: unknown } } | null;
@@ -44,8 +38,8 @@ async function privilegedCalls(request: Request): Promise<PrivilegedTool[]> {
  * A privileged tool called by name by someone it was not listed to is refused before any server exists:
  * no credential gets the sign-in challenge, a credential without the scope gets the scope challenge.
  */
-async function refuseUnlistedCalls(c: Context, caller: Caller): Promise<Response | null> {
-  for (const tool of await privilegedCalls(c.req.raw)) {
+function refuseUnlistedCalls(c: Context, caller: Caller, body: unknown): Response | null {
+  for (const tool of privilegedCalls(body)) {
     if (mayCall(caller, tool)) continue;
     return caller.kind === "anonymous" ? unauthorised(c) : insufficientScope(c, PRIVILEGED_TOOLS[tool]);
   }
@@ -58,10 +52,27 @@ export function routes(runtime: McpRuntime, options: McpOptions = {}): Hono {
     await syncClock(runtime.tokenClock);
     const caller = await admit(runtime, c, options.oauth);
     if (caller instanceof Response) return caller;
-    const refused = await refuseUnlistedCalls(c, caller);
+    // The SDK buffers whatever it is given, so nothing larger than the cap reaches it or the check below.
+    let bytes: Uint8Array | undefined;
+    let parsed: unknown;
+    if (c.req.method === "POST") {
+      try {
+        bytes = await readBoundedBody(c);
+      } catch (error) {
+        if (error instanceof BodyTooLarge) return c.json({ error: "payload_too_large" }, 413);
+        throw error;
+      }
+      try {
+        parsed = JSON.parse(new TextDecoder().decode(bytes));
+      } catch {
+        parsed = undefined;
+      }
+    }
+    const refused = refuseUnlistedCalls(c, caller, parsed);
     if (refused) return refused;
     const handler = createMcpHandler(() => createServer(runtime, caller, options.extras), { route: "/mcp" });
-    return handler(c.req.raw, {}, c.executionCtx as never);
+    const request = bytes ? new Request(c.req.raw, { body: bytes }) : c.req.raw;
+    return handler(request, {}, c.executionCtx as never);
   });
   return app;
 }

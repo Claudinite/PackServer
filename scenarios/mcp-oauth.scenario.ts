@@ -88,6 +88,8 @@ scenario("IT-MCP-009 OAuth: unauthenticated callers are pointed at resource meta
   }
 
   expect(await client.authorize(ann, { pkce: "plain" })).toBeInstanceOf(Refusal);
+  expect(await client.authorize(ann, { pkce: "none" })).toBeInstanceOf(Refusal);
+  expect(await world.agents.authServer.register({ confidential: true })).toBeInstanceOf(Refusal);
   expect(await client.authorize(ann, { resource: "foreign" })).toBeInstanceOf(Refusal);
   const consent = await client.authorize(ann);
   if (consent instanceof Refusal) throw new Error("no consent page");
@@ -121,11 +123,13 @@ scenario("IT-MCP-017 The authorization server hardens redirects, codes, registra
 
   const tokens = await (await grant()).exchange();
   if (tokens instanceof Refusal) throw new Error("no token");
-  // The provider tolerates one retry of a refresh whose answer was lost; once the new token is used, the old one is dead.
+  // A refresh token works once; presenting it again ends the whole grant, the newer token included.
   const rotated = await tokens.refresh();
   if (rotated instanceof Refusal) throw new Error("the first refresh was refused");
-  expect(await rotated.refresh()).not.toBeInstanceOf(Refusal);
   expect(await tokens.refresh()).toBeInstanceOf(Refusal);
+  expect(await rotated.refresh()).toBeInstanceOf(Refusal);
+  expect(await world.agents.authServer.grants(ann, session)).toEqual([]);
+  expect(await world.agents.authServer.auditedGrants()).toEqual(expect.arrayContaining(["token.minted", "token.revoked", "token.refused"]));
 
   // Metadata documents: HTTPS only, and a redirect is never followed.
   const plain = world.agents.authServer.documented({ scheme: "http" });

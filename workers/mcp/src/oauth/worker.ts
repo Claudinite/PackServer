@@ -1,8 +1,9 @@
-import { OAuthProvider, type OAuthProviderOptions } from "@cloudflare/workers-oauth-provider";
-import { consume, rateLimited, rateLimitClient, VERSION_HEADER } from "@packserver/http";
-import { syncClock } from "@packserver/ports";
+import { getOAuthApi, OAuthProvider, type OAuthProviderOptions } from "@cloudflare/workers-oauth-provider";
+import { consume, rateLimited, rateLimitClient, readBoundedBody, BodyTooLarge, VERSION_HEADER } from "@packserver/http";
+import { sha256Hex, syncClock } from "@packserver/ports";
 import { Hono } from "hono";
 import type { McpRuntime } from "../bindings";
+import { recordGrantEvent } from "./audit";
 import type { TokenProps } from "./grant";
 import { ACCESS_TOKEN_TTL_S, SCOPE_READ, SUPPORTED_SCOPES } from "./scopes";
 
@@ -16,10 +17,12 @@ const REFRESH_TOKEN_TTL_S = 30 * 86_400;
  * the document with its own user agent, and this makes that one fetch refuse to follow a redirect.
  * Everything else the Worker fetches is untouched.
  */
+export const PROVIDER_AGENT_PREFIX = "workers-oauth-provider/";
+
 export function refuseRedirectsForClientMetadata(realFetch: typeof fetch): typeof fetch {
   return (input, init) => {
     const agent = new Headers(init?.headers).get("user-agent") ?? "";
-    return agent.startsWith("workers-oauth-provider/") ? realFetch(input, { ...init, redirect: "manual" }) : realFetch(input, init);
+    return agent.startsWith(PROVIDER_AGENT_PREFIX) ? realFetch(input, { ...init, redirect: "manual" }) : realFetch(input, init);
   };
 }
 
@@ -69,7 +72,39 @@ export function oauthWorker<E>(app: ExportedHandler<E>, runtimeOf: (env: E) => M
         const limiter = runtime.ports.rateLimits.RATE_LIMIT;
         if (!limiter) throw new Error("the RATE_LIMIT binding is missing");
         const ok = await consume(limiter, `mcp:register:${rateLimitClient(c)}`, REGISTRATION_COST);
-        return ok ? next() : rateLimited();
+        if (!ok) return rateLimited();
+        // Public clients only: a client that holds a secret could skip the proof of possession PKCE gives.
+        let method: unknown;
+        try {
+          method = (JSON.parse(new TextDecoder().decode(await readBoundedBody(c))) as { token_endpoint_auth_method?: unknown }).token_endpoint_auth_method;
+        } catch (error) {
+          if (error instanceof BodyTooLarge) return c.json({ error: "invalid_client_metadata", error_description: "The registration is too large." }, 413);
+          return next();
+        }
+        if (method !== "none") return c.json({ error: "invalid_client_metadata", error_description: "Only public clients (token_endpoint_auth_method none) are registered." }, 400);
+        return next();
+      });
+      // A refresh token works once. Presenting a used one again means two parties hold it, so the grant ends.
+      gate.post("/oauth/token", async (c, next) => {
+        const kv = runtime.ports.kv.OAUTH_KV;
+        if (!kv) throw new Error("the OAUTH_KV binding is missing");
+        const form = await c.req.raw.clone().formData().catch(() => null);
+        const presented = form?.get("grant_type") === "refresh_token" ? form.get("refresh_token") : null;
+        if (typeof presented !== "string") return next();
+        const key = `refresh-used:${await sha256Hex(presented)}`;
+        if ((await kv.get(key)) !== null) {
+          const [userId, grantId] = presented.split(":");
+          if (userId && grantId) {
+            const api = getOAuthApi(optionsFor(runtime, app), env);
+            const grant = (await api.listUserGrants(userId)).items.find((g) => g.id === grantId);
+            await api.revokeGrant(grantId, userId);
+            await recordGrantEvent(runtime, userId, grantId, { action: "token.revoked", clientId: grant?.clientId ?? "unknown", reason: "refresh_reused" });
+            await recordGrantEvent(runtime, userId, grantId, { action: "token.refused", reason: "refresh_reused" });
+          }
+          return c.json({ error: "invalid_grant", error_description: "Invalid refresh token" }, 400);
+        }
+        await next();
+        if (c.res.status === 200) await kv.put(key, "1", { ttl_seconds: REFRESH_TOKEN_TTL_S });
       });
       gate.all("*", (c) => provider!.fetch(c.req.raw, env, ctx));
       return gate.fetch(request);

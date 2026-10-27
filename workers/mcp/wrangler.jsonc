@@ -81,6 +81,14 @@
           "dataset": "downloads_test"
         }
       ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "AUDIT_QUEUE",
+            "queue": "audit-test"
+          }
+        ]
+      },
       "ratelimits": [
         {
           "name": "RATE_LIMIT",
@@ -176,6 +184,14 @@
           "dataset": "downloads_staging"
         }
       ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "AUDIT_QUEUE",
+            "queue": "audit-staging"
+          }
+        ]
+      },
       "ratelimits": [
         {
           "name": "RATE_LIMIT",
@@ -300,6 +316,14 @@
           "dataset": "downloads"
         }
       ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "AUDIT_QUEUE",
+            "queue": "audit"
+          }
+        ]
+      },
       "ratelimits": [
         {
           "name": "RATE_LIMIT",

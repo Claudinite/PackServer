@@ -18,7 +18,8 @@ export interface AuthorizeOptions {
   redirect?: "exact" | "other-path" | "extra-query";
   /** `null` leaves `state` out of the request. */
   state?: string | null;
-  pkce?: "S256" | "plain";
+  /** How the request proves possession of the code: S256 by default, the weaker plain method, or not at all. */
+  pkce?: "S256" | "plain" | "none";
   /** Which resource the request names: the registry's MCP endpoint by default, another, or none. */
   resource?: "foreign" | "none";
   scopes?: string[];
@@ -69,6 +70,8 @@ export interface OAuthClient {
 export interface ClientOptions {
   name?: string;
   redirectUris?: string[];
+  /** A client that holds a secret instead of being public. */
+  confidential?: boolean;
   /** The address the registration comes from. */
   from?: string;
 }
@@ -80,6 +83,8 @@ export interface AuthServerModule {
   register(o?: ClientOptions): Promise<OAuthClient | Refusal>;
   /** The resource the registry's tokens are bound to. */
   readonly resource: string;
+  /** The audit entries written about grants, oldest first, as action names. */
+  auditedGrants(): Promise<string[]>;
   /** The same server reached from another network address, with its own share of the rate limits. */
   fresh(): AuthServerModule;
   /** Whether a refusal tells the client where the registry's discovery documents are. */
@@ -87,8 +92,9 @@ export interface AuthServerModule {
   /** A client identified by a metadata document its own site serves (the faked internet), over HTTPS unless told otherwise. */
   documented(o?: { name?: string; logo?: boolean; scheme?: "https" | "http" }): OAuthClient;
   /**
-   * A client identified by a URL that answers with a redirect. The harness's own fetch follows a redirect that names
-   * a place, so this one names none: the Worker sees the 3xx itself, as it would from a fetch that refuses to follow.
+   * A client whose metadata URL answers with a redirect. The harness's outbound path follows a redirect that names a
+   * place whatever the Worker asked for, so this one names none; that a Worker's fetch is told not to follow is
+   * proven by the Worker's unit test.
    */
   redirected(): OAuthClient;
   /** The person's connections as the registry lists them, and ending all of them. */
@@ -166,8 +172,7 @@ export function createAuthServer(driver: Driver): AuthServerModule {
         ["response_type", "code"],
         ["client_id", id],
         ["redirect_uri", redirect],
-        ["code_challenge", method === "S256" ? await pkceChallenge(verifier) : verifier],
-        ["code_challenge_method", method],
+        ...(method === "none" ? [] : ([["code_challenge", method === "S256" ? await pkceChallenge(verifier) : verifier], ["code_challenge_method", method]] as Array<[string, string]>)),
         ["scope", (o.scopes ?? ["packs:read"]).join(" ")],
       ];
       if (state !== null) query.push(["state", state]);
@@ -251,6 +256,11 @@ export function createAuthServer(driver: Driver): AuthServerModule {
   return {
     resource,
     fresh: () => createAuthServer(driver),
+    async auditedGrants() {
+      if (!driver.storage) throw new InfrastructureError(`the ${driver.kind} driver cannot read stored state`);
+      const statement = (await driver.storage()).db.prepare("select action from recent_activity where target like 'oauth:%' order by at, id").bind() as { all(): Promise<{ results?: Array<{ action: unknown }> }> };
+      return ((await statement.all()).results ?? []).map((row) => String(row.action));
+    },
     advertisesMetadata: (refusal) => /^Bearer resource_metadata="[^"]+\/\.well-known\/oauth-protected-resource\/mcp"/.test(refusal.detail.message ?? ""),
     async metadata() {
       const resource = await send({ method: "GET", path: "/.well-known/oauth-protected-resource/mcp" });
@@ -270,7 +280,7 @@ export function createAuthServer(driver: Driver): AuthServerModule {
         body: {
           client_name: o.name ?? "Test agent",
           redirect_uris: o.redirectUris ?? [redirectUri],
-          token_endpoint_auth_method: "none",
+          token_endpoint_auth_method: o.confidential ? "client_secret_post" : "none",
           grant_types: ["authorization_code", "refresh_token"],
           response_types: ["code"],
         },

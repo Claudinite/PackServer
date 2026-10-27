@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { describe, expect, it, vi } from "vitest";
 import { openAccessToken, type OAuthApi } from "../src/oauth";
 import { allows, SCOPE_READ, SCOPE_WRITE } from "../src/oauth/scopes";
@@ -6,23 +8,35 @@ import { consentPage, escapeHtml } from "../src/oauth/page";
 // `worker.ts` imports the provider package, which needs the Workers runtime, so the package is stubbed here.
 async function loadRefusal() {
   vi.doMock("@cloudflare/workers-oauth-provider", () => ({ OAuthProvider: class {} }));
-  return (await import("../src/oauth/worker")).refuseRedirectsForClientMetadata;
+  const worker = await import("../src/oauth/worker");
+  return { refuseRedirectsForClientMetadata: worker.refuseRedirectsForClientMetadata, agent: `${worker.PROVIDER_AGENT_PREFIX}9.9.9` };
 }
 
 describe("client metadata fetches", () => {
-  it("refuse to follow a redirect, and no other fetch is touched", async () => {
-    const refuseRedirectsForClientMetadata = await loadRefusal();
-    const seen: Array<RequestInit | undefined> = [];
-    const wrapped = refuseRedirectsForClientMetadata((async (_input: unknown, init?: RequestInit) => {
-      seen.push(init);
-      return new Response("{}");
-    }) as typeof fetch);
-    await wrapped("https://client.example/meta.json", { headers: { "User-Agent": "workers-oauth-provider/1.2.4 (+https://example)" }, cache: "no-store" });
-    await wrapped("https://other.example/", { headers: { "User-Agent": "something-else" } });
-    await wrapped("https://plain.example/");
-    expect(seen[0]?.redirect).toBe("manual");
-    expect(seen[1]?.redirect).toBeUndefined();
-    expect(seen[2]).toBeUndefined();
+  /** A fetch that behaves as the platform's does: a redirect is followed unless the caller asked for manual handling. */
+  const platformFetch = (async (input: unknown, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "https://client.example/meta.json") {
+      if (init?.redirect === "manual") return new Response(null, { status: 302, headers: { location: "https://client.example/moved.json" } });
+      return Response.json({ client_id: "https://client.example/meta.json" });
+    }
+    return Response.json({ plain: true });
+  }) as typeof fetch;
+
+  it("are not redirected, and no other fetch is touched", async () => {
+    const { refuseRedirectsForClientMetadata, agent } = await loadRefusal();
+    const wrapped = refuseRedirectsForClientMetadata(platformFetch);
+    expect((await wrapped("https://client.example/meta.json", { headers: { "User-Agent": agent }, cache: "no-store" })).status).toBe(302);
+    expect((await wrapped("https://client.example/meta.json", { headers: { "User-Agent": "something-else" } })).status).toBe(200);
+    expect((await wrapped("https://client.example/meta.json")).status).toBe(200);
+  });
+
+  it("are recognised by the agent the installed provider really sends", async () => {
+    const { agent } = await loadRefusal();
+    const source = readFileSync(createRequire(import.meta.url).resolve("@cloudflare/workers-oauth-provider").replace(/[^/]+$/, "oauth-provider.js"), "utf8");
+    const sent = /OUTBOUND_USER_AGENT = `([^`$]*)/.exec(source)?.[1];
+    expect(sent).toBeDefined();
+    expect(sent!.startsWith(agent.replace(/9\.9\.9$/, ""))).toBe(true);
   });
 });
 
