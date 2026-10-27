@@ -83,7 +83,7 @@ charged. The journey is [JT-002](journeys.md).
 - **Runs:** push
 - **Setup:** org pack; maintainer M; person X holding only the data model's `member` role on the org (the UI never shows that word for a person).
 - **Action:** M grants an account; X grants an account.
-- **Assert:** M's grant lands; X's is refused as forbidden.
+- **Assert:** M's grant lands; X's is answered as not found (REQ-PRIV-001, REQ-PRIV-015), since the data model gives X no role the registry can name.
 
 ## Visibility changes
 
