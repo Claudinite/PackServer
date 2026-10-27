@@ -16,7 +16,7 @@ export const datasetSuffix = (env) => (env === "staging" ? "_staging" : "");
 
 /** Domain events and the datasets written like them: `Telemetry.emit` puts these in blobs 1 to 4. */
 const EMITTED_BLOBS = ["worker", "release_id", "version_id", "attrs"];
-const EMITTED_DATASETS = ["domain_events", "validation_events", "synthetic_probes", "budget"];
+const EMITTED_DATASETS = ["domain_events", "synthetic_probes", "budget"];
 
 const read = (root, path) => readFileSync(join(root, path), "utf8");
 const strings = (text) => [...text.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
@@ -25,6 +25,15 @@ function constArray(root, path, name) {
   const body = new RegExp(`export const ${name}\\b[^=]*=\\s*\\[([\\s\\S]*?)\\]\\s*as const`).exec(read(root, path))?.[1];
   if (body === undefined) throw new Error(`${path}: no ${name} array found`);
   return strings(body);
+}
+
+/** The validator writes its statistics itself, each signal with its own blobs and doubles. */
+function validationLayout(root) {
+  const body = /export const VALIDATION_STAT_LAYOUT = \{([\s\S]*?)\n\} as const/.exec(read(root, "workers/validator/src/workflow/steps.ts"))?.[1];
+  if (body === undefined) throw new Error("steps.ts: no VALIDATION_STAT_LAYOUT found");
+  return Object.fromEntries(
+    [...body.matchAll(/"([^"]+)":\s*\{\s*blobs:\s*\[([^\]]*)\],\s*doubles:\s*\[([^\]]*)\]/g)].map((m) => [m[1], { blobs: strings(m[2]), doubles: strings(m[3]) }]),
+  );
 }
 
 function signalNumbers(root) {
@@ -50,6 +59,7 @@ export function readLayout(root = REPO) {
       ...Object.fromEntries(EMITTED_DATASETS.map((d) => [d, { blobs: EMITTED_BLOBS, doubles: [] }])),
     },
     numbers: signalNumbers(root),
+    stats: validationLayout(root),
   };
 }
 
@@ -94,6 +104,16 @@ function resolveToken(token, layout, suffix) {
       const double = columns?.indexOf(arg.slice(at + 1)) ?? -1;
       if (double < 0) throw new Error(`no numeric column "${arg}" in SIGNAL_NUMBERS`);
       return `double${double + 1}`;
+    }
+    case "stat": {
+      const at = arg.lastIndexOf(".");
+      const fields = layout.stats[arg.slice(0, at)];
+      const field = arg.slice(at + 1);
+      const blob = fields?.blobs.indexOf(field) ?? -1;
+      if (blob >= 0) return `blob${blob + 1}`;
+      const double = fields?.doubles.indexOf(field) ?? -1;
+      if (double >= 0) return `double${double + 1}`;
+      throw new Error(`no validator statistic field "${arg}"`);
     }
     case "bucket": {
       if (!/^[1-9]\d*$/.test(arg)) throw new Error(`bucket width must be whole seconds, got "${arg}"`);
@@ -149,6 +169,10 @@ export function validateSpec(spec, layout) {
       for (const s of named) {
         if (!layout.signals.has(s)) problems.push(`${at}: "${s}" is not in the signals catalogue`);
         else if (dataset && datasetOf(s) !== dataset) problems.push(`${at}: ${s} is written to ${datasetOf(s)}, not ${dataset}`);
+      }
+      for (const m of panel.sql.matchAll(/\{\{stat:([^}]+)\}\}/g)) {
+        const signal = m[1].slice(0, m[1].lastIndexOf("."));
+        if (dataset && datasetOf(signal) !== dataset) problems.push(`${at}: ${signal} is written to ${datasetOf(signal)}, not ${dataset}`);
       }
       for (const m of panel.sql.matchAll(/\{\{num:([^}]+)\}\}/g)) {
         const signal = m[1].slice(0, m[1].lastIndexOf("."));

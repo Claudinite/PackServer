@@ -23,7 +23,7 @@
             "n": 1,
             "unit": "HOUR"
           },
-          "sql": "SELECT {{col:request_outcomes.worker}} AS worker, sum(_sample_interval) AS requests, sumIf(_sample_interval, {{col:request_outcomes.outcome}} IN ('server_error', 'exception', 'canceled')) AS bad, bad / requests AS bad_share FROM {{ds:request_outcomes}} WHERE {{since}} AND {{col:request_outcomes.worker}} != '' AND {{col:request_outcomes.is_synthetic}} = 0 GROUP BY worker ORDER BY bad_share DESC"
+          "sql": "SELECT {{col:request_outcomes.worker}} AS worker, sum(_sample_interval) AS requests, sumIf(_sample_interval, {{col:request_outcomes.outcome}} IN ('server_error', 'exception', 'canceled')) AS bad, sumIf(_sample_interval, {{col:request_outcomes.outcome}} IN ('server_error', 'exception', 'canceled')) / sum(_sample_interval) AS bad_share FROM {{ds:request_outcomes}} WHERE {{since}} AND {{col:request_outcomes.worker}} != '' AND {{col:request_outcomes.is_synthetic}} = 0 GROUP BY worker ORDER BY bad_share DESC"
         },
         {
           "id": "latency",
@@ -44,7 +44,7 @@
             "unit": "HOUR"
           },
           "note": "Summary rows only; the probed version is in the attributes, so failures by target are in the Release dashboard.",
-          "sql": "SELECT sumIf(_sample_interval, blob4 LIKE '%\"ok\":true%') AS passed, sumIf(_sample_interval, blob4 LIKE '%\"ok\":false%') AS failed FROM {{ds:synthetic_probes}} WHERE {{since}} AND index1 = 'synthetic.probe' AND blob4 LIKE '%\"scenario\":\"summary\"%'"
+          "sql": "SELECT sumIf(_sample_interval, {{col:synthetic_probes.attrs}} LIKE '%\"ok\":true%') AS passed, sumIf(_sample_interval, {{col:synthetic_probes.attrs}} LIKE '%\"ok\":false%') AS failed FROM {{ds:synthetic_probes}} WHERE {{since}} AND index1 = 'synthetic.probe' AND {{col:synthetic_probes.attrs}} LIKE '%\"scenario\":\"summary\"%'"
         },
         {
           "id": "probe_trend",
@@ -54,7 +54,7 @@
             "n": 6,
             "unit": "HOUR"
           },
-          "sql": "SELECT {{bucket:300}} AS t, sumIf(_sample_interval, blob4 LIKE '%\"ok\":true%') AS passed, sumIf(_sample_interval, blob4 LIKE '%\"ok\":false%') AS failed FROM {{ds:synthetic_probes}} WHERE {{since}} AND index1 = 'synthetic.probe' AND blob4 LIKE '%\"scenario\":\"summary\"%' GROUP BY t ORDER BY t"
+          "sql": "SELECT {{bucket:300}} AS t, sumIf(_sample_interval, {{col:synthetic_probes.attrs}} LIKE '%\"ok\":true%') AS passed, sumIf(_sample_interval, {{col:synthetic_probes.attrs}} LIKE '%\"ok\":false%') AS failed FROM {{ds:synthetic_probes}} WHERE {{since}} AND index1 = 'synthetic.probe' AND {{col:synthetic_probes.attrs}} LIKE '%\"scenario\":\"summary\"%' GROUP BY t ORDER BY t"
         },
         {
           "id": "pages_24h",
@@ -112,7 +112,7 @@
             "n": 6,
             "unit": "HOUR"
           },
-          "sql": "SELECT index1 AS version_id, {{col:request_outcomes.worker}} AS worker, sum(_sample_interval) AS requests, sumIf(_sample_interval, {{col:request_outcomes.outcome}} IN ('server_error', 'exception', 'canceled')) AS bad, bad / requests AS bad_share FROM {{ds:request_outcomes}} WHERE {{since}} AND {{col:request_outcomes.worker}} != '' AND {{col:request_outcomes.version_override}} = 0 AND {{col:request_outcomes.is_synthetic}} = 0 GROUP BY version_id, worker ORDER BY worker, requests DESC"
+          "sql": "SELECT index1 AS version_id, {{col:request_outcomes.worker}} AS worker, sum(_sample_interval) AS requests, sumIf(_sample_interval, {{col:request_outcomes.outcome}} IN ('server_error', 'exception', 'canceled')) AS bad, sumIf(_sample_interval, {{col:request_outcomes.outcome}} IN ('server_error', 'exception', 'canceled')) / sum(_sample_interval) AS bad_share FROM {{ds:request_outcomes}} WHERE {{since}} AND {{col:request_outcomes.worker}} != '' AND {{col:request_outcomes.version_override}} = 0 AND {{col:request_outcomes.is_synthetic}} = 0 GROUP BY version_id, worker ORDER BY worker, requests DESC"
         },
         {
           "id": "latency_by_version",
@@ -142,7 +142,8 @@
             "n": 24,
             "unit": "HOUR"
           },
-          "sql": "SELECT {{col:domain_events.version_id}} AS version_id, {{col:domain_events.worker}} AS worker, sumIf(_sample_interval, {{col:domain_events.attrs}} LIKE '%\"ok\":true%') AS passed, sumIf(_sample_interval, {{col:domain_events.attrs}} LIKE '%\"ok\":false%') AS failed, toUnixTimestamp(max(timestamp)) AS last_at FROM {{ds:domain_events}} WHERE {{since}} AND index1 = 'selftest.result' GROUP BY version_id, worker ORDER BY last_at DESC"
+          "sql": "SELECT {{col:domain_events.version_id}} AS version_id, {{col:domain_events.worker}} AS worker, sumIf(_sample_interval, {{col:domain_events.attrs}} LIKE '%\"ok\":true%') AS passed, sumIf(_sample_interval, {{col:domain_events.attrs}} LIKE '%\"ok\":false%') AS failed, toUnixTimestamp(max(timestamp)) AS last_at FROM {{ds:domain_events}} WHERE {{since}} AND index1 = 'selftest.result' GROUP BY version_id, worker ORDER BY last_at DESC",
+          "note": "Empty until the validator or judge emits selftest.result."
         },
         {
           "id": "probes_by_target",
@@ -204,13 +205,14 @@
         },
         {
           "id": "validation_steps",
-          "title": "Validation step duration by Worker",
+          "title": "Validation step duration by step",
           "kind": "table",
           "range": {
             "n": 24,
             "unit": "HOUR"
           },
-          "sql": "SELECT {{col:validation_events.worker}} AS worker, sum(_sample_interval) AS steps, quantileExactWeighted(0.95)({{num:validation.step.duration_ms}}, _sample_interval) AS p95_ms FROM {{ds:validation_events}} WHERE {{since}} AND index1 = 'validation.step' AND {{num:validation.step.duration_ms}} >= 0 GROUP BY worker"
+          "sql": "SELECT {{stat:validation.step.step}} AS step, sum(_sample_interval) AS runs, quantileExactWeighted(0.95)({{stat:validation.step.duration_ms}}, _sample_interval) AS p95_ms FROM {{ds:validation_events}} WHERE {{since}} AND index1 = 'validation.step' AND {{stat:validation.step.outcome}} IN ('ok', 'fail') GROUP BY step ORDER BY p95_ms DESC",
+          "note": "Extraction refusals are points with the refusal reason as outcome and no duration, so they are excluded here."
         },
         {
           "id": "validation_events",
@@ -234,13 +236,14 @@
         },
         {
           "id": "queue_depth",
-          "title": "Queue depth and oldest message, latest",
+          "title": "Queue depth and oldest message",
           "kind": "table",
           "range": {
             "n": 6,
             "unit": "HOUR"
           },
-          "sql": "SELECT {{col:domain_events.attrs}} AS attrs, argMax({{num:queue.backlog.depth}}, timestamp) AS depth, argMax({{num:queue.backlog.oldest_age_s}}, timestamp) AS oldest_age_s, toUnixTimestamp(max(timestamp)) AS last_at FROM {{ds:domain_events}} WHERE {{since}} AND index1 = 'queue.backlog' GROUP BY attrs ORDER BY oldest_age_s DESC"
+          "sql": "SELECT max({{num:queue.backlog.depth}}) AS max_depth, max({{num:queue.backlog.oldest_age_s}}) AS max_oldest_age_s, argMax({{num:queue.backlog.depth}}, timestamp) AS latest_depth, argMax({{num:queue.backlog.oldest_age_s}}, timestamp) AS latest_oldest_age_s, argMax({{col:domain_events.attrs}}, timestamp) AS latest_attrs, toUnixTimestamp(max(timestamp)) AS last_at FROM {{ds:domain_events}} WHERE {{since}} AND index1 = 'queue.backlog'",
+          "note": "Empty until the judge emits queue.backlog. All queues are combined: the attributes hold the readings, so grouping by them would give one row per reading; a per-queue split needs the queue name in a blob."
         },
         {
           "id": "queue_dlq",
@@ -386,7 +389,8 @@
             "n": 30,
             "unit": "DAY"
           },
-          "sql": "SELECT {{bucket:86400}} AS t, sum(_sample_interval) AS downloads, sum({{col:downloads.bytes}} * _sample_interval) AS bytes FROM {{ds:downloads}} WHERE {{since}} AND {{col:downloads.bytes}} >= 0 GROUP BY t ORDER BY t"
+          "sql": "SELECT {{bucket:86400}} AS t, sum(_sample_interval) AS downloads, sumIf({{col:downloads.bytes}} * _sample_interval, {{col:downloads.bytes}} >= 0) AS bytes FROM {{ds:downloads}} WHERE {{since}} GROUP BY t ORDER BY t",
+          "note": "bytes counts only downloads whose size is known."
         },
         {
           "id": "budget",
@@ -412,14 +416,14 @@
         },
         {
           "id": "model_spend",
-          "title": "Prose screen runs",
+          "title": "Prose screen runs and duration by implementation",
           "kind": "table",
           "range": {
             "n": 7,
             "unit": "DAY"
           },
-          "note": "Model version and cost are in the attributes.",
-          "sql": "SELECT {{col:validation_events.attrs}} AS attrs, sum(_sample_interval) AS n FROM {{ds:validation_events}} WHERE {{since}} AND index1 = 'validation.prose_screen' GROUP BY attrs ORDER BY n DESC LIMIT 50"
+          "note": "Model spend is not recorded: a prose screen point carries its implementation and duration only, so this shows how often the screen runs, not what it costs.",
+          "sql": "SELECT {{stat:validation.prose_screen.implementation}} AS implementation, sum(_sample_interval) AS runs, quantileExactWeighted(0.95)({{stat:validation.prose_screen.duration_ms}}, _sample_interval) AS p95_ms FROM {{ds:validation_events}} WHERE {{since}} AND index1 = 'validation.prose_screen' GROUP BY implementation ORDER BY runs DESC"
         }
       ]
     }

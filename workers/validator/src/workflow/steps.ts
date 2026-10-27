@@ -55,6 +55,12 @@ export const reports = (rt: ValidatorRuntime): R2 => {
   return bucket;
 };
 
+/** Where each validator statistic keeps its fields; unlike `Telemetry.emit` points these carry no worker, release or version. */
+export const VALIDATION_STAT_LAYOUT = {
+  "validation.step": { blobs: ["step", "outcome"], doubles: ["duration_ms"] },
+  "validation.prose_screen": { blobs: ["implementation"], doubles: ["duration_ms"] },
+} as const;
+
 export function stat(rt: ValidatorRuntime, name: SignalName, blobs: string[], doubles: number[] = []): void {
   rt.ports.stats.write({ name, blobs, doubles });
 }

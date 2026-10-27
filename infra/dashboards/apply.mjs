@@ -19,7 +19,7 @@ const USAGE = `Usage: node infra/dashboards/apply.mjs [--env <staging|production
   (default)         validate the declaration offline and list the dashboards
   --export <dir>    write the rendered dashboards for --env to <dir>/<env>.json
   --run             run the panels of --env (all, or one --dashboard) against the SQL API
-                    and print each; needs CLOUDFLARE_ACCOUNT_ID and CF_ANALYTICS_READ_TOKEN
+                    and print each; needs CLOUDFLARE_ACCOUNT_ID and ANALYTICS_READ_TOKEN
                     (Account Analytics Read)
 `;
 
@@ -78,9 +78,9 @@ export async function main(argv, envVars, deps = {}) {
 
   if (values.run) {
     const accountId = envVars.CLOUDFLARE_ACCOUNT_ID;
-    const token = envVars.CF_ANALYTICS_READ_TOKEN;
+    const token = envVars.ANALYTICS_READ_TOKEN;
     if (!accountId || !token) {
-      err("--run needs CLOUDFLARE_ACCOUNT_ID and CF_ANALYTICS_READ_TOKEN");
+      err("--run needs CLOUDFLARE_ACCOUNT_ID and ANALYTICS_READ_TOKEN");
       return 2;
     }
     const dashboards = spec.dashboards.filter((d) => values.dashboard === undefined || d.id === values.dashboard);

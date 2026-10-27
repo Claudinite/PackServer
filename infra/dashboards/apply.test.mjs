@@ -7,6 +7,8 @@ import { datasetOf, exportEnv, loadSpec, readLayout, renderPanel, validateSpec }
 import { datasetFor, SIGNAL_NAMES } from "../../packages/core/telemetry/signals";
 import { REQUEST_BLOBS, REQUEST_DOUBLES } from "../../packages/core/telemetry/event";
 import { DOWNLOAD_BLOBS, DOWNLOAD_DOUBLES, SIGNAL_NUMBERS } from "../../packages/core/telemetry/recorder";
+import { VALIDATION_STAT_LAYOUT } from "../../workers/validator/src/workflow/steps";
+import { readFileSync as readSource } from "node:fs";
 import { GATE_RESULT_BLOBS, GATE_RESULT_DOUBLES } from "../../packages/core/gates/layout";
 
 const layout = readLayout();
@@ -20,7 +22,19 @@ describe("the telemetry layout read from source", () => {
     expect(layout.columns.downloads).toEqual({ blobs: [...DOWNLOAD_BLOBS], doubles: [...DOWNLOAD_DOUBLES] });
     expect(layout.columns.gate_results).toEqual({ blobs: [...GATE_RESULT_BLOBS], doubles: [...GATE_RESULT_DOUBLES] });
     expect(layout.numbers).toEqual(Object.fromEntries(Object.entries(SIGNAL_NUMBERS).map(([k, v]) => [k, [...v]])));
+    expect(layout.stats).toEqual(JSON.parse(JSON.stringify(VALIDATION_STAT_LAYOUT)));
     expect([...layout.signals].sort()).toEqual([...SIGNAL_NAMES].sort());
+  });
+
+  it("gives validation_events no emit-style columns, since the validator writes its own", () => {
+    expect(layout.columns.validation_events).toBeUndefined();
+  });
+
+  it("reads the same bad outcomes as the gate judge", () => {
+    const judge = /const BAD_OUTCOMES = "([^"]+)"/.exec(readSource(join(import.meta.dirname, "../../workers/judge/src/stats/sql.ts"), "utf8"))?.[1];
+    const lists = spec.dashboards.flatMap((d) => d.panels).flatMap((p) => [...p.sql.matchAll(/outcome\}\} IN \(('server_error'[^)]*)\)/g)].map((m) => m[1]));
+    expect(lists.length).toBeGreaterThan(0);
+    for (const list of lists) expect(list).toBe(judge);
   });
 
   it("routes every signal to the dataset the recorder does", () => {
@@ -50,6 +64,8 @@ describe("the declaration", () => {
     ["an outcome the recorder never writes", dash("SELECT 1 FROM {{ds:request_outcomes}} WHERE {{since}} AND {{col:request_outcomes.outcome}} = 'rate_limited'"), /not an outcome/],
     ["two datasets in one panel", dash("SELECT 1 FROM {{ds:domain_events}} WHERE {{since}} AND 1 IN (SELECT 1 FROM {{ds:budget}})"), /reads 2 datasets/],
     ["a statement separator", dash("SELECT 1 FROM {{ds:domain_events}} WHERE {{since}}; DROP"), /without a semicolon/],
+    ["a validation field through the emit layout", dash("SELECT {{col:validation_events.worker}} FROM {{ds:validation_events}} WHERE {{since}}"), /no declared columns/],
+    ["a validator field that is not written", dash("SELECT {{stat:validation.step.cost}} FROM {{ds:validation_events}} WHERE {{since}}"), /no validator statistic field/],
   ])("refuses %s", (_, bad, message) => {
     expect(validateSpec(bad, layout).join("\n")).toMatch(message);
   });
@@ -127,7 +143,7 @@ describe("main", () => {
       seen.push({ url, auth: init.headers.authorization, sql: init.body });
       return { ok: true, status: 200, json: async () => ({ data: [{ n: 1 }] }) };
     };
-    const { code, out } = await run(["--env", "production", "--run", "--dashboard", "overview"], { CLOUDFLARE_ACCOUNT_ID: "acct", CF_ANALYTICS_READ_TOKEN: "tok" }, { fetch });
+    const { code, out } = await run(["--env", "production", "--run", "--dashboard", "overview"], { CLOUDFLARE_ACCOUNT_ID: "acct", ANALYTICS_READ_TOKEN: "tok" }, { fetch });
     expect(code).toBe(0);
     expect(seen).toHaveLength(spec.dashboards[0].panels.length);
     expect(seen[0].url).toBe("https://api.cloudflare.com/client/v4/accounts/acct/analytics_engine/sql");
@@ -137,7 +153,7 @@ describe("main", () => {
 
   it("reports a panel it could not read and fails, never showing it empty", async () => {
     const fetch = async () => ({ ok: false, status: 403, text: async () => "denied" });
-    const { code, err, out } = await run(["--env", "staging", "--run", "--dashboard", "release"], { CLOUDFLARE_ACCOUNT_ID: "a", CF_ANALYTICS_READ_TOKEN: "t" }, { fetch });
+    const { code, err, out } = await run(["--env", "staging", "--run", "--dashboard", "release"], { CLOUDFLARE_ACCOUNT_ID: "a", ANALYTICS_READ_TOKEN: "t" }, { fetch });
     expect(code).toBe(1);
     expect(err.join("\n")).toMatch(/not read: the SQL API answered 403/);
     expect(out.join("\n")).not.toMatch(/\(0 rows\)/);

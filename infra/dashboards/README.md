@@ -12,7 +12,7 @@ rendering and reading, not creating:
 ```
 node infra/dashboards/apply.mjs                                   # validate offline, no network
 node infra/dashboards/apply.mjs --env staging --export out        # out/staging.json, rendered SQL per panel
-CLOUDFLARE_ACCOUNT_ID=... CF_ANALYTICS_READ_TOKEN=... \
+CLOUDFLARE_ACCOUNT_ID=... ANALYTICS_READ_TOKEN=... \
   node infra/dashboards/apply.mjs --env production --run --dashboard overview
 ```
 
@@ -31,7 +31,7 @@ reads exactly one dataset and bounds its time range.
 ## Writing a panel
 
 Tokens in `sql`: `{{ds:dataset}}` (adds `_staging` outside production), `{{col:dataset.field}}`,
-`{{num:signal.field}}` (a signal's fixed double, from `SIGNAL_NUMBERS`), `{{bucket:seconds}}`
+`{{num:signal.field}}` (a signal's fixed double, from `SIGNAL_NUMBERS`), `{{stat:signal.field}}` (a field of a validator statistic, which has its own layout), `{{bucket:seconds}}`
 (time bucket for a series), `{{since}}` (the panel's `range`). Domain-style datasets store the
 Worker, release and version in blobs 1 to 3 and the signal's attributes as JSON in blob 4;
 attributes are matched with `LIKE '%"key":value%'` because the SQL dialect documents no JSON
@@ -39,8 +39,8 @@ functions. Sums weight by `_sample_interval`.
 
 ## Click path for a person
 
-1. Create a token: dashboard, My Profile, API Tokens, Create Custom Token, Account | Account
-   Analytics | Read.
+1. Use the Account Analytics Read token the judge already binds as `ANALYTICS_READ_TOKEN`
+   (created for #158); do not mint a second one.
 2. Export the account id from the dashboard's Workers and Pages overview.
 3. Run the `--run` command above for the dashboard you want (Overview first); the Release dashboard
    is the one to read during a rollout.
