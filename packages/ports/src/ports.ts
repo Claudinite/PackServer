@@ -3,6 +3,9 @@ import type { RESPONSE_HEADER_ALLOWLIST, QuotaRpc, RootCoordinatorRpc, ScopeCoor
 /** The message a sandbox adapter's error starts with when the container died while decoding an upload: the archive's verdict, not the platform's. Errors cross a Worker boundary by name and message only, so the marker travels in the message. */
 export const SANDBOX_DIED = "sandbox_died";
 
+/** The code of a resolver error about one name (the resolver answered, with a failure status for it); any other resolver error means the resolver itself was unreachable. */
+export const DNS_NAME_UNANSWERED = "dns_name_unanswered";
+
 export class PortError extends Error {
   constructor(
     readonly code: string,
@@ -149,6 +152,8 @@ export const TEST_MAIL_URL = "https://mail.test.invalid/send";
 
 export interface Dns {
   resolveTxt(name: string): Promise<string[]>;
+  /** Whether the name has an address or an alias; a resolver that could not answer rejects instead of saying no. */
+  resolves(name: string): Promise<boolean>;
 }
 
 /** What the one `.well-known` fetch of a domain proof found; only `found` can prove anything. */

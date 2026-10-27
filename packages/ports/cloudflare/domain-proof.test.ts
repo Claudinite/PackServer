@@ -62,7 +62,21 @@ describe("dohDns", () => {
   it("reads NXDOMAIN and an empty answer as no record, and any other failure as an outage", async () => {
     expect(await dohDns(answering(doh({ Status: 3 }))).resolveTxt("a.example")).toEqual([]);
     expect(await dohDns(answering(doh({ Status: 0 }))).resolveTxt("a.example")).toEqual([]);
-    await expect(dohDns(answering(doh({ Status: 2 }))).resolveTxt("a.example")).rejects.toMatchObject({ code: "dns_unavailable" });
+    await expect(dohDns(answering(doh({ Status: 2 }))).resolveTxt("a.example")).rejects.toMatchObject({ code: "dns_name_unanswered" });
     await expect(dohDns(answering(doh({}, 503))).resolveTxt("a.example")).rejects.toMatchObject({ code: "dns_unavailable" });
+  });
+
+  it("says a name resolves when it has an address or an alias, asking for IPv6 only when IPv4 answers nothing", async () => {
+    const v4 = answering(doh({ Status: 0, Answer: [{ type: 1, data: "203.0.113.7" }] }));
+    expect(await dohDns(v4).resolves("docs.acme.com")).toBe(true);
+    expect(v4).toHaveBeenCalledTimes(1);
+    const v6 = answering(doh({ Status: 0 }), doh({ Status: 0, Answer: [{ type: 28, data: "2001:db8::1" }] }));
+    expect(await dohDns(v6).resolves("docs.acme.com")).toBe(true);
+    expect(new URL(urlOf(v6, 1)).searchParams.get("type")).toBe("AAAA");
+  });
+
+  it("says a name does not resolve on NXDOMAIN and refuses to answer when the resolver fails", async () => {
+    expect(await dohDns(answering(doh({ Status: 3 }), doh({ Status: 3 }))).resolves("gone.example")).toBe(false);
+    await expect(dohDns(answering(doh({ Status: 2 }))).resolves("gone.example")).rejects.toMatchObject({ code: "dns_name_unanswered" });
   });
 });

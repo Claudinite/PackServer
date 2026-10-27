@@ -225,6 +225,20 @@
       "when": 1793064831287,
       "tag": "20261027013351_community_comments",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1793065108765,
+      "tag": "20261027013828_foundation_pack_version_score_breakdown",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1793065109865,
+      "tag": "20261027013829_validation_rescans",
+      "breakpoints": true
     }
   ]
 }
