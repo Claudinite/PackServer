@@ -55,8 +55,19 @@ export async function milestonesOf(d1: D1, runId: string): Promise<MilestoneRow[
   return rows as unknown as MilestoneRow[];
 }
 
+/** Whether a validated version waits for an owner's approval, and why. */
+export interface ApprovalView {
+  state: "awaiting" | "approved";
+  reasons: string[];
+}
+
+export async function approvalOf(d1: D1, runId: string): Promise<ApprovalView | null> {
+  const row = (await d1.query("select reasons, approved_at from run_approvals where run_id = ?", [runId])).rows[0];
+  return row ? { state: row.approved_at ? "approved" : "awaiting", reasons: JSON.parse(String(row.reasons)) as string[] } : null;
+}
+
 /** What a publisher is shown of a run: where it is, why it waits, and how far it has got. Never the staging key or the principal. */
-export function runView(run: RunRow, milestones: readonly MilestoneRow[], now: number) {
+export function runView(run: RunRow, milestones: readonly MilestoneRow[], now: number, approval: ApprovalView | null = null) {
   const waiting = run.status !== "finished" && run.queued_reason !== null && Date.parse(run.start_after) > now;
   return {
     run_id: run.id,
@@ -73,6 +84,7 @@ export function runView(run: RunRow, milestones: readonly MilestoneRow[], now: n
           until: run.queued_reason === "soft-rate-limit" ? new Date(nextUtcMidnight(Date.parse(run.created_at))).toISOString() : run.start_after,
         }
       : null,
+    approval,
     milestones: milestones.map((m) => ({ step: m.step, outcome: m.outcome, ...(m.detail === null ? {} : { detail: m.detail }), at: m.at })),
   };
 }

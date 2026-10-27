@@ -4,7 +4,7 @@ import type { PublishRuntime } from "./bindings";
 import { startRoutes, wizardRoutes } from "./admission";
 import { dryRunRoutes } from "./dry-run";
 import { oidcRoutes } from "./oidc";
-import { runRoutes } from "./runs";
+import { appealRoutes, approveRoutes, forwardRoutes, runRoutes } from "./runs";
 import { selfTestChecks } from "./selftest";
 import { uploadRoutes } from "./upload";
 
@@ -27,9 +27,12 @@ export function createApp(runtime: PublishRuntime, options: AppOptions = {}): Ho
   });
   app.route("/api/oidc", oidcRoutes(runtime));
   app.route("/api/publish", runRoutes(runtime));
+  app.route("/api/publish", forwardRoutes(runtime));
   app.route("/api/publish", startRoutes(runtime));
   app.route("/api/publish", uploadRoutes(runtime));
   app.route("/api/dry-run", dryRunRoutes(runtime));
   app.route("/internal", wizardRoutes(runtime));
+  app.route("/internal", approveRoutes(runtime));
+  app.route("/internal", appealRoutes(runtime));
   return app;
 }

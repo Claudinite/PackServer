@@ -1,7 +1,11 @@
 import { syncClock } from "@packserver/ports";
+import * as approval from "../approval";
 import type { ValidatorRuntime } from "../bindings";
+import type { Clearance } from "../promote/load";
 import * as promote from "../promote/promote";
+import * as review from "../review";
 import * as steps from "./steps";
+import type { WaitConfig } from "./wait";
 
 export interface StepConfig {
   retries?: { limit: number; delay: string | number; backoff?: "constant" | "linear" | "exponential" };
@@ -13,10 +17,20 @@ export interface StepRunner {
   do<T>(name: string, config: StepConfig, fn: () => Promise<T>): Promise<T>;
   do<T>(name: string, fn: () => Promise<T>): Promise<T>;
   sleepUntil(name: string, timestamp: Date): Promise<void>;
+  /** Throws when the timeout passes without the event. */
+  waitForEvent(name: string, options: { type: string; timeout: string | number }): Promise<unknown>;
 }
 
 export interface WorkflowParams {
   run_id: string;
+  /** Start after the verdict: the run was validated by an earlier instance, and a person has decided since. */
+  resume?: boolean;
+}
+
+export interface PipelineConfig {
+  retryDelay: string | undefined;
+  /** How long one wait for a person lasts before it is armed again, such as "7 days". */
+  rearm?: string | undefined;
 }
 
 /** An infrastructure error retries twice, then the run ends `error` (REQ-VAL-014). */
@@ -31,11 +45,18 @@ const infrastructure = (retryDelay: string | undefined): StepConfig => {
  * of docs/architecture/validation-pipeline.md. A step that finds an earlier failure writes a
  * `skipped` milestone instead of doing its work, so the dashboard shows the whole pipeline.
  */
-export async function runPipeline(rt: ValidatorRuntime, step: StepRunner, params: WorkflowParams, config: { retryDelay: string | undefined }): Promise<void> {
+export async function runPipeline(rt: ValidatorRuntime, step: StepRunner, params: WorkflowParams, config: PipelineConfig): Promise<void> {
   const INFRASTRUCTURE = infrastructure(config.retryDelay);
   const runId = params.run_id;
   const ctx: steps.Context = { rt, runId, rules: steps.pinnedRules() };
   let verdicted: steps.Verdicted;
+
+  if (params.resume) {
+    const resumed = await step.do("resume", INFRASTRUCTURE, () => steps.verdictedRun(rt, runId));
+    if (!resumed) return;
+    await afterVerdict(rt, step, runId, resumed, INFRASTRUCTURE, config);
+    return;
+  }
 
   try {
     const begun = await step.do("start", INFRASTRUCTURE, () => steps.start(rt, runId));
@@ -75,22 +96,47 @@ export async function runPipeline(rt: ValidatorRuntime, step: StepRunner, params
     return;
   }
 
-  // Steps 13 and 14 wait on people; their names are declared now so the class never renames one.
-  await step.do("human-review", INFRASTRUCTURE, async () => ({ waiting: false }));
-  await step.do("staged-approval", INFRASTRUCTURE, async () => ({ waiting: false }));
+  await afterVerdict(rt, step, runId, verdicted, INFRASTRUCTURE, config);
+}
 
-  if (verdicted.verdict === "pass" || verdicted.verdict === "warn") await promoteVersion(rt, step, runId, INFRASTRUCTURE);
+const REARM = /^\d+ (seconds?|minutes?|hours?|days?)$/;
+
+function waiting(retry: StepConfig, rearm: string | undefined): WaitConfig {
+  if (typeof rearm !== "string" || !REARM.test(rearm)) throw new Error(`WAIT_REARM must look like "7 days", not ${JSON.stringify(rearm)}`);
+  return { retry, rearm };
 }
 
 /**
- * Step 15. Each sub-step is its own durable step and idempotent on the version, so a crash at any
+ * Steps 13 to 15. A hold waits for an admin and a staged or widening version for an owner; both read the
+ * registry database before every wait, so a decision made while no instance waited is found, not lost.
+ */
+async function afterVerdict(rt: ValidatorRuntime, step: StepRunner, runId: string, verdicted: steps.Verdicted, retry: StepConfig, config: PipelineConfig): Promise<void> {
+  const cleared: Clearance = {};
+  const review13 = await step.do("human-review", retry, async () => ({ waiting: await review.entersReview(rt.ports.d1, runId, verdicted.verdict) }));
+  if (review13.waiting) {
+    if ((await review.awaitReview(rt, step, runId, waiting(retry, config.rearm))) === "stopped") return;
+    cleared.released = true;
+  } else if (verdicted.verdict !== "pass" && verdicted.verdict !== "warn") {
+    return;
+  }
+
+  const staged = await step.do("staged-approval", retry, () => approval.request(rt, runId));
+  if (staged.required) {
+    await approval.awaitApproval(rt, step, runId, waiting(retry, config.rearm));
+    cleared.approved = true;
+  }
+  await promoteVersion(rt, step, runId, retry, cleared);
+}
+
+/**
+ * Step 15, once the people who must decide have. Each sub-step is its own durable step and idempotent on the version, so a crash at any
  * point resumes at the next one: the version counts as promoted from the commit, and everything
  * after it converges (validation-pipeline.md). No promotion step writes a milestone; the run is
  * finished at its verdict.
  */
-async function promoteVersion(rt: ValidatorRuntime, step: StepRunner, runId: string, config: StepConfig): Promise<void> {
+async function promoteVersion(rt: ValidatorRuntime, step: StepRunner, runId: string, config: StepConfig, cleared: Clearance): Promise<void> {
   const pctx: promote.Context = { rt, runId };
-  const prepared = await step.do("promote-prepare", config, () => promote.prepare(pctx));
+  const prepared = await step.do("promote-prepare", config, () => promote.prepare(pctx, cleared));
   if (!prepared.promote) return;
   await step.do("promote-objects", config, () => promote.writeObjects(pctx, prepared.versionId));
   await step.do("promote-commit", config, () => promote.commit(pctx));

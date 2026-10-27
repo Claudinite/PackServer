@@ -211,6 +211,20 @@
       "when": 1793062126279,
       "tag": "20261027004846_scopes_dispute_resolution",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1793063590073,
+      "tag": "20261027011310_run_approvals",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1793064831287,
+      "tag": "20261027013351_community_comments",
+      "breakpoints": true
     }
   ]
 }

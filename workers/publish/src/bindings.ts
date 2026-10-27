@@ -24,6 +24,7 @@ export interface Env {
   QUOTA: DurableObjectNamespace;
   ROOT_COORDINATOR: DurableObjectNamespace;
   VALIDATOR: Fetcher;
+  WEB: Fetcher;
   REQUEST_OUTCOMES: AnalyticsEngineDataset;
   DOMAIN_EVENTS: AnalyticsEngineDataset;
   RATE_LIMIT: RateLimit;
@@ -48,6 +49,7 @@ export interface Env {
 export type PublishPorts = Pick<Ports, "clock" | "rng" | "d1" | "stats" | "kv" | "r2" | "queues" | "durableObjects" | "rateLimits" | "telemetry">;
 export interface PublishServices {
   validator: Fetcher;
+  web: Fetcher;
 }
 
 export { oidcConfig, type OidcConfig };
@@ -97,7 +99,7 @@ export async function createRuntime(env: Env): Promise<PublishRuntime> {
         RootCoordinator: env.ROOT_COORDINATOR,
       }),
     },
-    { validator: env.VALIDATOR },
+    { validator: env.VALIDATOR, web: env.WEB },
   );
   return {
     ...runtime,

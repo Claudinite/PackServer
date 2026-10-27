@@ -10,6 +10,8 @@ export interface Env {
   ENVIRONMENT: string;
   /** The wait before the first retry of a step that hit an infrastructure error; each further retry doubles it. */
   STEP_RETRY_DELAY: string;
+  /** How long one wait for an admin or an owner lasts before the workflow arms it again, such as "7 days". */
+  WAIT_REARM: string;
   DB: D1Database;
   PACKS_STAGING: R2Bucket;
   PACKS_PUBLIC: R2Bucket;

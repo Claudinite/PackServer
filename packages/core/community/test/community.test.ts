@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { migratedD1 } from "../../identity/testing.ts";
 import {
-  checkBurst, drainCommunityNotices, packsWithFreshStars, hideReview, listReviews, openStarHolds, pruneAuthenticatedDownloads, recomputeCommunity, recordAuthenticatedDownload, refreshPack, star, starState, submitReview, unstar, withPrior,
+  checkBurst, drainCommunityNotices, isHeldComment, listComments, postComment, voteOnComment, packsWithFreshStars, hideReview, listReviews, openStarHolds, pruneAuthenticatedDownloads, recomputeCommunity, recordAuthenticatedDownload, refreshPack, star, starState, submitReview, unstar, withPrior,
   type CommunityPorts, type PackRef,
 } from "../index.ts";
 import { FakeMail } from "@packserver/ports/fakes";
@@ -228,5 +228,66 @@ describe("reviews", () => {
     expect(await drainCommunityNotices(f.ports, { mail, siteOrigin: "https://registry.example" })).toEqual({ sent: 1, skipped: 0 });
     expect(mail.sent[0]?.text).toContain("Spam");
     expect((await f.d1.query("select rating from pack_stats where pack_id = 'pack-gcp'")).rows[0]!.rating).toBeNull();
+  });
+});
+
+describe("section comments", () => {
+  const input = { section: "f:RULES.md~top", version: "1.0.0", body: "Name the store." };
+
+  it("hides a net-negative comment from its third day, and only by counted votes", async () => {
+    const f = await fixture();
+    const [author, a, b, owner, young] = [await f.user("author"), await f.user("a"), await f.user("b"), await f.user("owner", 2 * DAY, "owner"), await f.user("young", HOUR)];
+    const posted = await postComment(f.ports, f.pack, author, input, false);
+    expect(posted.ok).toBe(true);
+    const id = posted.ok ? posted.comment.id : "";
+    for (const who of [a, b, owner, young]) await voteOnComment(f.ports, f.pack, who, id, -1);
+    const read = async () => (await listComments(f.ports, f.pack, undefined, input.section))[0];
+
+    expect(await read()).toMatchObject({ up: 0, down: 2, hidden: false });
+    f.advance(3 * DAY - 1);
+    expect((await read())?.hidden).toBe(false);
+    f.advance(1);
+    expect(await read()).toMatchObject({ hidden: true, down: 3 });
+    await voteOnComment(f.ports, f.pack, a, id, 1);
+    expect(await read()).toMatchObject({ hidden: true, up: 1, down: 2 });
+    await voteOnComment(f.ports, f.pack, b, id, 1);
+    expect(await read()).toMatchObject({ hidden: false, up: 2, down: 1 });
+  });
+
+  it("refuses a young account and an eleventh comment in a day, and holds a comment for its author", async () => {
+    const f = await fixture();
+    const [busy, young, other] = [await f.user("busy"), await f.user("young", HOUR), await f.user("other")];
+    expect(await postComment(f.ports, f.pack, young, input, false)).toMatchObject({ ok: false, reason: "young_account" });
+    for (let i = 0; i < 10; i++) expect((await postComment(f.ports, f.pack, busy, input, false)).ok).toBe(true);
+    expect(await postComment(f.ports, f.pack, busy, input, false)).toMatchObject({ ok: false, reason: "daily_limit" });
+
+    const held = await postComment(f.ports, f.pack, other, input, true);
+    const id = held.ok ? held.comment.id : "";
+    expect((await listComments(f.ports, f.pack, other, input.section)).filter((c) => c.held)).toHaveLength(1);
+    expect((await listComments(f.ports, f.pack, busy, input.section)).filter((c) => c.id === id)).toEqual([]);
+    expect(await voteOnComment(f.ports, f.pack, busy, id, 1)).toMatchObject({ ok: false, reason: "not_found" });
+    expect(await voteOnComment(f.ports, f.pack, other, id, 1)).toMatchObject({ ok: false, reason: "own_comment" });
+  });
+
+  it("holds text the publisher-prose checks would not let through", async () => {
+    expect(await isHeldComment("Name the secret store here.")).toBe(false);
+    expect(await isHeldComment("Use ghp_" + "Ab3dE6gH9jK2mN5pQ8sT1vW4yZ7bC0eF3hJ6")).toBe(true);
+    expect(await isHeldComment("a\u202eb")).toBe(true);
+  });
+});
+
+describe("comment limits", () => {
+  it("caps a person's votes at 200 a day", async () => {
+    const f = await fixture();
+    const [author, voter] = [await f.user("author"), await f.user("voter")];
+    const statements = [];
+    for (let i = 0; i < 201; i++) {
+      statements.push({ sql: "insert into comments (id, pack_id, section, version, user_id, body, created_at) values (?, 'pack-gcp', 's', '1.0.0', ?, 'x', ?)", params: [`c${i}`, author, iso(START)] });
+    }
+    for (let i = 0; i < 200; i++) statements.push({ sql: "insert into comment_votes (comment_id, user_id, value, voted_at) values (?, ?, 1, ?)", params: [`c${i}`, voter, iso(START)] });
+    for (let i = 0; i < statements.length; i += 50) await f.d1.batch(statements.slice(i, i + 50));
+    expect(await voteOnComment(f.ports, f.pack, voter, "c200", 1)).toMatchObject({ ok: false, reason: "daily_limit" });
+    f.advance(DAY + 1);
+    expect((await voteOnComment(f.ports, f.pack, voter, "c200", 1)).ok).toBe(true);
   });
 });
