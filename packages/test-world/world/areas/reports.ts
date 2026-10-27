@@ -91,6 +91,10 @@ export interface ReportsModule {
     /** What a download of the attachment answers. */
     download(user: User | undefined, report: { id: string }, attachment: { id: string }): Promise<{ disposition: string; contentType: string; sniffable: boolean } | NotFound>;
     advisories(pack: Pack, version?: string): Promise<Advisory[]>;
+    /** Uploads an attachment the way the report form does before filing, and leaves it pending. */
+    upload(user: User, pack: Pack, attachment: AttachmentDraft): Promise<{ id: string }>;
+    /** How many uploads wait for a report to claim them. */
+    pendingUploads(): Promise<number>;
     /** Runs the scheduled pass (reminders, expiry, stale uploads) at the current time. */
     sweep(pack?: Pack): Promise<{ reminded: number; expired: number; discarded: number }>;
     /** What is queued for a person, an address or registry security, and not yet sent. */
@@ -301,6 +305,15 @@ export function createReportsModule(driver: Driver, aliases: Aliases): ReportsMo
         const res = await anonymous("GET", `${path(pack)}/advisories${version ? `?version=${encodeURIComponent(version)}` : ""}`);
         if (res.status !== 200) throw new InfrastructureError(`advisories: ${res.status} ${res.text.slice(0, 120)}`);
         return json<{ advisories: Advisory[] }>(res).advisories;
+      },
+      async upload(user, pack, attachment) {
+        const res = await user.request("POST", `${path(pack)}/reports/attachments?name=${encodeURIComponent(attachment.name)}`, { body: synthesise(attachment) });
+        if (res.status !== 201) orRefusal(res, `attach ${attachment.name}`);
+        return { id: json<{ attachment: { id: string } }>(res).attachment.id };
+      },
+      async pendingUploads() {
+        const { rows } = await (await d1()).query("select count(*) as n from report_attachments where report_id is null");
+        return Number(rows[0]?.n);
       },
       async sweep(pack) {
         return sweepReports(await ports(), pack ? { packId: await packId(pack) } : {});

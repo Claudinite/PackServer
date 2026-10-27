@@ -5,7 +5,7 @@ export { attachmentsOf, discardStaleAttachments, loadAttachment, saveAttachment,
 export * from "./constants.ts";
 export { AdvisoryInput, IssueLinkInput, ReportInput, StatusInput } from "./input.ts";
 export { isRepository, parseIssueUrl, prefilledIssueUrl } from "./issue.ts";
-export { drainNotices, noticeStatement, REGISTRY_SECURITY, type NoticeDelivery, type Recipient, type ReportNotice } from "./notices.ts";
+export { drainNotices, MAX_NOTICE_ATTEMPTS, noticeStatement, REGISTRY_SECURITY, type NoticeDelivery, type Recipient, type ReportNotice } from "./notices.ts";
 export { isoNow, type Principal, type ReportPorts } from "./ports.ts";
 export {
   fileReport, linkIssue, listInbox, listIssues, listOwn, readReport, reportPath, reportUrl, setSecurityContact, setStatus, similarIssues,
@@ -13,5 +13,6 @@ export {
 } from "./reports.ts";
 export { mostSimilar, titleSimilarity } from "./similar.ts";
 export { sweepReports, type SweepResult } from "./sweep.ts";
+export { NOTICES_PER_PASS, REPORTS_PER_PASS, reportPass } from "./pass.ts";
 export { daysLeft, disclosureDeadline, reminderFrom, timerAction } from "./timer.ts";
 export { effectiveStatus, type EffectiveStatus, type ReportView } from "./view.ts";

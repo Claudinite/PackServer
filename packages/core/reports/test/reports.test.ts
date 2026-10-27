@@ -177,6 +177,17 @@ describe("security reports", () => {
 });
 
 describe("the disclosure timer", () => {
+  it("acts on at most the limit per pass, skips reports already reminded, and picks the rest up next pass", async () => {
+    const f = await fixture();
+    const ann = await f.user("ann");
+    await f.user("olga", "owner");
+    for (const title of ["One", "Two", "Three"]) await filed(f, ann, security({ title }));
+    f.advance(83 * DAY);
+    expect(await sweepReports(f.ports, { limit: 2 })).toMatchObject({ reminded: 2 });
+    expect(await sweepReports(f.ports, { limit: 2 })).toMatchObject({ reminded: 1 });
+    expect(await sweepReports(f.ports, { limit: 2 })).toMatchObject({ reminded: 0, expired: 0 });
+  });
+
   it("reminds the owners 7 days before, tells registry security at 90 days, and stops once an advisory exists", async () => {
     const f = await fixture();
     const ann = await f.user("ann");
