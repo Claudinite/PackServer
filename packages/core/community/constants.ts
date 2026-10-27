@@ -28,3 +28,9 @@ export const STATEMENTS_PER_BATCH = 25;
 
 /** Signed-in downloads are remembered this long; the mark a review already earned is kept regardless. */
 export const DOWNLOAD_RETENTION_MS = 90 * DAY_MS;
+
+export const COMMENTS_PER_DAY = 10;
+export const MAX_COMMENT_CHARS = 2000;
+/** A comment whose counted votes are net-negative this long after it was posted is hidden behind a disclosure (REQ-COMM-015). */
+export const COMMENT_HIDE_AFTER_MS = 3 * DAY_MS;
+export const MAX_SECTION_COMMENTS = 200;

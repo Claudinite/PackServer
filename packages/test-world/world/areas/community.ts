@@ -62,6 +62,22 @@ export interface SeedReviews {
   version?: string;
 }
 
+export interface CommentInfo {
+  id: string;
+  section: string;
+  version: string;
+  author: string | null;
+  body: string;
+  /** Votes that count publicly. */
+  up: number;
+  down: number;
+  /** Behind a disclosure: net-negative for 3 days. */
+  hidden: boolean;
+  mine?: 1 | -1 | null;
+  /** Held by the text checks; only its author is shown it. */
+  held?: true;
+}
+
 export interface Hold {
   pack: string;
   stars: number;
@@ -99,6 +115,13 @@ export interface CommunityModule {
     download(user: User, pack: Pack): Promise<void>;
     /** Sends what is queued for people (a removed review's reason) through the mail fake. */
     deliver(): Promise<{ sent: number }>;
+    /** Posts a comment on a section anchor of the pack's contents; the pack's first seeded version unless the draft names one. */
+    comment(user: User, pack: Pack, draft: { section: string; body: string; version?: string }): Promise<CommentInfo | Refusal | NotFound>;
+    comments(pack: Pack, section: string, viewer?: User): Promise<CommentInfo[] | NotFound>;
+    /** Votes a comment up (1) or down (-1); `0` takes the vote back. */
+    vote(user: User, pack: Pack, comment: { id: string }, value: 1 | -1 | 0): Promise<CommentInfo | Refusal | NotFound>;
+    /** Whether the section's comment thread is closed in the Contents tab as an anonymous visitor first gets it. */
+    commentsCollapsed(pack: Pack, section: string, version?: string): Promise<boolean>;
     moderation: {
       /** An admin takes a review down with a reason. */
       hide(review: { id: string }, reason: string): Promise<void>;
@@ -265,6 +288,32 @@ export function createCommunity(driver: Driver, aliases: Aliases): CommunityModu
         const res = await user.request("DELETE", `${path(pack)}/reviews/${review.id}`);
         if (res.status === 200 || res.status === 204) throw new InfrastructureError("a review was deleted");
         return refusalOf(res, "delete");
+      },
+      async comment(user, pack, draft) {
+        const version = draft.version ?? (await firstVersion(await packId(pack)));
+        const res = await user.request("POST", `${path(pack)}/comments`, { json: { section: draft.section, version, body: draft.body } });
+        if (res.status === 404) return new NotFound();
+        return res.status === 201 ? json<{ comment: CommentInfo }>(res).comment : refusalOf(res, "comment");
+      },
+      async comments(pack, section, viewer) {
+        const route = `${path(pack)}/comments?section=${encodeURIComponent(section)}`;
+        const res = viewer ? await viewer.request("GET", route) : await driver.http.request({ surface: "web", method: "GET", path: route });
+        if (res.status === 404) return new NotFound();
+        if (res.status !== 200) throw new InfrastructureError(`comments: ${res.status} ${res.text.slice(0, 120)}`);
+        return json<{ comments: CommentInfo[] }>(res).comments;
+      },
+      async vote(user, pack, comment, value) {
+        const route = `${path(pack)}/comments/${comment.id}/vote`;
+        const res = value === 0 ? await user.request("DELETE", route) : await user.request("PUT", route, { json: { value } });
+        if (res.status === 404) return new NotFound();
+        return res.status === 200 ? json<{ comment: CommentInfo }>(res).comment : refusalOf(res, "vote");
+      },
+      async commentsCollapsed(pack, section, version) {
+        const page = await driver.http.request({ surface: "web", method: "GET", path: `/packs/${pack.systemName}/contents${version ? `?version=${version}` : ""}` });
+        if (page.status !== 200) throw new InfrastructureError(`contents: ${page.status}`);
+        const tag = [...page.text.matchAll(/<details\b[^>]*class="cm"[^>]*>/g)].map((m) => m[0]).find((t) => t.includes(`data-section="${section}"`));
+        if (!tag) throw new InfrastructureError(`the Contents tab has no comment thread for ${section}`);
+        return !/\sopen[\s=>]/.test(tag);
       },
       async setAge(user, age) {
         const at = await now();

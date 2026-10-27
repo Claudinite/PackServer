@@ -39,5 +39,12 @@ export const PACK_CSS = `
 .file h3 { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: ${typeScale.small}px; font-weight: 500; }
 .sec { border-top: 1px solid var(--line); padding: ${g(1)} 0; }
 .sec pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.cm { margin-top: ${g(1)}; font-size: ${typeScale.small}px; }
+.cm summary { cursor: pointer; color: var(--grey-2); }
+.cm ul { list-style: none; padding: 0; margin: ${g(1)} 0; }
+.cm-item { border-top: 1px solid var(--line); padding: ${g(1)} 0; }
+.cm-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.cm-votes { display: flex; gap: ${g(1)}; align-items: center; }
+.cm-form textarea { display: block; width: 100%; min-height: ${g(10)}; }
 .pk-note { margin-top: ${g(6)}; color: var(--grey-1); }
 `;

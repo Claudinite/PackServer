@@ -1,8 +1,11 @@
 import { viewCacheControl } from "@packserver/core/catalog";
 import { Hono, type Context } from "hono";
-import { cdnOriginOf, type WebEnv } from "../../context";
+import { cdnOriginOf, runtimeOf, type WebEnv } from "../../context";
 import { renderPage } from "../../layout";
 import { isReadable, readContents } from "../../routes/packs/contents";
+import { communityPorts } from "../../routes/packs/stars";
+import { commentCounts, findPublicPack } from "@packserver/core/community";
+import { COMMENTS_SCRIPT } from "./comments";
 import { Adopt, ContentsView, Facts, Glance, Head, Manifest, ReadmeView, Tabs, TrustDrawer, VersionsView, type Tab } from "./components";
 import { loadHistory, loadPack, type PackData, type PackLoad } from "./data";
 import { PACK_CSS } from "./styles";
@@ -97,12 +100,15 @@ page.get("/packs/:scope/:name/contents", async (c) => {
   if (!isReadable(data.version.status)) return c.notFound();
   const read = await readContents(c, data.name, data.version.version);
   if (read.kind === "unavailable") return failure(c, 503, "Contents are unavailable", "The files of this version could not be loaded right now.", new URL(c.req.url).pathname);
+  const pack = data.visibility === "public" ? await findPublicPack(runtimeOf(c).ports.d1, c.req.param("scope") ?? "", c.req.param("name") ?? "") : null;
+  const counts = pack ? await commentCounts(communityPorts(c), pack) : undefined;
   cacheable(c);
   return renderPage(c, {
     title: `Contents of ${data.name} · Claudinite Packs`,
     children: (
       <Shell data={data} tab="contents" nonce={c.get("cspNonce")}>
-        <ContentsView contents={read.contents} />
+        <ContentsView contents={read.contents} {...(counts ? { counts } : {})} />
+        {counts ? <script nonce={c.get("cspNonce")} dangerouslySetInnerHTML={{ __html: COMMENTS_SCRIPT }} /> : null}
       </Shell>
     ),
   });
