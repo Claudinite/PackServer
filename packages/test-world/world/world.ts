@@ -18,6 +18,7 @@ import { createScopes } from "./areas/scopes";
 import { createSearch } from "./areas/search";
 import { createTelemetry } from "./areas/telemetry";
 import { createUsers } from "./areas/users";
+import { createWizard } from "./areas/wizard";
 import { createValidation } from "./validation";
 import { createPublishFlow } from "./publishing";
 import { createClock } from "./clock";
@@ -56,6 +57,7 @@ export function createWorld(driver: Driver, title: string) {
     ...createAccess(driver, aliases),
     ...createCommunity(driver, aliases),
     ...createDashboard(),
+    ...createWizard(driver, aliases, ci, validation.ensureEngines),
     ...createModeration(),
     ...createReportsModule(driver, aliases),
     ...createAdmin(driver, (restore) => void undo.push(restore), aliases),

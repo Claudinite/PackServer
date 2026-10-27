@@ -150,6 +150,35 @@ scenario("IT-PUB-030 The upload credential is bound, single-use, size-capped and
   await expect(over.presign(MiB)).toBeRefused("quota");
 });
 
+// The publish wizard: each verb below is the page's own route, followed to a verdict the way its script follows it.
+scenario("IT-PUB-016 Web upload goes straight to staging; an interrupted upload starts again", async (world) => {
+  const p = await world.publishers.create({ handle: "p" });
+  await p.signIn();
+  const archive = world.archive("gcp");
+
+  const stopped = await world.wizard.upload(p, archive, "@p/gcp@1.0.0", { stopBeforePut: true });
+  expect(stopped.stored).toBe(false);
+  expect(await world.ci.staging.objects("p")).toEqual([]);
+  expect((await world.dashboard.of(p)).text).not.toContain("Drafts");
+
+  const again = await world.wizard.upload(p, archive, "@p/gcp@1.0.0");
+  expect(again.stored).toBe(true);
+  expect(again.credentialId).not.toBe(stopped.credentialId);
+  expect(again.key).not.toBe(stopped.key);
+  expect(await world.ci.staging.objects("p")).toEqual([{ key: again.key, size: archive.bytes.byteLength }]);
+  expect(await world.ci.staging.sha256(again.key)).toBe(archive.sha256);
+  expect(world.driver.fakes?.stagingS3?.requests().filter((r) => r.outcome === "stored")).toHaveLength(1);
+
+  const dashboard = await world.dashboard.of(p);
+  expect(dashboard.text).toContain("Drafts");
+  expect(dashboard.text).toContain(`@${world.alias("p")}/gcp 1.0.0`);
+  expect(await world.wizard.page(p, "@p/gcp")).toMatchObject({ state: { draft: { version: "1.0.0", credentialId: again.credentialId, expired: false } } });
+
+  const run = await world.wizard.publish(p, archive, "@p/gcp@1.0.0", { draft: again });
+  expect(["pass", "warn"]).toContain(run.verdict);
+  expect((await world.dashboard.of(p)).text).not.toContain("Drafts");
+}, { needs: ["fakes", "clock", "storage"] });
+
 scenario("IT-PUB-017 Versions are immutable; re-publishing a version is an error", async (world) => {
   const z = await world.publishers.create({ handle: "z" });
   const original = world.archive("gcp", { version: "1.0.0" });
