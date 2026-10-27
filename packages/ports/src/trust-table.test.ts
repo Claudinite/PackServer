@@ -18,7 +18,7 @@ describe("trust table", () => {
     const fakes = createFakePorts({ worker: "validator" });
     expect(Object.keys(fakes.r2).sort()).toEqual(Object.keys(TRUST_TABLE.validator.r2).sort());
     expect(Object.keys(fakes.kv)).toEqual(["TELEMETRY_KV"]);
-    expect(Object.keys(fakes.queues)).toEqual(["NOTIFY_QUEUE"]);
+    expect(Object.keys(fakes.queues)).toEqual(["NOTIFY_QUEUE", "REINDEX_QUEUE"]);
     expect(Object.keys(fakes.rateLimits)).toEqual([]);
   });
 

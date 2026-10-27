@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { ValidatorRuntime } from "../bindings";
 
 export const REINDEX_SCHEMA = 1;
-const ScopeProofChanged = queueMessage({ type: z.literal("scope.proof_changed"), scope: z.string().min(1), change: z.string().min(1) });
+export const ScopeProofChanged = queueMessage({ type: z.literal("scope.proof_changed"), scope: z.string().min(1), change: z.string().min(1) });
 
 /** The coordinator refreshes the scope's verification facts and has its index and private entries signed. */
 export async function reindexScope(rt: ValidatorRuntime, scope: string): Promise<{ sha256: string; serial: number }> {

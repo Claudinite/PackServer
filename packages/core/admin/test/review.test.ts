@@ -20,7 +20,7 @@ function fixture() {
   const validationReports = new FakeR2();
   const ports: AdminPorts = {
     d1, clock, rng, mail, workflows, validationReports,
-    dns: { resolveTxt: async () => [] },
+    dns: { resolveTxt: async () => [], resolves: async () => false },
     wellKnown: { fetch: async () => ({ status: 404, body: "" }) } as never,
     reindex: new FakeQueue(),
     siteOrigin: "https://registry.example",
