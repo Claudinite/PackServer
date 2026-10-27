@@ -239,6 +239,20 @@
       "when": 1793065109865,
       "tag": "20261027013829_validation_rescans",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1793069485517,
+      "tag": "20261027025125_foundation_lifecycle_removal",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "6",
+      "when": 1793069487576,
+      "tag": "20261027025127_publishing_lifecycle_notices",
+      "breakpoints": true
     }
   ]
 }

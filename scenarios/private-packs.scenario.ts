@@ -473,6 +473,18 @@ scenario("IT-PUB-022 Only owners change a pack's visibility or offer it to anoth
   await expect(world.transfers.offer(secret, { to: target, by: maintainer })).toBeRefused("forbidden");
   expect(await manage.view()).toMatchObject({ visibility: "public" });
   await world.transfers.offer(secret, { to: target, by: ann });
+
+  const listed = await world.packs.public("@acme/gcp", { versions: ["1.0.0", "1.1.0"] });
+  await listed.version("1.1.0").yank({ reason: "breaks the update task", by: maintainer });
+  expect(await listed.version("1.1.0").status()).toBe("yanked");
+  await expect(listed.version("1.1.0").unyank({ by: maintainer })).toBeRefused("forbidden");
+  await expect(listed.version("1.0.0").delete({ by: maintainer })).toBeRefused("forbidden");
+  await expect(world.lifecycle.deletePack(listed, { by: maintainer })).toBeRefused("forbidden");
+  expect(await world.lifecycle.offer(listed, maintainer)).toMatchObject({ deleted: false });
+  await listed.version("1.1.0").unyank({ by: ann });
+  expect(await listed.version("1.1.0").status()).toBe("active");
+  await world.lifecycle.deletePack(listed, { by: ann });
+  expect(await world.lifecycle.offer(listed, ann)).toMatchObject({ deleted: true });
 }, storage);
 
 scenario("IT-PRIV-011 A pack with published versions keeps them where they are when its visibility is asked to change", async (world) => {

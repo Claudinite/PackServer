@@ -25,6 +25,11 @@ const EVENT_TEXT: Record<string, string> = {
   "publish.approved": "Approved a version",
   "visibility.changed": "Changed a pack's visibility",
   "version.yanked": "Yanked a version",
+  "version.unyanked": "Un-yanked a version",
+  "version.deprecated": "Deprecated a version",
+  "version.deleted": "Deleted a version",
+  "pack.deleted": "Deleted a pack",
+  "pack.restored": "Restored a pack",
   "scope.mfa_policy.changed": "Changed an organisation's sign-in policy",
   "publish.refused": "A publish was refused",
 };

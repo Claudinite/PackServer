@@ -47,7 +47,7 @@ describe("IT-AUDIT-001 every sensitive action writes an entry", () => {
   it("queues and copies one entry per action with actor, action, target and time", async () => {
     const { audit, events, d1, fakes } = setup();
     const sensitive = AUDIT_ACTIONS.filter((a) => !a.endsWith(".refused"));
-    expect(sensitive).toHaveLength(18);
+    expect(sensitive).toHaveLength(23);
     for (const action of sensitive) await audit({ kind: "user", id: "u1" }, action, `target:${action}`, { user_id: "u1" });
     expect(events()).toHaveLength(sensitive.length);
     for (const e of events()) {

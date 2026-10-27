@@ -20,6 +20,9 @@
         "RESCAN_BATCH": "25",
         "WAIT_REARM": "3 seconds",
         "SITE_ORIGINS": "http://web.internal",
+        "CDN_ORIGIN": "https://packs.test.invalid",
+        "CDN_PURGE_ZONE_ID": "test-zone",
+        "CDN_PURGE_TOKEN": "test-purge-token",
         "SIGNING_KEY_ACTIVE": "BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU",
         "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
         "IP_HASH_MASTER_KEY": "test-ip-hash-master-key",
@@ -189,6 +192,7 @@
         "RESCAN_BATCH": "25",
         "WAIT_REARM": "7 days",
         "SITE_ORIGINS": "https://registry-staging.claudinite.com",
+        "CDN_ORIGIN": "https://packs-staging.claudinite.com",
         "MAIL_FROM": "noreply@claudinite.com"
       },
       "d1_databases": [
@@ -397,6 +401,7 @@
         "RESCAN_BATCH": "25",
         "WAIT_REARM": "7 days",
         "SITE_ORIGINS": "https://registry.claudinite.com",
+        "CDN_ORIGIN": "https://packs.claudinite.com",
         "MAIL_FROM": "noreply@claudinite.com"
       },
       "d1_databases": [

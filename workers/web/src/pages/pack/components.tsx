@@ -43,7 +43,10 @@ export function leadOf(data: PackData): Lead | null {
       ...(advisory ? { advisory: { href: `/packs/${data.name}/versions#advisory-${advisory.id}` } } : {}),
     };
   }
-  if (newest && data.listing.latest_eligible === null) return { tone: "warn", text: "Unavailable: no version can be adopted right now" };
+  if (newest && data.listing.latest_eligible === null) {
+    const reasons = [...new Set(data.listing.versions.flatMap((v) => (v.status !== "removed" && v.reason !== undefined ? [v.reason] : [])))];
+    return { tone: "warn", text: reasons.length > 0 ? `Unavailable. No available versions: ${reasons.join("; ")}` : "Unavailable. No available versions" };
+  }
   if (data.reported === true) return { tone: "warn", text: "Reported, under review" };
   return null;
 }

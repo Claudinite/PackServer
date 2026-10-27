@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { RECONCILE_CAP, reconcileRemoved } from "@packserver/core/publishing";
 import { consumeReindex, refreshAllScopes } from "../src/reindex/consume";
 import { seedScope, testRuntime } from "./support";
 
@@ -51,5 +52,45 @@ describe("the daily refresh", () => {
     seedScope(db, { scope: "unpublished", pack: "y", versions: [{ version: "1.0.0", state: "approved", published_at: null }] });
     expect(await refreshAllScopes(rt)).toEqual({ refreshed: 1, failed: 1 });
     expect(rebuilt).toEqual(["acme"]);
+  });
+});
+
+describe("removing the bytes of removed versions", () => {
+  const removed = (n: number) => Array.from({ length: n }, (_, i) => ({ version: `1.0.${i}`, state: "removed" }));
+  const portsOf = (t: Awaited<ReturnType<typeof setup>>, purge: (urls: string[]) => Promise<boolean>) => ({
+    d1: t.rt.ports.d1, clock: t.rt.ports.clock, publicBucket: t.publicBucket, privateBucket: t.privateBucket, cdnOrigin: "https://packs.example", purge,
+  });
+
+  it("works through a capped number of versions per run and finishes over the next ones", async () => {
+    const t = await setup();
+    seedScope(t.db, { versions: removed(RECONCILE_CAP + 20) });
+    const ports = portsOf(t, async () => true);
+    expect(await reconcileRemoved(ports, "acme")).toMatchObject({ deleted: RECONCILE_CAP, remaining: 1 });
+    expect(await reconcileRemoved(ports, "acme")).toMatchObject({ deleted: 20, remaining: 0 });
+    expect(t.db.prepare("select count(*) as n from pack_versions where objects_purged_at is null").get()).toEqual({ n: 0 });
+  });
+
+  it("does not delete the objects of a version again while its purge is owed", async () => {
+    const t = await setup();
+    seedScope(t.db, { versions: removed(2) });
+    let deletes = 0;
+    const counting = { ...t.publicBucket, list: t.publicBucket.list.bind(t.publicBucket), delete: async (...a: Parameters<typeof t.publicBucket.delete>) => { deletes += 1; return t.publicBucket.delete(...a); } } as typeof t.publicBucket;
+    const ports = { ...portsOf(t, async () => false), publicBucket: counting };
+    expect(await reconcileRemoved(ports, "acme")).toMatchObject({ deleted: 2, purgePending: 2 });
+    const after = deletes;
+    expect(after).toBeGreaterThan(0);
+    expect(await reconcileRemoved(ports, "acme")).toMatchObject({ deleted: 0, purgePending: 2 });
+    expect(deletes).toBe(after);
+    expect(await reconcileRemoved({ ...ports, purge: async () => true }, "acme")).toMatchObject({ purgePending: 0 });
+  });
+
+  it("still has the scope's index signed when removing the bytes fails", async () => {
+    const t = await setup();
+    seedScope(t.db, { versions: removed(1) });
+    t.rt.ports.r2.PACKS_PUBLIC!.list = async () => { throw new Error("r2 is down"); };
+    const { batch, settled } = batchOf(proofChanged("acme"));
+    await consumeReindex(batch, t.rt);
+    expect(t.rebuilt).toEqual(["acme"]);
+    expect(settled).toEqual(["ack0"]);
   });
 });
