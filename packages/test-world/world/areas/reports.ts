@@ -1,4 +1,4 @@
-import { drainNotices, publishAdvisory, readReport, sweepReports, type Advisory, type AttachmentMeta, type ReportPorts, type ReportView } from "@packserver/core/reports";
+import { drainNotices, readReport, sweepReports, type Advisory, type AttachmentMeta, type ReportPorts, type ReportView } from "@packserver/core/reports";
 import type { D1 } from "@packserver/ports";
 import type { ApiResponse, Driver, SeedStorage } from "../../drivers/driver";
 import type { Aliases } from "../alias";
@@ -180,14 +180,22 @@ export function createReportsModule(driver: Driver, aliases: Aliases): ReportsMo
       return (await readReport(await ports(), report.id, { kind: "registry-security" })) ?? new NotFound();
     },
     async publishAdvisory(report, draft) {
-      const result = await publishAdvisory(await ports(), report.id, {
-        summary: draft.summary,
-        versions: draft.versions,
-        ...(draft.fixedIn ? { fixed_in: draft.fixedIn } : {}),
-        ...(draft.severity ? { severity: draft.severity } : {}),
+      const access = driver.fakes?.workers.access;
+      if (!access) throw new InfrastructureError(`the ${driver.kind} driver has no fake Access: registry security cannot be signed in`);
+      const res = await driver.http.request({
+        surface: "admin",
+        method: "POST",
+        path: `/admin/reports/${report.id}/advisory`,
+        headers: { "cf-access-jwt-assertion": await access.call<string>("assert", { email: "admin@example.test", sub: "admin-1" }) },
+        body: {
+          summary: draft.summary,
+          versions: draft.versions,
+          ...(draft.fixedIn ? { fixed_in: draft.fixedIn } : {}),
+          ...(draft.severity ? { severity: draft.severity } : {}),
+        },
       });
-      if (!result.ok) throw new InfrastructureError(`the advisory was refused: ${result.reason} ${result.message ?? ""}`);
-      return result.advisory;
+      if (res.status !== 200) throw new InfrastructureError(`the advisory was refused: ${res.status} ${res.text.slice(0, 160)}`);
+      return json<{ advisory: Advisory }>(res).advisory;
     },
   };
 

@@ -74,7 +74,7 @@ async function detail(runtime: McpRuntime, extras: PackExtras, pack: PublicPack,
     provenance: meta.provenance,
     validation: { verdict: card?.verdict ?? null, rules_version: meta.rules_version },
     repository: card?.repository ?? null,
-    score: { total: row.score ?? meta.score.total, parts: meta.score.parts, cap: meta.score.cap },
+    score: { total: row.score ?? meta.score.total, parts: row.score_breakdown?.parts ?? meta.score.parts, cap: (row.score_breakdown ?? meta.score).cap },
     signals: {
       stars: listed?.stars === null || listed?.stars === undefined ? null : Number(listed.stars),
       rating: listed?.rating === null || listed?.rating === undefined ? null : Number(listed.rating),
@@ -84,7 +84,7 @@ async function detail(runtime: McpRuntime, extras: PackExtras, pack: PublicPack,
       declaring_repositories_note: "approximate; counted weekly from public repositories",
     },
     versions: versionsOf(pack),
-    advisories: advisories === null ? null : advisories.map(advisoryOf),
+    advisories: advisories === null ? null : advisories.filter((a) => a.version === row.version).map(advisoryOf),
     ...adoptSnippets(pack.name, flag, row.min_engine_version),
   };
 }

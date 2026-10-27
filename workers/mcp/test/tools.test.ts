@@ -156,10 +156,10 @@ describe("get_pack", () => {
   });
 
   it("carries advisories and the review label from their sources, and null while unwired", async () => {
-    const wired: PackExtras = { ...unwiredExtras, reportedUnderReview: async () => true, advisories: async () => [{ version: "1.0.0", severity: "high", id: "A-1", summary: "bad" }] };
+    const wired: PackExtras = { ...unwiredExtras, reportedUnderReview: async () => true, advisories: async () => [{ version: "1.0.0", severity: "high", id: "A-0", summary: "old" }, { version: "1.1.0", severity: "high", id: "A-1", summary: "bad" }] };
     const body = (await call((await build({ statuses: { "1.0.0": "active", "1.1.0": "active" }, extras: wired })).app, "get_pack", { name: NAME })).body;
     expect(body.status_label).toBe("Reported, under review");
-    expect(body.advisories).toEqual([{ version: "1.0.0", severity: "high", id: "A-1", publisher_text: { summary: "bad" } }]);
+    expect(body.advisories).toEqual([{ version: "1.1.0", severity: "high", id: "A-1", publisher_text: { summary: "bad" } }]);
     const bare = (await call((await build()).app, "get_pack", { name: NAME })).body;
     expect(bare.advisories).toBeNull();
     expect(bare).not.toHaveProperty("status_label");

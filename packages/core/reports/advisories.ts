@@ -1,6 +1,9 @@
 import type { D1 } from "@packserver/ports";
+import { loadRules } from "@packserver/rules";
 import type { AdvisoryInput } from "./input.ts";
 import { isoNow, type ReportPorts } from "./ports.ts";
+
+type Statement = { sql: string; params: unknown[] };
 
 export interface Advisory {
   id: string;
@@ -38,15 +41,49 @@ export async function publishAdvisory(ports: ReportPorts, reportId: string, inpu
   if (missing !== undefined) return { ok: false, reason: "unknown_version", message: `This pack has no version ${missing}.` };
 
   const id = ports.rng.uuid();
+  const caps = await capStatements(ports.d1, String(report.pack_id), versions);
   await ports.d1.batch([
     {
       sql: "insert into advisories (id, pack_id, report_id, summary, severity, fixed_in, published_at) values (?, ?, ?, ?, ?, ?, ?)",
       params: [id, report.pack_id, reportId, input.summary, input.severity ?? String(report.severity), fixedIn, isoNow(ports)],
     },
     ...versions.map((version) => ({ sql: "insert into advisory_versions (advisory_id, pack_id, version) values (?, ?, ?)", params: [id, report.pack_id, version] })),
+    ...caps,
+    // A failed validation or an abuse hold that already demotes the pack keeps its own reason.
+    { sql: "update pack_search set demotion = 'advisory' where pack_id = ? and demotion is null", params: [report.pack_id] },
   ]);
   const published = (await advisoriesFor(ports.d1, String(report.pack_id))).find((a) => a.id === id);
   return { ok: true, advisory: published! };
+}
+
+/**
+ * REQ-SCORE-004: a published advisory caps the score of each version it names. The stored total comes down to the cap and
+ * the stored breakdown names the reason; a score already at or under the cap is left alone, and the breakdown's parts
+ * stay wherever they were read from.
+ */
+async function capStatements(d1: D1, packId: string, versions: string[]): Promise<Statement[]> {
+  if (versions.length === 0) return [];
+  const marks = versions.map(() => "?").join(", ");
+  const { rows } = await d1.query(`select version, score, score_rules_version, score_breakdown from pack_versions where pack_id = ? and version in (${marks})`, [packId, ...versions]);
+  const statements: Statement[] = [];
+  for (const row of rows) {
+    if (row.score === null || row.score === undefined || row.score_rules_version === null || row.score_rules_version === undefined) continue;
+    const { score } = loadRules(String(row.score_rules_version));
+    const max = score.caps.published_advisory;
+    if (Number(row.score) <= max) continue;
+    let breakdown: Record<string, unknown> = {};
+    try {
+      const parsed: unknown = typeof row.score_breakdown === "string" ? JSON.parse(row.score_breakdown) : {};
+      if (typeof parsed === "object" && parsed !== null) breakdown = parsed as Record<string, unknown>;
+    } catch {
+      // An unreadable breakdown is replaced by the cap alone.
+    }
+    statements.push({
+      sql: "update pack_versions set score = ?, score_breakdown = ? where pack_id = ? and version = ?",
+      params: [max, JSON.stringify({ ...breakdown, cap: { reason: score.cap_reasons.published_advisory, max } }), packId, String(row.version)],
+    });
+  }
+  return statements;
 }
 
 /** Published advisories for a pack, or only those naming `version`. This is what `get_pack` returns per version. */

@@ -1,4 +1,5 @@
 import { actorOf, adminReport, dismissReport, readSecurityReport } from "@packserver/core/admin";
+import { AdvisoryInput, publishAdvisory } from "@packserver/core/reports";
 import { adminRouter, NO_STORE } from "../access/context";
 
 export const routes = adminRouter();
@@ -34,4 +35,16 @@ routes.get("/admin/reports/:id", async (c) => {
 routes.post("/admin/reports/:id/dismiss", async (c) => {
   const result = await dismissReport(c.get("core"), c.req.param("id"), c.get("admin"));
   return result.ok ? c.json(result, 200, NO_STORE) : c.json(result, result.reason === "unknown" ? 404 : 409, NO_STORE);
+});
+
+/** Registry security's advisory for a security report: the report's one public trace, with the cap and demotion that follow. */
+routes.post("/admin/reports/:id/advisory", async (c) => {
+  const input = AdvisoryInput.safeParse(await c.req.json().catch(() => null));
+  if (!input.success) return c.json({ ok: false, reason: "invalid" }, 400, NO_STORE);
+  const core = c.get("core");
+  const id = c.req.param("id");
+  const result = await publishAdvisory(core, id, input.data);
+  if (!result.ok) return c.json(result, result.reason === "not_found" ? 404 : 409, NO_STORE);
+  await core.audit(actorOf(c.get("admin")), "admin.action", `report:${id}`, { detail: { verb: "report.advisory" } });
+  return c.json(result, 200, NO_STORE);
 });

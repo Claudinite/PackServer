@@ -21,7 +21,7 @@ export interface PackExtras {
   declaringRepositories(pack: PackRef): Promise<number | null>;
 }
 
-/** Advisories and reports arrive with T-092 (Claudinite/PackServer#168), adoption counts with T-090 and the weekly scan. */
+/** The review label arrives with moderation, adoption counts with T-090 and the weekly scan; advisories are wired by the server. */
 export const unwiredExtras: PackExtras = {
   advisories: async () => null,
   reportedUnderReview: async () => null,

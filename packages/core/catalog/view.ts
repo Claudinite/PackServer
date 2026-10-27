@@ -105,9 +105,9 @@ export interface VersionRow {
   requires: string[];
   source_commit: string | null;
   score: number | null;
-  /** The rules version `score` was computed under, and its parts and cap when a rescore replaced the ones `meta.json` records. */
+  /** The rules version `score` was computed under, and its cap, with the parts when a rescore replaced the ones `meta.json` records. */
   score_rules_version: string | null;
-  score_breakdown: Pick<Meta["score"], "parts" | "cap"> | null;
+  score_breakdown: (Pick<Meta["score"], "cap"> & Partial<Pick<Meta["score"], "parts">>) | null;
   report_key: string | null;
 }
 
@@ -120,7 +120,7 @@ export interface StatusNote {
 const text = (v: unknown): string | null => (typeof v === "string" ? v : null);
 const flag = (v: unknown): boolean => v === 1 || v === true;
 
-const Rescored = z.object({ parts: ScoreBreakdown.shape.parts, cap: ScoreBreakdown.shape.cap });
+const Rescored = z.object({ parts: ScoreBreakdown.shape.parts.optional(), cap: ScoreBreakdown.shape.cap });
 
 function breakdownOf(raw: unknown): VersionRow["score_breakdown"] {
   if (typeof raw !== "string") return null;
@@ -294,7 +294,7 @@ export function buildVersionView(input: {
     capabilities: meta.capabilities,
     preinstall: meta.preinstall,
     url_inventory: meta.url_inventory,
-    score: { total: row.score ?? meta.score.total, parts: (row.score_breakdown ?? meta.score).parts, cap: (row.score_breakdown ?? meta.score).cap },
+    score: { total: row.score ?? meta.score.total, parts: row.score_breakdown?.parts ?? meta.score.parts, cap: (row.score_breakdown ?? meta.score).cap },
     rules_version: row.score_rules_version ?? meta.rules_version,
     validated_at: attestation.validated_at,
     provenance: meta.provenance,
