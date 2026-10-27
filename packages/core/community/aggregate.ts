@@ -62,11 +62,11 @@ async function ratingFigures(d1: D1, mean: number, packId?: string): Promise<Map
 
 type HasRoom = (queries: number) => boolean;
 
-/** The queries rewriting `n` packs takes at worst, with every one changed, rated and then unrated, and the cursor write. */
+/** The queries rewriting `n` packs takes at worst, with every one changed, rated and then unrated: the cursor write, the reads of the current figures and the batches (each batch is one query). */
 function windowQueries(n: number): number {
   const reads = Math.ceil(n / IDS_PER_STATEMENT);
   const inserts = 2 * Math.ceil(n / ROWS_PER_INSERT);
-  return 1 + reads + Math.ceil((inserts + reads) / STATEMENTS_PER_BATCH) + inserts + reads;
+  return 1 + reads + Math.ceil((inserts + reads) / STATEMENTS_PER_BATCH);
 }
 
 /** The most packs, up to `cap`, whose rewrite fits in what `hasRoom` says is left. */

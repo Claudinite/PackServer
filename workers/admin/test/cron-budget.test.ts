@@ -99,19 +99,19 @@ describe("the share of D1 queries each cron job is held to", () => {
     expect(m.used).toBeLessThanOrEqual(JOB_QUERIES.get(community)!);
   });
 
-  it("community: 2500 packs outgrow one share, and every pack is rewritten across the runs", async () => {
+  it("community: 6000 packs outgrow one share, and every pack is rewritten across the runs", async () => {
     const f = fixture();
-    seedPacks(f, 2500);
+    seedPacks(f, 6000);
     f.db.exec(`insert into users (id, created_at) values ('u', '2020-01-01T00:00:00.000Z')`);
     const star = f.db.prepare("insert into stars (pack_id, user_id, created_at) values (?, 'u', ?)");
-    for (let i = 0; i < 2500; i++) star.run(`p${i}`, AT);
+    for (let i = 0; i < 6000; i++) star.run(`p${i}`, AT);
     const done = () => (f.db.prepare("select count(*) as n from pack_stats where stars = 1").get() as { n: number }).n;
     let runs = 0;
-    while (done() < 2500 && runs < 10) {
+    while (done() < 6000 && runs < 10) {
       await measure(f.runtime, community, JOB_QUERIES.get(community)!);
       runs++;
     }
-    expect(done()).toBe(2500);
+    expect(done()).toBe(6000);
     expect(runs).toBeGreaterThan(1);
     expect(f.db.prepare("select value from community_state where key = 'recompute_cursor'").get()).toBeUndefined();
   });
