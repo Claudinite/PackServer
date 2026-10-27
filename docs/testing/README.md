@@ -188,8 +188,8 @@ Ariel's budgets, kept from PR #9: every push under 2 minutes wall-clock (lint, t
 sharded in-process tests, the coverage check); nightly and weekly jobs each under 15–20 minutes with
 a hard `timeout-minutes`; everything inside the free Actions minutes of a private repository, about
 1,850 minutes a month with ~150 push runs, ~20 changed nights and 4 weekly runs. Each job is billed
-rounded up to a whole minute, so a job past 60 s bills 2: a push run is 23 jobs (`check`, `changes`,
-`coverage`, `checks`, two `typecheck`, three `unit`, `infra`, twelve `scenarios`, `summary`). Two `unit`
+rounded up to a whole minute, so a job past 60 s bills 2: a push run is 26 jobs (`check`, `changes`,
+`coverage`, `checks`, two `typecheck`, four `unit`, `infra`, fourteen `scenarios`, `summary`). Two `unit`
 legs ran about 100 s each and left the run at 111-140 s, so there are three; the measured bill is in
 PR #146. ~150 push runs at about 18 minutes are about 2,700 minutes, more than the 1,850 before any
 nightly or weekly job, so the estimate is **over the free budget**; the shard counts are the lever
@@ -207,9 +207,11 @@ and used as it stands, not restarted first, because `reset` restarts the whole s
 The third `scenarios` leg came when two legs ran 100-138 s and pushed the run past 2 minutes; while
 the repository is public its standard-runner minutes are not billed. The fourth came when the
 slowest of three ran 131 s and left a fully green run at 137 s; the fifth and sixth when new
-scenario files took the slowest of four to 110-115 s and three fully green runs past 2 minutes. The seventh to twelfth came when the weights had gone stale (15 of 38 files unweighted) and six
+scenario files took the slowest of four to 110-115 s and three fully green runs past 2 minutes. The seventh to fourteenth came when the weights had gone stale (15 of 38 files unweighted) and six
 legs ran 89-135 s, 158-175 s end to end: setup costs a leg about 33 s before its first test, so the
-tests get about 65 s, which twelve legs of about 55 s each fit.
+tests get about 65 s, which fourteen legs of about 55 s each fit. A leg cannot finish before its heaviest file, so the largest files
+(`admin-review`, `search`, `publishing`, `community-stars-reviews`, `moderation`) are each split in two; a fourth `unit`
+leg followed when unit legs ran 47-76 s.
 A monthly job opens an issue at 80 % of the included minutes. The heavy suites (sandbox corpus, real
 GitHub, Rekor, Vectorize, and the model-screen calibration once it exists) are weekly or
 image-change-triggered only, and the `cn`-driven tests are nightly because they need the engine
