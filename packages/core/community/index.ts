@@ -1,6 +1,7 @@
 export { hasVerifiedAdoption, pruneAuthenticatedDownloads, recordAuthenticatedDownload } from "./adoption.ts";
 export { catalogueMean, computeCatalogueMean, recomputeCommunity, refreshPack, withPrior, type RatingFigures, type RecomputeSummary } from "./aggregate.ts";
 export * from "./constants.ts";
+export { readCursor, writeCursor } from "./cursor.ts";
 export { activeHold, checkBurst, openStarHolds, packsWithFreshStars, reviewStarHold, type StarHold } from "./holds.ts";
 export { drainCommunityNotices, type NoticeDelivery } from "./notices.ts";
 export { isoOf, nowMs, type CommunityPorts } from "./ports.ts";

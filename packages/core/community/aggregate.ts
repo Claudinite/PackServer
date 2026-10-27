@@ -1,5 +1,6 @@
 import type { D1 } from "@packserver/ports";
-import { CATALOGUE_MEAN_KEY, EMPTY_CATALOGUE_MEAN, IDS_PER_STATEMENT, PRIOR_WEIGHT, ROWS_PER_INSERT, STATEMENTS_PER_BATCH, UNVERIFIED_WEIGHT } from "./constants.ts";
+import { CATALOGUE_MEAN_KEY, EMPTY_CATALOGUE_MEAN, RECOMPUTE_CURSOR_KEY, IDS_PER_STATEMENT, PRIOR_WEIGHT, ROWS_PER_INSERT, STATEMENTS_PER_BATCH, UNVERIFIED_WEIGHT } from "./constants.ts";
+import { readCursor, writeCursor } from "./cursor.ts";
 import { checkBurst, packsWithFreshStars } from "./holds.ts";
 import { isoOf, nowMs, type CommunityPorts } from "./ports.ts";
 import { starTallies } from "./tallies.ts";
@@ -67,7 +68,7 @@ interface Written {
  * Rewrites the star and rating columns of `pack_stats` and the `pack_ratings` row for the packs asked about, or for
  * every pack the community tables or `pack_stats` mention. Only those columns are written: fetch counts are another job's.
  */
-async function write(ports: CommunityPorts, mean: number, only?: string): Promise<Written> {
+async function write(ports: CommunityPorts, mean: number, only?: string, share?: number): Promise<Written> {
   const { d1 } = ports;
   const now = nowMs(ports);
   const at = isoOf(now);
@@ -83,7 +84,16 @@ async function write(ports: CommunityPorts, mean: number, only?: string): Promis
   );
   const ids = new Set<string>([...figures.keys(), ...tallies.keys(), ...known.rows.map((r) => String(r.pack_id))]);
   if (only !== undefined) ids.add(only);
-  const list = [...ids];
+  const sorted = [...ids].sort();
+  let list = sorted;
+  let reachedEnd = true;
+  if (only === undefined && share !== undefined) {
+    // A pass rewrites one share of the sorted packs after where the last one stopped, and starts over from the top once it has reached the end.
+    const after = await readCursor(d1, RECOMPUTE_CURSOR_KEY);
+    const rest = after === null ? list : list.filter((id) => id > after);
+    list = (rest.length > 0 ? rest : list).slice(0, share);
+    reachedEnd = list.length === 0 || list[list.length - 1] === sorted[sorted.length - 1];
+  }
   // Only packs whose figures moved are written.
   const current = new Map<string, Record<string, unknown>>();
   for (let i = 0; i < list.length; i += IDS_PER_STATEMENT) {
@@ -139,6 +149,7 @@ async function write(ports: CommunityPorts, mean: number, only?: string): Promis
     statements.push({ sql: `delete from pack_ratings where pack_id in (${chunk.map(() => "?").join(", ")})`, params: chunk });
   }
   for (let i = 0; i < statements.length; i += STATEMENTS_PER_BATCH) await d1.batch(statements.slice(i, i + STATEMENTS_PER_BATCH));
+  if (only === undefined && share !== undefined) await writeCursor(d1, RECOMPUTE_CURSOR_KEY, reachedEnd ? null : list[list.length - 1]!, at);
   return { packs: changed.length };
 }
 
@@ -157,13 +168,14 @@ export interface RecomputeSummary {
 
 /**
  * The hourly pass: the catalogue mean the prior is built on, then every pack's rating and star figures, which also
- * lets an anomaly hold's 7 days run out.
+ * lets an anomaly hold's 7 days run out. With `packsPerRun` the packs are rewritten in shares across runs, in id order,
+ * and every pack is reached before any is reached again.
  */
-export async function recomputeCommunity(ports: CommunityPorts): Promise<RecomputeSummary> {
+export async function recomputeCommunity(ports: CommunityPorts, opts: { packsPerRun?: number } = {}): Promise<RecomputeSummary> {
   // Stars from fresh accounts become counted a day after they were placed, with no click to check them.
   let holds = 0;
   for (const packId of await packsWithFreshStars(ports.d1, nowMs(ports))) if (await checkBurst(ports, packId)) holds += 1;
   const mean = await storeCatalogueMean(ports);
-  const { packs } = await write(ports, mean);
+  const { packs } = await write(ports, mean, undefined, opts.packsPerRun);
   return { mean, packs, holds };
 }

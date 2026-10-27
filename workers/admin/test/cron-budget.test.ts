@@ -1,3 +1,4 @@
+import { RECOMPUTE_PACKS_PER_RUN } from "@packserver/core/community";
 import { MemoryAuditBucket } from "@packserver/core/audit/testing";
 import { migratedD1 } from "@packserver/core/identity/testing";
 import { fileCounterNotice, removeOnCopyrightNotice } from "@packserver/core/moderation";
@@ -99,6 +100,23 @@ describe("the share of D1 queries each cron job is held to", () => {
     expect(m.used).toBeLessThanOrEqual(JOB_QUERIES.get(community)!);
   });
 
+  it("community: 2500 packs outgrow one recompute, and every pack is rewritten across the runs", async () => {
+    const f = fixture();
+    seedPacks(f, 2500);
+    f.db.exec(`insert into users (id, created_at) values ('u', '2020-01-01T00:00:00.000Z')`);
+    const star = f.db.prepare("insert into stars (pack_id, user_id, created_at) values (?, 'u', ?)");
+    for (let i = 0; i < 2500; i++) star.run(`p${i}`, AT);
+    const done = () => (f.db.prepare("select count(*) as n from pack_stats where stars = 1").get() as { n: number }).n;
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await community(f.runtime);
+    expect(done()).toBe(RECOMPUTE_PACKS_PER_RUN);
+    await community(f.runtime);
+    await community(f.runtime);
+    log.mockRestore();
+    expect(done()).toBe(2500);
+    expect(f.db.prepare("select value from community_state where key = 'recompute_cursor'").get()).toBeUndefined();
+  });
+
   it("lifecycle: 200 notices to 200 people", async () => {
     const f = fixture();
     seedPacks(f, 1);
@@ -174,8 +192,30 @@ describe("the share of D1 queries each cron job is held to", () => {
         insert into github_installations (installation_id, account_id, account_login, account_type, sender_login, repository_selection, status, installed_at, updated_at) values (${5000 + i}, ${1000 + i}, 'org${i}', 'Organization', 's', 'all', 'active', '${AT}', '${AT}')`);
     }
     const m = await measure(f.runtime, githubProofLapse);
-    expect(m.used).toBe(1 + 2 * 80);
+    expect(m.used).toBe(2 + 2 * 80);
     expect(m.used).toBeLessThanOrEqual(JOB_QUERIES.get(githubProofLapse)!);
+  });
+
+  it("github proof lapse: a list longer than one share is reached whole across runs, wrapping round at the end", async () => {
+    const f = fixture();
+    for (let i = 0; i < 80; i++) {
+      f.db.exec(`insert into scopes (id, name, kind, state, created_at) values ('o${String(i).padStart(2, "0")}', 'org${i}', 'org', 'active', '${AT}');
+        insert into github_org_proofs (scope_id, org_id, org_login, method, installation_id, proven_at, alerted_at) values ('o${String(i).padStart(2, "0")}', '${1000 + i}', 'org${i}', 'app', ${i}, '${AT}', '${AT}');
+        insert into github_installations (installation_id, account_id, account_login, account_type, sender_login, repository_selection, status, installed_at, updated_at) values (${5000 + i}, ${1000 + i}, 'org${i}', 'Organization', 's', 'all', 'active', '${AT}', '${AT}')`);
+    }
+    const pending = () => (f.db.prepare("select count(*) as n from github_org_proofs where alerted_at is not null").get() as { n: number }).n;
+    const cursor = () => f.db.prepare("select value from community_state where key = 'github_proof_lapse_cursor'").get();
+    let runs = 0;
+    while (pending() > 0 && runs < 20) {
+      await measure(f.runtime, githubProofLapse, 60);
+      runs++;
+      if (pending() > 0) expect(cursor()).toBeDefined();
+    }
+    expect(pending()).toBe(0);
+    expect(runs).toBeGreaterThan(1);
+    // The run that reaches the end forgets the place, so the next one starts from the top.
+    await measure(f.runtime, githubProofLapse, 100);
+    expect(cursor()).toBeUndefined();
   });
 
   it("synthetic expiry: one read and one batch however many versions are due", async () => {

@@ -1,3 +1,4 @@
+import { readCursor, writeCursor } from "../../community/cursor.ts";
 import type { ScopeRow } from "../access.ts";
 import {
   announceProofChange, dateOf, GITHUB_UNINSTALL_GRACE_MS, isoOf, notifyOwners, settingsUrl, type ProofPorts,
@@ -126,20 +127,34 @@ export interface SweepSummary {
 /**
  * The App-based proofs follow the organisation's installation: the owners are alerted once the App
  * is gone or suspended, the proof is removed 7 days later, and an active installation inside the
- * grace, whatever its id, clears the clock.
+ * grace, whatever its id, clears the clock. A run that has spent its share stops between two proofs and keeps where it
+ * stopped, so the next run goes on from there and a list longer than one share is still reached whole.
  */
+const SWEEP_CURSOR_KEY = "github_proof_lapse_cursor";
+/** The most queries one proof can take (its installation, the repair or the revoke with its announcement, the alert with its mail) and the cursor write that follows. */
+const QUERIES_PER_PROOF = 6;
+
 export async function sweepGithubProofs(ports: ProofPorts, budget: { hasRoom?: (queries: number) => boolean } = {}): Promise<SweepSummary> {
   const nowMs = ports.clock.now();
   const now = isoOf(nowMs);
+  const after = await readCursor(ports.d1, SWEEP_CURSOR_KEY);
   const rows = (
     await ports.d1.query(
       `select p.scope_id, p.org_id, p.org_login, p.installation_id, p.alerted_at, s.name as scope_name
-       from github_org_proofs p join scopes s on s.id = p.scope_id where p.method = 'app' order by p.scope_id`,
+       from github_org_proofs p join scopes s on s.id = p.scope_id where p.method = 'app' and p.scope_id > ? order by p.scope_id`,
+      [after ?? ""],
     )
   ).rows as Array<{ scope_id: string; org_id: string; org_login: string; installation_id: number | null; alerted_at: string | null; scope_name: string }>;
 
   const summary: SweepSummary = { alerted: 0, revoked: 0, restored: 0 };
+  let last: string | null = null;
+  let stopped = false;
   for (const row of rows) {
+    if (budget.hasRoom && !budget.hasRoom(QUERIES_PER_PROOF)) {
+      stopped = true;
+      break;
+    }
+    last = row.scope_id;
     const install = await installationOf(ports.d1, row.org_id);
     if (install?.status === "active") {
       if (row.alerted_at !== null || row.installation_id !== install.installation_id) {
@@ -160,14 +175,17 @@ export async function sweepGithubProofs(ports: ProofPorts, budget: { hasRoom?: (
       continue;
     }
     if (row.alerted_at === null) {
-      // The alert is marked before it is mailed, so a run that cannot do both must leave it for the next.
-      if (budget.hasRoom && !budget.hasRoom(2)) break;
       await ports.d1.query("update github_org_proofs set alerted_at = ? where scope_id = ?", [now, row.scope_id]);
       await notifyOwners(ports, row.scope_id, "github-org-proof-alert", {
         scope: row.scope_name, org: row.org_login, cause: install.status === "suspended" ? "suspended" : "removed", removalDate: dateOf(endsMs), scopeUrl: settingsUrl(ports, row.scope_name),
       });
       summary.alerted++;
     }
+  }
+  if (stopped) {
+    if (last !== null) await writeCursor(ports.d1, SWEEP_CURSOR_KEY, last, now);
+  } else if (after !== null) {
+    await writeCursor(ports.d1, SWEEP_CURSOR_KEY, null, now);
   }
   return summary;
 }

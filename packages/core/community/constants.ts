@@ -35,3 +35,7 @@ export const MAX_COMMENT_CHARS = 2000;
 export const COMMENT_HIDE_AFTER_MS = 3 * DAY_MS;
 export const MAX_SECTION_COMMENTS = 200;
 export const VOTES_PER_DAY = 200;
+
+/** The most packs one hourly recompute rewrites; the pass resumes after the last it reached. */
+export const RECOMPUTE_PACKS_PER_RUN = 1000;
+export const RECOMPUTE_CURSOR_KEY = "recompute_cursor";
