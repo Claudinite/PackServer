@@ -229,6 +229,17 @@ describe("IT-ACC-005 a new factor on a publishing account is on hold unless a pa
     fakes.clock.advance(HOLD_MS + MINUTE);
     expect((await passkeyAssertion(ports, device, approve)).ok).toBe(true);
   });
+
+  it("keeps a held factor from authorising a publish start until the hold lapses", async () => {
+    const { fakes, ports, device, db } = setup();
+    publishing(db);
+    await enrol(ports, device, "u1", isoAtOffset(ports, HOLD_MS));
+
+    const start = ctx({ action: HELD_ACTION_NAMES.publishStart, target: "@acme/gcp@1.0.0" });
+    expect(await beginAssertion(ports, rp, start)).toMatchObject({ allowCredentials: [] });
+    fakes.clock.advance(HOLD_MS + MINUTE);
+    expect((await passkeyAssertion(ports, device, start)).ok).toBe(true);
+  });
 });
 
 describe("IT-ACC-005 a held factor cannot launder its hold through recovery codes", () => {

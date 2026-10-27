@@ -1,12 +1,13 @@
 import { RELEASE_HEADER } from "@packserver/schema";
-import { requireSession } from "@packserver/http";
+import { BodyTooLarge, readBoundedBody, requireSession } from "@packserver/http";
+import { HELD_ACTION_NAMES } from "@packserver/core/identity";
 import { Hono, type Context } from "hono";
 import { runtimeOf, type WebEnv } from "../../context";
 import { notFound, sensitive, signedInPost } from "../../routes/scopes/guard";
 import { loadRun, verdictSentence } from "../validation/data";
 import { lookupPack, splitPack } from "./data";
 
-export const START_ACTION = "publish.start";
+export const START_ACTION = HELD_ACTION_NAMES.publishStart;
 
 const NO_STORE = { "cache-control": "no-store" };
 const PUBLISH = "http://publish.internal/internal/wizard";
@@ -25,6 +26,16 @@ interface Asked {
 }
 
 const bad = (message: string): Response => Response.json({ error: "bad-request", message }, { status: 400, headers: NO_STORE });
+
+/** The JSON body read through the shared cap; an oversize or unparseable body is null. */
+async function boundedJson(c: Context<WebEnv>): Promise<unknown> {
+  try {
+    return JSON.parse(new TextDecoder().decode(await readBoundedBody(c)));
+  } catch (e) {
+    if (e instanceof BodyTooLarge || e instanceof SyntaxError) return null;
+    throw e;
+  }
+}
 
 async function asked(c: Context<WebEnv>, need: { sha: boolean }): Promise<Asked | Response> {
   const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
@@ -79,7 +90,7 @@ api.post("/publish/wizard/check", signedInPost(), async (c) => {
 api.post(
   "/publish/wizard/start",
   sensitive(START_ACTION, async (c) => {
-    const body = (await c.req.raw.clone().json().catch(() => null)) as { pack?: unknown; version?: unknown } | null;
+    const body = (await boundedJson(c)) as { pack?: unknown; version?: unknown } | null;
     return `${String(body?.pack)}@${String(body?.version)}`;
   }),
   async (c) => {

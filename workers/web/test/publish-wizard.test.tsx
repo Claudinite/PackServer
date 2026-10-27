@@ -140,6 +140,16 @@ describe("publish wizard routes", () => {
     expect(calls).toEqual([]);
   });
 
+  it("refuses an oversize start body at the step-up without forwarding it", async () => {
+    const h = setup();
+    const { ann } = await seed(h);
+    const calls = publishStub(h);
+    const res = await post(h, ann, "/publish/wizard/start", { pack: "@acme/gcp", version: "1.0.0", pad: "x".repeat(70 * 1024) });
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBeLessThan(500);
+    expect(calls).toEqual([]);
+  });
+
   it("answers a signed-out caller and a stranger alike for the pack lookup and the run", async () => {
     const h = setup();
     const { scope } = await seed(h);

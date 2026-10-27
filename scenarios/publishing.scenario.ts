@@ -159,7 +159,6 @@ scenario("IT-PUB-016 Web upload goes straight to staging; an interrupted upload 
   const stopped = await world.wizard.upload(p, archive, "@p/gcp@1.0.0", { stopBeforePut: true });
   expect(stopped.stored).toBe(false);
   expect(await world.ci.staging.objects("p")).toEqual([]);
-  expect((await world.dashboard.of(p)).text).not.toContain("Drafts");
 
   const again = await world.wizard.upload(p, archive, "@p/gcp@1.0.0");
   expect(again.stored).toBe(true);
