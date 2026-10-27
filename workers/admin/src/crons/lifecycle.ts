@@ -6,5 +6,5 @@ export const lifecycle: CronJob = async (runtime) => {
   const { clock, d1, mail } = runtime.ports;
   const siteOrigin = runtime.config?.siteOrigin;
   if (!siteOrigin) throw new Error("the site origin is not configured");
-  console.log(JSON.stringify({ at: "cron.lifecycle", ...(await drainLifecycleNotices({ clock, d1 }, { mail, siteOrigin })) }));
+  console.log(JSON.stringify({ at: "cron.lifecycle", ...(await drainLifecycleNotices({ clock, d1 }, { mail, siteOrigin, ...(runtime.budget && { hasRoom: runtime.budget.hasRoom }) })) }));
 };

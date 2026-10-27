@@ -28,6 +28,8 @@ export interface NoticeDelivery {
   siteOrigin: string;
   /** Where registry security's notices go. */
   securityAddress: string;
+  /** Asked before each send with the queries the send and its mark need; a run that was told no stops there, its notices untouched. */
+  hasRoom?: (queries: number) => boolean;
 }
 
 async function addressOf(d1: D1, to: string, securityAddress: string): Promise<string | null> {
@@ -47,6 +49,7 @@ export async function drainNotices(ports: ReportPorts, delivery: NoticeDelivery,
   let skipped = 0;
   let failed = 0;
   for (const row of rows) {
+    if (delivery.hasRoom && !delivery.hasRoom(3)) break;
     try {
       const address = await addressOf(ports.d1, String(row.recipient), delivery.securityAddress);
       if (address !== null) {

@@ -5,6 +5,8 @@ export interface LifecycleDelivery {
   mail: Mail;
   /** The public origin, which makes a pack's path a link. */
   siteOrigin: string;
+  /** Asked before each send with the queries the send and its mark need; a run that was told no stops there, its notices untouched. */
+  hasRoom?: (queries: number) => boolean;
 }
 
 /**
@@ -53,10 +55,12 @@ export async function drainLifecycleNotices(ports: { d1: D1; clock: Clock }, del
       seen.add(key);
       return [{ pack: String(n.pack), version: String(n.version), action: n.action as "yanked" | "deprecated", reason: n.reason === null ? null : String(n.reason), url: `${delivery.siteOrigin}/packs/${n.pack}` }];
     });
+    if (delivery.hasRoom && !delivery.hasRoom(2)) break;
     try {
       await sendNotice(delivery.mail, address, "version-withdrawn", { items });
       sent += 1;
-      mark("update lifecycle_notices set sent_at = ? where id = ?", [at]);
+      // Marked at once: a later stop must not leave a sent digest looking unsent.
+      await ports.d1.batch(ids.map((id) => ({ sql: "update lifecycle_notices set sent_at = ? where id = ?", params: [at, id] })));
     } catch (error) {
       failed += 1;
       console.log(JSON.stringify({ event: "cron.lifecycle.send_failed", user_id: userId, reason: String(error) }));
