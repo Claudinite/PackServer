@@ -189,14 +189,15 @@ sharded in-process tests, the coverage check); nightly and weekly jobs each unde
 a hard `timeout-minutes`; everything inside the free Actions minutes of a private repository, about
 1,850 minutes a month with ~150 push runs, ~20 changed nights and 4 weekly runs. Each job is billed
 rounded up to a whole minute, so a job past 60 s bills 2: a push run is 26 jobs (`check`, `changes`,
-`coverage`, `checks`, two `typecheck`, four `unit`, `infra`, fourteen `scenarios`, `summary`). Two `unit`
-legs ran about 100 s each and left the run at 111-140 s, so there are three; the measured bill is in
-PR #146. ~150 push runs at about 18 minutes are about 2,700 minutes, more than the 1,850 before any
-nightly or weekly job, so the estimate is **over the free budget**; the shard counts are the lever
-(each `unit` leg removed saves about 150-300 minutes a month and adds wall-clock). Docs-only changes
-skip CI; a newer push cancels the older run; nothing nightly or weekly runs on forks. Shards grow by
-one when the scenario job's p90 passes 90 s for a week, or sooner when green runs breach the budget;
-shards cost billed minutes, not wall-clock.
+`coverage`, `checks`, two `typecheck`, four `unit`, `infra`, fourteen `scenarios`, `summary`). Most of
+them run past 60 s, so a run recomputes to about 45-50 billed minutes and ~150 runs to about 7,000
+minutes a month, nearly four times the 1,850 before any nightly or weekly job. The estimate is
+**over the free budget** for a private repository; the shard counts are the lever (each leg removed
+saves about 150-300 minutes a month and adds wall-clock). While the repository is public its
+standard-runner minutes are not billed, so the overage costs nothing today. Docs-only changes skip
+CI; a newer push cancels the older run; nothing nightly or weekly runs on forks. Shards are added
+when the scenario job's p90 passes 90 s for a week, or sooner when green runs breach the budget, and
+as many at a time as the measured legs need; shards cost billed minutes, not wall-clock.
 The `scenarios` shards are balanced by duration: `packages/test-world/shard-weights.json` records each
 scenario file's seconds, and a vitest sequencer deals the files heaviest-first onto the lightest shard
 (a file with no entry counts as the median one). Vitest's own split hashes the path, which left the
@@ -204,14 +205,17 @@ slowest of six shards at 105-124 s beside others at 66-90 s. Refresh the weights
 with `node packages/test-world/shard-weights.update.mjs reports/scenarios-*.xml`. A scenario file
 boots one local workerd, and that boot is the fixed cost of the file: a booted session is migrated
 and used as it stands, not restarted first, because `reset` restarts the whole session.
-The third `scenarios` leg came when two legs ran 100-138 s and pushed the run past 2 minutes; while
-the repository is public its standard-runner minutes are not billed. The fourth came when the
-slowest of three ran 131 s and left a fully green run at 137 s; the fifth and sixth when new
-scenario files took the slowest of four to 110-115 s and three fully green runs past 2 minutes. The seventh to fourteenth came when the weights had gone stale (15 of 38 files unweighted) and six
-legs ran 89-135 s, 158-175 s end to end: setup costs a leg about 33 s before its first test, so the
-tests get about 65 s, which fourteen legs of about 55 s each fit. A leg cannot finish before its heaviest file, so the largest files
-(`admin-review`, `search`, `publishing`, `community-stars-reviews`, `moderation`) are each split in two; a fourth `unit`
-leg followed when unit legs ran 47-76 s.
+The third `scenarios` leg came when two legs ran 100-138 s and pushed the run past 2 minutes. The
+fourth came when the slowest of three ran 131 s and left a fully green run at 137 s; the fifth and
+sixth when new scenario files took the slowest of four to 110-115 s and three fully green runs past
+2 minutes. The seventh to fourteenth came when the weights had gone stale (15 of 38 files
+unweighted) and six legs ran 89-135 s, 158-175 s end to end: setup costs a leg about 33 s before its
+first test, so the tests get about 65 s, which fourteen legs of about 55 s each fit. A leg cannot
+finish before its heaviest file, so the largest files are split into two or more files:
+`admin-review` into four, and `search`, `publishing`, `community-stars-reviews` and `moderation`
+into two each. A fourth `unit` leg followed when unit legs ran 47-76 s; before it, two `unit` legs
+ran about 100 s each and left the run at 111-140 s, so a third was added (the measured bill is in
+PR #146).
 A monthly job opens an issue at 80 % of the included minutes. The heavy suites (sandbox corpus, real
 GitHub, Rekor, Vectorize, and the model-screen calibration once it exists) are weekly or
 image-change-triggered only, and the `cn`-driven tests are nightly because they need the engine
