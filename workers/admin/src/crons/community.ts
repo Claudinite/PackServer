@@ -10,8 +10,9 @@ export const community: CronJob = async (runtime) => {
   const siteOrigin = runtime.config?.siteOrigin;
   if (!siteOrigin) throw new Error("the site origin is not configured");
   const ports = { clock, rng, d1 };
-  const summary = await recomputeCommunity(ports);
-  const notices = await drainCommunityNotices(ports, { mail, siteOrigin });
+  // The cheap, bounded work goes first so a recompute that spends the whole share cannot starve it.
+  const notices = await drainCommunityNotices(ports, { mail, siteOrigin, ...(runtime.budget && { hasRoom: runtime.budget.hasRoom }) });
   await pruneAuthenticatedDownloads(d1, clock.now());
+  const summary = await recomputeCommunity(ports);
   console.log(JSON.stringify({ at: "cron.community", ...summary, notices }));
 };

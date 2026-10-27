@@ -7,6 +7,7 @@ import {
   type SendEmailBinding, type WorkerRuntime,
 } from "@packserver/ports/cloudflare";
 import type { Ports, R2, R2Read, Transparency } from "@packserver/ports";
+import type { QueryBudget } from "./crons/budget";
 import { createFlagCache, type FlagCache } from "@packserver/core/flags";
 
 export interface Env {
@@ -130,7 +131,7 @@ function downloadsReader(env: Env): PrivateDownloads | undefined {
   return analyticsPrivateDownloads({ accountId, dataset: env.DOWNLOADS_DATASET, token: () => readSecret(env.ANALYTICS_READ_TOKEN) });
 }
 
-export type AdminRuntime = WorkerRuntime<AdminPorts> & { config?: { siteOrigin: string; securityAddress?: string; access?: AccessPolicy | null } };
+export type AdminRuntime = WorkerRuntime<AdminPorts> & { budget?: QueryBudget; config?: { siteOrigin: string; securityAddress?: string; access?: AccessPolicy | null } };
 
 /** Signals leave as log lines, the same channel every Worker's other events take. */
 const logTelemetry = {

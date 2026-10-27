@@ -28,6 +28,8 @@ export interface NoticeDelivery {
   siteOrigin: string;
   /** Where registry security's notices go. */
   securityAddress: string;
+  /** Asked before each send with the queries the send and its mark need; a run that was told no stops there, its notices untouched. */
+  hasRoom?: (queries: number) => boolean;
 }
 
 async function addressOf(d1: D1, to: string, securityAddress: string): Promise<string | null> {
@@ -47,6 +49,7 @@ export async function drainNotices(ports: ReportPorts, delivery: NoticeDelivery,
   let skipped = 0;
   let failed = 0;
   for (const row of rows) {
+    if (delivery.hasRoom && !delivery.hasRoom(3)) break;
     try {
       const address = await addressOf(ports.d1, String(row.recipient), delivery.securityAddress);
       if (address !== null) {
@@ -57,12 +60,14 @@ export async function drainNotices(ports: ReportPorts, delivery: NoticeDelivery,
       } else {
         skipped += 1;
       }
-      await ports.d1.query("update report_notices set sent_at = ? where id = ?", [isoNow(ports), row.id]);
     } catch (error) {
       failed += 1;
       console.log(JSON.stringify({ event: "cron.report-notices.send_failed", notice_id: String(row.id), kind: String(row.kind), reason: String(error) }));
       await ports.d1.query("update report_notices set attempts = attempts + 1 where id = ?", [row.id]);
+      continue;
     }
+    // Outside the send's catch: a failed mark is not a failed send.
+    await ports.d1.query("update report_notices set sent_at = ? where id = ?", [isoNow(ports), row.id]);
   }
   return { sent, skipped, failed };
 }

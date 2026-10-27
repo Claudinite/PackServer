@@ -128,7 +128,7 @@ export interface SweepSummary {
  * is gone or suspended, the proof is removed 7 days later, and an active installation inside the
  * grace, whatever its id, clears the clock.
  */
-export async function sweepGithubProofs(ports: ProofPorts): Promise<SweepSummary> {
+export async function sweepGithubProofs(ports: ProofPorts, budget: { hasRoom?: (queries: number) => boolean } = {}): Promise<SweepSummary> {
   const nowMs = ports.clock.now();
   const now = isoOf(nowMs);
   const rows = (
@@ -160,6 +160,8 @@ export async function sweepGithubProofs(ports: ProofPorts): Promise<SweepSummary
       continue;
     }
     if (row.alerted_at === null) {
+      // The alert is marked before it is mailed, so a run that cannot do both must leave it for the next.
+      if (budget.hasRoom && !budget.hasRoom(2)) break;
       await ports.d1.query("update github_org_proofs set alerted_at = ? where scope_id = ?", [now, row.scope_id]);
       await notifyOwners(ports, row.scope_id, "github-org-proof-alert", {
         scope: row.scope_name, org: row.org_login, cause: install.status === "suspended" ? "suspended" : "removed", removalDate: dateOf(endsMs), scopeUrl: settingsUrl(ports, row.scope_name),

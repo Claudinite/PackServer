@@ -4,7 +4,7 @@ import { createFakePorts } from "@packserver/ports/fakes";
 import { SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
 import { describe, expect, it, vi } from "vitest";
 import type { AdminRuntime } from "../src/bindings";
-import { CRON_DAILY, CRON_HOURLY, runCron } from "../src/crons";
+import { CRON_DAILY, CRON_ROLLUP, runCron } from "../src/crons";
 
 function setup() {
   const fakes = createFakePorts({ worker: "admin" });
@@ -32,7 +32,7 @@ describe("fetch-count crons", () => {
     const record = { ClientRequestPath: "/@acme/x/1.0.0/pack.tar.zst", ClientRequestMethod: "GET", EdgeResponseStatus: 200, EdgeStartTimestamp: day, ClientNetwork: "198.51.100.0/24" };
     await fakes.r2["OPS_BUCKET"]!.put(`logs/http-requests/misses/${day.slice(0, 10).replaceAll("-", "")}/1.log`, new TextEncoder().encode(JSON.stringify(record)));
 
-    await runCron(CRON_HOURLY, runtime);
+    await runCron(CRON_ROLLUP, runtime);
     expect(d1.rows("select fetches_30d, fetches_7d from pack_stats")).toEqual([{ fetches_30d: 1, fetches_7d: 1 }]);
     const done = fakes.stats.points.filter((p) => p.name === "rollup.completed");
     expect(done).toHaveLength(1);

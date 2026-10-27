@@ -108,11 +108,14 @@ export async function closeCopyrightCase(ports: ModerationPorts, caseId: string,
   return { ok: true };
 }
 
+/** The most D1 queries restoring one case takes, with room to spare. */
+const QUERIES_PER_RESTORE = 12;
+
 /**
  * Restores the versions whose counter-notice has waited out the window and whose complainant has not filed suit, oldest
  * first and at most a bounded number a run; the next run carries the rest.
  */
-export async function sweepDmca(ports: ModerationPorts): Promise<{ restored: number }> {
+export async function sweepDmca(ports: ModerationPorts, budget: { hasRoom?: (queries: number) => boolean } = {}): Promise<{ restored: number }> {
   const { rows } = await ports.d1.query(
     "select c.id, c.counter_filed_at, a.id as action_id, a.pack_id, a.version from dmca_cases c join moderation_actions a on a.id = c.action_id where c.state = 'counter_filed' order by c.counter_filed_at, c.id limit ?",
     [DMCA_SWEEP_LIMIT],
@@ -120,6 +123,8 @@ export async function sweepDmca(ports: ModerationPorts): Promise<{ restored: num
   let restored = 0;
   for (const row of rows) {
     if (businessDaysBetween(Date.parse(String(row.counter_filed_at)), ports.clock.now()) < DMCA_RESTORE_BUSINESS_DAYS) break;
+    // A case is marked restored before its version is, so a run that cannot finish the case must not start it.
+    if (budget.hasRoom && !budget.hasRoom(QUERIES_PER_RESTORE)) break;
     const won = await ports.d1.query("update dmca_cases set state = 'restored', restored_at = ? where id = ? and state = 'counter_filed'", [nowIso(ports), row.id]);
     if (won.meta.changes === 0) continue;
     const pack = (await findPackById(ports.d1, String(row.pack_id)))!;

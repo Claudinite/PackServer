@@ -6,6 +6,8 @@ export interface NoticeDelivery {
   mail: Mail;
   /** The public origin, which makes the path a notice carries a link. */
   siteOrigin: string;
+  /** Asked before each send with the queries the send and its mark need; a run that was told no stops there, its notices untouched. */
+  hasRoom?: (queries: number) => boolean;
 }
 
 /**
@@ -17,6 +19,7 @@ export async function drainCommunityNotices(ports: CommunityPorts, delivery: Not
   let sent = 0;
   let skipped = 0;
   for (const row of rows) {
+    if (delivery.hasRoom && !delivery.hasRoom(3)) break;
     const address = (await ports.d1.query("select address from user_emails where user_id = ? order by created_at limit 1", [row.user_id])).rows[0]?.address;
     if (typeof address === "string") {
       const data = JSON.parse(String(row.data)) as { pack: string; reason: string; packPath: string };
