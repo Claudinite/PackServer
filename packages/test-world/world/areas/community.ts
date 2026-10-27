@@ -1,5 +1,5 @@
 import {
-  drainCommunityNotices, refreshPack, hideReview, openReviewFlags, openStarHolds, recomputeCommunity, recordAuthenticatedDownload, reviewStarHold,
+  drainCommunityNotices, refreshPack, hideReview, openReviewFlags, openStarHolds, recomputeCommunity, reviewStarHold,
   type CommunityPorts, type FlaggedReview, type StarHold,
 } from "@packserver/core/community";
 import type { D1 } from "@packserver/ports";
@@ -7,7 +7,9 @@ import type { ApiResponse, Driver, SeedStorage } from "../../drivers/driver";
 import type { Aliases } from "../alias";
 import { InfrastructureError, stubModule } from "../errors";
 import { NotFound, Refusal, type Observation, type RefusalReason } from "../outcomes";
+import type { PackHandle } from "../packs";
 import type { Pack, User } from "../types";
+import { createAgents } from "./agents";
 
 export interface StarCount {
   /** Stars that count publicly. */
@@ -111,7 +113,7 @@ export interface CommunityModule {
     setAge(user: User, age: string): Promise<void>;
     /** The hourly job at the fake clock's time. */
     recompute(): Promise<{ mean: number; packs: number }>;
-    /** Called `get_download` signed in. Stands in for the MCP tool's own record until that task lands. */
+    /** Calls the MCP tool `get_download` signed in, through an OAuth grant the person approves. */
     download(user: User, pack: Pack): Promise<void>;
     /** Sends what is queued for people (a removed review's reason) through the mail fake. */
     deliver(): Promise<{ sent: number }>;
@@ -321,7 +323,9 @@ export function createCommunity(driver: Driver, aliases: Aliases): CommunityModu
       },
       recompute: async () => recomputeCommunity(await ports()),
       async download(user, pack) {
-        await recordAuthenticatedDownload((await d1()), { packId: await packId(pack), userId: await userId(user), at: iso(await now()) });
+        const agent = await createAgents(driver, aliases).agents.oauth(user, { scopes: ["packs:read"] });
+        const answer = await agent.download(pack as unknown as PackHandle);
+        if (!answer.ok) throw new InfrastructureError(`get_download did not grant ${pack.systemName}: ${JSON.stringify(answer.body)}`);
       },
       async deliver() {
         if (!driver.fakes) throw new InfrastructureError(`the ${driver.kind} driver has no mail fake`);

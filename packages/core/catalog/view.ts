@@ -1,12 +1,14 @@
 import {
   Attestation,
   Meta,
+  ScoreBreakdown,
   VERSION_STATUSES,
   type Provenance,
   type VerificationFacts,
   type VersionStatus,
 } from "@packserver/schema";
 import type { D1 } from "@packserver/ports";
+import { z } from "zod";
 import { compareVersions, latestEligible } from "../index/builders";
 
 /** The four write-once objects beside each public version, and the pack's signed history. */
@@ -103,6 +105,9 @@ export interface VersionRow {
   requires: string[];
   source_commit: string | null;
   score: number | null;
+  /** The rules version `score` was computed under, and its parts and cap when a rescore replaced the ones `meta.json` records. */
+  score_rules_version: string | null;
+  score_breakdown: Pick<Meta["score"], "parts" | "cap"> | null;
   report_key: string | null;
 }
 
@@ -114,6 +119,18 @@ export interface StatusNote {
 
 const text = (v: unknown): string | null => (typeof v === "string" ? v : null);
 const flag = (v: unknown): boolean => v === 1 || v === true;
+
+const Rescored = z.object({ parts: ScoreBreakdown.shape.parts, cap: ScoreBreakdown.shape.cap });
+
+function breakdownOf(raw: unknown): VersionRow["score_breakdown"] {
+  if (typeof raw !== "string") return null;
+  try {
+    const parsed = Rescored.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
 
 export function parseVersionRow(raw: Record<string, unknown>): VersionRow {
   const requires = typeof raw.requires === "string" ? (JSON.parse(raw.requires) as unknown) : [];
@@ -132,6 +149,8 @@ export function parseVersionRow(raw: Record<string, unknown>): VersionRow {
     requires: Array.isArray(requires) ? requires.map(String) : [],
     source_commit: text(raw.source_commit),
     score: raw.score === null || raw.score === undefined ? null : Number(raw.score),
+    score_rules_version: text(raw.score_rules_version),
+    score_breakdown: breakdownOf(raw.score_breakdown),
     report_key: text(raw.report_key),
   };
 }
@@ -275,8 +294,8 @@ export function buildVersionView(input: {
     capabilities: meta.capabilities,
     preinstall: meta.preinstall,
     url_inventory: meta.url_inventory,
-    score: { total: row.score ?? meta.score.total, parts: meta.score.parts, cap: meta.score.cap },
-    rules_version: meta.rules_version,
+    score: { total: row.score ?? meta.score.total, parts: (row.score_breakdown ?? meta.score).parts, cap: (row.score_breakdown ?? meta.score).cap },
+    rules_version: row.score_rules_version ?? meta.rules_version,
     validated_at: attestation.validated_at,
     provenance: meta.provenance,
     diff_summary: meta.diff_summary,

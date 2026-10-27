@@ -1,1 +1,0 @@
-ALTER TABLE `lifecycle_notices` ADD `attempts` integer DEFAULT 0 NOT NULL;

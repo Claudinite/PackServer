@@ -1,6 +1,6 @@
 import { analyticsStats, createIsolateTelemetry } from "@packserver/http";
 import {
-  clockFrom, cryptoRng, d1Port, durableObjectsPort, embedderFrom, kvPort, mailPort, queuePort, r2Port, r2ReadPort, readSecret, sandboxPort, systemClock,
+  clockFrom, cryptoRng, d1Port, dohDns, durableObjectsPort, embedderFrom, kvPort, mailPort, queuePort, r2Port, r2ReadPort, readSecret, sandboxPort, systemClock,
   vectorIndexPort, workerRuntime, workflowPort, type SendEmailBinding, type WorkerRuntime,
 } from "@packserver/ports/cloudflare";
 import { cdnPurger, type ReconcilePorts } from "@packserver/core/publishing";
@@ -11,6 +11,8 @@ export interface Env {
   ENVIRONMENT: string;
   /** The wait before the first retry of a step that hit an infrastructure error; each further retry doubles it. */
   STEP_RETRY_DELAY: string;
+  /** How many packs one rescan fire visits, and how many full-pipeline runs it starts. */
+  RESCAN_BATCH: string;
   /** How long one wait for an admin or an owner lasts before the workflow arms it again, such as "7 days". */
   WAIT_REARM: string;
   DB: D1Database;
@@ -20,6 +22,7 @@ export interface Env {
   VALIDATION_REPORTS: R2Bucket;
   OPS_BUCKET: R2Bucket;
   NOTIFY_QUEUE: Queue;
+  REINDEX_QUEUE: Queue;
   VALIDATE_PACK: Workflow;
   SCOPE_COORDINATOR: DurableObjectNamespace;
   ROOT_COORDINATOR: DurableObjectNamespace;
@@ -56,7 +59,7 @@ export interface Env {
 /** The only Worker that writes the public and private buckets; staging and `ops` are read-only here. */
 export type ValidatorPorts = Pick<
   Ports,
-  "clock" | "rng" | "d1" | "stats" | "queues" | "workflows" | "durableObjects" | "vectors" | "embedder" | "sandbox" | "kv" | "telemetry" | "mail"
+  "clock" | "rng" | "d1" | "stats" | "queues" | "workflows" | "durableObjects" | "vectors" | "embedder" | "sandbox" | "kv" | "telemetry" | "mail" | "dns"
 > & {
   r2: Readonly<{ PACKS_STAGING: R2Read; OPS_BUCKET: R2Read } & Record<"PACKS_PUBLIC" | "PACKS_PRIVATE" | "VALIDATION_REPORTS", R2>>;
 };
@@ -64,6 +67,8 @@ export interface ValidatorServices {
   github: Fetcher;
 }
 export interface ValidatorConfig {
+  /** Packs visited, and runs started, by one rescan fire. */
+  rescanBatch(): number;
   /** The active key's seed; the only way the Worker reaches the secret. */
   signingSeed(): Promise<string>;
   /** The public origin notices link to. */
@@ -89,6 +94,15 @@ const logTelemetry = {
 };
 const MAIL_FAILURE_THRESHOLD = 2;
 
+/** Bounded by the 100 bound parameters of one D1 statement, which a batch of packs fills one for one. */
+const MAX_RESCAN_BATCH = 90;
+
+function batchOf(value: string | undefined): number {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1 || n > MAX_RESCAN_BATCH) throw new Error(`RESCAN_BATCH must be a whole number from 1 to ${MAX_RESCAN_BATCH}, not ${JSON.stringify(value)}`);
+  return n;
+}
+
 const isolateTelemetry = createIsolateTelemetry();
 
 export function createRuntime(env: Env): ValidatorRuntime {
@@ -113,12 +127,13 @@ export function createRuntime(env: Env): ValidatorRuntime {
         PACKS_PRIVATE: r2Port(env.PACKS_PRIVATE),
         VALIDATION_REPORTS: r2Port(env.VALIDATION_REPORTS),
       },
-      queues: { NOTIFY_QUEUE: queuePort(env.NOTIFY_QUEUE) },
+      queues: { NOTIFY_QUEUE: queuePort(env.NOTIFY_QUEUE), REINDEX_QUEUE: queuePort(env.REINDEX_QUEUE) },
       workflows: { VALIDATE_PACK: workflowPort(env.VALIDATE_PACK) },
       durableObjects: durableObjectsPort({ ScopeCoordinator: env.SCOPE_COORDINATOR, RootCoordinator: env.ROOT_COORDINATOR }),
       vectors: vectorIndexPort(env.ENVIRONMENT, env.VECTORIZE),
       embedder: embedderFrom(env.ENVIRONMENT, env.AI),
       sandbox: sandboxPort(env.ENVIRONMENT, env.SANDBOX_A, env.SANDBOX_B),
+      dns: dohDns(),
       mail: mailPort(env.ENVIRONMENT, env.EMAIL, { from: env.MAIL_FROM, telemetry: logTelemetry as never, failureThreshold: MAIL_FAILURE_THRESHOLD }),
     },
     { github: env.GITHUB },
@@ -129,6 +144,7 @@ export function createRuntime(env: Env): ValidatorRuntime {
       signingSeed: () => readSecret(env.SIGNING_KEY_ACTIVE),
       siteOrigin: () => siteOriginOf(env.SITE_ORIGINS),
       cdnOrigin: () => env.CDN_ORIGIN.replace(/\/$/, ""),
+      rescanBatch: () => batchOf(env.RESCAN_BATCH),
       purge: cdnPurger({ zoneId: env.CDN_PURGE_ZONE_ID, token: () => readSecret(env.CDN_PURGE_TOKEN), fetch: (input, init) => fetch(input, init) }),
     },
   };

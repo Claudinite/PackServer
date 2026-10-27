@@ -55,6 +55,8 @@ export const pack_versions = sqliteTable(
     /** 0..100; absent until scored. */
     score: integer("score"),
     score_rules_version: text("score_rules_version"),
+    /** JSON `{parts, cap}` of the latest rescore; absent while the score is the one `meta.json` records. */
+    score_breakdown: text("score_breakdown"),
     report_key: text("report_key"),
     /** The pre-install manifest (JSON) the signed index entry carries; set at promotion. */
     preinstall: text("preinstall"),

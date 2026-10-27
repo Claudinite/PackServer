@@ -17,6 +17,7 @@
         "WORKER": "validator",
         "ENVIRONMENT": "test",
         "STEP_RETRY_DELAY": "10 milliseconds",
+        "RESCAN_BATCH": "25",
         "WAIT_REARM": "3 seconds",
         "SITE_ORIGINS": "http://web.internal",
         "CDN_ORIGIN": "https://packs.test.invalid",
@@ -68,6 +69,10 @@
           {
             "binding": "NOTIFY_QUEUE",
             "queue": "notify-test"
+          },
+          {
+            "binding": "REINDEX_QUEUE",
+            "queue": "reindex-test"
           }
         ],
         "consumers": [
@@ -176,13 +181,15 @@
         "crons": [
           "0 4 * * *",
           "0 5 * * 1",
-          "*/5 * * * *"
+          "*/5 * * * *",
+          "*/15 * * * *"
         ]
       },
       "vars": {
         "WORKER": "validator",
         "ENVIRONMENT": "staging",
         "STEP_RETRY_DELAY": "30 seconds",
+        "RESCAN_BATCH": "25",
         "WAIT_REARM": "7 days",
         "SITE_ORIGINS": "https://registry-staging.claudinite.com",
         "CDN_ORIGIN": "https://packs-staging.claudinite.com",
@@ -229,6 +236,10 @@
           {
             "binding": "NOTIFY_QUEUE",
             "queue": "notify-staging"
+          },
+          {
+            "binding": "REINDEX_QUEUE",
+            "queue": "reindex-staging"
           }
         ],
         "consumers": [
@@ -379,13 +390,15 @@
         "crons": [
           "0 4 * * *",
           "0 5 * * 1",
-          "*/5 * * * *"
+          "*/5 * * * *",
+          "*/15 * * * *"
         ]
       },
       "vars": {
         "WORKER": "validator",
         "ENVIRONMENT": "production",
         "STEP_RETRY_DELAY": "30 seconds",
+        "RESCAN_BATCH": "25",
         "WAIT_REARM": "7 days",
         "SITE_ORIGINS": "https://registry.claudinite.com",
         "CDN_ORIGIN": "https://packs.claudinite.com",
@@ -432,6 +445,10 @@
           {
             "binding": "NOTIFY_QUEUE",
             "queue": "notify"
+          },
+          {
+            "binding": "REINDEX_QUEUE",
+            "queue": "reindex"
           }
         ],
         "consumers": [

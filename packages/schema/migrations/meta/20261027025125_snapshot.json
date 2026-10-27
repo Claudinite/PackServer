@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "bf580fbf-cc75-41b4-baad-a45b125a5a84",
-  "prevId": "e986c15d-60b9-40cc-8258-1c139d54ac45",
+  "id": "750be1de-37c5-4230-a064-7f26ecb75166",
+  "prevId": "b2b536b4-570d-47e6-b836-53ea3de30234",
   "tables": {
     "credentials": {
       "name": "credentials",
@@ -658,6 +658,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "score_breakdown": {
+          "name": "score_breakdown",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "report_key": {
           "name": "report_key",
           "type": "text",
@@ -695,6 +702,13 @@
         },
         "state_before_removal": {
           "name": "state_before_removal",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "objects_deleted_at": {
+          "name": "objects_deleted_at",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -7412,6 +7426,266 @@
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "rescan_passes": {
+      "name": "rescan_passes",
+      "columns": {
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "trigger": {
+          "name": "trigger",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cursor": {
+          "name": "cursor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "versions": {
+          "name": "versions",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "findings": {
+          "name": "findings",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "rescan_passes_kind_trigger_pk": {
+          "columns": [
+            "kind",
+            "trigger"
+          ],
+          "name": "rescan_passes_kind_trigger_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "rescan_passes_kind_check": {
+          "name": "rescan_passes_kind_check",
+          "value": "\"rescan_passes\".\"kind\" in ('rules', 'domains', 'pipeline')"
+        }
+      }
+    },
+    "rescan_runs": {
+      "name": "rescan_runs",
+      "columns": {
+        "run_id": {
+          "name": "run_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "version_id": {
+          "name": "version_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "trigger": {
+          "name": "trigger",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "applied_at": {
+          "name": "applied_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "rescan_runs_pending_idx": {
+          "name": "rescan_runs_pending_idx",
+          "columns": [
+            "applied_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "rescan_runs_run_id_validation_runs_id_fk": {
+          "name": "rescan_runs_run_id_validation_runs_id_fk",
+          "tableFrom": "rescan_runs",
+          "tableTo": "validation_runs",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "rescan_runs_version_id_pack_versions_id_fk": {
+          "name": "rescan_runs_version_id_pack_versions_id_fk",
+          "tableFrom": "rescan_runs",
+          "tableTo": "pack_versions",
+          "columnsFrom": [
+            "version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "url_domain_states": {
+      "name": "url_domain_states",
+      "columns": {
+        "domain": {
+          "name": "domain",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "resolves": {
+          "name": "resolves",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "checked_trigger": {
+          "name": "checked_trigger",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "changed_trigger": {
+          "name": "changed_trigger",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "version_warnings": {
+      "name": "version_warnings",
+      "columns": {
+        "version_id": {
+          "name": "version_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "subject": {
+          "name": "subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "detected_at": {
+          "name": "detected_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "version_warnings_version_id_pack_versions_id_fk": {
+          "name": "version_warnings_version_id_pack_versions_id_fk",
+          "tableFrom": "version_warnings",
+          "tableTo": "pack_versions",
+          "columnsFrom": [
+            "version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "version_warnings_version_id_kind_subject_pk": {
+          "columns": [
+            "version_id",
+            "kind",
+            "subject"
+          ],
+          "name": "version_warnings_version_id_kind_subject_pk"
+        }
+      },
       "uniqueConstraints": {},
       "checkConstraints": {}
     }

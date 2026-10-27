@@ -1,6 +1,7 @@
 import { createShell, selfTestAccess, type WorkerShellOptions } from "@packserver/http";
 import type { Hono } from "hono";
 import type { McpRuntime } from "./bindings";
+import { routes as oauthRoutes } from "./oauth";
 import { routes as searchRoutes } from "./search";
 import { routes as mcpRoutes, type McpOptions } from "./server";
 import { selfTestChecks } from "./selftest";
@@ -22,6 +23,7 @@ export function createApp(runtime: McpRuntime, options: AppOptions = {}): Hono {
     selfTest: selfTestAccess(runtime),
   });
   app.route("/internal", searchRoutes(runtime));
+  if (options.oauth) app.route("/", oauthRoutes(runtime, options.oauth));
   app.route("/", mcpRoutes(runtime, options));
   return app;
 }

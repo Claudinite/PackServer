@@ -1,1 +1,0 @@
-ALTER TABLE `pack_versions` ADD `objects_deleted_at` text;

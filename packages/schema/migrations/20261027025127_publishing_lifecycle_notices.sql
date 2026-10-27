@@ -8,6 +8,7 @@ CREATE TABLE `lifecycle_notices` (
 	`audience` text NOT NULL,
 	`created_at` text NOT NULL,
 	`sent_at` text,
+	`attempts` integer DEFAULT 0 NOT NULL,
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`pack_id`) REFERENCES `packs`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "lifecycle_notices_action_check" CHECK("lifecycle_notices"."action" in ('yanked', 'deprecated')),

@@ -22,4 +22,5 @@ export * from "./review";
 export * from "./approvals";
 export * from "./admin-ops";
 export * from "./lifecycle";
+export * from "./rescan";
 export * from "../range";

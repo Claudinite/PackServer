@@ -21,6 +21,10 @@ export interface PublicPackOptions {
   score?: Pick<Meta["score"], "total" | "parts">;
   /** How many of each inventory part `meta.json` counts; the default is none. */
   inventory?: Partial<Record<(typeof INVENTORY_PARTS)[number], number>>;
+  /** The canonical archive every seeded version stores, for a pack the registry will read again; the default is placeholder text. */
+  canonicalArchive?: Uint8Array;
+  /** The URL inventory `meta.json` records; the default is empty. */
+  urls?: Meta["url_inventory"];
 }
 
 export interface StateChange {
@@ -154,6 +158,8 @@ const EMPTY_PREINSTALL: PreInstallManifest = { guards: [], tasks: [], forced_ski
 
 const bytesOf = (text: string): Uint8Array => utf8(text);
 
+const archiveOf = (pack: SeededPack, version: string): Uint8Array => pack.options.canonicalArchive ?? bytesOf(`archive ${pack.systemName}@${version}`);
+
 /** The pack read API and verify-by-hash, plus the seeding that stands in for publishing until it lands. */
 export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
   const seeded = new Map<string, SeededPack>();
@@ -229,7 +235,7 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
       inventory,
       capabilities: pack.options.capabilities ?? [],
       preinstall,
-      url_inventory: [],
+      url_inventory: pack.options.urls ?? [],
       score: { total: pack.options.score?.total ?? 80, parts: pack.options.score?.parts ?? [], cap: null },
       rules_version: RULES_VERSION,
       verification: facts,
@@ -251,10 +257,10 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
     const write = (kind: ObjectKind, body: Uint8Array | string) =>
       store.packsPublic.put(objectKey(pack.systemName, kind, v.version), body, { httpMetadata: publicObjectHttpMetadata(kind) });
     if (pack.visibility === "private") {
-      await store.packsPrivate.put(privateArchiveKey(v.id), bytesOf(`archive ${pack.systemName}@${v.version}`));
+      await store.packsPrivate.put(privateArchiveKey(v.id), archiveOf(pack, v.version));
       return;
     }
-    await write("archive", bytesOf(`archive ${pack.systemName}@${v.version}`));
+    await write("archive", archiveOf(pack, v.version));
     await write("sha256", `${v.canonicalSha256}\n`);
     await write("attestation", JSON.stringify(attestation));
     await write("meta", JSON.stringify(meta));
@@ -334,7 +340,7 @@ export function createPacks(driver: Driver, aliases: Aliases): PacksModule {
 
   async function seedVersion(pack: SeededPack, version: string): Promise<void> {
     const publishedAt = new Date(await nowMs()).toISOString();
-    const canonicalBytes = bytesOf(`archive ${pack.systemName}@${version}`);
+    const canonicalBytes = archiveOf(pack, version);
     const v: SeededVersion = {
       version,
       id: crypto.randomUUID(),
