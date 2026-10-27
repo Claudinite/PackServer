@@ -317,6 +317,7 @@ scenario("IT-PUB-024 Hard delete only within 72 h and with zero fetches; the num
 }, { needs: ["fakes", "clock", "storage"] });
 
 scenario("IT-PUB-025 Private packs delete any time with a 7-day soft window", async (world) => {
+  await world.access.seedRegistryKeys();
   const ann = await world.publishers.create({ handle: "ann" });
   await ann.orgs.create("acme");
   const secret = await world.packs.public("@acme/secret", { visibility: "private", versions: ["1.0.0"] });

@@ -23,6 +23,10 @@ describe("IT-PUB-024 the hard-delete rule", () => {
     expect(deletable(row({ publishedAt: null }), NOW, 0)).toEqual({ ok: false, reason: "not_published" });
   });
 
+  it("keeps a PackServer-withdrawn version whatever the case of its notice", () => {
+    expect(deletable(row({ state: "yanked", reason: "removed by packserver: malware" }), NOW, 0)).toEqual({ ok: false, reason: "state" });
+  });
+
   it("lets a deprecated or yanked version go too", () => {
     expect(deletable(row({ state: "yanked" }), NOW, 0)).toEqual({ ok: true });
     expect(deletable(row({ state: "deprecated" }), NOW, 0)).toEqual({ ok: true });

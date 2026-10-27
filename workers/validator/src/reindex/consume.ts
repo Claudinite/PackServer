@@ -1,5 +1,6 @@
 import { reconcileRemoved } from "@packserver/core/publishing";
 import { publicScopeOnly } from "@packserver/core/synthetic";
+import { syncClock } from "@packserver/ports";
 import { acceptQueueMessage, queueMessage } from "@packserver/schema";
 import { z } from "zod";
 import type { ValidatorRuntime } from "../bindings";
@@ -12,6 +13,7 @@ export const ScopeProofChanged = queueMessage({ type: z.literal("scope.proof_cha
  * facts and has its index and private entries signed. A purge that cannot be made stays owed and is tried at the next reindex; a failure there never keeps the index from being signed.
  */
 export async function reindexScope(rt: ValidatorRuntime, scope: string): Promise<{ sha256: string; serial: number }> {
+  await syncClock(rt.ports.clock);
   const { r2, d1, clock } = rt.ports;
   try {
     const removed = await reconcileRemoved(

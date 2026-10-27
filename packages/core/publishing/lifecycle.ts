@@ -63,7 +63,7 @@ const PUBLISHER_FROM: Partial<Record<VersionTransition, readonly string[]>> = { 
 export const MODERATION_PREFIX = "Removed by PackServer";
 
 /** Whether a reason reads as PackServer's own notice, which no publisher writes, lifts or erases. */
-export const isModeration = (reason: string | null | undefined): boolean => reason?.startsWith(MODERATION_PREFIX) === true;
+export const isModeration = (reason: string | null | undefined): boolean => reason?.toLowerCase().startsWith(MODERATION_PREFIX.toLowerCase()) === true;
 
 /** The statuses a person is told of (REQ-MOD-013). */
 const ANNOUNCED = new Set<VersionTransition>(["yank", "deprecate"]);
@@ -250,6 +250,9 @@ export async function deletePack(ports: TransitionPorts, pack: PackToDelete): Pr
       ...versions.map((v) => retire("version", `${full}@${v.version}`, at)),
     ]);
   } else {
+    if (versions.some((v) => v.state === "yanked" && isModeration(v.reason))) {
+      return { ok: false, reason: "refused", message: "A version was withdrawn by PackServer; the pack cannot be deleted until that is lifted." };
+    }
     await ports.d1.batch([
       { sql: "update pack_versions set state_before_removal = state, state = 'removed', status_changed_at = ?, objects_purged_at = null, objects_deleted_at = null where pack_id = ? and state not in ('removed', 'pending', 'approved')", params: [at, pack.id] },
       { sql: "update packs set removed_at = ? where id = ? and removed_at is null", params: [at, pack.id] },

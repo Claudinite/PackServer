@@ -13,6 +13,8 @@ export interface LifecycleDelivery {
  * person with no address is marked and skipped.
  */
 export const MAX_NOTICE_ATTEMPTS = 5;
+/** D1 takes at most 100 bound parameters in a statement. */
+const ADDRESS_CHUNK = 90;
 
 export async function drainLifecycleNotices(ports: { d1: D1; clock: Clock }, delivery: LifecycleDelivery, limit = 200): Promise<{ sent: number; skipped: number; failed: number }> {
   const { rows } = await ports.d1.query(
@@ -24,12 +26,10 @@ export async function drainLifecycleNotices(ports: { d1: D1; clock: Clock }, del
   const byPerson = new Map<string, typeof rows>();
   for (const row of rows) byPerson.set(String(row.user_id), [...(byPerson.get(String(row.user_id)) ?? []), row]);
   const addresses = new Map<string, string>();
-  if (byPerson.size > 0) {
-    const people = [...byPerson.keys()];
-    const found = await ports.d1.query(
-      `select user_id, address from user_emails where user_id in (${people.map(() => "?").join(", ")}) order by created_at`,
-      people,
-    );
+  const people = [...byPerson.keys()];
+  for (let i = 0; i < people.length; i += ADDRESS_CHUNK) {
+    const chunk = people.slice(i, i + ADDRESS_CHUNK);
+    const found = await ports.d1.query(`select user_id, address from user_emails where user_id in (${chunk.map(() => "?").join(", ")}) order by created_at`, chunk);
     for (const r of found.rows) if (!addresses.has(String(r.user_id))) addresses.set(String(r.user_id), String(r.address));
   }
   const at = new Date(ports.clock.now()).toISOString();

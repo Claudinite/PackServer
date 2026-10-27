@@ -50,7 +50,7 @@ export interface LifecycleModule {
     purged(): string[];
     /** Waits until the registry has removed the version's stored objects and, for a public pack, purged them from the CDN. */
     removedFromStorage(pack: Pack, version: string): Promise<void>;
-    /** Asks for the daily pass over the pack's scope at the fake clock's time; it purges what the soft-delete window no longer holds. */
+    /** Runs the daily pass over the pack's scope at the fake clock's time and waits for the re-signed index; it purges what the soft-delete window no longer holds. The registry keys must be seeded. */
     sweep(pack: Pack): Promise<void>;
   };
 }
@@ -148,7 +148,14 @@ export function createLifecycle(driver: Driver, aliases: Aliases, people: UsersM
         await until(`${pack.systemName}@${version} leaving storage`, async () => (await purgedAt(pack, version)) !== null && (await purgedAt(pack, version)) !== undefined);
       },
       async sweep(pack) {
-        await storage().reindex.send({ schema: 1, type: "scope.proof_changed", scope: split(pack).scope, change: "daily" });
+        const { scope } = split(pack);
+        const serial = async () => {
+          const bytes = await storage().packs.public.get(`index/v1/${scope}.json`);
+          return bytes ? (JSON.parse(new TextDecoder().decode(bytes)) as { serial: number }).serial : 0;
+        };
+        const before = await serial();
+        await storage().reindex.send({ schema: 1, type: "scope.proof_changed", scope, change: "daily" });
+        await until(`the daily pass over ${scope}`, async () => (await serial()) > before);
       },
     },
   };

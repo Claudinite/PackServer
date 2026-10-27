@@ -36,3 +36,23 @@ describe("IT-MOD-013 the notice job", () => {
     expect(sent).toEqual(["good@example.test"]);
   });
 });
+
+describe("IT-MOD-013 the notice job against D1's limits", () => {
+  it("binds at most 100 parameters in any statement with 200 notices", async () => {
+    const { db, ports, delivery } = setup();
+    for (let i = 0; i < 200; i++) {
+      db.exec(`insert into users (id, created_at) values ('m${i}', '${NOW}');
+        insert into user_emails (user_id, address, source, created_at) values ('m${i}', 'm${i}@example.test', 'github', '${NOW}');
+        insert into lifecycle_notices (id, user_id, pack_id, version, action, reason, audience, created_at) values ('mn${i}', 'm${i}', 'p', '1.0.0', 'yanked', 'r', 'stargazer', '${NOW}')`);
+    }
+    const widths: number[] = [];
+    const spying = {
+      query: (sql: string, params: unknown[] = []) => (widths.push(params.length), ports.d1.query(sql, params)),
+      batch: (statements: Array<{ sql: string; params?: unknown[] }>) => (statements.forEach((st) => widths.push(st.params?.length ?? 0)), ports.d1.batch(statements)),
+    };
+    const result = await drainLifecycleNotices({ d1: spying as never, clock: ports.clock }, delivery);
+    expect(result.sent).toBeGreaterThan(100);
+    expect(widths.length).toBeGreaterThan(3);
+    expect(Math.max(...widths)).toBeLessThanOrEqual(100);
+  });
+});
