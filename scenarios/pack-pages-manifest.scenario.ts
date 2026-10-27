@@ -163,8 +163,8 @@ scenario("IT-PAGE-005 The dashboard shows per-pack status and the Needs-you queu
   expect(await bad.run.verdict()).toBe("fail");
   await world.pauseValidation();
   const busy = await pat.publish(world.archive("gcp")).as("@acme/busy@1.0.0");
-
   const view = await world.dashboard.of(pat);
+  await world.resumeValidation();
   const row = (pack: { systemName: string }) => view.packs.find((p) => p.name === pack.systemName)?.text ?? "";
   expect(row(live)).toContain("1.0.0");
   expect(row(live)).toContain("3 stars · 120 fetches · 1 open issue");

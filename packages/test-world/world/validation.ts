@@ -39,6 +39,8 @@ export interface ValidationModule {
   link(path: string): string;
   /** Stops the validator taking runs, so a scenario about admission alone leaves its runs queued instead of validating them. */
   pauseValidation(): Promise<void>;
+  /** Lets the validator take runs again, for a scenario that paused it and must not leave the pause to the next one. */
+  resumeValidation(): Promise<void>;
   rules: { list(): Promise<ReadonlyArray<{ id: string; class: "fail" | "hold" | "warn" }>> };
   proseScreen: { script(o: { file?: string; probabilities: Record<string, number> }): void; releaseModel(model: string): void };
   sandbox: {
@@ -112,6 +114,9 @@ export function createValidation(driver: Driver) {
       await storage().sql("insert into feature_flags (key, value, security, updated_at) values ('validation_dispatch', 'paused', 0, ?) on conflict (key) do update set value = excluded.value", [
         new Date().toISOString(),
       ]);
+    },
+    resumeValidation: async () => {
+      await storage().sql("delete from feature_flags where key = 'validation_dispatch'");
     },
     link: (path) => `https://example.org/${path}`,
     rules: { list: async () => listRules(RULES_VERSIONS.at(-1)!).map(({ id, class: cls }) => ({ id, class: cls })) },
