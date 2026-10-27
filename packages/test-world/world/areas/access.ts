@@ -1,13 +1,14 @@
 import { addGrant, removeGrant } from "@packserver/core/access";
 import { verifySigned, type RegistryKey } from "@packserver/core/index";
 import { PrivateEntry } from "@packserver/schema";
-import type { Driver } from "../../drivers/driver";
+import type { ApiResponse, Driver } from "../../drivers/driver";
+import type { Aliases } from "../alias";
 import { InfrastructureError } from "../errors";
-import type { Observation } from "../outcomes";
+import { NotFound, Refusal, type Observation } from "../outcomes";
 import { seededRegistryKey } from "../packs";
 import { callerOf } from "./users";
 import { createWorldTokens, d1Over, type WorldTokens } from "../tokens";
-import type { ActionsRepo, Pack, User } from "../types";
+import type { ActionsRepo, Pack, Sensitive, User } from "../types";
 
 /** A GitHub account on a pack's allowlist, by the id GitHub gave it. */
 export interface Account {
@@ -27,6 +28,30 @@ export interface FetchRecordView {
   readonly at: number;
 }
 
+/** The access page's data as the owner of a pack reads it. */
+export interface AccessView {
+  readonly visibility: "public" | "private";
+  readonly published: boolean;
+  readonly you: "owner" | "maintainer";
+  readonly grants: ReadonlyArray<{ accountId: string; privateReposOnly: boolean; addedBy: string | null; lastFetchAt: number | null }>;
+  readonly fetches: readonly FetchRecordView[];
+  readonly changes: ReadonlyArray<{ at: string; actor: string | null; action: "grant.changed" | "visibility.changed"; change: string; accountId: string | null }>;
+}
+
+/** What a visit to a pack's access page ends in. */
+export type AccessPageVisit = { readonly kind: "page"; readonly text: string } | { readonly kind: "sign-in"; readonly next: string };
+
+/** A pack's access page and the changes it makes, as one person uses them. */
+export interface AccessManager {
+  view(): Promise<AccessView | NotFound>;
+  /** The page itself: its text, the way in for someone signed out, or the one not-found page. */
+  page(): Promise<AccessPageVisit | NotFound>;
+  allow(account: Pick<Account, "id" | "privateReposOnly">, o?: Sensitive): Promise<void | NotFound>;
+  remove(account: Pick<Account, "id">, o?: Sensitive): Promise<void | NotFound>;
+  /** Going public asks for `confirmed` as well as the assertion; going private needs only the assertion. */
+  setVisibility(to: "public" | "private", o?: Sensitive & { confirmed?: boolean }): Promise<void | NotFound>;
+}
+
 /** The private-pack access verbs and the registry key. */
 export interface AccessVerbs {
   /** A GitHub account with an id the World allocated, so no two scenarios share one. */
@@ -42,6 +67,12 @@ export interface AccessVerbs {
   disallowAccount(pack: Pack, account: Pick<Account, "id">): Promise<void>;
   /** The pack's reads the registry logged, newest first. */
   fetches(pack: Pack): Promise<FetchRecordView[]>;
+  /** Gives the registry its signing key, so a reindex it is sent can run. */
+  seedRegistryKeys(): Promise<void>;
+  /** Gives the pack a version that has been approved but not yet published, as one mid-promotion looks. */
+  seedPendingVersion(pack: Pack): Promise<void>;
+  /** The pack's access page and what it changes, as `by` uses them. */
+  manage(pack: Pack, by: User): AccessManager;
   /** The writes a signed-in person may try on a pack, each as the registry answers it. */
   attemptWrites(user: User, pack: Pack): Promise<Observation[]>;
 }
@@ -54,7 +85,7 @@ export interface AccessModule {
 /** Above the range the World gives its people, so an allocated account never meets one of theirs. */
 let nextAccountId = 6_000_000_000;
 
-export const createAccess = (driver: Driver): AccessModule => {
+export const createAccess = (driver: Driver, aliases: Aliases): AccessModule => {
   const packId = async (pack: Pack): Promise<string> => {
     if (!driver.storage) throw new InfrastructureError(`the ${driver.kind} driver cannot seed grants: it has no storage seam`);
     const [scope, name] = pack.systemName.slice(1).split("/") as [string, string];
@@ -69,7 +100,86 @@ export const createAccess = (driver: Driver): AccessModule => {
     return (await (db.prepare(statement).bind(...params) as { all(): Promise<{ results?: Array<Record<string, unknown>> }> }).all()).results ?? [];
   };
 
+  const manage = (pack: Pack, by: User): AccessManager => {
+    const [scope, name] = pack.systemName.split("/") as [string, string];
+    const base = `/api/packs/${scope}/${name}`;
+    const bound = pack.systemName.slice(1);
+    const refused = (res: ApiResponse, what: string): Refusal => {
+      let body: { reason?: Refusal["reason"]; message?: string };
+      try {
+        body = res.json() as typeof body;
+      } catch {
+        throw new InfrastructureError(`${what}: expected a refusal or success, got ${res.status} ${res.text.slice(0, 120)}`);
+      }
+      if (!body.reason) throw new InfrastructureError(`${what}: got ${res.status} without a reason: ${res.text.slice(0, 120)}`);
+      return new Refusal(body.reason, body.message === undefined ? {} : { message: body.message });
+    };
+    const settle = (res: ApiResponse, what: string): void | NotFound => {
+      if (res.status === 404) return new NotFound();
+      if (res.status >= 200 && res.status < 300) return;
+      throw refused(res, what);
+    };
+    return {
+      async view() {
+        const res = await callerOf(by).call({ method: "GET", path: `/api/access/${scope}/${name}` });
+        if (res.status === 404) return new NotFound();
+        if (res.status !== 200) throw refused(res, "access.view");
+        const b = res.json() as {
+          visibility: AccessView["visibility"]; published: boolean; you: AccessView["you"];
+          grants: Array<{ account_id: string; private_repos_only: boolean; added_by: string | null; last_fetch_at: number | null }>;
+          fetches: Array<{ kind: FetchRecordView["kind"]; outcome: FetchRecordView["outcome"]; account_id: string | null; repository: string | null; at: number }>;
+          changes: Array<{ at: string; actor: string | null; action: AccessView["changes"][number]["action"]; change: string; account_id: string | null }>;
+        };
+        return {
+          visibility: b.visibility,
+          published: b.published,
+          you: b.you,
+          grants: b.grants.map((g) => ({ accountId: g.account_id, privateReposOnly: g.private_repos_only, addedBy: g.added_by === null ? null : aliases.unalias(g.added_by), lastFetchAt: g.last_fetch_at })),
+          fetches: b.fetches.map((f) => ({ kind: f.kind, outcome: f.outcome, accountId: f.account_id, repository: f.repository, at: f.at })),
+          changes: b.changes.map((c) => ({ at: c.at, actor: c.actor === null ? null : aliases.unalias(c.actor), action: c.action, change: c.change, accountId: c.account_id })),
+        };
+      },
+      async page() {
+        const res = await callerOf(by).call({ method: "GET", path: `/packs/${scope}/${name}/access` });
+        if (res.status === 404) return new NotFound();
+        if (res.status === 303) {
+          const next = new URL(res.headers.get("location") ?? "", "https://site.invalid").searchParams.get("next");
+          if (next === null) throw new InfrastructureError(`access.page: redirected without a way back: ${res.headers.get("location")}`);
+          return { kind: "sign-in", next };
+        }
+        if (res.status !== 200) throw new InfrastructureError(`access.page: ${res.status} ${res.text.slice(0, 120)}`);
+        return { kind: "page", text: aliases.unalias(res.text) };
+      },
+      async allow(account, o) {
+        const headers = await callerOf(by).assertionHeaders("grant.add", o, `${bound}:${account.id}:${account.privateReposOnly === false ? "any" : "private"}`);
+        const json = { account_id: String(account.id), ...(account.privateReposOnly === undefined ? {} : { private_repos_only: account.privateReposOnly }) };
+        return settle(await callerOf(by).call({ method: "POST", path: `${base}/grants`, json, headers }), "access.allow");
+      },
+      async remove(account, o) {
+        const headers = await callerOf(by).assertionHeaders("grant.remove", o, `${bound}:${account.id}`);
+        return settle(await callerOf(by).call({ method: "DELETE", path: `${base}/grants/${account.id}`, headers }), "access.remove");
+      },
+      async setVisibility(to, o = {}) {
+        const headers = await callerOf(by).assertionHeaders("pack.visibility", o, bound);
+        return settle(await callerOf(by).call({ method: "POST", path: `${base}/visibility`, json: { visibility: to, ...(o.confirmed ? { confirm: true } : {}) }, headers }), "access.setVisibility");
+      },
+    };
+  };
+
   const access: AccessVerbs = {
+    manage,
+    async seedPendingVersion(pack) {
+      const id = await packId(pack);
+      const { db } = await driver.storage!();
+      const statement = db.prepare("insert into pack_versions (id, pack_id, version, state, sha256, size_bytes, published_at, verified, source_verified) values (?, ?, '9.9.9', 'approved', ?, 1, null, 0, 0)");
+      await (statement.bind(crypto.randomUUID(), id, "0".repeat(64)) as { run(): Promise<unknown> }).run();
+    },
+    async seedRegistryKeys() {
+      const { db } = await driver.storage!();
+      const now = driver.fakes ? await driver.fakes.clock.call<number>("now") : Date.now();
+      const statement = db.prepare("insert into feature_flags (key, value, security, updated_at) values ('registry_keys', ?, 0, ?) on conflict (key) do update set value = excluded.value");
+      await (statement.bind(JSON.stringify([await seededRegistryKey()]), new Date(now).toISOString()) as { run(): Promise<unknown> }).run();
+    },
     account: (login, o = {}) => ({ id: nextAccountId++, login, ...o }),
     repository: (account, name, visibility = "private") => ({ ownerId: account.id, repository: `${account.login}/${name}`, visibility }),
     registryKey: seededRegistryKey,

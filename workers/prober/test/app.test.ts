@@ -13,6 +13,9 @@ const runtime = (missingBindings: string[] = []): ProberRuntime => ({
   missingSecrets: [],
   ports: fakes,
   services: {},
+  config: () => {
+    throw new Error("the shell never reads the probing configuration");
+  },
 });
 
 describeWorkerShell({

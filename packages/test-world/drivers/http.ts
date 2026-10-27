@@ -1,14 +1,12 @@
-import { SELFTEST_SIGNATURE_HEADER, signSelfTest } from "@packserver/core/selftest";
 import type { WorkerName } from "@packserver/ports";
 import { InfrastructureError } from "../world/errors";
 import type { ApiRequest, ApiResponse, Capability, Driver, McpCredentials } from "./driver";
 import { readHttpEnv, type HttpEnv } from "./http-env";
+import { reachRequest } from "./http/runtime-neutral";
 import { McpClient } from "./mcp";
 import { encodeBody, toApiResponse, VersionObserver } from "./observe";
 
 export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
-
-const OVERRIDE_HEADER = "Cloudflare-Workers-Version-Overrides";
 
 /**
  * The same World against a URL: no fakes, no clock, no reset, no recorder. The system is one
@@ -36,24 +34,7 @@ export class HttpDriver implements Driver {
 
   http = {
     request: async (req: ApiRequest): Promise<ApiResponse> => {
-      const url = new URL(req.path, this.env.baseUrl);
-      const headers: Record<string, string> = { ...req.headers };
-      if (this.env.versionOverride) headers[OVERRIDE_HEADER] = this.env.versionOverride;
-      if (this.env.access && url.host === this.env.access.host) {
-        headers["CF-Access-Client-Id"] = this.env.access.clientId;
-        headers["CF-Access-Client-Secret"] = this.env.access.clientSecret;
-      }
-      if (this.env.selfTest && !req.unsigned) {
-        headers[SELFTEST_SIGNATURE_HEADER] = await signSelfTest({
-          key: this.env.selfTest.key,
-          keyId: req.signAs ?? this.env.selfTest.keyId,
-          method: req.method,
-          host: url.host,
-          path: url.pathname,
-          nowMs: Date.now(),
-          nonce: crypto.randomUUID(),
-        });
-      }
+      const { url, headers } = await reachRequest(this.env, req, { nowMs: Date.now(), nonce: crypto.randomUUID() });
       const body = encodeBody(req.body, headers);
       const res = await this.doFetch(url.toString(), { method: req.method, headers, redirect: "manual", ...(body === undefined ? {} : { body }) });
       const out = await toApiResponse(res);

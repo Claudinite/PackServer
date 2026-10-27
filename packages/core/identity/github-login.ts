@@ -38,6 +38,12 @@ export async function pkceChallenge(verifier: string): Promise<string> {
 
 export class GitHubLoginError extends Error {
   override readonly name = "GitHubLoginError";
+  /** GitHub's own error code when it refused the code exchange, in the form GitHub documents (`bad_verification_code`). */
+  readonly githubError: string | undefined;
+  constructor(message: string, githubError?: string) {
+    super(message);
+    this.githubError = githubError !== undefined && /^[a-z_]{1,64}$/.test(githubError) ? githubError : undefined;
+  }
 }
 
 export interface GitHubLogin {
@@ -87,7 +93,7 @@ export function githubLogin(options: GitHubLoginOptions): GitHubLogin {
       });
       if (!exchange.ok) throw new GitHubLoginError(`GitHub answered ${exchange.status} to the code exchange`);
       const granted = (await exchange.json()) as { access_token?: unknown; error?: unknown };
-      if (typeof granted.access_token !== "string") throw new GitHubLoginError(`GitHub refused the code: ${String(granted.error ?? "no token")}`);
+      if (typeof granted.access_token !== "string") throw new GitHubLoginError(`GitHub refused the code: ${String(granted.error ?? "no token")}`, typeof granted.error === "string" ? granted.error : undefined);
       const token = granted.access_token;
 
       const user = (await get(token, "/user")) as { id?: unknown; login?: unknown; name?: unknown };
