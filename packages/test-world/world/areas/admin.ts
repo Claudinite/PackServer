@@ -24,7 +24,7 @@ export type AssertionKind = "valid" | "forged" | "wrong-audience" | "expired" | 
 export type VisitHow = AssertionKind | "workers-dev" | "preview-url";
 
 export interface QueueEntry {
-  kind: "report" | "held-version" | "appeal" | "application";
+  kind: "report" | "held-version" | "appeal" | "application" | "abuse-report" | "moderation-appeal";
   /** `@scope/name`, for a version, an appeal or a report. */
   pack?: string;
   version?: string;
@@ -33,6 +33,35 @@ export interface QueueEntry {
   severity?: string;
   priority?: boolean;
   standing?: { verified: boolean; declaredBy: number | null };
+  category?: string;
+  /** Identical abuse reports gathered into this entry, itself included. */
+  count?: number;
+}
+
+export interface AbuseEntry {
+  id: string;
+  kind: "pack" | "review" | "profile";
+  pack: string | null;
+  version: string | null;
+  category: string;
+  priority: boolean;
+  count: number;
+}
+
+export interface HeldComment {
+  id: string;
+  pack: string;
+  section: string;
+  author: string | null;
+  body: string;
+}
+
+export interface FlaggedReporter {
+  id: string;
+  flaggedBy: number;
+  /** Reports of any kind the reporter has filed. */
+  filed: number;
+  blocked: boolean;
 }
 
 export interface HeldItem {
@@ -146,6 +175,37 @@ export interface AdminSession extends Admin {
   };
   flags: {
     set(key: string, value: unknown): Promise<void>;
+  };
+  moderation: {
+    abuse(): Promise<AbuseEntry[]>;
+    dismiss(report: { id: string }): Promise<void>;
+    /** Acts on the reported pack, review or publisher and settles the report. */
+    act(report: { id: string }, decision: { action: "quarantine" | "yank" | "hide_review" | "suspend"; reason: string }): Promise<void>;
+    hidePack(pack: { systemName: string }, reason?: string): Promise<void>;
+    quarantinePack(pack: { systemName: string }, reason: string): Promise<void>;
+    hideReview(review: { id: string }, reason: string): Promise<void>;
+    suspend(scope: { name: string }, reason: string): Promise<void>;
+    appeals: {
+      list(): Promise<Array<{ pack: string; version: string; action: string; note: string }>>;
+      uphold(version: Version): Promise<void>;
+      deny(version: Version): Promise<void>;
+    };
+    dmca: {
+      /** Removes the version on a copyright notice from `complainant`. */
+      remove(version: Version, complainant: string): Promise<void>;
+      /** Records that the complainant filed suit, which keeps the version removed. */
+      suit(version: Version): Promise<void>;
+      /** Closes the version's copyright case: the version returns to what it was before the notice. */
+      close(version: Version, reason: "withdrawn" | "resolved_for_publisher" | "entered_in_error"): Promise<void>;
+    };
+    /** Reporters publishers flagged. */
+    flags(): Promise<FlaggedReporter[]>;
+    block(reporter: { id: string }): Promise<void>;
+    comments: {
+      held(): Promise<HeldComment[]>;
+      release(comment: { id: string }): Promise<void>;
+      remove(comment: { id: string }, reason: string): Promise<void>;
+    };
   };
   revoke(version: Version, o: { reason: string; security: string }): Promise<void>;
   disputes: {
@@ -313,6 +373,18 @@ export function createAdmin(driver: Driver, onDispose: (undo: () => Promise<void
     return { ok: body.ok === true, reason: body.refusal?.message ?? body.reason ?? body.message ?? null, auditId: body.audit_id ?? null };
   };
 
+  const latestAction = async (version: Version): Promise<string> => {
+    const row = (
+      await sqlOf()(
+        `select a.id from moderation_actions a join packs p on p.id = a.pack_id join scopes s on s.id = p.scope_id
+         where '@' || s.name || '/' || p.name = ? and a.version = ? order by a.taken_at desc, a.rowid desc limit 1`,
+        [version.pack.systemName, version.version],
+      )
+    )[0];
+    if (!row) throw new InfrastructureError(`moderation took no action on ${version.pack.name}@${version.version}`);
+    return String(row.id);
+  };
+
   const session: AdminSession = {
     handle: "admin",
     email: ADMIN_EMAIL,
@@ -329,6 +401,8 @@ export function createAdmin(driver: Driver, onDispose: (undo: () => Promise<void
             ...(typeof i.id === "string" ? { id: i.id } : {}),
             ...(typeof i.severity === "string" ? { severity: i.severity } : {}),
             ...(typeof i.priority === "boolean" ? { priority: i.priority } : {}),
+            ...(typeof i.category === "string" ? { category: i.category } : {}),
+            ...(typeof i.count === "number" ? { count: i.count } : {}),
             ...(standing ? { standing: { verified: standing.verified, declaredBy: standing.declared_by } } : {}),
           };
         });
@@ -442,6 +516,76 @@ export function createAdmin(driver: Driver, onDispose: (undo: () => Promise<void
     flags: {
       async set(key, value) {
         await json("flags.set", "POST", `/admin/flags/${key}`, { value });
+      },
+    },
+    moderation: {
+      async abuse() {
+        const { reports } = await json<{ reports: Array<{ id: string; target_kind: AbuseEntry["kind"]; pack: string | null; version: string | null; category: string; priority: boolean; count: number }> }>("moderation.abuse", "GET", "/admin/moderation/abuse");
+        return reports.map((r) => ({ id: r.id, kind: r.target_kind, pack: r.pack, version: r.version, category: r.category, priority: r.priority, count: r.count }));
+      },
+      async dismiss(report) {
+        await json("moderation.dismiss", "POST", `/admin/moderation/abuse/${report.id}/dismiss`, {});
+      },
+      async act(report, decision) {
+        await json("moderation.act", "POST", `/admin/moderation/abuse/${report.id}/action`, decision);
+      },
+      async hidePack(pack, reason = "Not what it claims to be") {
+        await json("moderation.hidePack", "POST", "/admin/moderation/packs/hide", { pack: pack.systemName, reason });
+      },
+      async quarantinePack(pack, reason) {
+        await json("moderation.quarantinePack", "POST", "/admin/moderation/packs/quarantine", { pack: pack.systemName, reason });
+      },
+      async hideReview(review, reason) {
+        await json("moderation.hideReview", "POST", `/admin/moderation/reviews/${review.id}/hide`, { reason });
+      },
+      async suspend(scope, reason) {
+        await json("moderation.suspend", "POST", `/admin/moderation/scopes/${aliases.alias(scope.name)}/suspend`, { reason });
+      },
+      appeals: {
+        async list() {
+          const { appeals } = await json<{ appeals: Array<{ pack: string; version: string; action: string; note: string }> }>("moderation.appeals.list", "GET", "/admin/moderation/appeals");
+          return appeals.map((a) => ({ pack: a.pack, version: a.version, action: a.action, note: a.note }));
+        },
+        async uphold(version) {
+          await json("moderation.appeals.uphold", "POST", `/admin/moderation/appeals/${await latestAction(version)}/decision`, { outcome: "upheld" });
+        },
+        async deny(version) {
+          await json("moderation.appeals.deny", "POST", `/admin/moderation/appeals/${await latestAction(version)}/decision`, { outcome: "denied" });
+        },
+      },
+      dmca: {
+        async remove(version, complainant) {
+          await json("moderation.dmca.remove", "POST", "/admin/moderation/dmca", { pack: version.pack.systemName, version: version.version, complainant });
+        },
+        async suit(version) {
+          const row = (await sqlOf()("select c.id from dmca_cases c where c.action_id = ?", [await latestAction(version)]))[0];
+          if (!row) throw new InfrastructureError("no copyright removal on the version");
+          await json("moderation.dmca.suit", "POST", `/admin/moderation/dmca/${String(row.id)}/suit`, {});
+        },
+        async close(version, reason) {
+          const row = (await sqlOf()("select c.id from dmca_cases c where c.action_id = ?", [await latestAction(version)]))[0];
+          if (!row) throw new InfrastructureError("no copyright removal on the version");
+          await json("moderation.dmca.close", "POST", `/admin/moderation/dmca/${String(row.id)}/close`, { reason });
+        },
+      },
+      async flags() {
+        const { reporters } = await json<{ reporters: Array<{ reporter_id: string; flagged_by: number; reports_filed: number; blocked: boolean }> }>("moderation.flags", "GET", "/admin/moderation/flags");
+        return reporters.map((r) => ({ id: r.reporter_id, flaggedBy: r.flagged_by, filed: r.reports_filed, blocked: r.blocked }));
+      },
+      async block(reporter) {
+        await json("moderation.block", "POST", `/admin/moderation/reporters/${reporter.id}/block`, {});
+      },
+      comments: {
+        async held() {
+          const { comments } = await json<{ comments: Array<{ id: string; pack: string; section: string; author: string | null; body: string }> }>("moderation.comments.held", "GET", "/admin/moderation/comments");
+          return comments.map((c) => ({ id: c.id, pack: aliases.unalias(c.pack), section: c.section, author: c.author === null ? null : aliases.unalias(c.author), body: c.body }));
+        },
+        async release(comment) {
+          await json("moderation.comments.release", "POST", `/admin/moderation/comments/${comment.id}/release`, {});
+        },
+        async remove(comment, reason) {
+          await json("moderation.comments.remove", "POST", `/admin/moderation/comments/${comment.id}/remove`, { reason });
+        },
       },
     },
     async revoke(version, o) {

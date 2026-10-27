@@ -12,6 +12,7 @@ import { routes as private_ } from "./routes/private";
 import { routes as access } from "./routes/access";
 import { routes as trustedPublishers } from "./routes/trusted-publishers";
 import { routes as abuse } from "./routes/abuse";
+import { routes as abusePage } from "./routes/abuse/page";
 import { routes as apiLeak } from "./routes/api-leak";
 import { routes as publishApproval } from "./routes/publish-approval";
 import { routes as reportHashMismatch } from "./routes/report-hash-mismatch";
@@ -55,7 +56,7 @@ export function createApp(runtime: WebRuntime, options: AppOptions = {}): Hono<W
   for (const api of [auth, scopes, orgs, tokens, packs, private_, access, trustedPublishers, abuse, apiLeak, publishApproval, reportHashMismatch]) {
     app.route("/api", api);
   }
-  for (const page of [homePage, browsePage, profilePage, claudeCodePage, rulesPage, pricingPage, packPage, signinPage, accountPage, reviewPage, reportPage, accessPage, dashboardPage, validationPage, publishPage, orgSettingsPage, githubPage]) {
+  for (const page of [homePage, browsePage, profilePage, claudeCodePage, rulesPage, pricingPage, packPage, signinPage, accountPage, reviewPage, reportPage, accessPage, dashboardPage, validationPage, publishPage, orgSettingsPage, githubPage, abusePage]) {
     app.route("/", page as Hono<WebEnv>);
   }
   app.route("/", wellKnown);

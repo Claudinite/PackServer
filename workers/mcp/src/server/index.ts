@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
 import { Hono, type Context } from "hono";
+import { reportedUnderReview } from "@packserver/core/moderation";
 import { BodyTooLarge, readBoundedBody } from "@packserver/http";
 import { syncClock } from "@packserver/ports";
 import type { McpRuntime } from "../bindings";
@@ -17,8 +18,15 @@ export interface McpOptions {
 
 export const SERVER_INFO = { name: "packserver", version: "0.0.1" } as const;
 
+/** The sources this Worker can read itself; the rest stay unwired and answer unknown. */
+export const wiredExtras = (runtime: McpRuntime): PackExtras => ({
+  ...unwiredExtras,
+  reportedUnderReview: (pack) => reportedUnderReview(runtime.ports.d1, pack.id),
+  advisories: (pack, version) => publishedAdvisories(runtime, pack, version),
+});
+
 /** One stateless server per request, so the tools close over this request's runtime and this request's caller. */
-export function createServer(runtime: McpRuntime, caller: Caller = { kind: "anonymous" }, extras: PackExtras = { ...unwiredExtras, advisories: (pack, version) => publishedAdvisories(runtime, pack, version) }): McpServer {
+export function createServer(runtime: McpRuntime, caller: Caller = { kind: "anonymous" }, extras: PackExtras = wiredExtras(runtime)): McpServer {
   const server = new McpServer(SERVER_INFO);
   registerPublicTools(server, runtime, extras, caller);
   registerPrivilegedTools(server, runtime, caller);

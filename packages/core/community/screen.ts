@@ -10,7 +10,7 @@ const COMMENT_FILE = "comment.md";
  * text checks (secrets, hidden Unicode, injection, URLs); a model implementation that replaces it for publisher prose
  * covers comments through the same call. A finding the rules class `warn` lets the comment through.
  *
- * Nothing releases a held comment yet; its moderation belongs to the abuse and moderation task (T-093).
+ * A moderator releases or removes a held comment from the moderation queue.
  */
 export async function isHeldComment(body: string): Promise<boolean> {
   const rules = loadRules(RULES_VERSIONS[RULES_VERSIONS.length - 1]!);

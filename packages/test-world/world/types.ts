@@ -246,7 +246,7 @@ export interface User {
    * One request as this person's browser makes it, for the area modules that act as a person: the session cookie
    * and, for an unsafe method, the origin, CSRF token and idempotency key.
    */
-  request(method: string, path: string, o?: { json?: unknown; body?: Uint8Array }): Promise<ApiResponse>;
+  request(method: string, path: string, o?: { json?: unknown; body?: Uint8Array; headers?: Record<string, string> }): Promise<ApiResponse>;
 }
 export interface Publisher extends User {
   scope: Scope;

@@ -49,6 +49,7 @@ export function createWorld(driver: Driver, title: string) {
   const reports = createReportsModule(driver, aliases);
   const lifecycle = createLifecycle(driver, aliases, people, reports);
   const undo: Array<() => Promise<void>> = [];
+  const admin = createAdmin(driver, (restore) => void undo.push(restore), aliases);
   return {
     driver,
     ...people,
@@ -61,10 +62,10 @@ export function createWorld(driver: Driver, title: string) {
     ...createCommunity(driver, aliases),
     ...createDashboard(),
     ...createWizard(driver, aliases, ci, validation.ensureEngines),
-    ...createModeration(),
+    ...createModeration(driver, aliases, admin.admins),
     ...lifecycle,
     ...reports,
-    ...createAdmin(driver, (restore) => void undo.push(restore), aliases),
+    ...admin,
     ...createRecoveries(driver),
     ...createMember(driver),
     ...createAgents(driver, aliases),

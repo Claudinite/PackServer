@@ -634,9 +634,9 @@ class Person implements User {
   open(): Promise<unknown> {
     throw new NotImplemented("users.open");
   }
-  async request(method: string, path: string, o: { json?: unknown; body?: Uint8Array } = {}): Promise<ApiResponse> {
+  async request(method: string, path: string, o: { json?: unknown; body?: Uint8Array; headers?: Record<string, string> } = {}): Promise<ApiResponse> {
     const session = this.view;
-    const headers = method === "GET" ? {} : await this.formHeaders(session);
+    const headers = { ...(method === "GET" ? {} : await this.formHeaders(session)), ...o.headers };
     if (o.body) headers["content-type"] = "application/octet-stream";
     return this.send({ method, path, session, headers, ...(o.json !== undefined ? { json: o.json } : {}), ...(o.body ? { rawBody: o.body } : {}) });
   }

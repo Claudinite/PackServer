@@ -270,7 +270,9 @@ A signed-in person can see their own public and private reports on their account
 
 A signed-in person can report abuse on a pack, review or profile, choosing a category (malware,
 prompt injection, secrets leak, impersonation, spam, IP infringement, other); an anonymous visitor
-is sent to sign in first.
+is sent to sign in first. Filing needs a passed Turnstile check (REQ-ABUSE-002), an account at
+least as old as the one that may review (REQ-COMM-005), and is capped at ten abuse reports per
+account per day, the same as reviews.
 
 ## REQ-MOD-009 A high-severity report labels the pack and jumps the queue; downloads are held only on standing
 

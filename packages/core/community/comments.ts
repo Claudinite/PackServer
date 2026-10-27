@@ -61,11 +61,11 @@ function toView(row: Record<string, unknown>, now: number, viewer: string | unde
   };
 }
 
-/** The newest comments on one section, oldest of those first. A held comment appears only to its author. */
+/** The newest comments on one section, oldest of those first. A held comment appears only to its author, and a removed one to no one. */
 export async function listComments(ports: CommunityPorts, pack: PackRef, viewerId: string | undefined, section: string): Promise<CommentView[]> {
   const now = nowMs(ports);
   const { rows } = await ports.d1.query(
-    `${SELECT(true)} where c.pack_id = ?4 and c.section = ?5 and (c.held_at is null or c.user_id = ?3) group by c.id order by c.created_at desc, c.id desc limit ${MAX_SECTION_COMMENTS}`,
+    `${SELECT(true)} where c.pack_id = ?4 and c.section = ?5 and (c.held_at is null or c.user_id = ?3) and not exists (select 1 from comment_removals cr where cr.comment_id = c.id) group by c.id order by c.created_at desc, c.id desc limit ${MAX_SECTION_COMMENTS}`,
     [countedCutoff(now), pack.scope_id, viewerId ?? "", pack.id, section],
   );
   return rows.reverse().map((r) => toView(r, now, viewerId));
@@ -73,7 +73,7 @@ export async function listComments(ports: CommunityPorts, pack: PackRef, viewerI
 
 /** Comments per section for a pack, held ones left out; the Contents tab shows the figure on a collapsed section. */
 export async function commentCounts(ports: Pick<CommunityPorts, "d1">, pack: Pick<PackRef, "id">): Promise<Record<string, number>> {
-  const { rows } = await ports.d1.query("select section, count(*) as n from comments where pack_id = ? and held_at is null group by section", [pack.id]);
+  const { rows } = await ports.d1.query("select section, count(*) as n from comments where pack_id = ? and held_at is null and not exists (select 1 from comment_removals cr where cr.comment_id = comments.id) group by section", [pack.id]);
   return Object.fromEntries(rows.map((r) => [String(r.section), Number(r.n)]));
 }
 
@@ -106,7 +106,7 @@ export async function postComment(
 export async function voteOnComment(
   ports: CommunityPorts, pack: PackRef, userId: string, commentId: string, value: 1 | -1 | 0,
 ): Promise<{ ok: true; comment: CommentView } | CommentRefusal> {
-  const { rows } = await ports.d1.query("select user_id, section, held_at from comments where id = ? and pack_id = ?", [commentId, pack.id]);
+  const { rows } = await ports.d1.query("select user_id, section, held_at from comments where id = ? and pack_id = ? and not exists (select 1 from comment_removals cr where cr.comment_id = comments.id)", [commentId, pack.id]);
   const row = rows[0];
   if (!row || (row.held_at && row.user_id !== userId)) return refuse("not_found", "There is no such comment.");
   if (row.user_id === userId) return refuse("own_comment", "You cannot vote on your own comment.");

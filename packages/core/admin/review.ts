@@ -1,6 +1,7 @@
 import { extractArchive } from "../canonical/index.ts";
 import { notifyOwners } from "../scopes/proofs/context.ts";
 import { iso } from "../scopes/personal.ts";
+import { declaredBy } from "../moderation/declared.ts";
 import { verificationFacts } from "../scopes/verified-publisher.ts";
 import { compareThreePart } from "../validation/manifest/index.ts";
 import { diffTrees, type TreeDiff } from "./diff.ts";
@@ -36,11 +37,7 @@ type Ports = Pick<AdminPorts, "d1">;
 
 async function standingOf(d1: AdminPorts["d1"], scopeId: string, pack: string): Promise<Standing> {
   const facts = await verificationFacts(d1, scopeId);
-  const scan = (await d1.query("select id from adoption_scans where completed_at is not null order by completed_at desc, id desc limit 1")).rows[0];
-  const declared = scan
-    ? Number((await d1.query("select count(distinct repository) as n from pack_declarations where scan_id = ? and pack = ?", [scan.id, pack])).rows[0]?.n ?? 0)
-    : null;
-  return { verified: facts?.verified === true, declared_by: declared };
+  return { verified: facts?.verified === true, declared_by: await declaredBy(d1, pack) };
 }
 
 /** Standing first, then declaring repositories, then age: nothing here resolves by timeout. */

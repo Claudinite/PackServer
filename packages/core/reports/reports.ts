@@ -22,7 +22,7 @@ async function securityContact(ports: ReportPorts, pack: PackRef): Promise<strin
 
 export type FileResult =
   | { ok: true; report: ReportView; new_issue_url: string | null }
-  | { ok: false; reason: "unknown_version" | "attachment_unavailable"; message: string };
+  | { ok: false; reason: "unknown_version" | "attachment_unavailable" | "blocked"; message: string };
 
 /**
  * Files a report and queues the notices it causes in one batch. A bug on a pack with a linked public repository
@@ -35,6 +35,9 @@ export async function fileReport(
   input: ReportInput,
   linkedRepository: string | null,
 ): Promise<FileResult> {
+  if ((await ports.d1.query("select 1 from abuse_reporter_blocks where reporter_id = ?", [reporterId])).rows.length > 0) {
+    return { ok: false, reason: "blocked", message: "You can no longer file reports." };
+  }
   const version = await ports.d1.query("select 1 as found from pack_versions where pack_id = ? and version = ?", [pack.id, input.version]);
   if (version.rows.length === 0) return { ok: false, reason: "unknown_version", message: `${pack.name} has no version ${input.version}.` };
 

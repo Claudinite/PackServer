@@ -3,6 +3,7 @@ import { auditHead } from "./audit-head";
 import { auditVerify } from "./audit-verify";
 import { community } from "./community";
 import { domainRecheck } from "./domain-recheck";
+import { moderation } from "./moderation";
 import { flagMirror } from "../flags/mirror";
 import { githubProofLapse } from "./github-proof-lapse";
 import { lifecycle } from "./lifecycle";
@@ -21,7 +22,7 @@ export const CRON_DAILY = "0 3 * * *";
 
 /** Each trigger in wrangler.jsonc runs exactly the jobs listed under it. */
 export const CRON_JOBS: Readonly<Record<string, readonly CronJob[]>> = {
-  [CRON_HOURLY]: [rollup, community, lifecycle, tokenLastUsed, githubProofLapse, syntheticExpiry, flagMirror],
+  [CRON_HOURLY]: [rollup, community, lifecycle, moderation, tokenLastUsed, githubProofLapse, syntheticExpiry, flagMirror],
   [CRON_REPORTS]: [reportNotices],
   [CRON_DAILY]: [prune, domainRecheck, auditHead, auditVerify, trending],
 };

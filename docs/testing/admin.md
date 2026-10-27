@@ -24,8 +24,8 @@ local R2 bucket behind the `AuditSink` port, chained exactly as in production; R
 - **Covers:** REQ-ADMIN-002
 - **Runs:** push
 - **Setup:** a queue holding a held version, an abuse report and a Verified Publisher application.
-- **Action:** admin A dismisses the report, hides a pack, hides a review, yanks a version, quarantines a pack, suspends a publisher, decides the application and revokes a verification from the queue.
-- **Assert:** the queue listed all three kinds; each action takes effect on its target; the audit record holds eight entries with actor A, the action and the target.
+- **Action:** admin A dismisses the report, hides a pack, hides a review, yanks a version, quarantines a pack, suspends a publisher, releases one held section comment and removes another, decides the application and revokes a verification from the queue.
+- **Assert:** the queue listed all three kinds; each action takes effect on its target; a removed held comment is shown to no one, its author included; the audit record holds an entry for each action with actor A, the action and the target.
 
 ### IT-ADMIN-003 Admins approve or reject held versions with the diff and findings
 - **Covers:** REQ-ADMIN-003
