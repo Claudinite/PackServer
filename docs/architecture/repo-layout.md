@@ -56,7 +56,7 @@ packserver/
 │   ├── image-b/                   # Dockerfile: Go, Node 22; the load-and-run runner (cn releases arrive as input)
 │   ├── runner/                    # the in-container programs, emitting schema-validated reports
 │   └── fixtures/                  # bomb corpus, injection corpus, canon-pack samples for calibration
-├── scenarios/                     # integration scenarios, one file per requirement area
+├── scenarios/                     # integration scenarios, one or more files per requirement area
 │   └── probe-safe/                # the subset the prober and release pipeline run (tagged)
 ├── infra/                         # everything not in wrangler: zone rules (transform, WAF, cache, rate),
 │                                  #   Access apps, Logpush jobs + transformer, R2 buckets + locks + custom domains,
