@@ -123,6 +123,91 @@ scenario("IT-PAGE-004 Rendered READMEs are sanitised with nofollow ugc links", a
   expect(view.links.find((l) => l.text === "docs")).toMatchObject({ rel: "nofollow ugc" });
 }, storage);
 
+scenario("IT-PAGE-005 The dashboard shows per-pack status and the Needs-you queue", async (world) => {
+  const pat = await world.publishers.create({ handle: "pat", mfa: "passkey" });
+  const fresh = await world.publishers.create({ handle: "fresh" });
+  const reporter = await world.users.create();
+  const acme = await pat.orgs.create("acme");
+
+  // The pending application and the proof that is five days from lapsing come first: they need the clock to move.
+  const challenge = await acme.verifyDomain("acme.com");
+  challenge.publishTxt();
+  await acme.checkDomain(challenge);
+  await acme.requireMfa("mfa");
+  await acme.applyVerified();
+  world.dns.remove("acme.com");
+  await world.clock.advance("30d");
+  await world.cron.run("domain-rechecks");
+  await world.clock.advance("25d");
+  await pat.signIn();
+  await reporter.signIn();
+
+  const live = await world.packs.public("@acme/live", { versions: ["1.0.0"] });
+  await world.search.list(live, { pitch: "Live", category: "other", parts: ["skills"] });
+  await world.search.signals(live, { stars: 3, fetches: 120 });
+  await world.reports.file(reporter, live, { kind: "bug", title: "Crashes on start" });
+  const reported = await world.packs.public("@acme/reported", { versions: ["1.0.0"] });
+  await world.search.list(reported, { pitch: "Reported", category: "other", parts: ["skills"] });
+  await world.reports.file(reporter, reported, { kind: "security", title: "Token leaks to logs" });
+
+  const release = async (name: string, version: string, archive: ReturnType<World["archive"]>) => {
+    const admitted = await pat.publish(archive).as(`@acme/${name}@${version}`);
+    await world.validation.completes(admitted);
+    return admitted;
+  };
+  const note = (text: string) => ({ "RULES.md": `# Rules\n\n${text}\n` });
+  await (await release("waiting", "1.0.0", world.archive("gcp", { files: note("one") }))).promoted();
+  const widening = await release("waiting", "1.1.0", world.archive("gcp", { files: { ...note("one"), "env-setup.sh": "#!/bin/sh\nmkdir -p .cache\n" } }));
+  expect(await widening.approval()).toMatchObject({ state: "awaiting" });
+  const bad = await release("bad", "1.0.0", world.archive("with-secret"));
+  expect(await bad.run.verdict()).toBe("fail");
+  await world.pauseValidation();
+  const busy = await pat.publish(world.archive("gcp")).as("@acme/busy@1.0.0");
+  const view = await world.dashboard.of(pat);
+  await world.resumeValidation();
+  const row = (pack: { systemName: string }) => view.packs.find((p) => p.name === pack.systemName)?.text ?? "";
+  expect(row(live)).toContain("1.0.0");
+  expect(row(live)).toContain("3 stars · 120 fetches · 1 open issue");
+  expect(row(live)).toMatch(/Live$/);
+  expect(row(busy.pack)).toMatch(/Working$/);
+  expect(row(widening.pack)).toMatch(/Needs you$/);
+  expect(row(bad.pack)).toMatch(/Needs you$/);
+  expect(row(reported)).toMatch(/Needs you$/);
+
+  expect(view.needs).toEqual(["approval", "failed", "proof", "security", "application"]);
+  expect(view.text).toContain("5 things need you.");
+  expect(view.text).toContain("lapses in 5 days");
+  expect(view.text).not.toMatch(/pay|price|billing|subscription/i);
+
+  await fresh.signIn();
+  const empty = await world.dashboard.of(fresh);
+  expect(empty.text).toContain("New pack");
+  expect(empty.packs).toEqual([]);
+  expect(empty.needs).toEqual([]);
+  expect(empty.text).not.toMatch(/Needs you|Drafts|Nothing needs you/);
+}, { needs: ["fakes", "clock", "storage", "reset"] });
+
+scenario("IT-PUB-020 An approval whose staged upload expired moves from Needs you to drafts (dashboard half)", async (world) => {
+  const pat = await world.publishers.create({ handle: "pat" });
+  await pat.orgs.create("acme");
+  const release = async (version: string, files: Record<string, string>) => {
+    const admitted = await pat.publish(world.archive("gcp", { files })).as(`@acme/tool@${version}`);
+    await world.validation.completes(admitted);
+    return admitted;
+  };
+  await (await release("1.0.0", { "RULES.md": "# Rules\n\none\n" })).promoted();
+  const widening = await release("1.1.0", { "RULES.md": "# Rules\n\none\n", "env-setup.sh": "#!/bin/sh\nmkdir -p .cache\n" });
+  expect(await widening.approval()).toMatchObject({ state: "awaiting" });
+  expect((await world.dashboard.of(pat)).needs).toEqual(["approval"]);
+
+  await world.clock.advance("14d");
+  await world.clock.advance("1h");
+  await pat.signIn();
+  const after = await world.dashboard.of(pat);
+  expect(after.needs).toEqual([]);
+  expect(after.text).toContain("Upload expired");
+}, { needs: ["fakes", "clock", "storage", "reset"] });
+
 scenario("IT-SCORE-005 No public repo carries a marker", async (world) => {
   // The browse page's marker belongs to the site pages; the search card carries the fact it is drawn from.
   const pack = await world.packs.public("@kite/upload");

@@ -24,6 +24,7 @@ export interface Env {
   CACHE_KV: KVNamespace;
   PACKS_PUBLIC: R2Bucket;
   PACKS_PRIVATE: R2Bucket;
+  VALIDATION_REPORTS: R2Bucket;
   MCP: Fetcher;
   PUBLISH: Fetcher;
   AUDIT_QUEUE: Queue;
@@ -106,7 +107,7 @@ export function createRuntime(env: Env): WebRuntime {
       turnstile: turnstilePort(() => readSecret(env.TURNSTILE_SECRET)),
       mail: mailPort(env.ENVIRONMENT, env.EMAIL, { from: env.MAIL_FROM, telemetry: logTelemetry as never, failureThreshold: MAIL_FAILURE_THRESHOLD }),
       kv: { SESSIONS_KV: kvPort(env.SESSIONS_KV), CACHE_KV: kvPort(env.CACHE_KV), TELEMETRY_KV: telemetryKv },
-      r2: { PACKS_PUBLIC: r2ReadPort(env.PACKS_PUBLIC), PACKS_PRIVATE: r2ReadPort(env.PACKS_PRIVATE) },
+      r2: { PACKS_PUBLIC: r2ReadPort(env.PACKS_PUBLIC), PACKS_PRIVATE: r2ReadPort(env.PACKS_PRIVATE), VALIDATION_REPORTS: r2ReadPort(env.VALIDATION_REPORTS) },
       rateLimits: { RATE_LIMIT: rateLimitPort(env.RATE_LIMIT) },
       queues: { AUDIT_QUEUE: queuePort(env.AUDIT_QUEUE), REINDEX_QUEUE: queuePort(env.REINDEX_QUEUE) },
       dns: dohDns(),

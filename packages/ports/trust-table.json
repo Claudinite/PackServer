@@ -5,7 +5,8 @@
       "kv": { "SESSIONS_KV": "sessions", "CACHE_KV": "cache", "TELEMETRY_KV": "telemetry" },
       "r2": {
         "PACKS_PUBLIC": { "bucket": "packs-public", "access": "read" },
-        "PACKS_PRIVATE": { "bucket": "packs-private", "access": "read" }
+        "PACKS_PRIVATE": { "bucket": "packs-private", "access": "read" },
+        "VALIDATION_REPORTS": { "bucket": "validation-reports", "access": "read" }
       },
       "queues": { "AUDIT_QUEUE": "audit", "REINDEX_QUEUE": "reindex" },
       "queue_consumers": [],
@@ -149,7 +150,7 @@
         "BUDGET": "budget"
       },
       "ratelimits": [],
-      "secrets": ["SELFTEST_HMAC_KEY", "IP_HASH_MASTER_KEY", "PRINCIPAL_HASH_KEY", "ANALYTICS_READ_TOKEN", "CF_AUDIT_READ_TOKEN", "CF_ACCOUNT_ID"]
+      "secrets": ["SELFTEST_HMAC_KEY", "IP_HASH_MASTER_KEY", "PRINCIPAL_HASH_KEY", "ANALYTICS_READ_TOKEN", "CF_AUDIT_READ_TOKEN", "CF_ACCOUNT_ID", "PUSHOVER_APP_TOKEN", "PUSHOVER_USER_KEY", "HOOK_SECRET_MONITORS", "HOOK_SECRET_ISSUES", "HOOK_SECRET_WITNESS", "MUTE_HMAC_KEY", "CF_PLATFORM_READ_TOKEN"]
     },
     "prober": {
       "d1": {},

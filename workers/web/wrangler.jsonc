@@ -61,6 +61,10 @@
         {
           "binding": "PACKS_PRIVATE",
           "bucket_name": "packs-private-test"
+        },
+        {
+          "binding": "VALIDATION_REPORTS",
+          "bucket_name": "validation-reports-test"
         }
       ],
       "services": [
@@ -161,6 +165,10 @@
         {
           "binding": "PACKS_PRIVATE",
           "bucket_name": "packs-private-staging"
+        },
+        {
+          "binding": "VALIDATION_REPORTS",
+          "bucket_name": "validation-reports-staging"
         }
       ],
       "services": [
@@ -302,6 +310,10 @@
         {
           "binding": "PACKS_PRIVATE",
           "bucket_name": "packs-private"
+        },
+        {
+          "binding": "VALIDATION_REPORTS",
+          "bucket_name": "validation-reports"
         }
       ],
       "services": [

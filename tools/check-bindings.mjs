@@ -29,8 +29,8 @@ const ENV_IMPORT = /import\s*\{[^}]*\benv\b[^}]*\}\s*from\s*["']cloudflare:worke
 // The GitHub App's OAuth client id and secret: web finishes GitHub sign-in with them. The App's private key and webhook secret stay with the github Worker.
 const WEB_SIGN_IN_SECRETS = ["GITHUB_APP_CLIENT_ID", "GITHUB_APP_CLIENT_SECRET"];
 
-// Who sends mail: web, admin for the notices its crons raise, and the validator for a promoted version's notice, through Email Service in the deployed environments. env.test sends over fetch to the world's mail fake.
-const EMAIL_SENDERS = { web: ["EMAIL"], admin: ["EMAIL"], validator: ["EMAIL"] };
+// Who sends mail: web, admin for the notices its crons raise, the validator for a promoted version's notice, and the judge for a page's email copy and its tickets, through Email Service in the deployed environments. env.test sends over fetch to the world's mail fake.
+const EMAIL_SENDERS = { web: ["EMAIL"], admin: ["EMAIL"], validator: ["EMAIL"], judge: ["EMAIL"] };
 
 const suffix = (env, name, sep = "-") => (env === "production" ? name : `${name}${sep}${env}`);
 const workerName = suffix;
