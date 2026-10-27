@@ -311,7 +311,7 @@ export function createCommunity(driver: Driver, aliases: Aliases): CommunityModu
       async commentsCollapsed(pack, section, version) {
         const page = await driver.http.request({ surface: "web", method: "GET", path: `/packs/${pack.systemName}/contents${version ? `?version=${version}` : ""}` });
         if (page.status !== 200) throw new InfrastructureError(`contents: ${page.status}`);
-        const tag = [...page.text.matchAll(/<details\b[^>]*class="cm"[^>]*>/g)].map((m) => m[0]).find((t) => t.includes(`data-section="${section}"`));
+        const tag = [...page.text.matchAll(/<details\b[^>]*class="cm"[^>]*>/g)].map((m) => m[0]).find((t) => t.includes(`data-thread="${section}"`));
         if (!tag) throw new InfrastructureError(`the Contents tab has no comment thread for ${section}`);
         return !/\sopen[\s=>]/.test(tag);
       },

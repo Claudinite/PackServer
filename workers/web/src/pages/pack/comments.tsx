@@ -37,7 +37,7 @@ export const COMMENTS_SCRIPT = `
     return li;
   }
   function load(box) {
-    Promise.all([session(), fetch("/api/packs/" + box.dataset.pack + "/comments?section=" + encodeURIComponent(box.dataset.section))]).then(function (got) {
+    Promise.all([session(), fetch("/api/packs/" + box.dataset.pack + "/comments?section=" + encodeURIComponent(box.dataset.thread))]).then(function (got) {
       if (!got[1].ok) { box.querySelector(".cm-status").textContent = "Comments could not be loaded."; return; }
       return got[1].json().then(function (body) {
         var list = box.querySelector(".cm-list"), hiddenBox = box.querySelector(".cm-hidden"), hiddenList = hiddenBox.querySelector("ul");
@@ -59,7 +59,7 @@ export const COMMENTS_SCRIPT = `
       event.preventDefault();
       var form = event.target, status = box.querySelector(".cm-status");
       status.textContent = "Sending...";
-      call(box, "POST", "/comments", { section: box.dataset.section, version: box.dataset.version, body: form.body.value }).then(function (r) {
+      call(box, "POST", "/comments", { section: box.dataset.thread, version: box.dataset.version, body: form.body.value }).then(function (r) {
         return r.json().then(function (body) {
           if (!r.ok) { status.textContent = body.message || "The comment was refused."; return; }
           form.body.value = ""; load(box);
@@ -76,7 +76,7 @@ export const COMMENTS_SCRIPT = `
  */
 export function SectionComments(props: { pack: string; version: string; section: string; count: number }) {
   return (
-    <details class="cm" data-pack={props.pack} data-version={props.version} data-section={props.section}>
+    <details class="cm" data-pack={props.pack} data-version={props.version} data-thread={props.section}>
       <summary>{props.count === 0 ? "Comments" : `Comments (${props.count})`}</summary>
       <p class="cm-status muted" role="status"></p>
       <p class="cm-empty muted">No comments on this section yet.</p>
