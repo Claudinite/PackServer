@@ -7,6 +7,7 @@ import { CONTENT_PARTS, type PackContents } from "../../routes/packs/contents";
 import type { PackData } from "./data";
 import { fetchesLine, titleCase } from "../browse/format";
 import { dayOf, plural, points } from "./figures";
+import { SectionComments } from "./comments";
 import { fileAnchor, sectionsOf } from "./sections";
 
 export const TRUST_ID = "trust";
@@ -292,7 +293,7 @@ export function TrustDrawer(props: { data: PackData; version: VersionView | null
   );
 }
 
-export function ContentsView(props: { contents: PackContents }) {
+export function ContentsView(props: { contents: PackContents; counts?: Record<string, number> }) {
   const { contents } = props;
   return (
     <>
@@ -305,7 +306,12 @@ export function ContentsView(props: { contents: PackContents }) {
             {files.map((f) => (
               <div class="file" id={fileAnchor(f.path)}>
                 <h3>{f.path}</h3>
-                {sectionsOf(f.path, f.text).map((s) => <div class="sec" id={s.id} data-section={s.id}><FileText path={f.path} text={s.text} /></div>)}
+                {sectionsOf(f.path, f.text).map((s) => (
+                  <div class="sec" id={s.id} data-section={s.id}>
+                    <FileText path={f.path} text={s.text} />
+                    {props.counts ? <SectionComments pack={contents.pack} version={contents.version} section={s.id} count={props.counts[s.id] ?? 0} /> : null}
+                  </div>
+                ))}
               </div>
             ))}
           </section>

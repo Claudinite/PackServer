@@ -1,5 +1,5 @@
 import {
-  emptyHistogram, evaluateVersion, gateResultPoint, type GateReport, type GateVerdict, type Mode, type ReleaseRecord, type Source, type VersionInputs,
+  emptyHistogram, evaluateVersion, gateResultPoint, type GateReport, type GateVerdict, type IndexFetch, type Mode, type ReleaseRecord, type Source, type VersionInputs,
 } from "@packserver/core/gates";
 import type { Clock, KV, Stats } from "@packserver/ports";
 import { domainFacts, pickBaseline, probeFacts, realRatePerSecond, requestsToday, trafficByVersion, type VersionTraffic } from "../stats/aggregate";
@@ -28,6 +28,10 @@ export interface GateCycle {
   /** Changed verdicts left for the next cycle by the point budget. */
   pointsDeferred: number;
   requestsToday: number;
+  /** The prober's index fetches by the version it ran against, for the index pages. */
+  indexFetches: Map<string, IndexFetch[]>;
+  /** Real requests a second over the last quarter hour on the Workers that carry the read path. */
+  readPathRps: number;
 }
 
 const emptyInputs = (versionId: string, worker: string): VersionInputs => ({
@@ -175,7 +179,7 @@ export async function evaluateGates(deps: GateDeps, release: ReleaseRecord | nul
   }
   await Promise.all([...touched].map((v) => store.putEmitted(v, emittedNow.get(v) as Record<string, EmittedVerdict>)));
   await store.putLastCycle(now);
-  return { versions: tracked.size, verdicts, pointsWritten: sent.length, pointsDeferred: pending.length - sent.length, requestsToday: requestsToday(data.groups) };
+  return { versions: tracked.size, verdicts, pointsWritten: sent.length, pointsDeferred: pending.length - sent.length, requestsToday: requestsToday(data.groups), indexFetches: probes.indexFetches, readPathRps: (rates.get("web") ?? 0) + (rates.get("mcp") ?? 0) };
 }
 
 const stripTimes = (gates: GateReport["gates"]): unknown => Object.values(gates).map((v) => ({ ...v, evaluated_at: 0 }));

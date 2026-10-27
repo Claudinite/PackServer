@@ -152,3 +152,43 @@ export const community_notices = sqliteTable(
   },
   (t) => [index("community_notices_unsent_idx").on(t.sent_at), check("community_notices_kind_check", sql`${t.kind} in (${inList(REVIEW_NOTICE_KINDS)})`)],
 );
+
+/**
+ * A comment on one section of a pack's readable contents (REQ-COMM-015). `section` is the anchor id the Contents tab gives
+ * the section. Rows are never deleted; a comment the prose screen held (`held_at`) is shown to its author alone.
+ */
+export const comments = sqliteTable(
+  "comments",
+  {
+    id: text("id").primaryKey(),
+    pack_id: text("pack_id")
+      .notNull()
+      .references(() => packs.id),
+    section: text("section").notNull(),
+    /** The version whose contents the author was reading. */
+    version: text("version").notNull(),
+    user_id: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    body: text("body").notNull(),
+    created_at: text("created_at").notNull(),
+    held_at: text("held_at"),
+  },
+  (t) => [index("comments_section_idx").on(t.pack_id, t.section, t.created_at), index("comments_user_time_idx").on(t.user_id, t.created_at)],
+);
+
+/** One up or down vote per account per comment; whether it counts is decided when it is read, as for stars. */
+export const comment_votes = sqliteTable(
+  "comment_votes",
+  {
+    comment_id: text("comment_id")
+      .notNull()
+      .references(() => comments.id),
+    user_id: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    value: integer("value").notNull(),
+    voted_at: text("voted_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.comment_id, t.user_id] }), check("comment_votes_value_check", sql`${t.value} in (-1, 1)`)],
+);

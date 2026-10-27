@@ -100,9 +100,9 @@ journey is [JT-004](journeys.md).
 ### IT-COMM-015 Section comments and votes on pack contents
 - **Covers:** REQ-COMM-015
 - **Runs:** push, nightly (browser for the collapse and disclosure)
-- **Action:** a person comments on a `RULES.md` section; others vote it down to net −2; read at +2 d and +3 d 1 h; a 1-hour-old account comments; an account posts 11 comments in a day.
+- **Action:** a person comments on a `RULES.md` section; others vote it down to net −2 while a 1-hour-old account, the pack's owner and the author also vote; read at +2 d and +3 d 1 h; a comment with net-zero votes is read at the same age; a 1-hour-old account comments; an account posts 11 comments in a day; a comment carrying a token is posted.
 - **Faked:** clock.
-- **Assert:** the comment is collapsed by default; at +2 d it is visible behind the collapse; at +3 d 1 h it is behind a disclosure; the young account's comment is refused; the 11th comment is refused.
+- **Assert:** the comment is collapsed by default; at +2 d it is visible behind the collapse; at +3 d 1 h it is behind a disclosure; the young account's comment is refused; the 11th comment is refused. **Contrast:** votes from the owner and the author never count and a young account's counts once it is a day old; net zero is not hidden; a comment the text checks flag is held and only its author is shown it.
 
 ## Bug and security reports
 

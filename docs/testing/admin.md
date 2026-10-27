@@ -63,7 +63,7 @@ local R2 bucket behind the `AuditSink` port, chained exactly as in production; R
 - **Runs:** push
 - **Setup:** the gate judge's service-binding principal; the admin app with a valid Access assertion; a quarantined version and an enabled kill switch.
 - **Action:** as the judge: quarantine a version, enable the new-pack kill switch, set `telemetry_mode`, acknowledge a page; then un-quarantine, disable the kill switch, unfreeze index regeneration, turn a feature flag off and roll back; as the admin app: the same lifting methods with and without the Access assertion; deliver a judge inbound hook with a bad per-source signature and a good one; read the judge Worker's bindings in the configuration lint.
-- **Assert:** the judge's four named methods succeed and every other call is refused; every lifting method succeeds only from the admin app with the Access assertion and is refused without it; each successful tap is an `admin.action` audit row with the actor; the badly signed hook is refused and the good one accepted; the judge Worker holds no binding except its own datasets.
+- **Assert:** the judge's four named methods succeed and every other call is refused; every lifting method succeeds only from the admin app with the Access assertion and is refused without it; each successful tap is an `admin.action` audit row with the actor; the badly signed hook is refused and the good one accepted; the judge Worker holds no binding into the application except the admin API, and its other bindings are its datasets and KV namespaces, a send-only mail binding limited to the ops address, and the Pushover, hook and mute secrets, with no GitHub credential.
 
 ## Audit
 

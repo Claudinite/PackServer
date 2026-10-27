@@ -127,7 +127,7 @@ judge may quarantine a version, enable the new-pack kill switch, set `telemetry_
 acknowledge; every other method is reachable only from the admin app with an Access assertion, and
 any method that lifts a protection (un-quarantine, unfreeze, a flag off, the kill switch off)
 always requires the Access assertion. The judge's inbound hooks verify a per-source signature and
-run in a Worker that holds no binding except the judge's own datasets.
+run in a Worker that holds no binding into the application except this admin API. It holds its own datasets and KV namespaces, a send-only mail binding limited to the ops address, the Pushover credentials, and one secret for each hook source and for mute links; it holds no GitHub credential.
 
 The ops page the monitoring plan requires (one-tap roll back, quarantine, kill switch, freeze index
 regeneration, block a source, acknowledge a page) is part of the admin app; each tap is an
