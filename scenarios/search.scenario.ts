@@ -170,17 +170,20 @@ scenario("IT-COMM-010 A published advisory, a failed newest validation or an abu
   const original = [one.name, two.name, three.name, four.name];
   expect((await ask(world, query)).ids).toEqual(original);
 
-  await world.search.demote(one, "advisory");
+  const reporter = await world.users.create();
+  await reporter.signIn();
+  const report = await world.reports.file(reporter, one, { kind: "security", version: "1.0.0", title: "Token leaks to logs" });
+  expect((await ask(world, query)).ids).toEqual(original);
+  await world.reports.registrySecurity.publishAdvisory(report, { summary: "A token could reach logs.", versions: ["1.0.0"] });
   await world.search.demote(two, "failed_validation");
   await world.search.demote(three, "abuse_hold");
   const demoted = await ask(world, query);
-  expect(demoted.ids).toEqual([four.name, one.name, two.name, three.name]);
+  expect(demoted.ids).toEqual([four.name, two.name, three.name, one.name]);
   expect((await ask(world, undefined, { category: "backend" })).ids[0]).toBe(four.name);
 
-  await world.search.demote(one, null);
   await world.search.demote(two, null);
   await world.search.demote(three, null);
-  expect((await ask(world, query)).ids).toEqual(original);
+  expect((await ask(world, query)).ids).toEqual([two.name, three.name, four.name, one.name]);
 }, storage);
 
 scenario(

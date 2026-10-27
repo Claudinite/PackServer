@@ -49,8 +49,6 @@ export async function publishAdvisory(ports: ReportPorts, reportId: string, inpu
     },
     ...versions.map((version) => ({ sql: "insert into advisory_versions (advisory_id, pack_id, version) values (?, ?, ?)", params: [id, report.pack_id, version] })),
     ...caps,
-    // A failed validation or an abuse hold that already demotes the pack keeps its own reason.
-    { sql: "update pack_search set demotion = 'advisory' where pack_id = ? and demotion is null", params: [report.pack_id] },
   ]);
   const published = (await advisoriesFor(ports.d1, String(report.pack_id))).find((a) => a.id === id);
   return { ok: true, advisory: published! };

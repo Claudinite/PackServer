@@ -137,24 +137,17 @@ describe("security reports", () => {
     expect(await publishAdvisory(f.ports, report.id, { summary: "again", versions: ["1.0.0"] })).toMatchObject({ ok: false, reason: "exists" });
   });
 
-  it("cap the named versions' scores and demote the pack, leaving a report that is not yet an advisory alone", async () => {
+  it("cap the named versions' scores, leaving a report that is not yet an advisory alone", async () => {
     const f = await fixture();
     const ann = await f.user("ann");
     await f.d1.query("update pack_versions set score = 90, score_rules_version = '2026.10.1' where pack_id = ?", [f.pack.id]);
     await f.d1.query("update pack_versions set score = 30 where pack_id = ? and version = '1.0.0'", [f.pack.id]);
-    await f.d1.query(
-      "insert into pack_search (pack_id, name, pitch, category, tags, skills, parts, has_repository, card, updated_at) values (?, '@acme/gcp', 'p', 'cloud', '', '', '', 0, '{}', 'x')",
-      [f.pack.id],
-    );
     const { report } = await filed(f, ann, security());
-    const state = async () => ({
-      scores: (await f.d1.query("select version, score from pack_versions where pack_id = ? order by version", [f.pack.id])).rows.map((r) => Number(r.score)),
-      demotion: (await f.d1.query("select demotion from pack_search where pack_id = ?", [f.pack.id])).rows[0]?.demotion,
-    });
-    expect(await state()).toEqual({ scores: [30, 90, 90], demotion: null });
+    const state = async () => (await f.d1.query("select version, score from pack_versions where pack_id = ? order by version", [f.pack.id])).rows.map((r) => Number(r.score));
+    expect(await state()).toEqual([30, 90, 90]);
 
     await publishAdvisory(f.ports, report.id, { summary: "Token leak", versions: ["1.0.0", "1.0.1"], fixed_in: "1.0.2" });
-    expect(await state()).toEqual({ scores: [30, 40, 90], demotion: "advisory" });
+    expect(await state()).toEqual([30, 40, 90]);
     const breakdown = (await f.d1.query("select score_breakdown from pack_versions where pack_id = ? and version = '1.0.1'", [f.pack.id])).rows[0]?.score_breakdown;
     expect(JSON.parse(String(breakdown))).toEqual({ cap: { reason: "published advisory", max: 40 } });
   });

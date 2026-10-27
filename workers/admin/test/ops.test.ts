@@ -313,3 +313,30 @@ describe("revocation (REQ-VAL-018)", () => {
     expect(callers).toEqual(["workers/admin/src/ops/index.ts"]);
   });
 });
+
+describe("security advisories (REQ-MOD-007)", () => {
+  const report = (f: ReturnType<typeof fixture>, id: string, kind: string) =>
+    f.db.exec(
+      `insert into reports (id, pack_id, reporter_id, kind, version, severity, title, repro, environment, status, route, disclosure_deadline, created_at, updated_at) values ('${id}', 'p1', 'u1', '${kind}', '1.0.0', 'high', 't', '', '', 'open', 'registry_security', ${kind === "security" ? "'2027-01-01T00:00:00.000Z'" : "null"}, '${AT}', '${AT}')`,
+    );
+
+  it("publishes for a security report and audits the advisory, and refuses the rest", async () => {
+    const f = fixture();
+    report(f, "r-sec", "security");
+    report(f, "r-bug", "bug");
+    const body = { summary: "A token could reach logs.", versions: ["1.0.0"] };
+
+    expect((await f.admin("POST", "/admin/reports/r-sec/advisory", { summary: "" })).status).toBe(400);
+    expect((await f.admin("POST", "/admin/reports/nope/advisory", body)).status).toBe(404);
+    expect((await f.admin("POST", "/admin/reports/r-bug/advisory", body)).status).toBe(409);
+    expect(f.audits()).toEqual([]);
+
+    const done = await f.admin("POST", "/admin/reports/r-sec/advisory", body);
+    expect(done.status).toBe(200);
+    const advisory = ((await done.json()) as { advisory: { id: string } }).advisory;
+    expect((await f.admin("POST", "/admin/reports/r-sec/advisory", body)).status).toBe(409);
+    expect(f.audits()).toHaveLength(1);
+    expect(f.audits()[0]).toMatchObject({ actor_id: ADMIN, target: "report:r-sec" });
+    expect(f.audits()[0]?.detail).toContain(advisory.id);
+  });
+});

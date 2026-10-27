@@ -15,7 +15,7 @@ export interface PackRef {
  * exist yet: unknown is not zero, and an unwired source must not read as "no advisories".
  */
 export interface PackExtras {
-  advisories(pack: PackRef): Promise<Advisory[] | null>;
+  advisories(pack: PackRef, version: string): Promise<Advisory[] | null>;
   reportedUnderReview(pack: PackRef): Promise<boolean | null>;
   verifiedAdoptions(pack: PackRef): Promise<number | null>;
   declaringRepositories(pack: PackRef): Promise<number | null>;

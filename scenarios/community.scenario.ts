@@ -155,6 +155,8 @@ scenario("IT-MOD-007 Registry security publishes advisories that attach to versi
   expect((await pack.version("1.0.0").detail()).score.total).toBe(80);
 
   await world.reports.registrySecurity.publishAdvisory(first, { summary: "A token could reach logs.", versions: ["1.0.0", "1.0.1"], fixedIn: "1.0.2" });
+  // The newest version is clean, so the pack keeps its place.
+  expect((await world.search.site("deploy to cloud")).ids).toEqual([pack.name, rival.name]);
   for (const [version, affected] of [["1.0.0", true], ["1.0.1", true], ["1.0.2", false]] as const) {
     expect((await world.reports.advisories(pack, version)).map((a) => a.summary)).toEqual(affected ? ["A token could reach logs."] : []);
   }
@@ -172,7 +174,6 @@ scenario("IT-MOD-007 Registry security publishes advisories that attach to versi
   const everything = JSON.stringify(await world.reports.advisories(pack));
   for (const private_ of ["SECRET-REPRO-STEPS", "Token leaks to logs", "Path traversal in unpack"]) expect(everything).not.toContain(private_);
 
-  expect((await world.search.site("deploy to cloud")).ids).toEqual([rival.name, pack.name]);
   // get_pack answers per version; the advisory is also what caps the score and demotes the pack, which the report alone never did.
   const agent = world.agents.anonymous();
   const advisoryVersions = async (version: string) => ((await agent.pack(pack, version)).body.advisories as Array<{ version: string }>).map((a) => a.version);
@@ -183,6 +184,11 @@ scenario("IT-MOD-007 Registry security publishes advisories that attach to versi
   expect((await pack.version("1.0.1").detail()).score.total).toBe(40);
   expect((await pack.version("1.0.2").detail()).score.total).toBe(80);
   expect((await agent.pack(pack, "1.0.0")).body.score).toMatchObject({ total: 40, cap: { reason: "published advisory", max: 40 } });
+
+  // An advisory that names the newest version demotes the pack.
+  const third = await world.reports.file(await person(world), pack, { kind: "security", version: "1.0.2", title: "Another leak" });
+  await world.reports.registrySecurity.publishAdvisory(third, { summary: "Another token path.", versions: ["1.0.2"] });
+  expect((await world.search.site("deploy to cloud")).ids).toEqual([rival.name, pack.name]);
 }, NEEDS);
 
 scenario("IT-MOD-017 Signed-in people see their own reports", async (world) => {

@@ -137,6 +137,13 @@ ORDER BY rank LIMIT ${LEXICAL_LIMIT}`,
 const asNumber = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
 const asText = (v: unknown): string | null => (typeof v === "string" ? v : null);
 
+/** Packs whose newest eligible version a published advisory names (REQ-COMM-010); a fixed version promoted later lifts it. */
+async function advisedNewest(d1: D1, newest: Map<string, Record<string, unknown>>): Promise<Set<string>> {
+  if (newest.size === 0) return new Set();
+  const { rows } = await d1.query("SELECT pack_id, version FROM advisory_versions WHERE pack_id IN (SELECT value FROM json_each(?))", [JSON.stringify([...newest.keys()])]);
+  return new Set(rows.filter((r) => newest.get(String(r.pack_id))?.version === String(r.version)).map((r) => String(r.pack_id)));
+}
+
 /** The newest eligible version of each pack, with the pack's search row and stats. */
 async function hydrate(d1: D1, request: SearchRequestBody, ids: string[] | undefined, access?: SearchAccess): Promise<Candidate[]> {
   const w = packFilters(request);
@@ -160,6 +167,7 @@ LIMIT ${ROW_CAP}`,
     const held = newest.get(id);
     if (!held || compareVersions(String(row.version), String(held.version)) > 0) newest.set(id, row);
   }
+  const advised = await advisedNewest(d1, newest);
   const out: Candidate[] = [];
   for (const row of newest.values()) {
     let stored: StoredCard;
@@ -177,7 +185,7 @@ LIMIT ${ROW_CAP}`,
       parts: String(row.parts).split(" ").filter(isSearchPart),
       hasRepository: Number(row.has_repository) === 1,
       stored,
-      demoted: row.demotion !== null && row.demotion !== undefined,
+      demoted: (row.demotion !== null && row.demotion !== undefined) || advised.has(String(row.pack_id)),
       version: String(row.version),
       publishedAt: String(row.published_at),
       minEngineVersion: asText(row.min_engine_version),

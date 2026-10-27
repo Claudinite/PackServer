@@ -45,6 +45,6 @@ routes.post("/admin/reports/:id/advisory", async (c) => {
   const id = c.req.param("id");
   const result = await publishAdvisory(core, id, input.data);
   if (!result.ok) return c.json(result, result.reason === "not_found" ? 404 : 409, NO_STORE);
-  await core.audit(actorOf(c.get("admin")), "admin.action", `report:${id}`, { detail: { verb: "report.advisory" } });
+  await core.audit(actorOf(c.get("admin")), "admin.action", `report:${id}`, { detail: { verb: "report.advisory", reason: `advisory ${result.advisory.id} for ${result.advisory.affected_versions.join(", ")}` } });
   return c.json(result, 200, NO_STORE);
 });
