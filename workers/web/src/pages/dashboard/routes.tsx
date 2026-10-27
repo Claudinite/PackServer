@@ -1,7 +1,12 @@
 import { Hono } from "hono";
 import type { WebEnv } from "../../context";
 import { renderPage } from "../../layout";
+import { CLIENT_LIB } from "../account/client";
+import { ActionDialog } from "../account/dialog";
 import { ACCOUNT_CSS } from "../account/styles";
+import { APPROVE_CLIENT } from "../validation/client";
+import { ApprovalSheet } from "../validation/approval";
+import { REASON_TEXT } from "./data";
 import { plural } from "../account/format";
 import { signedIn } from "../org-settings/session";
 import { loadDashboard, type Draft, type Need, type PackStatus, type PackSummary } from "./data";
@@ -41,10 +46,19 @@ function PackRow(props: { pack: PackSummary }) {
 
 function NeedRow(props: { need: Need }) {
   const { need } = props;
+  const offer = need.approval;
   return (
     <li data-need={need.kind}>
-      <span class="grow">{need.text}</span>
-      {need.href && need.action ? <a href={need.href}>{need.action}</a> : null}
+      <span class="grow">
+        {need.text}
+        {offer ? (
+          <details class="fold">
+            <summary>{need.action}</summary>
+            <ApprovalSheet runId={offer.runId} pack={offer.pack} version={offer.version} reasons={offer.reasons.map((r) => REASON_TEXT[r] ?? r).join(", ")} sheet={offer.sheet} />
+          </details>
+        ) : null}
+      </span>
+      {!offer && need.href && need.action ? <a href={need.href}>{need.action}</a> : null}
     </li>
   );
 }
@@ -79,6 +93,7 @@ routes.get("/dashboard", async (c) => {
     children: (
       <div class="acct">
         <style nonce={nonce} dangerouslySetInnerHTML={{ __html: ACCOUNT_CSS + DASH_CSS }} />
+        <div id="ps" data-csrf={who.csrf} />
         <div class="head">
           <h1>Dashboard</h1>
           <a class="btn primary" href="/publish">New pack</a>
@@ -112,6 +127,10 @@ routes.get("/dashboard", async (c) => {
             )}
           </>
         )}
+        <p class="status" id="ps-status" role="status" />
+        <ActionDialog />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: CLIENT_LIB }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: APPROVE_CLIENT }} />
       </div>
     ),
   });

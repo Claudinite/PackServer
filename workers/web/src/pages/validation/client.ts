@@ -8,9 +8,13 @@ export const VALIDATION_CLIENT = String.raw`
   if (page.getAttribute("data-status") !== "finished") {
     var steps = document.getElementById("steps");
     var line = document.getElementById("verdict");
+    var started = Date.now();
+    var timer;
     var tick = function () {
+      if (document.hidden) return;
+      if (Date.now() - started > 15 * 60 * 1000) { clearInterval(timer); return; }
       fetch("/validation/" + encodeURIComponent(id) + "/state", { credentials: "same-origin", headers: { accept: "application/json" } })
-        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (res) { if (res.status === 404) clearInterval(timer); return res.ok ? res.json() : null; })
         .then(function (state) {
           if (!state) return;
           if (state.status === "finished") { location.reload(); return; }
@@ -24,7 +28,7 @@ export const VALIDATION_CLIENT = String.raw`
         })
         .catch(function () {});
     };
-    setInterval(tick, 2000);
+    timer = setInterval(tick, 2000);
   }
 
   var form = document.getElementById("appeal");
@@ -38,5 +42,27 @@ export const VALIDATION_CLIENT = String.raw`
         .catch(function (err) { say.textContent = err.message; });
     });
   }
+})();
+`;
+
+/** Confirms an approval with a passkey, for any page that renders the approval sheet. */
+export const APPROVE_CLIENT = String.raw`
+(function () {
+  var PS = window.PS;
+  var status = document.getElementById("ps-status");
+  document.addEventListener("click", function (e) {
+    var button = e.target.closest ? e.target.closest("[data-approve]") : null;
+    if (!button) return;
+    var id = button.getAttribute("data-approve");
+    status.textContent = "";
+    PS.sensitive({
+      title: "Approve " + button.getAttribute("data-pack") + " " + button.getAttribute("data-version"),
+      detail: "It is published as soon as you confirm, and every owner is told by email.",
+      action: "publish.approve", target: id,
+      run: function (assertion) {
+        return PS.api("POST", "/api/publish/runs/" + encodeURIComponent(id) + "/approve", {}, assertion ? { "x-assertion": assertion } : {});
+      }
+    }).then(function (done) { if (done) location.reload(); }).catch(function (err) { if (!PS.declined(err)) status.textContent = err.message; });
+  });
 })();
 `;

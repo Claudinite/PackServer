@@ -1,5 +1,6 @@
 import { ValidationReport, type Finding } from "@packserver/schema";
 import type { Context } from "hono";
+import { sheetOf, type SheetView } from "../dashboard/data";
 import type { WebEnv } from "../../context";
 
 export interface Milestone {
@@ -29,6 +30,8 @@ export interface RunPage {
   /** Whether the version this run produced has been published, which opens its report to everyone. */
   published: boolean;
   approval: "awaiting" | "approved" | null;
+  /** The sheet an owner confirms, while the version waits for one. */
+  sheet: { reasons: string[]; view: SheetView } | null;
   decision: { kind: string; reason: string | null } | null;
   appeal: { state: string } | null;
   milestones: Milestone[];
@@ -47,6 +50,14 @@ export function failuresFirst(findings: readonly Finding[]): Finding[] {
   return [...findings].sort((a, b) => CLASS_ORDER[a.class] - CLASS_ORDER[b.class]);
 }
 
+function readReport(bytes: Uint8Array) {
+  try {
+    return ValidationReport.safeParse(JSON.parse(new TextDecoder().decode(bytes)));
+  } catch {
+    return null;
+  }
+}
+
 /** One run as its page shows it, or null when the viewer may not know it exists. */
 export async function loadRun(c: Context<WebEnv>, id: string): Promise<RunPage | null> {
   const { d1, r2 } = c.get("runtime").ports;
@@ -58,14 +69,14 @@ export async function loadRun(c: Context<WebEnv>, id: string): Promise<RunPage |
       params: [id],
     },
     { sql: "select step, outcome, detail from validation_milestones where run_id = ? order by seq", params: [id] },
-    { sql: "select approved_at from run_approvals where run_id = ?", params: [id] },
+    { sql: "select approved_at, reasons, sheet from run_approvals where run_id = ?", params: [id] },
     { sql: "select decision, reason from review_decisions where run_id = ?", params: [id] },
     { sql: "select state from review_appeals where run_id = ?", params: [id] },
     { sql: "select m.role from scope_members m join validation_runs r on r.scope_id = m.scope_id where r.id = ? and m.user_id = ?", params: [id, userId ?? ""] },
     {
       sql: `select 1 from validation_runs r join scopes s on s.id = r.scope_id join packs p on p.scope_id = r.scope_id and p.name = r.pack_name
               join pack_versions v on v.pack_id = p.id and v.report_key = r.report_key
-             where r.id = ? and r.report_key is not null and p.visibility = 'public' and s.kind != 'synthetic'`,
+             where r.id = ? and r.report_key is not null and v.published_at is not null and p.visibility = 'public' and s.kind != 'synthetic'`,
       params: [id],
     },
   ]);
@@ -79,7 +90,7 @@ export async function loadRun(c: Context<WebEnv>, id: string): Promise<RunPage |
   let unreadable = false;
   if (row.report_key !== null) {
     const bytes = await r2.VALIDATION_REPORTS?.get(String(row.report_key));
-    const parsed = bytes ? ValidationReport.safeParse(JSON.parse(new TextDecoder().decode(bytes))) : null;
+    const parsed = bytes ? readReport(bytes) : null;
     if (parsed?.success) findings = failuresFirst(parsed.data.findings);
     else unreadable = true;
   }
@@ -103,9 +114,10 @@ export async function loadRun(c: Context<WebEnv>, id: string): Promise<RunPage |
     created_at: String(row.created_at),
     published: isPublished,
     approval: approval!.rows[0] ? (approval!.rows[0].approved_at ? "approved" : "awaiting") : null,
+    sheet: approval!.rows[0] && !approval!.rows[0].approved_at && memberRole === "owner" ? { reasons: JSON.parse(String(approval!.rows[0].reasons)) as string[], view: sheetOf(String(approval!.rows[0].sheet)) } : null,
     decision: decision!.rows[0] ? { kind: String(decision!.rows[0].decision), reason: decision!.rows[0].reason === null ? null : String(decision!.rows[0].reason) } : null,
     appeal: appeal!.rows[0] ? { state: String(appeal!.rows[0].state) } : null,
-    milestones: milestones!.rows.map((m) => ({ step: String(m.step), outcome: m.outcome as Milestone["outcome"], detail: m.detail === null ? null : String(m.detail) })),
+    milestones: milestones!.rows.map((m) => ({ step: String(m.step), outcome: m.outcome as Milestone["outcome"], detail: m.detail === null || !memberRole ? null : String(m.detail) })),
     findings: memberRole ? findings : findings.map((f) => ({ ...f, quote: null })),
     unreadable,
     previous: previous.map((p) => ({ id: String(p.id), version: String(p.version), verdict: p.verdict === null ? null : String(p.verdict), status: String(p.status), created_at: String(p.created_at) })),
@@ -117,6 +129,7 @@ export async function loadRun(c: Context<WebEnv>, id: string): Promise<RunPage |
 export function verdictSentence(run: RunPage): string {
   const count = (cls: Finding["class"]) => run.findings.filter((f) => f.class === cls).length;
   const things = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  if (run.decision?.kind === "approve") return run.published ? "Passed review and published." : "Passed review. Publishing now.";
   if (run.decision?.kind === "reject" || run.decision?.kind === "quarantine_publisher") {
     return `Rejected after review${run.decision.reason ? `: ${run.decision.reason}` : ""}.`;
   }

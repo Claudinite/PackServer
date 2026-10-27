@@ -7,7 +7,7 @@ export interface DashboardView {
   text: string;
   /** The kind of each Needs-you row, in the order shown. */
   needs: string[];
-  /** One entry per pack row, by the pack's system name (aliased as the World's other handles are). */
+  /** One entry per pack row, named as the site spells it: compare with a pack handle's `systemName`. */
   packs: Array<{ name: string; text: string }>;
 }
 

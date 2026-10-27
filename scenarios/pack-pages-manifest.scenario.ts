@@ -187,6 +187,27 @@ scenario("IT-PAGE-005 The dashboard shows per-pack status and the Needs-you queu
   expect(empty.text).not.toMatch(/Needs you|Drafts|Nothing needs you/);
 }, { needs: ["fakes", "clock", "storage", "reset"] });
 
+scenario("IT-PUB-020 An approval whose staged upload expired moves from Needs you to drafts (dashboard half)", async (world) => {
+  const pat = await world.publishers.create({ handle: "pat" });
+  await pat.orgs.create("acme");
+  const release = async (version: string, files: Record<string, string>) => {
+    const admitted = await pat.publish(world.archive("gcp", { files })).as(`@acme/tool@${version}`);
+    await world.validation.completes(admitted);
+    return admitted;
+  };
+  await (await release("1.0.0", { "RULES.md": "# Rules\n\none\n" })).promoted();
+  const widening = await release("1.1.0", { "RULES.md": "# Rules\n\none\n", "env-setup.sh": "#!/bin/sh\nmkdir -p .cache\n" });
+  expect(await widening.approval()).toMatchObject({ state: "awaiting" });
+  expect((await world.dashboard.of(pat)).needs).toEqual(["approval"]);
+
+  await world.clock.advance("14d");
+  await world.clock.advance("1h");
+  await pat.signIn();
+  const after = await world.dashboard.of(pat);
+  expect(after.needs).toEqual([]);
+  expect(after.text).toContain("Upload expired");
+}, { needs: ["fakes", "clock", "storage", "reset"] });
+
 scenario("IT-SCORE-005 No public repo carries a marker", async (world) => {
   // The browse page's marker belongs to the site pages; the search card carries the fact it is drawn from.
   const pack = await world.packs.public("@kite/upload");

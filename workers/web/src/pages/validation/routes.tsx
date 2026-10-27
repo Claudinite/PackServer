@@ -3,10 +3,13 @@ import { Hono } from "hono";
 import type { WebEnv } from "../../context";
 import { renderPage } from "../../layout";
 import { CLIENT_LIB } from "../account/client";
+import { ActionDialog } from "../account/dialog";
 import { stampOf } from "../account/format";
 import { ACCOUNT_CSS } from "../account/styles";
 import { notFoundPage } from "../home/not-found";
-import { VALIDATION_CLIENT } from "./client";
+import { REASON_TEXT } from "../dashboard/data";
+import { ApprovalSheet } from "./approval";
+import { APPROVE_CLIENT, VALIDATION_CLIENT } from "./client";
 import { loadRun, logOf, verdictSentence, type RunPage } from "./data";
 
 export const routes = new Hono<WebEnv>();
@@ -52,7 +55,6 @@ function Actions(props: { run: RunPage }) {
   return (
     <div class="actions">
       {retry ? <a class="btn" href={`/publish?pack=${encodeURIComponent(pack)}`}>{run.verdict === "error" ? "Re-run" : "Resubmit"}</a> : null}
-      {run.approval === "awaiting" && run.role === "owner" ? <a href={`/api/publish/runs/${run.id}/approval`}>Review and approve</a> : null}
       <a href={`/validation/${run.id}/log`}>Download log</a>
     </div>
   );
@@ -79,6 +81,12 @@ routes.get("/validation/:id", async (c) => {
         {run.appeal ? <p class="small muted">Appeal {run.appeal.state === "open" ? "sent; a person at PackServer will read it" : run.appeal.state === "upheld" ? "upheld" : "denied"}.</p> : null}
         {run.status === "finished" ? null : <ul class="list" id="steps">{run.milestones.map((m) => <li>{m.step} · {m.outcome}</li>)}</ul>}
         <Actions run={run} />
+        {run.sheet ? (
+          <section>
+            <h2>Approve</h2>
+            <ApprovalSheet runId={run.id} pack={pack} version={run.version} reasons={run.sheet.reasons.map((r) => REASON_TEXT[r] ?? r).join(", ")} sheet={run.sheet.view} />
+          </section>
+        ) : null}
         {canAppeal ? (
           <section>
             <h2>Appeal</h2>
@@ -114,7 +122,9 @@ routes.get("/validation/:id", async (c) => {
         )}
         <p class="status" id="ps-status" role="status" />
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: CLIENT_LIB }} />
+        <ActionDialog />
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: VALIDATION_CLIENT }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: APPROVE_CLIENT }} />
       </div>
     ),
   });

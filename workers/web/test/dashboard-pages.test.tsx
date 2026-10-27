@@ -70,7 +70,7 @@ describe("dashboard (REQ-TELEM-005)", () => {
     await pack(h, scope.id, "appr");
     await pack(h, scope.id, "bad");
     await run(h, scope.id, "r-appr", { pack: "appr", version: "2.0.0" });
-    await h.d1.query("insert into run_approvals (run_id, reasons, sheet, requested_at) values ('r-appr', '[\"widening\"]', '{}', ?)", [NOW]);
+    await h.d1.query("insert into run_approvals (run_id, reasons, sheet, requested_at) values ('r-appr', '[\"widening\"]', ?, ?)", [JSON.stringify({ new: ["guard no-secrets"], against: "1.0.0", capabilities: { added: ["guards"], removed: [] }, files: [{ path: "RULES.md", change: "modified", added_lines: 2, removed_lines: 1 }], files_truncated: false }), NOW]);
     await run(h, scope.id, "r-bad", { pack: "bad", verdict: "fail", version: "1.1.0" });
     const failedSince = new Date(h.runtime.ports.clock.now() - 25 * DAY).toISOString();
     await h.d1.query("insert into domain_challenges (id, scope_id, domain, token, state, created_at, failed_since) values ('d1', ?, 'acme.com', 't', 'proven', ?, ?)", [scope.id, NOW, failedSince]);
@@ -81,7 +81,11 @@ describe("dashboard (REQ-TELEM-005)", () => {
     const words = wordsOf(html);
     expect(words).toContain("5 things need you.");
     expect([...html.matchAll(/data-need="(\w+)"/g)].map((m) => m[1])).toEqual(["approval", "failed", "proof", "security", "application"]);
-    expect(html).toContain('href="/api/publish/runs/r-appr/approval"');
+    expect(html).toContain('data-approve="r-appr"');
+    expect(html).not.toContain("/approval");
+    expect(words.indexOf("New in this version")).toBeGreaterThan(-1);
+    expect(words.indexOf("guard no-secrets")).toBeLessThan(words.indexOf("RULES.md"));
+    expect(words).toContain("Approve with your passkey");
     expect(words).toContain("@acme/appr 2.0.0 is awaiting your approval (adds new capabilities).");
     expect(words).toContain("@acme/bad 1.1.0 failed validation.");
     expect(words).toContain("The proof of acme.com for @acme fails its check and lapses in 5 days.");
@@ -91,22 +95,25 @@ describe("dashboard (REQ-TELEM-005)", () => {
     expect(words).toMatch(/@acme\/appr 1\.0\.0 · 2\.0\.0 awaiting approval 0 stars · 0 fetches · 0 open issues Needs you/);
   });
 
-  it("surfaces a rejected run that can be appealed and a held version", async () => {
+  it("lists a rejected run that can be appealed in Needs you, and shows held, quarantined and appealed runs as under review", async () => {
     const h = setup();
     const { owner, scope } = await seed(h);
-    await pack(h, scope.id, "rej");
-    await pack(h, scope.id, "held");
+    for (const name of ["rej", "held", "appealed", "quar"]) await pack(h, scope.id, name);
     await run(h, scope.id, "r-rej", { pack: "rej", verdict: "hold", version: "1.1.0" });
     await h.d1.query("insert into review_decisions (run_id, decision, reason, decided_by, decided_at) values ('r-rej', 'reject', 'no', 'a@x', ?)", [NOW]);
     await run(h, scope.id, "r-held", { pack: "held", verdict: "hold", version: "1.1.0" });
+    await run(h, scope.id, "r-app", { pack: "appealed", verdict: "hold", version: "1.1.0" });
+    await h.d1.query("insert into review_decisions (run_id, decision, reason, decided_by, decided_at) values ('r-app', 'reject', 'no', 'a@x', ?)", [NOW]);
+    await h.d1.query("insert into review_appeals (run_id, note, submitted_by, submitted_at) values ('r-app', 'n', ?, ?)", [owner.userId, NOW]);
+    await run(h, scope.id, "r-quar", { pack: "quar", verdict: "hold", version: "1.1.0" });
+    await h.d1.query("insert into review_decisions (run_id, decision, reason, decided_by, decided_at) values ('r-quar', 'quarantine_publisher', null, 'a@x', ?)", [NOW]);
 
     const html = await (await owner.get("/dashboard")).text();
-    expect([...html.matchAll(/data-need="(\w+)"/g)].map((m) => m[1]).sort()).toEqual(["held", "rejected"]);
-    expect(wordsOf(html)).toContain("@acme/rej 1.1.0 was rejected after review. Appeal");
-    expect(wordsOf(html)).toContain("@acme/held 1.1.0 is held for review by a person at PackServer.");
-
-    await h.d1.query("insert into review_appeals (run_id, note, submitted_by, submitted_at) values ('r-rej', 'n', ?, ?)", [owner.userId, NOW]);
-    expect(wordsOf(await (await owner.get("/dashboard")).text())).toContain("was rejected after review. See the report");
+    const words = wordsOf(html);
+    expect([...html.matchAll(/data-need="(\w+)"/g)].map((m) => m[1])).toEqual(["rejected"]);
+    expect(words).toContain("1 thing needs you.");
+    expect(words).toContain("@acme/rej 1.1.0 was rejected after review. Appeal");
+    for (const name of ["held", "appealed", "quar"]) expect(words).toContain(`@acme/${name} 1.0.0 · 1.1.0 under review 0 stars · 0 fetches · 0 open issues Working`);
   });
 
   it("moves an approval whose upload expired from Needs you to drafts as Upload expired", async () => {
@@ -128,6 +135,19 @@ describe("dashboard (REQ-TELEM-005)", () => {
     expect(words).toContain("Nothing needs you.");
     expect(words).toContain("Drafts @acme/appr 2.0.0 Upload expired Upload again");
     expect(words).toContain("@acme/new 0.1.0 Resume");
+  });
+});
+
+describe("dashboard proofs", () => {
+  it("lists a GitHub organisation proof whose App is gone, with the days left of the 7-day grace", async () => {
+    const h = setup();
+    const { owner, scope } = await seed(h);
+    await h.d1.query("insert into github_org_proofs (scope_id, org_id, org_login, method, installation_id, proven_at) values (?, '77', 'acme', 'app', 5, ?)", [scope.id, NOW]);
+    const gone = new Date(h.runtime.ports.clock.now() - 2 * DAY).toISOString();
+    await h.d1.query("insert into github_installations (installation_id, account_id, account_login, account_type, sender_login, repository_selection, status, installed_at, uninstalled_at, inactive_since, updated_at) values (5, 77, 'acme', 'Organization', 'ann', 'all', 'deleted', ?, ?, ?, ?)", [NOW, gone, gone, gone]);
+    const html = await (await owner.get("/dashboard")).text();
+    expect([...html.matchAll(/data-need="(\w+)"/g)].map((m) => m[1])).toEqual(["proof"]);
+    expect(wordsOf(html)).toContain("The GitHub App is gone from acme; the proof for @acme lapses in 5 days.");
   });
 });
 
@@ -213,6 +233,36 @@ describe("validation page (REQ-VAL-016, REQ-VAL-040, REQ-VAL-001)", () => {
     expect(words).not.toContain("curl https://x.example");
     expect(words).not.toContain("Previous runs");
     expect(words).not.toContain("Resubmit");
+  });
+
+  it("does not open the report of a version that is not published yet", async () => {
+    const h = setup();
+    const { scope } = await seed(h);
+    await failed(h, scope.id);
+    await pack(h, scope.id, "gcp", { version: "9.9.9" });
+    await h.d1.query("update pack_versions set report_key = 'runs/r1/report.json', published_at = null where id = 'v-gcp'");
+    expect((await h.request("/validation/r1")).status).toBe(404);
+  });
+
+  it("reads a held version that was approved as published, and lets an owner approve it in the page", async () => {
+    const h = setup();
+    const { owner, scope } = await seed(h);
+    await run(h, scope.id, "r1", { verdict: "hold" });
+    await h.d1.query("insert into review_decisions (run_id, decision, decided_by, decided_at) values ('r1', 'approve', 'a@x', ?)", [NOW]);
+    expect(wordsOf(await (await owner.get("/validation/r1")).text())).toContain("Passed review. Publishing now.");
+    await run(h, scope.id, "r2", { verdict: "pass", version: "2.0.0" });
+    await h.d1.query("insert into run_approvals (run_id, reasons, sheet, requested_at) values ('r2', '[\"verified-publisher\"]', ?, ?)", [JSON.stringify({ new: ["task nightly"], files: [] }), NOW]);
+    const html = await (await owner.get("/validation/r2")).text();
+    expect(html).toContain('data-approve="r2"');
+    expect(wordsOf(html)).toContain("New in this version task nightly");
+  });
+
+  it("does not offer an appeal for a quarantined run", async () => {
+    const h = setup();
+    const { owner, scope } = await seed(h);
+    await run(h, scope.id, "r1", { verdict: "hold" });
+    await h.d1.query("insert into review_decisions (run_id, decision, decided_by, decided_at) values ('r1', 'quarantine_publisher', 'a@x', ?)", [NOW]);
+    expect(await (await owner.get("/validation/r1")).text()).not.toContain('id="appeal"');
   });
 
   it("downloads the log as a plain text attachment", async () => {
