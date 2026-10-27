@@ -1,5 +1,5 @@
 import {
-  deleteOffers, deletePack, deleteVersion, restorePack, transitionVersion, type DeleteOutcome, type PackToDelete, type TransitionPorts, type VersionOutcome,
+  deleteOffers, deletePack, isModeration, MODERATION_PREFIX, deleteVersion, restorePack, transitionVersion, type DeleteOutcome, type PackToDelete, type TransitionPorts, type VersionOutcome,
 } from "@packserver/core/publishing";
 import { refusal, requireSession } from "@packserver/http";
 import { Hono, type Context } from "hono";
@@ -27,6 +27,9 @@ async function reasonOf(c: Context<WebEnv>): Promise<string | Response> {
   const reason = (await bodyOf(c)).reason;
   if (typeof reason !== "string" || reason.trim() === "" || reason.length > MAX_REASON) {
     return refusal("forbidden", { status: 422, message: `reason: say why, in up to ${MAX_REASON} characters; it is shown publicly.` });
+  }
+  if (isModeration(reason.trim())) {
+    return refusal("forbidden", { status: 422, message: `reason: it cannot start "${MODERATION_PREFIX}", which is PackServer's own notice.` });
   }
   return reason.trim();
 }

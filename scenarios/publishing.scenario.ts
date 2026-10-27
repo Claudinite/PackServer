@@ -310,6 +310,10 @@ scenario("IT-PUB-024 Hard delete only within 72 h and with zero fetches; the num
   expect(world.lifecycle.purged().filter((url) => url.includes("/@acme/fresh/1.0.0/")).length).toBeGreaterThan(0);
   expect(await fresh.version("1.0.0").status()).toBe("removed");
   await expect(ann.publish(world.archive("gcp")).as("@acme/fresh@1.0.0")).toBeRefused("exists");
+
+  const solo = await world.packs.public("@acme/solo", { versions: ["1.0.0"] });
+  await solo.version("1.0.0").delete({ by: ann });
+  await expect(ann.publish(world.archive("gcp")).as("@acme/solo@2.0.0")).toBeRefused("exists");
 }, { needs: ["fakes", "clock", "storage"] });
 
 scenario("IT-PUB-025 Private packs delete any time with a 7-day soft window", async (world) => {
@@ -367,6 +371,14 @@ scenario("IT-MOD-011 Yank moves latest and leaves search; un-yank is logged", as
   expect((await world.registry.indexes(pack, { newerThan: restored })).scope.document.packs[0]!.latest_eligible).toBe("1.2.0");
   expect((await owner.account.history()).map((e) => e.action)).toContain("version.unyanked");
   expect((await maintainer.account.history()).map((e) => e.action)).toContain("version.yanked");
+  const held = await world.packs.public("@acme/held", { versions: ["1.0.0"] });
+  await held.version("1.0.0").seed({ status: "yanked", reason: "Removed by PackServer: malware" });
+  await expect(held.version("1.0.0").yank({ reason: "my own reason", by: maintainer })).toBeRefused("forbidden");
+  await expect(held.version("1.0.0").unyank({ by: owner })).toBeRefused("forbidden");
+  await expect(held.version("1.0.0").delete({ by: owner })).toBeRefused("forbidden");
+  await expect(pack.version("1.0.0").yank({ reason: "Removed by PackServer: looks official", by: maintainer })).toBeRefused("forbidden");
+  await expect(pack.version("1.0.0").deprecate("Removed by PackServer: looks official", { by: maintainer })).toBeRefused("forbidden");
+  expect(await held.version("1.0.0").status()).toBe("yanked");
 }, { needs: ["fakes", "clock", "storage"] });
 
 scenario("IT-MOD-012 Yanking the only version leaves the pack listed as unavailable", async (world) => {

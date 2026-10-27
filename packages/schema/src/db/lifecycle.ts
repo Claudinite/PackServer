@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, index, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { check, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { inList } from "./enum-check";
 import { packs } from "./packs";
 import { users } from "./users";
@@ -35,6 +35,8 @@ export const lifecycle_notices = sqliteTable(
     audience: text("audience", { enum: LIFECYCLE_AUDIENCES }).notNull(),
     created_at: text("created_at").notNull(),
     sent_at: text("sent_at"),
+    /** Sends that failed; the job gives up on the row at MAX_NOTICE_ATTEMPTS. */
+    attempts: integer("attempts").notNull().default(0),
   },
   (t) => [
     index("lifecycle_notices_unsent_idx").on(t.sent_at),

@@ -66,6 +66,7 @@ export const pack_versions = sqliteTable(
     /** The state a private pack's version had when its pack was deleted, which a restore puts back. */
     state_before_removal: text("state_before_removal"),
     /** When the removed version's stored objects were deleted and the CDN purged; null while that work is owed. */
+    objects_deleted_at: text("objects_deleted_at"),
     objects_purged_at: text("objects_purged_at"),
   },
   (t) => [

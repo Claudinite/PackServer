@@ -239,6 +239,20 @@
       "when": 1793066769539,
       "tag": "20261027020609_publishing_lifecycle_notices",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1793068899190,
+      "tag": "20261027024139_foundation_lifecycle_objects_deleted",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "6",
+      "when": 1793068918643,
+      "tag": "20261027024158_publishing_lifecycle_notice_attempts",
+      "breakpoints": true
     }
   ]
 }

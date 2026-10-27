@@ -62,6 +62,9 @@ const PUBLISHER_FROM: Partial<Record<VersionTransition, readonly string[]>> = { 
 /** Moderation's yank carries this prefix (REQ-MOD-016); a publisher's un-yank leaves such a yank in place. */
 export const MODERATION_PREFIX = "Removed by PackServer";
 
+/** Whether a reason reads as PackServer's own notice, which no publisher writes, lifts or erases. */
+export const isModeration = (reason: string | null | undefined): boolean => reason?.startsWith(MODERATION_PREFIX) === true;
+
 /** The statuses a person is told of (REQ-MOD-013). */
 const ANNOUNCED = new Set<VersionTransition>(["yank", "deprecate"]);
 const OPEN_REPORT = "status in ('open', 'acknowledged')";
@@ -91,8 +94,8 @@ export async function transitionVersion(ports: TransitionPorts, transition: Vers
     const reason = transition === "unquarantine" ? "not_quarantined" : "not_allowed";
     return { ok: false, reason, message: `${input.pack}@${input.version} is ${found.state}; it cannot be ${transition}d from there.` };
   }
-  if (transition === "unyank" && by === "publisher" && found.reason?.startsWith(MODERATION_PREFIX)) {
-    return { ok: false, reason: "not_allowed", message: `${input.pack}@${input.version} was yanked by PackServer; only PackServer lifts that.` };
+  if (by === "publisher" && (isModeration(found.reason) || isModeration(input.reason))) {
+    return { ok: false, reason: "not_allowed", message: `${input.pack}@${input.version} ${isModeration(found.reason) ? "was withdrawn by PackServer; only PackServer changes that" : `cannot carry a reason that starts "${MODERATION_PREFIX}"`}.` };
   }
   const to = TARGET[transition];
   const lifted = to === "active";
@@ -140,12 +143,13 @@ export interface DeleteRow {
   version: string;
   state: string;
   publishedAt: string | null;
+  reason?: string | null;
 }
 
 /** Why a public version can or cannot be deleted now; `fetched` is a count of recorded fetches, which only the caller can look up. */
 export function deletable(row: DeleteRow, nowMs: number, fetches: number): Deletable {
   if (row.publishedAt === null) return { ok: false, reason: "not_published" };
-  if (!DELETABLE_STATES.includes(row.state)) return { ok: false, reason: "state" };
+  if (!DELETABLE_STATES.includes(row.state) || isModeration(row.reason)) return { ok: false, reason: "state" };
   if (nowMs - Date.parse(row.publishedAt) >= HARD_DELETE_WINDOW_MS) return { ok: false, reason: "window" };
   if (fetches > 0) return { ok: false, reason: "fetched" };
   return { ok: true };
@@ -153,7 +157,7 @@ export function deletable(row: DeleteRow, nowMs: number, fetches: number): Delet
 
 const REASON_TEXT: Record<Exclude<Deletable, { ok: true }>["reason"], string> = {
   private: "A private pack's versions go with the pack.",
-  state: "A held or revoked version cannot be deleted.",
+  state: "A held, revoked or PackServer-withdrawn version cannot be deleted.",
   window: "A version can be deleted only within 72 hours of publishing.",
   fetched: "A version that has been fetched cannot be deleted.",
   not_published: "The version is not published.",
@@ -170,12 +174,12 @@ export interface PackToDelete {
 
 export async function packVersionsForDelete(d1: D1, packId: string): Promise<Array<DeleteRow & { fetches: number }>> {
   const { rows } = await d1.query(
-    `select v.id, v.version, v.state, v.published_at,
+    `select v.id, v.version, v.state, v.published_at, v.status_reason,
             (select count(*) from fetch_days f where f.pack_id = v.pack_id and f.version = v.version) as fetches
        from pack_versions v where v.pack_id = ? order by v.version`,
     [packId],
   );
-  return rows.map((r) => ({ id: String(r.id), version: String(r.version), state: String(r.state), publishedAt: r.published_at === null ? null : String(r.published_at), fetches: Number(r.fetches) }));
+  return rows.map((r) => ({ id: String(r.id), version: String(r.version), state: String(r.state), publishedAt: r.published_at === null ? null : String(r.published_at), reason: r.status_reason === null ? null : String(r.status_reason), fetches: Number(r.fetches) }));
 }
 
 /** What the delete affordance shows for each version of a public pack. */
@@ -206,9 +210,16 @@ export async function deleteVersion(ports: TransitionPorts, input: { pack: strin
   const verdict = deletable(row, ports.clock.now(), row.fetches);
   if (!verdict.ok) return { ok: false, reason: "refused", message: REASON_TEXT[verdict.reason] };
   const at = new Date(ports.clock.now()).toISOString();
+  const [changed] = await ports.d1.batch([
+    { sql: "update pack_versions set state = 'removed', status_reason = null, status_security = null, status_changed_at = ?, objects_purged_at = null, objects_deleted_at = null where id = ? and state = ?", params: [at, found.id, found.state] },
+  ]);
+  if (!changed || changed.meta.changes === 0) return { ok: false, reason: "refused", message: `${input.pack}@${input.version} changed while it was being deleted; look again.` };
+  const left = Number((await ports.d1.query("select count(*) as n from pack_versions where pack_id = ? and state != 'removed'", [found.packId])).rows[0]?.n);
   await ports.d1.batch([
-    { sql: "update pack_versions set state = 'removed', status_reason = null, status_security = null, status_changed_at = ?, objects_purged_at = null where id = ? and state = ?", params: [at, found.id, found.state] },
     retire("version", `${input.pack}@${input.version}`, at),
+    ...(left === 0
+      ? [{ sql: "update packs set removed_at = ? where id = ? and removed_at is null", params: [at, found.packId] }, retire("pack", input.pack, at)]
+      : []),
   ]);
   await ports.reindex.send({ schema: 1, type: "scope.proof_changed", scope: found.scope, change: "version_removed" });
   return { ok: true, scope: found.scope };
@@ -233,14 +244,14 @@ export async function deletePack(ports: TransitionPorts, pack: PackToDelete): Pr
       if (!verdict.ok) return { ok: false, reason: "refused", message: `${v.version}: ${REASON_TEXT[verdict.reason]}` };
     }
     await ports.d1.batch([
-      { sql: "update pack_versions set state = 'removed', status_reason = null, status_security = null, status_changed_at = ?, objects_purged_at = null where pack_id = ? and state not in ('removed', 'pending', 'approved')", params: [at, pack.id] },
+      { sql: "update pack_versions set state = 'removed', status_reason = null, status_security = null, status_changed_at = ?, objects_purged_at = null, objects_deleted_at = null where pack_id = ? and state not in ('removed', 'pending', 'approved')", params: [at, pack.id] },
       { sql: "update packs set removed_at = ? where id = ? and removed_at is null", params: [at, pack.id] },
       retire("pack", full, at),
       ...versions.map((v) => retire("version", `${full}@${v.version}`, at)),
     ]);
   } else {
     await ports.d1.batch([
-      { sql: "update pack_versions set state_before_removal = state, state = 'removed', status_changed_at = ?, objects_purged_at = null where pack_id = ? and state not in ('removed', 'pending', 'approved')", params: [at, pack.id] },
+      { sql: "update pack_versions set state_before_removal = state, state = 'removed', status_changed_at = ?, objects_purged_at = null, objects_deleted_at = null where pack_id = ? and state not in ('removed', 'pending', 'approved')", params: [at, pack.id] },
       { sql: "update packs set removed_at = ? where id = ? and removed_at is null", params: [at, pack.id] },
     ]);
   }
@@ -281,47 +292,61 @@ const PER_VERSION_KINDS: Array<Exclude<ObjectKind, "versions">> = ["archive", "s
 
 export const publicKeysOf = (pack: string, version: string): string[] => [...PER_VERSION_KINDS.map((k) => objectKey(pack, k, version)), contentsKey(pack, version)];
 
+/** The most removed versions one reindex works through; the rest stay owed for the next. */
+export const RECONCILE_CAP = 50;
+
 /**
  * Removes the stored bytes of removed versions in `scope` and purges the CDN's copies, then marks the work done. A version
- * of a deleted private pack keeps its bytes until the 7 days to restore have passed. A purge that cannot be made leaves the
- * version owed, so the next reindex tries again; the signed index no longer lists a hash for the version either way.
+ * of a deleted private pack keeps its bytes until the 7 days to restore have passed. The deletion and the purge are recorded
+ * apart, so a purge that cannot be made stays owed without the objects being deleted again; the signed index no longer lists
+ * a hash for the version either way. At most RECONCILE_CAP versions are handled per call, those with objects still stored first.
  */
-export async function reconcileRemoved(ports: ReconcilePorts, scope: string): Promise<{ deleted: number; purgePending: number }> {
+export async function reconcileRemoved(ports: ReconcilePorts, scope: string): Promise<{ deleted: number; purgePending: number; remaining: number }> {
   const nowMs = ports.clock.now();
-  const { rows } = await ports.d1.query(
-    `select v.id, v.version, p.id as pack_id, p.name, p.visibility, p.removed_at
-       from pack_versions v join packs p on p.id = v.pack_id join scopes s on s.id = p.scope_id
-      where s.name = ? and v.state = 'removed' and v.objects_purged_at is null`,
-    [scope],
-  );
   const at = new Date(nowMs).toISOString();
-  let deleted = 0;
-  let purgePending = 0;
+  const expiredBefore = new Date(nowMs - SOFT_DELETE_WINDOW_MS).toISOString();
+  const { rows } = await ports.d1.query(
+    `select v.id, v.version, v.objects_deleted_at, p.id as pack_id, p.name, p.visibility
+       from pack_versions v join packs p on p.id = v.pack_id join scopes s on s.id = p.scope_id
+      where s.name = ? and v.state = 'removed' and v.objects_purged_at is null
+        and (p.visibility = 'public' or (p.removed_at is not null and p.removed_at <= ?))
+      order by v.objects_deleted_at is not null, v.id limit ?`,
+    [scope, expiredBefore, RECONCILE_CAP + 1],
+  );
+  const work = rows.slice(0, RECONCILE_CAP);
+  const statements: Array<{ sql: string; params: unknown[] }> = [];
+  const owedPurge: Array<{ id: string; urls: string[] }> = [];
   const expiredPacks = new Set<string>();
-  for (const row of rows) {
+  let deleted = 0;
+  for (const row of work) {
     const pack = `@${scope}/${row.name}`;
     const version = String(row.version);
     if (row.visibility === "private") {
-      if (row.removed_at === null || !softDeleteExpired(String(row.removed_at), nowMs)) continue;
       await ports.privateBucket.delete(privateArchiveKey(String(row.id)));
       for (const kind of ["attestation", "meta"] as const) await ports.privateBucket.delete(objectKey(pack, kind, version));
-      expiredPacks.add(`${row.pack_id}|${pack}`);
-      await ports.d1.query("update pack_versions set objects_purged_at = ? where id = ?", [at, row.id]);
+      expiredPacks.add(pack);
+      statements.push({ sql: "update pack_versions set objects_deleted_at = ?, objects_purged_at = ? where id = ?", params: [at, at, row.id] });
       deleted += 1;
       continue;
     }
-    for (const key of new Set([...publicKeysOf(pack, version), ...(await ports.publicBucket.list(`${pack}/${version}/`))])) await ports.publicBucket.delete(key);
-    if (await ports.purge(publicKeysOf(pack, version).map((key) => `${ports.cdnOrigin}/${key}`))) {
-      await ports.d1.query("update pack_versions set objects_purged_at = ? where id = ?", [at, row.id]);
-    } else {
-      purgePending += 1;
+    if (row.objects_deleted_at === null) {
+      for (const key of new Set([...publicKeysOf(pack, version), ...(await ports.publicBucket.list(`${pack}/${version}/`))])) await ports.publicBucket.delete(key);
+      statements.push({ sql: "update pack_versions set objects_deleted_at = ? where id = ?", params: [at, row.id] });
+      deleted += 1;
     }
-    deleted += 1;
+    owedPurge.push({ id: String(row.id), urls: publicKeysOf(pack, version).map((key) => `${ports.cdnOrigin}/${key}`) });
   }
-  for (const entry of expiredPacks) {
-    await ports.d1.query("insert or ignore into retired_names (kind, name, retired_at) values ('pack', ?, ?)", [entry.split("|")[1], at]);
+  let purgePending = 0;
+  if (owedPurge.length > 0) {
+    if (await ports.purge(owedPurge.flatMap((o) => o.urls))) {
+      for (const o of owedPurge) statements.push({ sql: "update pack_versions set objects_purged_at = ? where id = ?", params: [at, o.id] });
+    } else {
+      purgePending = owedPurge.length;
+    }
   }
-  return { deleted, purgePending };
+  for (const pack of expiredPacks) statements.push({ sql: "insert or ignore into retired_names (kind, name, retired_at) values ('pack', ?, ?)", params: [pack, at] });
+  if (statements.length > 0) await ports.d1.batch(statements);
+  return { deleted, purgePending, remaining: rows.length - work.length };
 }
 
 const PURGE_BATCH = 30;
