@@ -183,20 +183,20 @@ Pages (Pushover, to Ariel only):
 | `page.read_path_burn` | tier 1 or 2 burn on adopt/fetch, update check, search or MCP | controller rolls back if a rollout is in progress |
 | `page.site_down_external` | witness fails 2 consecutive probes | status page kept honest |
 | `page.hash_mismatch` | any server-observed mismatch, or two principals whose credentials cover a private pack reporting one version (two principals reporting a public one open a review, no page) | version quarantined, cache key purged |
-| `page.index_signature` | prober-observed verification failure after one automatic regeneration | one regeneration attempted |
-| `page.index_stale` | the served root is older than 10 min after a promotion, or than 24 h at any time | one regeneration attempted |
+| `page.index_signature` | two consecutive prober-observed verification failures | nothing (index regeneration is an admin-only method, so the first tap is Regenerate the index) |
+| `page.index_stale` | the served root is older than 10 min after a promotion, or than 24 h at any time | nothing (the first tap is Regenerate the index) |
 | `page.index_key_changed` | `index.signed` with an unexpected key id | nothing (a scheduled rotation must not be undone automatically) |
-| `page.signing_key_read` | a Cloudflare audit event binds the signing secret, or the standby, to any Worker other than the validator | nothing (the standby promotion is Ariel's, [../architecture/signing-index-revocation.md](../architecture/signing-index-revocation.md)) |
+| `page.signing_key_read` | a Cloudflare audit event on a Worker upload or secret change, whether or not a release accounts for it, after which that Worker's bindings, read back from the account, include the signing secret or the standby for any Worker other than the validator | nothing (the standby promotion is Ariel's, [../architecture/signing-index-revocation.md](../architecture/signing-index-revocation.md)) |
 | `page.audit_pipeline` | chain broken or an audit DLQ message | nothing possible |
 | `page.rollback_failed` | automatic rollback did not complete after one retry | retry attempted |
 | `page.account_change` | a Cloudflare account event on the page list by anyone but the CI tokens, or by a CI token outside the current release manifest | nothing (judge's token is read-only) |
 | `page.admin_new_location` | admin Access login from a new country or identity, or an admin action without a login | nothing |
 | `page.credential_stuffing` | burst continues past the automatic locks and block | account locks, 24 h source block |
 | `page.publish_stalled` (support hours) | no verdict for 30 min with publishes pending, or Workflow failures > 5% | queue-and-wait if a budget is the cause |
-| `page.takedown_overdue` (support hours) | a prioritised security report not decided by a human within 1 h | the judge held the version (`anomaly_hold`, REQ-MOD-009) |
+| `page.takedown_overdue` (support hours) | a prioritised security report not decided by a human within 1 h | the judge held the version (`anomaly_hold`, REQ-MOD-009), unless the version is declared by more than 100 repositories or the report does not say, when the page says no automatic action was possible |
 | `page.monitoring_dead` (support hours) | no heartbeat for 15 min | rollouts halt by themselves |
 
-Tickets (GitHub issues in the private ops repository plus email): `webhooks_failing` (page after 12
+Tickets (an email to ops carrying a link that opens a pre-filled new issue in the private ops repository, which a person files; the registry never writes to GitHub; closing that issue acknowledges its page): `webhooks_failing` (page after 12
 h), `oidc_blocked`, `email_failed` (the provider switch is a manual config change, D15 superseded),
 `abuse_flood` (kill switch already on), `daily_caps_pressure`, `audit_backlog`, `canary_rolled_back`,
 `d1_size` at 8 GB, `model_budget`, `sandbox_budget`, `synthetic_failing`, `component`, `registry`,

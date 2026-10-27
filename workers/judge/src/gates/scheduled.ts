@@ -4,6 +4,7 @@ import type { AdminClient } from "../heartbeat/admin-client";
 import { pollAccountAudit, type AuditLog } from "../heartbeat/audit";
 import { emitHeartbeat } from "../heartbeat/heartbeat";
 import { flipTelemetryMode } from "../heartbeat/telemetry-mode";
+import { runAlerts, type AlertCycleDeps } from "../alerts/cycle";
 import { evaluateGates, MAX_AUDIT_POINTS, type GateCycle, type GateDeps } from "./cycle";
 import { cycleDue, readLaunchMode, readRelease } from "./release";
 
@@ -15,6 +16,10 @@ export interface ScheduledDeps extends GateDeps {
   emit: Telemetry["emit"];
   ciTokenIds: readonly string[];
   dailyLogAllowance: number;
+  /** Settings alerting needs and does not have; each cycle fails visibly until they are given. */
+  alertsMissing?: string[];
+  /** Absent where alerting is not wired; the cycle then runs gates, mode and audit only. */
+  alerts?: Omit<AlertCycleDeps, "clock" | "emit" | "release" | "mode" | "facts">;
 }
 
 export interface ScheduledResult {
@@ -51,6 +56,28 @@ export async function runScheduled(deps: ScheduledDeps): Promise<ScheduledResult
       })
     : null;
   const audit = deps.audit ? await attempt("audit", () => pollAccountAudit({ log: deps.audit as AuditLog, kv: deps.gatesKv, clock: deps.clock, emit: deps.emit, release, ciTokenIds: deps.ciTokenIds, maxSignals: MAX_AUDIT_POINTS })) : null;
+
+  if (deps.alertsMissing && deps.alertsMissing.length > 0) failures.push(`alerts: not configured, missing ${deps.alertsMissing.join(", ")}`);
+  const alerts = deps.alerts
+    ? await attempt("alerts", () =>
+        runAlerts({
+          ...(deps.alerts as NonNullable<ScheduledDeps["alerts"]>),
+          clock: deps.clock,
+          emit: deps.emit,
+          release,
+          mode,
+          facts: {
+            indexFetches: cycle?.indexFetches ?? new Map(),
+            requestsToday: cycle?.requestsToday ?? 0,
+            requestsPerSecond: cycle?.readPathRps ?? 0,
+            audit: { pageworthyIds: audit?.pageworthyIds ?? [], bindingChecks: audit?.bindingChecks ?? [] },
+            allowance: deps.dailyLogAllowance,
+            telemetryMode: flip?.mode ?? "unknown",
+          },
+        }),
+      )
+    : null;
+  failures.push(...(alerts?.failures ?? []));
 
   emitHeartbeat(deps.emit, {
     ran: true,

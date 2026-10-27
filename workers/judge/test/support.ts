@@ -77,7 +77,7 @@ export function runtimeWith(fakes: FakePorts, data: GateDataSource = new FakeGat
     missingSecrets: [],
     ports: fakes,
     services: { admin: {} as Fetcher },
-    config: { data, adminClient: admin, audit: { list: async () => ({ result: [] }) }, ciTokenIds: [], dailyLogAllowance: 1000 },
+    config: { alerts: null, alertsMissing: [], data, adminClient: admin, audit: { list: async () => ({ result: [] }) }, ciTokenIds: [], dailyLogAllowance: 1000 },
   };
 }
 
