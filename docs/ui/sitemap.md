@@ -56,7 +56,7 @@ An unknown or private pack, scope or path answers one not-found page with the se
 | dashboard | Needs-you queue; packs with status, newest version, fetches, declaring repos, open issues; drafts; private packs; with no packs, the New pack action alone | New pack, approve, resume draft |
 | publish | One step per screen: source (GitHub repository and path, or upload marked "No public repo") → check (the dry-run's live log) → listing (category, tags, repository) → visibility (public, private) → publish (passkey) | Next, back, save draft |
 | validation | One-sentence verdict; "Show report" list of findings with file, line, rule, hint, and for a prose-screen hold the quoted passage, never a probability or threshold; previous runs; re-run and dry-run, both rate-limited | Re-run, resubmit, download log |
-| github | Per pack: repository, path, workflow, ref pattern, events, environment; recent runs with in-site status; copy workflow YAML (Action pinned by SHA) | Add, edit, disable |
+| github | Per pack: repository, path, workflow, ref pattern, events, environment; recent runs with in-site status; copy workflow YAML (Action pinned by SHA) | Add, edit, switch trusted-publishing-only (REQ-PUB-008) |
 | org settings | Name and handle; domain proof (record shown, Check now) and GitHub org proof; Verified Publisher application and its state; owners and maintainers; require MFA or passkeys only; transfer and delete | Prove, apply, add a person, change role |
 | access | Visibility; allowlist of GitHub accounts with added-by, "private repositories only" and last fetch; fetches by account and repository; denied attempts | Add or remove (passkey), change visibility (passkey) |
 

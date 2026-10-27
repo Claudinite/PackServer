@@ -12,7 +12,7 @@ const runtime = (missingBindings: string[] = []): PublishRuntime => ({
   missingBindings,
   missingSecrets: [],
   ports: fakes,
-  services: { validator: {} as Fetcher },
+  services: { validator: {} as Fetcher, web: {} as Fetcher },
   config: {
     oidc: { issuer: "https://issuer.example", jwksUrl: "https://issuer.example/jwks", audience: "registry.claudinite.com" },
     presigner: { presignPut: async () => ({ url: "https://s3.example/x", headers: {} }) },

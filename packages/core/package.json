@@ -17,6 +17,7 @@
     "./identity/virtual-authenticator": "./identity/virtual-authenticator.ts",
     "./catalog": "./catalog/view.ts",
     "./gates": "./gates/index.ts",
+    "./flags": "./flags/index.ts",
     "./github": "./github/index.ts",
     "./index": "./index/index.ts",
     "./reports": "./reports/index.ts",

@@ -112,6 +112,8 @@ export interface OrgHandle extends Org {
   verifyGitHub(org: string, via: "app" | "admin", o?: Sensitive): Promise<GithubProof>;
   /** Applies for Verified Publisher; the review that decides it is the admin's. */
   applyVerified(o?: Sensitive): Promise<ApplicationView>;
+  /** As the holder of a disputed name, agrees to be renamed; the admin's decision is a separate step. */
+  consentReassign(o?: Sensitive): Promise<void>;
   verification(): Promise<VerificationView | NotFound>;
   /** Gives the organisation a proof and, when asked, the Verified Publisher label, as the owners of those areas will. */
   seedProof(facts: { domain?: string; githubOrg?: string; verifiedPublisher?: boolean }): Promise<void>;
@@ -315,6 +317,9 @@ export function createScopeVerbs(driver: Driver, aliases: Aliases): ScopeVerbs {
       async applyVerified(o) {
         const body = done(await call("POST", "/application", "org.apply-verified", o), "org.applyVerified") as { application: ApplicationWire };
         return applicationView(body.application);
+      },
+      async consentReassign(o) {
+        done(await call("POST", "/dispute/consent", "org.consent-reassign", o), "org.consentReassign");
       },
       async verification() {
         const res = await call("GET", "/verification", null);

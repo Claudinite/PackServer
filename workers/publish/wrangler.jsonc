@@ -97,6 +97,10 @@
         {
           "binding": "VALIDATOR",
           "service": "validator-test"
+        },
+        {
+          "binding": "WEB",
+          "service": "web-test"
         }
       ],
       "analytics_engine_datasets": [
@@ -217,6 +221,10 @@
         {
           "binding": "VALIDATOR",
           "service": "validator-staging"
+        },
+        {
+          "binding": "WEB",
+          "service": "web-staging"
         }
       ],
       "analytics_engine_datasets": [
@@ -381,6 +389,10 @@
         {
           "binding": "VALIDATOR",
           "service": "validator"
+        },
+        {
+          "binding": "WEB",
+          "service": "web"
         }
       ],
       "analytics_engine_datasets": [
