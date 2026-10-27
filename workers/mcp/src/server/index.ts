@@ -9,6 +9,7 @@ import { admit, insufficientScope, unauthorised, type Caller } from "../limits";
 import type { OAuthApi } from "../oauth";
 import { PRIVILEGED_TOOLS, isPrivilegedTool, mayCall, registerPrivilegedTools, type PrivilegedTool } from "../privileged";
 import { registerPublicTools, unwiredExtras, type PackExtras } from "../tools";
+import { publishedAdvisories } from "../tools/advisories";
 
 export interface McpOptions {
   extras?: PackExtras;
@@ -18,7 +19,11 @@ export interface McpOptions {
 export const SERVER_INFO = { name: "packserver", version: "0.0.1" } as const;
 
 /** The sources this Worker can read itself; the rest stay unwired and answer unknown. */
-export const wiredExtras = (runtime: McpRuntime): PackExtras => ({ ...unwiredExtras, reportedUnderReview: (pack) => reportedUnderReview(runtime.ports.d1, pack.id) });
+export const wiredExtras = (runtime: McpRuntime): PackExtras => ({
+  ...unwiredExtras,
+  reportedUnderReview: (pack) => reportedUnderReview(runtime.ports.d1, pack.id),
+  advisories: (pack, version) => publishedAdvisories(runtime, pack, version),
+});
 
 /** One stateless server per request, so the tools close over this request's runtime and this request's caller. */
 export function createServer(runtime: McpRuntime, caller: Caller = { kind: "anonymous" }, extras: PackExtras = wiredExtras(runtime)): McpServer {

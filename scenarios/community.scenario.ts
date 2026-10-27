@@ -140,6 +140,9 @@ scenario("IT-MOD-006 Publishers set status; reporters are notified", async (worl
 
 scenario("IT-MOD-007 Registry security publishes advisories that attach to versions and are returned by get_pack", async (world) => {
   const { pack, maintainer } = await packWith(world, "@acme/gcp");
+  const rival = await world.packs.public("@acme/rival");
+  await world.search.list(pack, { pitch: "Deploy to cloud", category: "cloud", score: 80 });
+  await world.search.list(rival, { pitch: "Deploy to cloud", category: "cloud", score: 30 });
   const reporter = await person(world);
   const first = await world.reports.file(reporter, pack, { kind: "security", version: "1.0.0", title: "Token leaks to logs", repro: "SECRET-REPRO-STEPS" });
   const second = await world.reports.file(reporter, pack, { kind: "security", version: "1.0.1", title: "Path traversal in unpack" });
@@ -148,8 +151,12 @@ scenario("IT-MOD-007 Registry security publishes advisories that attach to versi
   await world.reports.deliver();
   expect(world.mail.inbox({ email: world.reports.securityAddress }).all().map((m) => m.subject)).toContain(`Security report marked fixed on ${pack.systemName}`);
   expect(await world.reports.advisories(pack)).toEqual([]);
+  expect((await world.search.site("deploy to cloud")).ids).toEqual([pack.name, rival.name]);
+  expect((await pack.version("1.0.0").detail()).score.total).toBe(80);
 
   await world.reports.registrySecurity.publishAdvisory(first, { summary: "A token could reach logs.", versions: ["1.0.0", "1.0.1"], fixedIn: "1.0.2" });
+  // The newest version is clean, so the pack keeps its place.
+  expect((await world.search.site("deploy to cloud")).ids).toEqual([pack.name, rival.name]);
   for (const [version, affected] of [["1.0.0", true], ["1.0.1", true], ["1.0.2", false]] as const) {
     expect((await world.reports.advisories(pack, version)).map((a) => a.summary)).toEqual(affected ? ["A token could reach logs."] : []);
   }
@@ -166,6 +173,22 @@ scenario("IT-MOD-007 Registry security publishes advisories that attach to versi
   expect(await world.reports.issues(pack)).toEqual([]);
   const everything = JSON.stringify(await world.reports.advisories(pack));
   for (const private_ of ["SECRET-REPRO-STEPS", "Token leaks to logs", "Path traversal in unpack"]) expect(everything).not.toContain(private_);
+
+  // get_pack answers per version; the advisory is also what caps the score and demotes the pack, which the report alone never did.
+  const agent = world.agents.anonymous();
+  const advisoryVersions = async (version: string) => ((await agent.pack(pack, version)).body.advisories as Array<{ version: string }>).map((a) => a.version);
+  expect(await advisoryVersions("1.0.0")).toEqual(["1.0.0"]);
+  expect(await advisoryVersions("1.0.1")).toEqual(["1.0.1", "1.0.1"]);
+  expect(await advisoryVersions("1.0.2")).toEqual([]);
+  expect((await pack.version("1.0.0").detail()).score.total).toBe(40);
+  expect((await pack.version("1.0.1").detail()).score.total).toBe(40);
+  expect((await pack.version("1.0.2").detail()).score.total).toBe(80);
+  expect((await agent.pack(pack, "1.0.0")).body.score).toMatchObject({ total: 40, cap: { reason: "published advisory", max: 40 } });
+
+  // An advisory that names the newest version demotes the pack.
+  const third = await world.reports.file(await person(world), pack, { kind: "security", version: "1.0.2", title: "Another leak" });
+  await world.reports.registrySecurity.publishAdvisory(third, { summary: "Another token path.", versions: ["1.0.2"] });
+  expect((await world.search.site("deploy to cloud")).ids).toEqual([rival.name, pack.name]);
 }, NEEDS);
 
 scenario("IT-MOD-017 Signed-in people see their own reports", async (world) => {
