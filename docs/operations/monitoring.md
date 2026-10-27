@@ -222,7 +222,9 @@ witness checks the judge; a daily `monitoring.page_test` proves the path to the 
 
 Five Cloudflare dashboards: Overview (open on a page), Release (two versions side by side with
 every gate's history, exceptions, self-test results), Publish pipeline, Trust and abuse, Platform
-and cost. Runbooks RB-00 to RB-19 live under `docs/operations/runbooks/` and are linked by id from
+and cost. They are declared in `infra/dashboards/` as Analytics Engine SQL; Cloudflare has no API
+that creates a dashboard over that data, so the folder renders and runs the panels instead
+(`infra/dashboards/README.md`). Runbooks RB-00 to RB-19 live under `docs/operations/runbooks/` and are linked by id from
 every alert; each has "Confirm resolved", "Mute or demote" and a link to the incident checklist
 RB-00, and every page's first step names the admin tap.
 
