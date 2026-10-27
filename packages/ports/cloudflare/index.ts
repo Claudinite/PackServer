@@ -146,9 +146,19 @@ export function workflowPort(workflow: CfWorkflow): Workflow {
     },
     async sendEvent(id, event) {
       try {
-        await (await workflow.get(id)).sendEvent(event);
+        const instance = await workflow.get(id);
+        const { status } = await instance.status();
+        if (status === "terminated" || status === "complete" || status === "errored") throw new Error(`the instance is ${status}`);
+        await instance.sendEvent(event);
       } catch (error) {
         throw new PortError("not_found", `workflow instance ${id} did not take the event: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    },
+    async terminate(id) {
+      try {
+        await (await workflow.get(id)).terminate();
+      } catch (error) {
+        throw new PortError("not_found", `workflow instance ${id} could not be terminated: ${error instanceof Error ? error.message : String(error)}`);
       }
     },
   };

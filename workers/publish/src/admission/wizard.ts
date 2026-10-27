@@ -3,7 +3,7 @@ import { WizardUploadRequest } from "@packserver/schema";
 import { refusal } from "@packserver/http";
 import { Hono } from "hono";
 import type { PublishRuntime } from "../bindings";
-import { milestonesOf, runById, runView } from "../runs/store";
+import { approvalOf, milestonesOf, runById, runView } from "../runs/store";
 import { badRequest, readJson } from "../respond";
 import { issueCredential, type CredentialRow } from "../upload/credentials";
 import { versionTaken } from "./admit";
@@ -106,7 +106,7 @@ export function wizardRoutes(runtime: PublishRuntime): Hono {
     if (!principal || !run) return notFound();
     const member = (await d1.query(`select role from scope_members where scope_id = ? and user_id = ?`, [run.scope_id, principal])).rows[0] as { role: string } | undefined;
     if (!member || !WRITER_ROLES.includes(member.role)) return notFound();
-    return Response.json(runView(run, await milestonesOf(d1, run.id), runtime.ports.clock.now()), { headers: { "cache-control": "no-store" } });
+    return Response.json(runView(run, await milestonesOf(d1, run.id), runtime.ports.clock.now(), await approvalOf(d1, run.id)), { headers: { "cache-control": "no-store" } });
   });
 
   return app;

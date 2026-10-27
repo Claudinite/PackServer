@@ -328,6 +328,7 @@ export const BINDING_SPECS: { [K in keyof BindingPorts]: PortSpec<BindingPorts[K
       create: { effect: "write", args: [{ id: op, params: content }], result: { id: op } },
       status: { effect: "read", args: [op], result: { status: op } },
       sendEvent: { effect: "write", args: [op, { type: op, payload: content }] },
+      terminate: { effect: "write", args: [op] },
     },
   },
   rateLimits: {
