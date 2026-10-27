@@ -2,7 +2,9 @@ import { expect, scenario } from "@packserver/test-world";
 import type { ScenarioOpts } from "@packserver/test-world";
 
 // Each scenario starts from an empty world: a verified name makes confusable names unavailable to every later scenario.
-const NEEDS: ScenarioOpts = { needs: ["fakes", "clock", "storage", "reset"] };
+const NEEDS: ScenarioOpts = { needs: ["fakes", "storage", "reset"] };
+// The admin that resolves the disputes signs in with an Access assertion the fake clock dates.
+const NEEDS_ADMIN: ScenarioOpts = { needs: ["fakes", "clock", "storage", "reset"] };
 
 scenario(
   "IT-SCOPE-011 First proof holds a colliding name and never reassigns a publishing scope",
@@ -48,7 +50,7 @@ scenario(
     expect(world.mail.inbox(t).all().some((m) => m.subject.includes("is now"))).toBe(true);
     expect((await admin.audit()).filter((a) => a.verb?.startsWith("dispute.")).length).toBeGreaterThanOrEqual(3);
   },
-  NEEDS,
+  NEEDS_ADMIN,
 );
 
 scenario(
