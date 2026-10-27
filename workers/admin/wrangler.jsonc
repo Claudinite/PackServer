@@ -17,6 +17,7 @@
         "WORKER": "admin",
         "ENVIRONMENT": "test",
         "SITE_ORIGINS": "http://web.internal",
+        "SECURITY_ADDRESS": "security@registry.test",
         "ACCESS_AUDIENCE": "admin-access-audience-test",
         "ADMIN_IDENTITIES": "admin@example.test",
         "ADMIN_HOSTS": "admin.internal",
@@ -121,6 +122,7 @@
       "triggers": {
         "crons": [
           "0 * * * *",
+          "30 * * * *",
           "0 3 * * *"
         ]
       },
@@ -133,6 +135,7 @@
         "ADMIN_IDENTITIES": "ADMIN_EMAILS",
         "ADMIN_HOSTS": "registry-admin-staging.claudinite.com",
         "MAIL_FROM": "noreply@claudinite.com",
+        "SECURITY_ADDRESS": "security@claudinite.com",
         "AUDIT_S3_ENDPOINT": "https://ACCOUNT_ID.r2.cloudflarestorage.com/audit-log-staging",
         "POINTS_DATASET": "domain_events_staging",
         "DOWNLOADS_DATASET": "downloads_staging"
@@ -269,6 +272,7 @@
       "triggers": {
         "crons": [
           "0 * * * *",
+          "30 * * * *",
           "0 3 * * *"
         ]
       },
@@ -282,6 +286,7 @@
         "ADMIN_HOSTS": "registry-admin.claudinite.com",
         "ROLLBACK_REPO": "Claudinite/PackServer",
         "MAIL_FROM": "noreply@claudinite.com",
+        "SECURITY_ADDRESS": "security@claudinite.com",
         "AUDIT_S3_ENDPOINT": "https://ACCOUNT_ID.r2.cloudflarestorage.com/audit-log",
         "POINTS_DATASET": "domain_events",
         "DOWNLOADS_DATASET": "downloads"

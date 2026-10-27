@@ -7,6 +7,7 @@ import { flagMirror } from "../flags/mirror";
 import { githubProofLapse } from "./github-proof-lapse";
 import { lifecycle } from "./lifecycle";
 import { prune } from "./prune";
+import { reportNotices } from "./report-notices";
 import { rollup } from "./rollup";
 import { syntheticExpiry } from "./synthetic-expiry";
 import { tokenLastUsed } from "./token-last-used";
@@ -15,11 +16,13 @@ import { trending } from "./trending";
 export type CronJob = (runtime: AdminRuntime) => Promise<void>;
 
 export const CRON_HOURLY = "0 * * * *";
+export const CRON_REPORTS = "30 * * * *";
 export const CRON_DAILY = "0 3 * * *";
 
 /** Each trigger in wrangler.jsonc runs exactly the jobs listed under it. */
 export const CRON_JOBS: Readonly<Record<string, readonly CronJob[]>> = {
   [CRON_HOURLY]: [rollup, community, lifecycle, tokenLastUsed, githubProofLapse, syntheticExpiry, flagMirror],
+  [CRON_REPORTS]: [reportNotices],
   [CRON_DAILY]: [prune, domainRecheck, auditHead, auditVerify, trending],
 };
 

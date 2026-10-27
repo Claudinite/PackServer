@@ -1,9 +1,11 @@
 import { dohDns, wellKnownPort } from "@packserver/ports/domain-proof";
 import type { D1, D1Result, Rng } from "@packserver/ports";
+import { reportPass } from "@packserver/core/reports";
 import { isPublicSuffix, recheckDomains, sweepGithubProofs, type ProofPorts } from "@packserver/core/scopes";
 import { expireSyntheticVersions } from "@packserver/core/synthetic";
 import type { Driver } from "../drivers/driver";
 import type { Aliases } from "./alias";
+import { REGISTRY_SECURITY_ADDRESS } from "./areas/reports";
 import { InfrastructureError, NotImplemented } from "./errors";
 
 /** The system's spelling of a domain a scenario wrote: its registrable label is aliased like a scope name, so `acme.com` still matches the scope `acme`. */
@@ -156,6 +158,17 @@ async function pipelineRunsFinished(driver: Driver): Promise<void> {
   }
 }
 
+async function reportNoticesOf(driver: Driver): Promise<void> {
+  const fakes = driver.fakes;
+  if (!fakes) throw new InfrastructureError(`the ${driver.kind} driver has no fakes: the registry's jobs cannot be run from here`);
+  const now = await fakes.clock.call<number>("now");
+  const siteOrigin = "https://registry.test";
+  await reportPass(
+    { d1: await registryD1(driver), clock: { now: () => now }, rng: cryptoRng, siteOrigin },
+    { mail: fakes.ports.mail, siteOrigin, securityAddress: REGISTRY_SECURITY_ADDRESS },
+  );
+}
+
 /** The jobs the registry's own schedule runs, started on demand by running the shipped function over the fakes. */
 export function createCron(driver: Driver): { run(job: CronJob): Promise<void> } {
   return {
@@ -169,6 +182,7 @@ export function createCron(driver: Driver): { run(job: CronJob): Promise<void> }
       } else if (job === "domain-rechecks") await recheckDomains(await proofPortsOf(driver));
       else if (job === "github-proof-lapse") await sweepGithubProofs(await proofPortsOf(driver));
       else if (job === "synthetic-expiry") await expireSyntheticVersions(await registryD1(driver), await driver.fakes!.clock.call<number>("now"));
+      else if (job === "report-notices") await reportNoticesOf(driver);
       else throw new NotImplemented(`cron.run(${job})`);
     },
   };
@@ -176,4 +190,4 @@ export function createCron(driver: Driver): { run(job: CronJob): Promise<void> }
 
 export type CronJob =
   | "domain-rechecks" | "github-proof-lapse" | "synthetic-expiry" | "stats-rollup" | "staging-expiry" | "rescan" | "domain-drift" | "top-pack-rescan"
-  | "adoption-scan" | "audit-head" | "audit-verify" | "activity-prune";
+  | "report-notices" | "adoption-scan" | "audit-head" | "audit-verify" | "activity-prune";

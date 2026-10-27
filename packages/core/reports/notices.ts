@@ -20,6 +20,8 @@ export function noticeStatement(ports: ReportPorts, to: Recipient, notice: Repor
   };
 }
 
+export const MAX_NOTICE_ATTEMPTS = 5;
+
 export interface NoticeDelivery {
   mail: Mail;
   /** Queued notices carry the path of their report; this makes it a link. */
@@ -39,22 +41,29 @@ async function addressOf(d1: D1, to: string, securityAddress: string): Promise<s
  * Sends what is queued, oldest first, and marks each sent only once the mail port accepted it, so a failure
  * leaves the notice to be tried again. A person with no verified address is skipped and marked, not retried forever.
  */
-export async function drainNotices(ports: ReportPorts, delivery: NoticeDelivery, limit = 50): Promise<{ sent: number; skipped: number }> {
-  const { rows } = await ports.d1.query("select id, kind, recipient, data from report_notices where sent_at is null order by rowid limit ?", [limit]);
+export async function drainNotices(ports: ReportPorts, delivery: NoticeDelivery, limit = 50): Promise<{ sent: number; skipped: number; failed: number }> {
+  const { rows } = await ports.d1.query("select id, kind, recipient, data from report_notices where sent_at is null and attempts < ? order by rowid limit ?", [MAX_NOTICE_ATTEMPTS, limit]);
   let sent = 0;
   let skipped = 0;
+  let failed = 0;
   for (const row of rows) {
-    const address = await addressOf(ports.d1, String(row.recipient), delivery.securityAddress);
-    if (address !== null) {
-      const kind = String(row.kind) as ReportNotice["kind"];
-      const data = JSON.parse(String(row.data)) as { reportUrl: string };
-      await sendNotice(delivery.mail, address, kind, { ...data, reportUrl: `${delivery.siteOrigin}${data.reportUrl}` } as never);
-      sent += 1;
-    } else {
-      skipped += 1;
+    try {
+      const address = await addressOf(ports.d1, String(row.recipient), delivery.securityAddress);
+      if (address !== null) {
+        const kind = String(row.kind) as ReportNotice["kind"];
+        const data = JSON.parse(String(row.data)) as { reportUrl: string };
+        await sendNotice(delivery.mail, address, kind, { ...data, reportUrl: `${delivery.siteOrigin}${data.reportUrl}` } as never);
+        sent += 1;
+      } else {
+        skipped += 1;
+      }
+      await ports.d1.query("update report_notices set sent_at = ? where id = ?", [isoNow(ports), row.id]);
+    } catch (error) {
+      failed += 1;
+      console.log(JSON.stringify({ event: "cron.report-notices.send_failed", notice_id: String(row.id), kind: String(row.kind), reason: String(error) }));
+      await ports.d1.query("update report_notices set attempts = attempts + 1 where id = ?", [row.id]);
     }
-    await ports.d1.query("update report_notices set sent_at = ? where id = ?", [isoNow(ports), row.id]);
   }
-  return { sent, skipped };
+  return { sent, skipped, failed };
 }
 

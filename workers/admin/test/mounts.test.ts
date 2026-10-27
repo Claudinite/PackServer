@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryAuditBucket, SqliteD1 } from "@packserver/core/audit/testing";
 import { createFakePorts } from "@packserver/ports/fakes";
 import { SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
-import { CRON_DAILY, CRON_HOURLY, CRON_JOBS, runCron } from "../src/crons";
+import { CRON_DAILY, CRON_HOURLY, CRON_JOBS, CRON_REPORTS, runCron } from "../src/crons";
 import { auditHead } from "../src/crons/audit-head";
 import { auditVerify } from "../src/crons/audit-verify";
 import { trending } from "../src/crons/trending";
@@ -24,7 +24,7 @@ const runtime = {
   missingSecrets: [],
   ports: { ...fakes, d1: new SqliteD1(), auditBucket: new MemoryAuditBucket(), r2: { PACKS_STAGING: fakes.r2["PACKS_STAGING"]!, VALIDATION_REPORTS: fakes.r2["VALIDATION_REPORTS"]!, OPS_BUCKET: fakes.r2["OPS_BUCKET"]! } },
   services: {},
-  config: { siteOrigin: "https://registry.test" },
+  config: { siteOrigin: "https://registry.test", securityAddress: "security@registry.test" },
 } satisfies AdminRuntime;
 
 afterEach(() => vi.restoreAllMocks());
@@ -42,8 +42,8 @@ describe("admin crons", () => {
   };
 
   it.each(["staging", "production"])("env.%s fires exactly the triggers that have jobs", (env) => {
-    expect(wrangler.env[env]?.triggers?.crons.sort()).toEqual([CRON_HOURLY, CRON_DAILY].sort());
-    expect(Object.keys(CRON_JOBS).sort()).toEqual([CRON_HOURLY, CRON_DAILY].sort());
+    expect(wrangler.env[env]?.triggers?.crons.sort()).toEqual([CRON_HOURLY, CRON_REPORTS, CRON_DAILY].sort());
+    expect(Object.keys(CRON_JOBS).sort()).toEqual([CRON_HOURLY, CRON_REPORTS, CRON_DAILY].sort());
   });
 
   it("runs every stub job of a trigger and says so; the audit jobs have their own test", async () => {
