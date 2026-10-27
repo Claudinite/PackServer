@@ -99,6 +99,68 @@ describe("the share of D1 queries each cron job is held to", () => {
     expect(m.used).toBeLessThanOrEqual(JOB_QUERIES.get(community)!);
   });
 
+  it("community: 6000 packs outgrow one share, and every pack is rewritten across the runs", async () => {
+    const f = fixture();
+    seedPacks(f, 6000);
+    f.db.exec(`insert into users (id, created_at) values ('u', '2020-01-01T00:00:00.000Z')`);
+    const star = f.db.prepare("insert into stars (pack_id, user_id, created_at) values (?, 'u', ?)");
+    for (let i = 0; i < 6000; i++) star.run(`p${i}`, AT);
+    const done = () => (f.db.prepare("select count(*) as n from pack_stats where stars = 1").get() as { n: number }).n;
+    let runs = 0;
+    while (done() < 6000 && runs < 10) {
+      await measure(f.runtime, community, JOB_QUERIES.get(community)!);
+      runs++;
+    }
+    expect(done()).toBe(6000);
+    expect(runs).toBeGreaterThan(1);
+    expect(f.db.prepare("select value from community_state where key = 'recompute_cursor'").get()).toBeUndefined();
+  });
+
+  it("community: busy packs and a full notice queue cannot starve the recompute, and every busy pack is burst-checked across runs", async () => {
+    const f = fixture();
+    seedPacks(f, 1200);
+    const now = f.fakes.clock.now();
+    const fresh = new Date(now - 3_600_000).toISOString();
+    const older = new Date(now - 3 * 86_400_000).toISOString();
+    f.db.exec(`insert into users (id, created_at) values ('nu', '${AT}'); insert into user_emails (user_id, address, source, created_at) values ('nu', 'nu@example.test', 'github', '${AT}')`);
+    const user = f.db.prepare("insert into users (id, created_at) values (?, '2020-01-01T00:00:00.000Z')");
+    for (let u = 0; u < 90; u++) user.run(`u${u}`);
+    const star = f.db.prepare("insert into stars (pack_id, user_id, created_at) values (?, ?, ?)");
+    for (let i = 0; i < 1200; i++) star.run(`p${i}`, "u0", older);
+    // 50 fresh stars against 40 older ones is a burst no larger than ten times the average, so no hold opens and the pack is checked again every run.
+    for (let i = 0; i < 70; i++) for (let u = 1; u < 90; u++) star.run(`p${i}`, `u${u}`, u <= 50 ? fresh : older);
+    const checked = new Set<string>();
+    const d1 = f.runtime.ports.d1;
+    const spied: AdminRuntime = {
+      ...f.runtime,
+      ports: { ...f.runtime.ports, d1: { query: (sql, params) => (sql.startsWith("select * from star_holds where pack_id = ?") && checked.add(String(params?.[0])), d1.query(sql, params)), batch: (statements) => d1.batch(statements) } },
+    };
+    const notice = f.db.prepare("insert into community_notices (id, kind, user_id, data, created_at) values (?, 'review-removed', 'nu', ?, ?)");
+    const recomputed = () => (f.db.prepare("select count(*) as n from pack_stats").get() as { n: number }).n;
+    let runs = 0;
+    let before = 0;
+    while ((recomputed() < 1200 || checked.size < 70) && runs < 30) {
+      for (let i = 0; i < 50; i++) notice.run(`n${runs}-${i}`, JSON.stringify({ pack: "@acme/x", reason: "r", packPath: "/packs/x" }), AT);
+      await measure(spied, community, JOB_QUERIES.get(community)!);
+      runs++;
+      if (before < 1200) expect(recomputed()).toBeGreaterThan(before);
+      before = recomputed();
+    }
+    expect(checked.size).toBe(70);
+    expect(recomputed()).toBe(1200);
+    expect(f.db.prepare("select count(*) as n from star_holds").get()).toEqual({ n: 0 });
+  });
+
+  it("community: a catalogue that fits is rewritten whole in one run", async () => {
+    const f = fixture();
+    seedPacks(f, 800);
+    f.db.exec(`insert into users (id, created_at) values ('u', '2020-01-01T00:00:00.000Z')`);
+    const star = f.db.prepare("insert into stars (pack_id, user_id, created_at) values (?, 'u', ?)");
+    for (let i = 0; i < 800; i++) star.run(`p${i}`, AT);
+    await measure(f.runtime, community, JOB_QUERIES.get(community)!);
+    expect(f.db.prepare("select count(*) as n from pack_stats").get()).toEqual({ n: 800 });
+  });
+
   it("lifecycle: 200 notices to 200 people", async () => {
     const f = fixture();
     seedPacks(f, 1);
@@ -174,8 +236,30 @@ describe("the share of D1 queries each cron job is held to", () => {
         insert into github_installations (installation_id, account_id, account_login, account_type, sender_login, repository_selection, status, installed_at, updated_at) values (${5000 + i}, ${1000 + i}, 'org${i}', 'Organization', 's', 'all', 'active', '${AT}', '${AT}')`);
     }
     const m = await measure(f.runtime, githubProofLapse);
-    expect(m.used).toBe(1 + 2 * 80);
+    expect(m.used).toBe(2 + 2 * 80);
     expect(m.used).toBeLessThanOrEqual(JOB_QUERIES.get(githubProofLapse)!);
+  });
+
+  it("github proof lapse: a list longer than one share is reached whole across runs, wrapping round at the end", async () => {
+    const f = fixture();
+    for (let i = 0; i < 80; i++) {
+      f.db.exec(`insert into scopes (id, name, kind, state, created_at) values ('o${String(i).padStart(2, "0")}', 'org${i}', 'org', 'active', '${AT}');
+        insert into github_org_proofs (scope_id, org_id, org_login, method, installation_id, proven_at, alerted_at) values ('o${String(i).padStart(2, "0")}', '${1000 + i}', 'org${i}', 'app', ${i}, '${AT}', '${AT}');
+        insert into github_installations (installation_id, account_id, account_login, account_type, sender_login, repository_selection, status, installed_at, updated_at) values (${5000 + i}, ${1000 + i}, 'org${i}', 'Organization', 's', 'all', 'active', '${AT}', '${AT}')`);
+    }
+    const pending = () => (f.db.prepare("select count(*) as n from github_org_proofs where alerted_at is not null").get() as { n: number }).n;
+    const cursor = () => f.db.prepare("select value from community_state where key = 'github_proof_lapse_cursor'").get();
+    let runs = 0;
+    while (pending() > 0 && runs < 20) {
+      await measure(f.runtime, githubProofLapse, 60);
+      runs++;
+      if (pending() > 0) expect(cursor()).toBeDefined();
+    }
+    expect(pending()).toBe(0);
+    expect(runs).toBeGreaterThan(1);
+    // The run that reaches the end forgets the place, so the next one starts from the top.
+    await measure(f.runtime, githubProofLapse, 100);
+    expect(cursor()).toBeUndefined();
   });
 
   it("synthetic expiry: one read and one batch however many versions are due", async () => {

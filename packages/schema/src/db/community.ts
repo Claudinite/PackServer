@@ -130,7 +130,7 @@ export const pack_ratings = sqliteTable("pack_ratings", {
   computed_at: text("computed_at").notNull(),
 });
 
-/** Single values the community jobs keep between runs; today the catalogue mean rating the prior is built on. */
+/** Single values the community jobs keep between runs; the catalogue mean rating the prior is built on, and where the jobs that work through a list in shares left off. */
 export const community_state = sqliteTable("community_state", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
