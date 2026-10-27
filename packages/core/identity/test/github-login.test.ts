@@ -106,6 +106,12 @@ describe("the GitHub adapter", () => {
   it("refuses a code GitHub does not accept", async () => {
     await expect(login.profile({ code: "bad", redirectUri: "https://r.test/cb", codeVerifier: "v" })).rejects.toThrow(GitHubLoginError);
   });
+
+  it("carries GitHub's error code only in its documented form", () => {
+    expect(new GitHubLoginError("x", "bad_verification_code").githubError).toBe("bad_verification_code");
+    expect(new GitHubLoginError("x", "<script>").githubError).toBeUndefined();
+    expect(new GitHubLoginError("x").githubError).toBeUndefined();
+  });
 });
 
 describe("IT-ACC-023 return targets", () => {

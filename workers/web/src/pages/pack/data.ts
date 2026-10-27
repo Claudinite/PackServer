@@ -12,6 +12,8 @@ import { routes as viewRoutes } from "../../routes/packs/view";
 export interface Signals {
   stars: number | null;
   rating: number | null;
+  /** How many visible reviews the rating is made of; null while the pack has no rating. */
+  ratingCount: number | null;
   fetches30d: number | null;
   fetches7d: number | null;
   fetchesPrev28d: number | null;
@@ -155,9 +157,9 @@ async function load(c: Context<WebEnv>, name: string, scope: string, packName: s
 
   const [listed, versions, profile, advisories, adoptVersion, attestation, adoption] = await Promise.all([
     d1.query(
-      `SELECT ps.pitch AS pitch, ps.category AS category, ps.card AS card, st.stars AS stars, st.rating AS rating, st.fetches_30d AS fetches_30d,
+      `SELECT ps.pitch AS pitch, ps.category AS category, ps.card AS card, st.stars AS stars, st.rating AS rating, pr.review_count AS rating_count, st.fetches_30d AS fetches_30d,
         st.fetches_7d AS fetches_7d, st.fetches_prev_28d AS fetches_prev_28d
-FROM pack_search ps LEFT JOIN pack_stats st ON st.pack_id = ps.pack_id WHERE ps.pack_id = ?`,
+FROM pack_search ps LEFT JOIN pack_stats st ON st.pack_id = ps.pack_id LEFT JOIN pack_ratings pr ON pr.pack_id = ps.pack_id WHERE ps.pack_id = ?`,
       [packId],
     ),
     d1.query("SELECT version, score FROM pack_versions WHERE pack_id = ?", [packId]),
@@ -194,6 +196,7 @@ FROM pack_search ps LEFT JOIN pack_stats st ON st.pack_id = ps.pack_id WHERE ps.
       signals: {
         stars: count(row.stars),
         rating: count(row.rating),
+        ratingCount: count(row.rating_count),
         fetches30d: count(row.fetches_30d),
         fetches7d: count(row.fetches_7d),
         fetchesPrev28d: count(row.fetches_prev_28d),

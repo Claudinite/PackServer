@@ -157,6 +157,19 @@ describe("finishing GitHub sign-in", () => {
     const failed = await (await beginFlow(failing)).callback();
     expect(failed.status).toBe(502);
     expect(cookies(failed)["__Host-session"]).toBeUndefined();
+    expect(((await failed.json()) as { message: string }).message).toBe("GitHub sign-in did not complete. Start again.");
+  });
+
+  it("names GitHub's error code in the 502 when GitHub refused the code", async () => {
+    const { GitHubLoginError } = await import("@packserver/core/identity");
+    const refused = setup({
+      profile: async () => {
+        throw new GitHubLoginError("refused", "bad_verification_code");
+      },
+    });
+    const failed = await (await beginFlow(refused)).callback();
+    expect(failed.status).toBe(502);
+    expect(((await failed.json()) as { message: string }).message).toContain("(bad_verification_code)");
   });
 
   it("creates no session, and merges nothing, when a verified address belongs to another account", async () => {

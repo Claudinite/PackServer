@@ -12,8 +12,8 @@ journey is [JT-004](journeys.md).
 ### IT-COMM-001 Star and unstar; anonymous clicks redirect to sign-in and back
 - **Covers:** REQ-COMM-001
 - **Runs:** push
-- **Action:** a signed-in person (3 days old) stars and unstars; an anonymous visitor clicks star, signs in, and lands back.
-- **Assert:** the count goes 0 → 1 → 0; the visitor's redirect returns to the pack page and the star is applied once signed in.
+- **Action:** a signed-in person (3 days old) stars and unstars; an anonymous visitor clicks star, signs in, and lands back on the star confirmation page, where one click stars.
+- **Assert:** the count goes 0 → 1 → 0; the visitor's click is redirected to sign-in and back to the confirmation page, which places nothing until its button is clicked, and then the count is 1.
 
 ### IT-COMM-002 Young-account and self stars are not counted
 - **Covers:** REQ-COMM-002

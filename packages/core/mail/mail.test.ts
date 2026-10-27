@@ -26,6 +26,7 @@ const SAMPLES: { [K in NoticeKind]: NoticeData<K> } = {
   "domain-proof-moved": { scope: "@acme", domain: "acme.test", scopeUrl: url },
   "github-org-proof-alert": { scope: "@acme", org: "acme", cause: "removed", removalDate: "2026-11-02", scopeUrl: url },
   "scope-name-disputed": { scope: "@acme", domain: "acme.test", held: true, scopeUrl: url },
+  "review-removed": { pack: "@acme/pack", reason: "Spam", packUrl: url },
 };
 
 describe("notices", () => {

@@ -15,6 +15,11 @@ export interface ScenarioOpts {
   tags?: string[];
 }
 
+/** A test whose `Runs` row names `probe-safe` is in the prober's set, with no say from the scenario that implements it. */
+export const specTags = (spec: { covers: readonly string[]; runs: string }, own: readonly string[] = []): string[] => [
+  ...new Set([...spec.covers.map((c) => `req/${c}`), ...own, ...(/\bprobe-safe\b/.test(spec.runs) ? ["probe-safe"] : [])]),
+];
+
 const TAG_NEEDS: Record<string, Capability[]> = { ui: ["ui"], agent: ["mcp"] };
 
 // Module-level state and hooks rely on vitest giving every test file its own module instance.
@@ -91,7 +96,7 @@ export function scenario(title: string, fn: (world: World) => Promise<void>, opt
   const spec = loadSpecs().tests.get(id);
   if (!spec) throw new Error(`scenario "${title}" names ${id}, which no page of docs/testing specifies`);
   const needsReset = /\bneeds reset\b/.test(spec.runs);
-  run(title, [...spec.covers.map((c) => `req/${c}`), ...(opts.tags ?? [])], fn, {
+  run(title, specTags(spec, opts.tags), fn, {
     ...opts,
     needs: [...(opts.needs ?? []), ...(needsReset ? (["reset"] as const) : [])],
   });
