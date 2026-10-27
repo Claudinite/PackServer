@@ -135,6 +135,7 @@ const pages = `
 .card .pk { font-weight: 500; color: var(--ink); }
 .card .pitch { color: var(--grey-1); margin-top: 2px; overflow-wrap: anywhere; }
 .card .meta { display: flex; flex-wrap: wrap; gap: ${g(1)} ${g(3)}; align-items: center; margin-top: ${g(1)}; font-size: ${typeScale.small}px; }
+@media (max-width: 480px) { .card { position: relative; } .card .hc { position: static; } }
 .filters { display: flex; flex-wrap: wrap; gap: ${g(1)} ${g(2)}; align-items: center; font-size: ${typeScale.small}px; }
 .filters label { display: inline-flex; gap: 6px; align-items: center; }
 .field select { padding: 4px 8px; }
