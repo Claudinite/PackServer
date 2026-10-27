@@ -10,8 +10,8 @@ integration test" list. Pass/fail status is never recorded here (see [README.md]
 - Register: 290 live ids (290 active, 0 provisional), 29 retired.
 - Covered by at least one integration test: 287 of 290.
 - Not covered by an integration test: 3 (milestone: 1, manual: 1, policy: 1).
-- Tests specified: 293 (278 in the v1 burndown, 15 later-phase; 10 journeys).
-- Tests per page: accounts 26, admin 16, billing 2, catalog-search 6, cn-client-contract 28, community 39, journeys 10, mcp 16, operations 19, pack-pages-manifest 5, private-packs 20, publishing 49, validation-pack-score 57.
+- Tests specified: 294 (279 in the v1 burndown, 15 later-phase; 10 journeys).
+- Tests per page: accounts 26, admin 16, billing 2, catalog-search 6, cn-client-contract 28, community 40, journeys 10, mcp 16, operations 19, pack-pages-manifest 5, private-packs 20, publishing 49, validation-pack-score 57.
 
 ## REQ id → tests
 
@@ -186,7 +186,7 @@ integration test" list. Pass/fail status is never recorded here (see [README.md]
 | REQ-COMM-014 | active | Trending ranks packs by recent growth, with a minimum count | [IT-COMM-014](community.md#it-comm-014) |  |
 | REQ-COMM-015 | active | Section comments and votes on pack contents | [IT-COMM-015](community.md#it-comm-015) |  |
 | REQ-MOD-001 | active | File a bug report; a linked repo gets a pre-filled issue the reporter files themselves | [IT-MOD-001](community.md#it-mod-001) |  |
-| REQ-MOD-002 | active | Security reports are private with a 90-day disclosure timer | [IT-MOD-002](community.md#it-mod-002) |  |
+| REQ-MOD-002 | active | Security reports are private with a 90-day disclosure timer | [IT-MOD-002](community.md#it-mod-002), [IT-MOD-019](community.md#it-mod-019) |  |
 | REQ-MOD-003 | active | Packs without a security contact route to registry security | [IT-MOD-003](community.md#it-mod-003) |  |
 | REQ-MOD-004 | active | Attachments containing secrets are blocked | [IT-MOD-004](community.md#it-mod-004) |  |
 | REQ-MOD-005 | active | Reporters see similar existing issues first | [IT-MOD-005](community.md#it-mod-005) |  |

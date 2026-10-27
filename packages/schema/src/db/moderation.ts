@@ -81,6 +81,7 @@ export const moderation_actions = sqliteTable(
     restored_at: text("restored_at"),
     from_state: text("from_state"),
     from_reason: text("from_reason"),
+    from_security: text("from_security"),
     to_state: text("to_state"),
     to_reason: text("to_reason"),
   },

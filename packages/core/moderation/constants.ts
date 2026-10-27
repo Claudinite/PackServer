@@ -17,8 +17,8 @@ export const STANDING_LOSS_MS = 90 * DAY_MS;
 /** Abuse reports one account may file a day; a younger account (the review rule's threshold, REQ-COMM-005) may file none. */
 export const ABUSE_REPORTS_PER_DAY = 10;
 /** Reporters whose standing one hold decision looks at before it stops asking. */
-export const STANDING_SCAN = 25;
-export const STANDING_SCAN_PAGES = 4;
+export const STANDING_SCAN = 10;
+export const STANDING_SCAN_PAGES = 3;
 /** Copyright restorations one hourly sweep performs; the next sweep carries the rest. */
 export const DMCA_SWEEP_LIMIT = 50;
 

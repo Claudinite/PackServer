@@ -5,7 +5,7 @@ import { completedAttrs, heldAttrs } from "./signals.ts";
 import { notifyOwners, notifyUser } from "./notify.ts";
 import { nowIso, publicUrl, type ModerationPorts } from "./ports.ts";
 import { groundsFor, recordDismissals } from "./standing.ts";
-import { undoAction, type Change } from "./status.ts";
+import { undoAction, type Change, type Status } from "./status.ts";
 import type { PackInfo } from "./targets.ts";
 
 export type ActionKind = "quarantine" | "yank" | "dmca_removal" | "hide_pack" | "suspend";
@@ -93,9 +93,9 @@ export async function recordAction(ports: Ports, input: ActionInput): Promise<Re
   const actor = input.actor.id ?? "system";
   const { from, to } = input.trigger === "admin" && input.pack && input.version ? await supersedeProvisional(ports, input.pack, input.version, input.change) : input.change;
   await ports.d1.query(
-    `insert into moderation_actions (id, scope_id, pack_id, version, kind, reason, trigger, actor, taken_at, from_state, from_reason, to_state, to_reason)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, input.scope.id, input.pack?.id ?? null, input.version, input.kind, input.reason, input.trigger, actor, nowIso(ports), from.state, from.reason, to.state, to.reason],
+    `insert into moderation_actions (id, scope_id, pack_id, version, kind, reason, trigger, actor, taken_at, from_state, from_reason, from_security, to_state, to_reason)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, input.scope.id, input.pack?.id ?? null, input.version, input.kind, input.reason, input.trigger, actor, nowIso(ports), from.state, from.reason, from.security ?? null, to.state, to.reason],
   );
   await notifyOwners(ports, input.scope.id, "pack-actioned", { pack: labelOf(input), action: WHAT[input.kind], reason: input.reason, appealUrl: publicUrl(ports, `/appeals/${id}`) });
   if (input.pack && input.version) {
@@ -113,15 +113,25 @@ export async function recordAction(ports: Ports, input: ActionInput): Promise<Re
  * A person's decision replaces the registry's own provisional hold on the version: the decision then undoes to what the
  * hold found, and the hold is closed.
  */
-async function supersedeProvisional(ports: Pick<Ports, "d1" | "clock">, pack: PackInfo, version: string, change: Change): Promise<Change> {
+async function provisionalHold(ports: Pick<Ports, "d1">, pack: PackInfo, version: string, current: Status) {
   const { rows } = await ports.d1.query(
-    "select id, from_state, from_reason, to_state, to_reason from moderation_actions where pack_id = ? and version = ? and kind = 'quarantine' and trigger in ('judge', 'report_standing') and restored_at is null order by taken_at desc, id desc limit 1",
+    "select id, from_state, from_reason, from_security, to_state, to_reason from moderation_actions where pack_id = ? and version = ? and kind = 'quarantine' and trigger in ('judge', 'report_standing') and restored_at is null order by taken_at desc, id desc limit 1",
     [pack.id, version],
   );
   const hold = rows[0];
-  if (!hold || hold.to_state !== change.from.state || hold.to_reason !== change.from.reason) return change;
+  return hold && hold.to_state === current.state && hold.to_reason === current.reason ? hold : null;
+}
+
+/** Whether a hold the registry placed itself is what keeps the version as it is now. */
+export async function heldProvisionally(ports: Pick<Ports, "d1">, pack: PackInfo, version: string, current: Status): Promise<boolean> {
+  return (await provisionalHold(ports, pack, version, current)) !== null;
+}
+
+async function supersedeProvisional(ports: Pick<Ports, "d1" | "clock">, pack: PackInfo, version: string, change: Change): Promise<Change> {
+  const hold = await provisionalHold(ports, pack, version, change.from);
+  if (!hold) return change;
   await markRestored(ports, String(hold.id));
-  return { from: { state: hold.from_state === null ? null : String(hold.from_state), reason: hold.from_reason === null ? null : String(hold.from_reason) }, to: change.to };
+  return { from: { state: hold.from_state === null ? null : String(hold.from_state), reason: hold.from_reason === null ? null : String(hold.from_reason), security: hold.from_security === null ? null : String(hold.from_security) }, to: change.to };
 }
 
 /** Marks one action undone. */
@@ -142,15 +152,16 @@ export interface ActionRow {
   version: string | null;
   from_state: string | null;
   from_reason: string | null;
+  from_security: string | null;
   to_state: string | null;
   to_reason: string | null;
 }
 
 export async function actionRow(d1: D1, id: string): Promise<ActionRow | null> {
-  const r = (await d1.query("select id, kind, scope_id, pack_id, version, from_state, from_reason, to_state, to_reason from moderation_actions where id = ?", [id])).rows[0];
+  const r = (await d1.query("select id, kind, scope_id, pack_id, version, from_state, from_reason, from_security, to_state, to_reason from moderation_actions where id = ?", [id])).rows[0];
   if (!r) return null;
   const text = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
-  return { id: String(r.id), kind: String(r.kind), scope_id: String(r.scope_id), pack_id: text(r.pack_id), version: text(r.version), from_state: text(r.from_state), from_reason: text(r.from_reason), to_state: text(r.to_state), to_reason: text(r.to_reason) };
+  return { id: String(r.id), kind: String(r.kind), scope_id: String(r.scope_id), pack_id: text(r.pack_id), version: text(r.version), from_state: text(r.from_state), from_reason: text(r.from_reason), from_security: text(r.from_security), to_state: text(r.to_state), to_reason: text(r.to_reason) };
 }
 
 /** Undoes one action and marks it so; whatever now holds the thing for another reason stays. */

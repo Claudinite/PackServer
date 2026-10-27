@@ -1,7 +1,7 @@
 import type { D1 } from "@packserver/ports";
 import type { AuditActor } from "../audit/index.ts";
 import { hideReview } from "../community/reviews.ts";
-import { liftProvisionalHolds, markVersionRestored, recordAction, settleReport, settleTargetReports, settleVersionReports, type ActionKind } from "./actions.ts";
+import { heldProvisionally, liftProvisionalHolds, markVersionRestored, recordAction, settleReport, settleTargetReports, settleVersionReports, type ActionKind } from "./actions.ts";
 import { moderationReason } from "./constants.ts";
 import type { ModerationPorts } from "./ports.ts";
 import { holdVersion } from "./status.ts";
@@ -105,10 +105,13 @@ export async function moveVersion(
   }
   const held = await holdVersion(ports, input.transition, { pack: input.pack, version: input.version, reason: stored });
   if (!held.ok) return { ok: false, message: held.message };
-  if (!pack || !held.change) return { ok: true, changed: false };
+  // A person confirming a hold the registry placed takes it over, so a later dismissal cannot lift it.
+  const taken = !held.change && actor.kind === "admin" && pack && input.transition === "quarantine" && held.before?.state === "quarantined" && (await heldProvisionally(ports, pack, input.version, held.before));
+  const change = held.change ?? (taken && held.before ? { from: held.before, to: held.before } : null);
+  if (!pack || !change) return { ok: true, changed: false };
   const kind: ActionKind = input.transition === "yank" ? "yank" : "quarantine";
-  await recordAction(ports, { scope: { id: pack.scope_id, name: pack.scope }, pack, version: input.version, kind, reason: stored, trigger: actor.kind === "admin" ? "admin" : "judge", actor, change: held.change });
-  return { ok: true, changed: true };
+  await recordAction(ports, { scope: { id: pack.scope_id, name: pack.scope }, pack, version: input.version, kind, reason: stored, trigger: actor.kind === "admin" ? "admin" : "judge", actor, change });
+  return { ok: true, changed: !taken };
 }
 
 /** Quarantines every version of a pack that can still be held. */

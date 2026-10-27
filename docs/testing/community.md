@@ -154,6 +154,14 @@ journey is [JT-004](journeys.md).
 - **Faked:** clock.
 - **Assert:** `get_pack` for `1.0.0` and `1.0.1` returns the advisory and `1.0.2` returns none; the advisory is the only public trace of either report; the capped score (IT-SCORE-004) and the demotion (IT-COMM-010) start with the advisory, not the report.
 
+### IT-MOD-019 The scheduled report job reminds owners at +83 d and tells registry security at +90 d
+- **Covers:** REQ-MOD-002
+- **Runs:** push
+- **Action:** file a security report on a pack whose scope has an owner; upload an attachment without filing it; advance the clock to +82 d and run the `report-notices` cron; advance to +83 d and run it; advance to +90 d and run it; run it once more.
+- **Faked:** mail, clock.
+- **Assert:** nothing is mailed and the unclaimed upload is gone at +82 d; at +83 d the owner receives the reminder; at +90 d registry security receives the "Security report disclosure timer ended" mail exactly once, and not before +90 d; the final run mails nothing again.
+- **Contrast:** a pending attachment older than its time-to-live is discarded by the same run.
+
 ### IT-MOD-017 Signed-in people see their own reports
 - **Covers:** REQ-MOD-017
 - **Runs:** push

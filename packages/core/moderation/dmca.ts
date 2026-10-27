@@ -33,9 +33,11 @@ export async function removeOnCopyrightNotice(ports: ModerationPorts, admin: str
   const reason = moderationReason("copyright notice");
   const held = await holdVersion(ports, "quarantine", { pack: input.pack, version: input.version, reason });
   if (!held.ok) return { ok: false, message: held.message };
-  if (!held.change) return { ok: false, message: `${input.pack}@${input.version} is already held; a removal changes nothing there, so no case was opened.` };
+  // A version already out of reach for another reason still gets its case: the notice stands whatever else holds it.
+  const change = held.change ?? (held.before ? { from: held.before, to: held.before } : null);
+  if (!change) return { ok: false, message: `${input.pack}@${input.version} is not a version.` };
   const pack = (await findPack(ports.d1, input.pack))!;
-  const action = await recordAction(ports, { scope: { id: pack.scope_id, name: pack.scope }, pack, version: input.version, kind: "dmca_removal", reason, trigger: "dmca", actor: { kind: "admin", id: admin }, change: held.change });
+  const action = await recordAction(ports, { scope: { id: pack.scope_id, name: pack.scope }, pack, version: input.version, kind: "dmca_removal", reason, trigger: "dmca", actor: { kind: "admin", id: admin }, change });
   const id = ports.rng.uuid();
   await ports.d1.query("insert into dmca_cases (id, action_id, complainant, created_at) values (?, ?, ?, ?)", [id, action.id, input.complainant, nowIso(ports)]);
   await ports.audit({ kind: "admin", id: admin }, "admin.action", `version:${pack.name}@${input.version}`, { detail: { verb: "dmca.remove" } });

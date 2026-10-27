@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { classifyAttachment, drainNotices, fileReport, loadAttachment, readReport, saveAttachment, setStatus, sweepReports } from "../index.ts";
+import { describe, expect, it, vi } from "vitest";
+import { classifyAttachment, drainNotices, fileReport, MAX_NOTICE_ATTEMPTS, loadAttachment, readReport, saveAttachment, setStatus, sweepReports } from "../index.ts";
 import { bug, DAY, fixture } from "./helpers.ts";
 import { FakeMail } from "@packserver/ports/fakes";
 
@@ -101,9 +101,9 @@ describe("notice delivery", () => {
     await setStatus(f.ports, other.report.id, { kind: "user", id: maria }, { status: "wont_fix" });
 
     const mail = new FakeMail();
-    expect(await drainNotices(f.ports, { mail, siteOrigin: "https://registry.example", securityAddress: "security@registry.test" })).toEqual({ sent: 1, skipped: 1 });
+    expect(await drainNotices(f.ports, { mail, siteOrigin: "https://registry.example", securityAddress: "security@registry.test" })).toEqual({ sent: 1, skipped: 1, failed: 0 });
     expect(mail.inbox("ann@example.test").map((m) => m.subject)).toEqual(["Your report on @acme/gcp is marked won't fix"]);
-    expect(await drainNotices(f.ports, { mail, siteOrigin: "https://registry.example", securityAddress: "security@registry.test" })).toEqual({ sent: 0, skipped: 0 });
+    expect(await drainNotices(f.ports, { mail, siteOrigin: "https://registry.example", securityAddress: "security@registry.test" })).toEqual({ sent: 0, skipped: 0, failed: 0 });
   });
 });
 
@@ -134,5 +134,32 @@ describe("attachment storage allowance", () => {
     }));
     await f.d1.batch(rows);
     expect(await saveAttachment(f.ports, { user_id: ann, name: "a.png", bytes: png(1024) })).toMatchObject({ ok: false, reason: "storage_full" });
+  });
+});
+
+describe("notice delivery failures", () => {
+  it("logs a refused address, bounds its attempts, and still mails the notices behind it", async () => {
+    const f = await fixture();
+    const ann = await f.user("ann");
+    const maria = await f.user("maria", "maintainer");
+    const result = await fileReport(f.ports, f.pack, ann, bug(), null);
+    if (!result.ok) throw new Error(result.message);
+    await setStatus(f.ports, result.report.id, { kind: "user", id: maria }, { status: "acknowledged" });
+    await f.d1.query("update report_notices set recipient = 'address:refused@acme.test'");
+    await f.d1.query("insert into report_notices (id, kind, recipient, data, created_at) select 'later', kind, 'address:ok@acme.test', data, created_at from report_notices");
+    const mail = new FakeMail();
+    const send = mail.send.bind(mail);
+    mail.send = async (message) => {
+      if (message.to === "refused@acme.test") throw new Error("refused");
+      return send(message);
+    };
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const delivery = { mail, siteOrigin: "https://registry.example", securityAddress: "security@registry.test" };
+    expect(await drainNotices(f.ports, delivery)).toEqual({ sent: 1, skipped: 0, failed: 1 });
+    expect(mail.inbox("ok@acme.test")).toHaveLength(1);
+    for (let i = 1; i < MAX_NOTICE_ATTEMPTS; i++) await drainNotices(f.ports, delivery);
+    expect(log).toHaveBeenCalledTimes(MAX_NOTICE_ATTEMPTS);
+    expect(await drainNotices(f.ports, delivery)).toEqual({ sent: 0, skipped: 0, failed: 0 });
+    log.mockRestore();
   });
 });

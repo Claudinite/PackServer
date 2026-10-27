@@ -88,6 +88,7 @@ CREATE TABLE `moderation_actions` (
 	`restored_at` text,
 	`from_state` text,
 	`from_reason` text,
+	`from_security` text,
 	`to_state` text,
 	`to_reason` text,
 	FOREIGN KEY (`scope_id`) REFERENCES `scopes`(`id`) ON UPDATE no action ON DELETE no action,
