@@ -74,6 +74,10 @@ export interface PackRecord {
 function stripRecord(v: VersionRecord): IndexVersion {
   const entry: Record<string, unknown> = { ...v };
   delete entry.status_changed_at;
+  if (v.status === "removed") {
+    delete entry.sha256;
+    delete entry.size;
+  }
   return IndexVersion.parse(entry);
 }
 

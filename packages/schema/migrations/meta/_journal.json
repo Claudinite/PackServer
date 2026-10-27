@@ -218,6 +218,20 @@
       "when": 1793063590073,
       "tag": "20261027011310_run_approvals",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1793066355383,
+      "tag": "20261027015915_foundation_lifecycle_removal",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1793066365903,
+      "tag": "20261027015925_publishing_lifecycle_notices",
+      "breakpoints": true
     }
   ]
 }

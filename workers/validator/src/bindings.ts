@@ -3,6 +3,7 @@ import {
   clockFrom, cryptoRng, d1Port, durableObjectsPort, embedderFrom, kvPort, mailPort, queuePort, r2Port, r2ReadPort, readSecret, sandboxPort, systemClock,
   vectorIndexPort, workerRuntime, workflowPort, type SendEmailBinding, type WorkerRuntime,
 } from "@packserver/ports/cloudflare";
+import { cdnPurger, type ReconcilePorts } from "@packserver/core/publishing";
 import type { Ports, R2, R2Read } from "@packserver/ports";
 
 export interface Env {
@@ -31,6 +32,11 @@ export interface Env {
   MAIL_FROM?: string;
   /** The origins the registry's pages are served from, first the public one; notices link to it. */
   SITE_ORIGINS: string;
+  /** Where the CDN answers for `packs-public`; a purge names the URLs cached under it. */
+  CDN_ORIGIN: string;
+  /** The zone and token of the CDN purge; where either is absent a purge cannot be made and stays owed. */
+  CDN_PURGE_ZONE_ID?: string;
+  CDN_PURGE_TOKEN?: string | SecretsStoreSecret;
   /** The test world's clock, bound only under `env.test`. */
   CLOCK?: Fetcher;
   VECTORIZE: VectorizeIndex | Fetcher;
@@ -62,6 +68,10 @@ export interface ValidatorConfig {
   signingSeed(): Promise<string>;
   /** The public origin notices link to. */
   siteOrigin(): string;
+  /** Where the CDN answers for `packs-public`. */
+  cdnOrigin(): string;
+  /** Purges URLs from the CDN; false where it cannot be done. */
+  purge: ReconcilePorts["purge"];
 }
 export type ValidatorRuntime = WorkerRuntime<ValidatorPorts, ValidatorServices> & { config: ValidatorConfig };
 
@@ -113,7 +123,15 @@ export function createRuntime(env: Env): ValidatorRuntime {
     },
     { github: env.GITHUB },
   );
-  return { ...base, config: { signingSeed: () => readSecret(env.SIGNING_KEY_ACTIVE), siteOrigin: () => siteOriginOf(env.SITE_ORIGINS) } };
+  return {
+    ...base,
+    config: {
+      signingSeed: () => readSecret(env.SIGNING_KEY_ACTIVE),
+      siteOrigin: () => siteOriginOf(env.SITE_ORIGINS),
+      cdnOrigin: () => env.CDN_ORIGIN.replace(/\/$/, ""),
+      purge: cdnPurger({ zoneId: env.CDN_PURGE_ZONE_ID, token: () => readSecret(env.CDN_PURGE_TOKEN), fetch: (input, init) => fetch(input, init) }),
+    },
+  };
 }
 
 export type ObjectEnv = Env;

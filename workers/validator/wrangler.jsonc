@@ -19,6 +19,9 @@
         "STEP_RETRY_DELAY": "10 milliseconds",
         "WAIT_REARM": "3 seconds",
         "SITE_ORIGINS": "http://web.internal",
+        "CDN_ORIGIN": "https://packs.test.invalid",
+        "CDN_PURGE_ZONE_ID": "test-zone",
+        "CDN_PURGE_TOKEN": "test-purge-token",
         "SIGNING_KEY_ACTIVE": "BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU",
         "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
         "IP_HASH_MASTER_KEY": "test-ip-hash-master-key",
@@ -182,6 +185,7 @@
         "STEP_RETRY_DELAY": "30 seconds",
         "WAIT_REARM": "7 days",
         "SITE_ORIGINS": "https://registry-staging.claudinite.com",
+        "CDN_ORIGIN": "https://packs-staging.claudinite.com",
         "MAIL_FROM": "noreply@claudinite.com"
       },
       "d1_databases": [
@@ -384,6 +388,7 @@
         "STEP_RETRY_DELAY": "30 seconds",
         "WAIT_REARM": "7 days",
         "SITE_ORIGINS": "https://registry.claudinite.com",
+        "CDN_ORIGIN": "https://packs.claudinite.com",
         "MAIL_FROM": "noreply@claudinite.com"
       },
       "d1_databases": [

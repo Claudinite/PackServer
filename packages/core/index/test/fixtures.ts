@@ -53,7 +53,7 @@ export function version(v: string, over: Partial<VersionRecord> = {}): VersionRe
 export const privateVersion = (v: string, id: string): PrivateEntry["versions"][number] => {
   const rest: Record<string, unknown> = { ...version(v) };
   delete rest.status_changed_at;
-  return { ...(rest as Omit<VersionRecord, "status_changed_at">), version_id: id };
+  return { ...(rest as Omit<PrivateEntry["versions"][number], "version_id">), version_id: id };
 };
 
 export const oidcAttestation = {

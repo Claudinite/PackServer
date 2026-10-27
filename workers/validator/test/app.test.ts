@@ -13,7 +13,7 @@ const runtime = (missingBindings: string[] = []): ValidatorRuntime => ({
   missingSecrets: [],
   ports: { ...fakes, r2: { PACKS_STAGING: fakes.r2["PACKS_STAGING"]!, OPS_BUCKET: fakes.r2["OPS_BUCKET"]!, PACKS_PUBLIC: fakes.r2["PACKS_PUBLIC"]!, PACKS_PRIVATE: fakes.r2["PACKS_PRIVATE"]!, VALIDATION_REPORTS: fakes.r2["VALIDATION_REPORTS"]! } },
   services: { github: {} as Fetcher },
-  config: { signingSeed: async () => { throw new Error("the shell test holds no key"); }, siteOrigin: () => "https://registry.example" },
+  config: { signingSeed: async () => { throw new Error("the shell test holds no key"); }, siteOrigin: () => "https://registry.example", cdnOrigin: () => "https://packs.example", purge: async () => true },
 });
 
 describeWorkerShell({

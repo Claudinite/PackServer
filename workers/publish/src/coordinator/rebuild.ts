@@ -38,7 +38,7 @@ interface Row {
   status_changed_at: string | null;
 }
 
-function listedOf(row: Row): IndexVersion {
+function listedOf(row: Row): IndexVersion & { sha256: string; size: number } {
   const status = row.state as VersionStatus;
   const reason = row.status_reason ?? (status === "active" ? undefined : status);
   const security = status === "revoked" ? (row.status_security ?? reason) : (row.status_security ?? undefined);
@@ -61,8 +61,10 @@ function listedOf(row: Row): IndexVersion {
   };
 }
 
+/** A removed version of a public pack is listed without its hash; a private entry keeps it. */
 function versionOf(row: Row): VersionRecord {
-  return { ...listedOf(row), status_changed_at: row.state === "active" ? null : (row.status_changed_at ?? row.published_at) };
+  const { sha256, size, ...listed } = listedOf(row);
+  return { ...listed, ...(row.state === "removed" ? {} : { sha256, size }), status_changed_at: row.state === "active" ? null : (row.status_changed_at ?? row.published_at) };
 }
 
 /**
@@ -71,14 +73,14 @@ function versionOf(row: Row): VersionRecord {
  * scope index and the private packs their entries, and the validator signs and writes both.
  * A private entry is re-signed only when its content changed or the last signing is a day old.
  */
-export function createIndexRebuilder(deps: { d1: D1; signer: IndexSigner; now: () => number }): IndexRebuilder {
+export function createIndexRebuilder(deps: { d1: D1; signer: IndexSigner; now: () => number | Promise<number> }): IndexRebuilder {
   const { d1, signer } = deps;
   return {
     async rebuild(scopeName) {
       const scope = (await d1.query(`select id from scopes where name = ?`, [scopeName])).rows[0];
       if (!scope) throw new Error(`rebuild.unknown_scope: ${scopeName}`);
       const scopeId = String(scope.id);
-      const now = new Date(deps.now());
+      const now = new Date(await deps.now());
 
       const facts = await verificationFacts(d1, scopeId);
       if (facts) {
@@ -107,8 +109,11 @@ export function createIndexRebuilder(deps: { d1: D1; signer: IndexSigner; now: (
       const privateEntries: Array<{ pack: string; rows: Row[] }> = [];
       for (const [name, group] of byPack) {
         const pack = `@${scopeName}/${name}`;
-        if (group.visibility === "public") publicPacks.push({ name: pack, versions: group.rows.map(versionOf) });
-        else privateEntries.push({ pack, rows: group.rows });
+        if (group.visibility === "public") {
+          publicPacks.push({ name: pack, versions: group.rows.map(versionOf), ...(group.rows.every((row) => row.state === "removed") ? { removed: true } : {}) });
+        } else {
+          privateEntries.push({ pack, rows: group.rows });
+        }
       }
 
       const previous = async (docKey: string) => (await d1.query(`select serial, content_hash, signed_at from signed_documents where doc_key = ?`, [docKey])).rows[0];

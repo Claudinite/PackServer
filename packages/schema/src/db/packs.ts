@@ -18,6 +18,8 @@ export const packs = sqliteTable(
     name: text("name").notNull(),
     visibility: text("visibility", { enum: PACK_VISIBILITIES }).notNull(),
     created_at: text("created_at").notNull(),
+    /** When an owner deleted the pack. A public pack stays removed; a private one can be restored for 7 days. */
+    removed_at: text("removed_at"),
   },
   (t) => [
     uniqueIndex("packs_scope_name_unique").on(t.scope_id, t.name),
@@ -61,6 +63,10 @@ export const pack_versions = sqliteTable(
     status_security: text("status_security"),
     /** When the status last left `active`; the scope index lists such a version for 180 days. */
     status_changed_at: text("status_changed_at"),
+    /** The state a private pack's version had when its pack was deleted, which a restore puts back. */
+    state_before_removal: text("state_before_removal"),
+    /** When the removed version's stored objects were deleted and the CDN purged; null while that work is owed. */
+    objects_purged_at: text("objects_purged_at"),
   },
   (t) => [
     uniqueIndex("pack_versions_pack_version_unique").on(t.pack_id, t.version),

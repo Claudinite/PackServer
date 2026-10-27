@@ -47,9 +47,18 @@ function checkStatusFields(v: StatusFields, ctx: z.RefinementCtx) {
   }
 }
 
-const indexVersionBase = z.object({ ...versionFields, ...VerificationFacts.shape });
+const privateVersionBase = z.object({ ...versionFields, ...VerificationFacts.shape });
 
-export const IndexVersion = indexVersionBase.superRefine(checkStatusFields);
+/** A removed version is listed without a hash or a size (D51); every other status carries both. */
+const indexVersionBase = privateVersionBase.extend({ sha256: Sha256.optional(), size: versionFields.size.optional() });
+
+export const IndexVersion = indexVersionBase.superRefine((v, ctx) => {
+  checkStatusFields(v, ctx);
+  if (v.status === "removed") return;
+  for (const field of ["sha256", "size"] as const) {
+    if (v[field] === undefined) ctx.addIssue({ code: "custom", message: `${field} is required for any status but removed`, path: [field] });
+  }
+});
 export type IndexVersion = z.infer<typeof IndexVersion>;
 
 const INELIGIBLE_FOR_LATEST: readonly VersionStatus[] = ["yanked", "quarantined", "removed"];
@@ -96,7 +105,7 @@ const privateEntryBody = z.strictObject({
   kind: z.literal("private"),
   pack: PackName,
   ...documentHead,
-  versions: z.array(indexVersionBase.extend({ version_id: z.string().min(1) }).superRefine(checkStatusFields)),
+  versions: z.array(privateVersionBase.extend({ version_id: z.string().min(1) }).superRefine(checkStatusFields)),
 });
 export const UnsignedPrivateEntry = privateEntryBody.refine(hasStandardExpiry, expiryIssue);
 export const PrivateEntry = privateEntryBody.extend(signature).refine(hasStandardExpiry, expiryIssue);

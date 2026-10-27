@@ -6,6 +6,7 @@ import {
   type VerificationFacts,
   type VersionStatus,
 } from "@packserver/schema";
+import type { D1 } from "@packserver/ports";
 import { compareVersions, latestEligible } from "../index/builders";
 
 /** The four write-once objects beside each public version, and the pack's signed history. */
@@ -310,3 +311,21 @@ export function answerHash(
 export const HASH_VISIBLE_STATES: readonly VersionStatus[] = VERSION_STATUSES.filter((s) => s !== "removed");
 
 export const SHA256_HEX = /^[0-9a-f]{64}$/;
+
+/**
+ * The reasons the registry database holds for the versions that are not `active`, for a read that finds no signed history
+ * to take them from. A version with no reason on record makes the whole answer unknown, never a silent blank.
+ */
+export async function statusNotesOf(d1: D1, packId: string): Promise<Map<string, StatusNote> | undefined> {
+  const { rows } = await d1.query(
+    "SELECT version, state, status_reason, status_security FROM pack_versions WHERE pack_id = ? AND state NOT IN ('active', 'removed', 'pending', 'approved')",
+    [packId],
+  );
+  const notes = new Map<string, StatusNote>();
+  for (const r of rows) {
+    if (r.state === "active" || r.state === "removed") continue;
+    if (typeof r.status_reason !== "string") return undefined;
+    notes.set(String(r.version), { reason: r.status_reason, security: typeof r.status_security === "string" ? r.status_security : undefined });
+  }
+  return notes;
+}

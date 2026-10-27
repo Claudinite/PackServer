@@ -127,10 +127,11 @@ export interface Version {
   status(): Promise<VersionStatus>;
   sha256(): Promise<string>;
   approve(o?: Sensitive): Promise<void>;
-  deprecate(reason: string, o?: Sensitive): Promise<void>;
-  yank(o: { reason: string; security?: boolean } & Sensitive): Promise<void>;
-  unyank(o?: Sensitive): Promise<void>;
-  delete(o?: Sensitive): Promise<void>;
+  /** The person acts as themselves; `NotFound` for a version the person may not know exists, a thrown refusal otherwise. */
+  deprecate(reason: string, o?: Sensitive & { by?: User }): Promise<void | NotFound>;
+  yank(o: { reason: string; security?: boolean; by?: User } & Sensitive): Promise<void | NotFound>;
+  unyank(o?: Sensitive & { by?: User }): Promise<void | NotFound>;
+  delete(o?: Sensitive & { by?: User }): Promise<void | NotFound>;
   verification(): Promise<Verification>;
 }
 

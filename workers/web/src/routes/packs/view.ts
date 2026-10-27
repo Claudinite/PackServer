@@ -9,6 +9,7 @@ import {
   needsNote,
   objectKey,
   parseVersionRow,
+  statusNotesOf,
   summarise,
   viewCacheControl,
   type StatusNote,
@@ -34,8 +35,10 @@ async function readJson(c: Context<WebEnv>, key: string): Promise<unknown | unde
   }
 }
 
-/** Reasons live in the pack's signed history; D1 keeps only the lean row. */
-async function readNotes(c: Context<WebEnv>, pack: string): Promise<Map<string, StatusNote> | undefined> {
+/** Reasons are in the registry database, written with each status change; the pack's signed history is read only where a row holds none. */
+async function readNotes(c: Context<WebEnv>, pack: string, packId: string): Promise<Map<string, StatusNote> | undefined> {
+  const recorded = await statusNotesOf(runtimeOf(c).ports.d1, packId);
+  if (recorded) return recorded;
   const parsed = VersionsDocument.safeParse(await readJson(c, objectKey(pack, "versions")));
   if (!parsed.success) return undefined;
   return new Map(parsed.data.versions.map((v) => [v.version, { reason: v.reason, security: v.security }]));
@@ -84,7 +87,7 @@ async function handle(c: Context<WebEnv>, next: () => Promise<void>): Promise<Re
 
   let notes = new Map<string, StatusNote>();
   if (rows.some((r) => needsNote(r.state))) {
-    const read = await readNotes(c, name);
+    const read = await readNotes(c, name, String(pack.id));
     if (!read) return unavailable();
     notes = read;
   }

@@ -6,6 +6,7 @@ import { createAgents } from "./areas/agents";
 import { createAuditModule } from "./areas/audit";
 import { createCommunity } from "./areas/community";
 import { createGitHub } from "./areas/github";
+import { createLifecycle } from "./areas/lifecycle";
 import { createMember } from "./areas/member";
 import { createModeration } from "./areas/moderation";
 import { createOperator, createProbe } from "./areas/operator";
@@ -43,6 +44,8 @@ export function createWorld(driver: Driver, title: string) {
   const ci = createCi(driver, (name) => aliases.alias(name));
   const validation = createValidation(driver);
   const publishFlow = createPublishFlow(driver, aliases, scopes, ci, validation.ensureEngines);
+  const reports = createReportsModule(driver, aliases);
+  const lifecycle = createLifecycle(driver, aliases, people, reports);
   const undo: Array<() => Promise<void>> = [];
   return {
     driver,
@@ -55,7 +58,8 @@ export function createWorld(driver: Driver, title: string) {
     ...createAccess(driver, aliases),
     ...createCommunity(driver, aliases),
     ...createModeration(),
-    ...createReportsModule(driver, aliases),
+    ...lifecycle,
+    ...reports,
     ...createAdmin(driver, (restore) => void undo.push(restore), aliases),
     ...createRecoveries(driver),
     ...createMember(driver),

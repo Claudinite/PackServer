@@ -167,7 +167,7 @@ export function createCoordinatorDeps(env: Env): CoordinatorDeps {
   return {
     d1,
     signer,
-    indexes: createIndexRebuilder({ d1, signer, now: () => Date.now() }),
+    indexes: createIndexRebuilder({ d1, signer, now: async () => (await requestClock(env)).now() }),
     timings: { rebuildDebounceMs: millis("REBUILD_DEBOUNCE_MS", env.REBUILD_DEBOUNCE_MS), rootBatchMs: millis("ROOT_BATCH_MS", env.ROOT_BATCH_MS) },
     root: {
       async scopeChanged(change) {

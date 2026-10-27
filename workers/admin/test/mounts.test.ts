@@ -62,7 +62,7 @@ describe("admin crons", () => {
     log.mockImplementationOnce(() => {
       throw new Error("boom");
     });
-    await expect(runCron(CRON_HOURLY, runtime)).rejects.toThrow("1 of 6 jobs");
-    expect(log).toHaveBeenCalledTimes(6);
+    await expect(runCron(CRON_HOURLY, runtime)).rejects.toThrow("1 of 7 jobs");
+    expect(log).toHaveBeenCalledTimes(7);
   });
 });
