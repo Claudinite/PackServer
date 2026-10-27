@@ -1,0 +1,33 @@
+# Sends the witness's alerts. Upptime's own "Uptime CI" workflow (generated from .upptimerc.yml)
+# probes and records; this one runs after each of its runs, so a probe cycle is reported once.
+name: Witness report
+on:
+  workflow_run:
+    workflows: ["Uptime CI"]
+    types: [completed]
+  workflow_dispatch:
+permissions:
+  issues: read
+concurrency:
+  group: witness-report
+  cancel-in-progress: false
+jobs:
+  report:
+    name: Report
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Report to the alert router
+        run: node scripts/witness-report.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          WITNESS_HOOK_SECRET: ${{ secrets.WITNESS_HOOK_SECRET }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_ANALYTICS_READ_TOKEN: ${{ secrets.CF_ANALYTICS_READ_TOKEN }}
+          PUSHOVER_APP_TOKEN: ${{ secrets.PUSHOVER_APP_TOKEN }}
+          PUSHOVER_USER_KEY: ${{ secrets.PUSHOVER_USER_KEY }}

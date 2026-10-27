@@ -1,0 +1,44 @@
+# Upptime configuration for Claudinite/packserver-witness. Keys follow https://upptime.js.org/docs/configuration
+# The witness is the one probe outside Cloudflare's failure domain (docs/operations/monitoring.md).
+# Upptime only probes and publishes; every alert is sent by scripts/witness-report.mjs.
+owner: Claudinite
+repo: packserver-witness
+user-agent: packserver-witness
+
+# No Upptime notification provider is configured, so no secret may reach the probe workflow.
+secrets: []
+
+sites:
+  - name: Registry
+    slug: registry
+    url: https://registry.claudinite.com/
+    maxResponseTime: 5000
+  - name: Signed index
+    slug: index-root
+    url: https://packs.claudinite.com/index/v1/root.json
+    maxResponseTime: 5000
+    # A 200 with the wrong body is as down as a 500: the signed root always carries a serial.
+    __dangerous__body_down_if_text_missing: '"serial"'
+  - name: OAuth protected-resource metadata
+    slug: oauth-metadata
+    url: https://registry.claudinite.com/.well-known/oauth-protected-resource/mcp
+    maxResponseTime: 5000
+    __dangerous__body_down_if_text_missing: '"resource"'
+
+# Downtime shorter than 15 minutes stays in the incident history instead of being deleted.
+skipDeleteIssues: true
+
+workflowSchedule:
+  uptime: "*/5 * * * *"
+
+# No custom domain (D4): the page is served from github.io under the repository path.
+# The repository is private, so Upptime publishes the page only with `publish: true`.
+status-website:
+  baseUrl: /packserver-witness
+  publish: true
+  name: PackServer status
+  introTitle: "**PackServer** status"
+  introMessage: Probes run every 5 minutes from GitHub Actions, outside the registry's own infrastructure.
+  navbar:
+    - title: Status
+      href: /
