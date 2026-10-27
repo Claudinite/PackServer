@@ -164,18 +164,6 @@ scenario("IT-ADMIN-009 Admin reads of private content are audited", async (world
   expect(await admin.audit()).toHaveLength(4);
 }, NEEDS);
 
-/** A listed pack with a readable RULES.md; returns the anchor of its Secrets section. */
-async function commentable(world: World, name: string) {
-  const pack = await world.packs.public(name, { versions: ["1.0.0"] });
-  await world.search.list(pack, { pitch: "Cloud rules", category: "cloud", parts: ["rules"] });
-  await pack.seedContents("1.0.0", { readme: "# gcp\n", files: [{ path: "RULES.md", text: "# Rules\nBe careful.\n## Secrets\nNever print them.\n" }] });
-  const view = await pack.page("contents");
-  if (!("anchors" in view)) throw new Error("the Contents tab is missing");
-  const section = view.anchors.find((a) => a.includes("RULES.md") && a.endsWith("~secrets"));
-  if (!section) throw new Error("RULES.md has no secrets section");
-  return { pack, section };
-}
-
 scenario("IT-ADMIN-002 Review-queue actions are audited with the actor", async (world) => {
   await world.access.seedRegistryKeys();
   const admin = await world.admins.create();
@@ -203,6 +191,16 @@ scenario("IT-ADMIN-002 Review-queue actions are audited with the actor", async (
   const review = (await world.community.review(author, rival, { rating: 1, body: "Unfair." })) as { id: string };
   const noise = (await world.reportAbuse(reporter, hidden, { category: "other", details: "Not what it says." })) as { id: string };
   const malware = (await world.reportAbuse(reporter, miner, { category: "malware", details: "Runs a miner.", version: "1.1.0" })) as { id: string };
+  const commentable = async (world: World, name: string) => {
+    const pack = await world.packs.public(name, { versions: ["1.0.0"] });
+    await world.search.list(pack, { pitch: "Cloud rules", category: "cloud", parts: ["rules"] });
+    await pack.seedContents("1.0.0", { readme: "# gcp\n", files: [{ path: "RULES.md", text: "# Rules\nBe careful.\n## Secrets\nNever print them.\n" }] });
+    const view = await pack.page("contents");
+    if (!("anchors" in view)) throw new Error("the Contents tab is missing");
+    const section = view.anchors.find((a) => a.includes("RULES.md") && a.endsWith("~secrets"));
+    if (!section) throw new Error("RULES.md has no secrets section");
+    return { pack, section };
+  };
   const token = `${"ghp"}_${"aB3dE5gH7jK9mN1pQ3sT5vX7zC9eF1hJ3kL5"}`;
   const { pack: talked, section } = await commentable(world, "@gcp/talked");
   const kept = (await world.community.comment(author, talked, { section, body: `Use ${token} here` })) as { id: string };
