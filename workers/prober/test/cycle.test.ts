@@ -210,6 +210,17 @@ describe("the prober pass over a candidate", () => {
     expect(emitted.some((e) => e.attrs.target === "v-broken-candidate")).toBe(false);
   });
 
+  it("does not let a forged record that names production's own web version confirm a broken admin", async () => {
+    const forged = { release_id: PRODUCTION_RELEASE, state: "verifying", workers: { web: { changed: true, version_id: productionVersion("web") }, admin: { changed: true, version_id: "v-broken-candidate" } } };
+    const { emitted } = await pass({}, { candidate: forged });
+    expect(emitted.some((e) => e.attrs.target === "v-broken-candidate")).toBe(false);
+  });
+
+  it("still credits admin when web's candidate is a different version than the one serving", async () => {
+    const { emitted } = await pass({}, { candidate: candidateRecord("verifying", ["web", "admin"]) });
+    expect(emitted.filter((e) => e.attrs.target === candidateVersion("admin"))).toHaveLength(1);
+  });
+
   it("believes no Worker name it does not know", async () => {
     const forged = { release_id: CANDIDATE_RELEASE, state: "verifying", workers: { "made-up": { changed: true, version_id: "v-forged" } } };
     const { emitted, result } = await pass({}, { at: NOW + 3 * 60_000, candidate: forged });

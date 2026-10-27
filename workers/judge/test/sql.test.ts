@@ -1,7 +1,7 @@
 import { LATENCY_BOUNDS_MS } from "@packserver/core/gates";
 import { REQUEST_BLOBS, REQUEST_DOUBLES } from "@packserver/core/telemetry";
 import { describe, expect, it } from "vitest";
-import { versionClientsSql, CANDIDATE_TOP, analyticsGateData, domainEventsSql, MIN_CLIENT_SAMPLES, requestOutcomesSql, ROW_LIMIT, syntheticProbesSql, TOP_CLIENTS, topClientsSql } from "../src/stats/sql";
+import { versionClientsSql, CANDIDATE_TOP, analyticsGateData, domainEventsSql, MIN_CLIENT_SAMPLES, requestOutcomesSql, PROBE_SLICE_MS, ROW_LIMIT, syntheticProbesSql, TOP_CLIENTS, topClientsSql } from "../src/stats/sql";
 import { windowAt } from "../src/stats/source";
 
 const NOW = Date.UTC(2026, 9, 22, 12, 30, 0);
@@ -122,6 +122,26 @@ describe("the Analytics Engine client", () => {
     expect(d?.ts).toBe(100_000);
     const [p] = await analyticsGateData(config, respond([{ attrs: "{}", n: 1, ts: 7 }])).syntheticProbes(window);
     expect(p?.ts).toBe(7000);
+  });
+
+  it("reads a day of a rolling rollout in slices that each stay well under the row limit", async () => {
+    const day = windowAt(NOW, [NOW - 86_400_000]);
+    const perMinute = 15;
+    const rows = Array.from({ length: 24 * 60 * perMinute }, (_, i) => ({ attrs: JSON.stringify({ target: "t", run: `r${i}`, scenario: "summary", ok: true }), n: 1, ts: Math.floor((NOW - 86_400_000 + Math.floor(i / perMinute) * 60_000) / 1000) }));
+    const sizes: number[] = [];
+    const slicing = (async (_u: string, init: RequestInit) => {
+      const sql = String(init.body);
+      const from = Number(/timestamp >= toDateTime\((\d+)\)/.exec(sql)?.[1]);
+      const to = Number(/timestamp < toDateTime\((\d+)\)/.exec(sql)?.[1] ?? Infinity);
+      const slice = rows.filter((r) => r.ts >= from && r.ts < to);
+      sizes.push(slice.length);
+      return new Response(JSON.stringify({ data: slice.slice(0, ROW_LIMIT) }));
+    }) as unknown as typeof fetch;
+    const got = await analyticsGateData(config, slicing).syntheticProbes(day);
+    expect(got).toHaveLength(rows.length);
+    expect(rows.length).toBeGreaterThan(ROW_LIMIT);
+    expect(Math.max(...sizes)).toBeLessThan(ROW_LIMIT / 2);
+    expect(sizes.length).toBe(86_400_000 / PROBE_SLICE_MS);
   });
 
   it("refuses a read that filled the row limit rather than judging half the data", async () => {

@@ -114,13 +114,15 @@ export class FakeRegistry {
     const override = url.origin === GATED && !this.flaws.ignoreOverride ? headers["cloudflare-workers-version-overrides"] : undefined;
     // Each Worker names its own release: one the override does not name answers as production.
     const handler: SelfTestWorker = WORKERS.find((w) => url.pathname === SELFTEST_PATHS[w]) ?? (url.pathname === "/mcp" ? "mcp" : "web");
-    const release = override?.includes(`${handler}="`) ? CANDIDATE_RELEASE : PRODUCTION_RELEASE;
+    // An override naming the version already serving is honoured, and the answer is production's own.
+    const names = (w: string): boolean => (override?.includes(`${w}="`) ?? false) && !override!.includes(`${w}="${productionVersion(w)}"`);
+    const release = names(handler) ? CANDIDATE_RELEASE : PRODUCTION_RELEASE;
     const reply = (body: unknown, status = 200, extra: Record<string, string> = {}): Response =>
       new Response(typeof body === "string" ? body : JSON.stringify(body), { status, headers: { "x-packserver-version": release, "content-type": "application/json", ...extra } });
 
     const worker = WORKERS.find((w) => url.pathname === SELFTEST_PATHS[w]);
     if (worker) {
-      const overridden = override?.includes(`${worker}="`) ?? false;
+      const overridden = names(worker);
       const status = this.flaws.selftestStatus?.[worker];
       if (status) return reply({}, status);
       const bad = this.flaws.selftestFails === worker;

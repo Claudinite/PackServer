@@ -74,6 +74,9 @@ export async function runCycle(deps: CycleDeps): Promise<CycleResult> {
   const index = attempt(indexProbe, { config, registry: unreachable, clock: deps.clock, kv: deps.kv, fetch: deps.fetch });
   const result: CycleResult = { ran: true, targets: [] };
 
+  // What production's own self-tests reported in this pass; a candidate that answers as one of these is not a candidate.
+  const servingNow = new Map<string, string>();
+
   const run = async (target: Target, selfTests: Send, expected: Candidate | null): Promise<void> => {
     const registry = registrySender({ reach: target.reach, expectedRelease: target.expectedRelease, clock: deps.clock, fetch: deps.fetch });
     const ctx: ProbeContext = { config, registry, clock: deps.clock, kv: deps.kv, fetch: deps.fetch };
@@ -86,7 +89,10 @@ export async function runCycle(deps: CycleDeps): Promise<CycleResult> {
     // Production is whatever answered; a candidate is the versions its release uploaded.
     const versions = new Map<string, ProbeOutcome | null>();
     if (expected) {
-      const confirmed = selfResults.some((r) => expected.changed[r.worker] === r.versionId && r.releaseId === expected.releaseId);
+      const confirmed = selfResults.some((r) => {
+        const serving = servingNow.get(r.worker);
+        return expected.changed[r.worker] === r.versionId && r.releaseId === expected.releaseId && serving !== undefined && serving !== r.versionId;
+      });
       for (const [worker, versionId] of Object.entries(expected.changed)) {
         const found = selfResults.find((r) => r.worker === worker);
         if (found) versions.set(versionId, selfTestOutcome(found, { versionId, releaseId: expected.releaseId }));
@@ -99,7 +105,8 @@ export async function runCycle(deps: CycleDeps): Promise<CycleResult> {
       for (const r of selfResults) {
         if (r.versionId !== null) {
           versions.set(r.versionId, selfTestOutcome(r, null));
-          await deps.kv.put(versionKey(r.worker), r.versionId);
+          servingNow.set(r.worker, r.versionId);
+          if ((await deps.kv.get(versionKey(r.worker))) !== r.versionId) await deps.kv.put(versionKey(r.worker), r.versionId);
           continue;
         }
         // A self-test that answered nothing usable still fails the version it last answered as.
