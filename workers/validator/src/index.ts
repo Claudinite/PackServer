@@ -5,10 +5,13 @@ import { createRuntime, type Env } from "./bindings";
 import { signEntrypoints } from "./entrypoints/sign";
 import { consumeNotify } from "./notify/consume";
 import { consumeReindex, refreshAllScopes } from "./reindex/consume";
+import { tick } from "./rescan/tick";
 
 export { SandboxA, SandboxB, ValidatePackWorkflow } from "./objects";
 
 const DAILY_CRON = "0 4 * * *";
+/** Each fire advances the open rescan passes by a batch; the weekly fire is one more, so a week's passes begin on schedule even if the others were missed. */
+const RESCAN_CRONS: readonly string[] = ["*/15 * * * *", "0 5 * * 1"];
 
 /**
  * The Worker's one entrypoint: the (internal) HTTP surface, the cron, the two queue consumers and,
@@ -20,6 +23,10 @@ export default class Validator extends WorkerEntrypoint<Env> {
   }
 
   async scheduled(controller: ScheduledController): Promise<void> {
+    if (RESCAN_CRONS.includes(controller.cron)) {
+      await tick(createRuntime(this.env));
+      return;
+    }
     if (controller.cron !== DAILY_CRON) return logStubRun("validator", controller.cron);
     await refreshAllScopes(createRuntime(this.env));
   }

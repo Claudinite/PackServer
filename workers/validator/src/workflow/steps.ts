@@ -13,6 +13,7 @@ import { lookupsFor, newestPublished, previousPromoted } from "./lookups";
 import { milestone } from "./milestones";
 import { getFindings, getJson, putFindings, putJson, runKeys } from "./report";
 import { finishRun, packId, readRun, type RunInput } from "./run";
+import { uploadOf } from "./upload";
 
 /** The key of the feature flag that pins the newest cn release and the digest of every release the validator may hand to container B. */
 export const ENGINE_PIN_FLAG = "cn_engine_pin";
@@ -95,11 +96,10 @@ export async function start(rt: ValidatorRuntime, runId: string): Promise<{ rule
 export async function integrity(ctx: Context): Promise<Outcome> {
   const { rt } = ctx;
   const run = await readRun(rt.ports.d1, ctx.runId);
-  const staging = rt.ports.r2.PACKS_STAGING;
-  if (!staging) throw new Error("the PACKS_STAGING binding is missing");
-  const head = await staging.head(run.staging_key);
+  const upload = uploadOf(rt, run);
+  const head = await upload.head();
   if (!head) throw new InfrastructureError("staging.object_missing");
-  const checked = await checkIntegrity({ size: head.size, read: () => staging.get(run.staging_key) }, run.declared_sha256, sha256Hex);
+  const checked = await checkIntegrity({ size: head.size, read: () => upload.get() }, run.declared_sha256, sha256Hex);
   if (checked.ok) return { stop: false };
   return { stop: true, refused: checked.reason };
 }
@@ -122,7 +122,7 @@ export async function extraction(ctx: Context): Promise<Outcome & { archiveReaso
   const { rt, runId } = ctx;
   const started = Date.now();
   const run = await readRun(rt.ports.d1, runId);
-  const bytes = await rt.ports.r2.PACKS_STAGING!.get(run.staging_key);
+  const bytes = await uploadOf(rt, run).get();
   if (!bytes) throw new InfrastructureError("staging.object_missing");
 
   const make = findingFactory(loadRules(ctx.rules));

@@ -149,6 +149,8 @@ export const TEST_MAIL_URL = "https://mail.test.invalid/send";
 
 export interface Dns {
   resolveTxt(name: string): Promise<string[]>;
+  /** Whether the name has an address or an alias; a resolver that could not answer rejects instead of saying no. */
+  resolves(name: string): Promise<boolean>;
 }
 
 /** What the one `.well-known` fetch of a domain proof found; only `found` can prove anything. */

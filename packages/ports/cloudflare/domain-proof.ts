@@ -6,6 +6,7 @@ export const AUTH_FILE_PATH = "/.well-known/packserver-auth";
 export const AUTH_FILE_MAX_BYTES = 1024;
 const TIMEOUT_MS = 5000;
 const TXT = 16;
+const ADDRESS_OR_ALIAS = new Set([1, 5, 28]);
 const HOST = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 
 /** A host a URL parser would read as an address, or one it would rewrite, is not a name to ask for a file. */
@@ -24,19 +25,28 @@ function txtValue(data: string): string {
   return quoted.length > 0 ? quoted.join("") : data;
 }
 
-/** TXT lookups over DNS-over-HTTPS (JSON): the registry's only DNS egress. */
+/** TXT, address and alias lookups over DNS-over-HTTPS (JSON): the registry's only DNS egress. */
 export function dohDns(fetcher: typeof fetch = fetch): Dns {
+  async function answers(name: string, type: string): Promise<Array<{ type?: number; data?: string }>> {
+    const url = new URL(DOH_URL);
+    url.searchParams.set("name", name);
+    url.searchParams.set("type", type);
+    const response = await fetcher(url, { headers: { accept: "application/dns-json" }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    if (!response.ok) throw new PortError("dns_unavailable", `the resolver answered ${response.status}`);
+    const body = (await response.json()) as { Status?: number; Answer?: Array<{ type?: number; data?: string }> };
+    // NXDOMAIN (3) and an empty answer both mean no record; any other failure status is a resolver fault.
+    if (body.Status !== undefined && body.Status !== 0 && body.Status !== 3) throw new PortError("dns_unavailable", `the resolver reported status ${body.Status}`);
+    return body.Answer ?? [];
+  }
   return {
     async resolveTxt(name) {
-      const url = new URL(DOH_URL);
-      url.searchParams.set("name", name);
-      url.searchParams.set("type", "TXT");
-      const response = await fetcher(url, { headers: { accept: "application/dns-json" }, signal: AbortSignal.timeout(TIMEOUT_MS) });
-      if (!response.ok) throw new PortError("dns_unavailable", `the resolver answered ${response.status}`);
-      const body = (await response.json()) as { Status?: number; Answer?: Array<{ type?: number; data?: string }> };
-      // NXDOMAIN (3) and an empty answer both mean no record; any other failure status is a resolver fault.
-      if (body.Status !== undefined && body.Status !== 0 && body.Status !== 3) throw new PortError("dns_unavailable", `the resolver reported status ${body.Status}`);
-      return (body.Answer ?? []).filter((a) => a.type === TXT && typeof a.data === "string").map((a) => txtValue(a.data!));
+      return (await answers(name, "TXT")).filter((a) => a.type === TXT && typeof a.data === "string").map((a) => txtValue(a.data!));
+    },
+    async resolves(name) {
+      for (const type of ["A", "AAAA"]) {
+        if ((await answers(name, type)).some((a) => a.type !== undefined && ADDRESS_OR_ALIAS.has(a.type))) return true;
+      }
+      return false;
     },
   };
 }

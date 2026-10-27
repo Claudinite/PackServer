@@ -19,4 +19,5 @@ export * from "./adoption";
 export * from "./stats";
 export * from "./promotion";
 export * from "./review";
+export * from "./rescan";
 export * from "../range";

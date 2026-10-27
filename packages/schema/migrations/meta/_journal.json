@@ -183,6 +183,20 @@
       "when": 1793054029202,
       "tag": "20261026223349_foundation_pack_version_status",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1793061363752,
+      "tag": "20261027003603_foundation_pack_version_score_breakdown",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1793061367494,
+      "tag": "20261027003607_validation_rescans",
+      "breakpoints": true
     }
   ]
 }

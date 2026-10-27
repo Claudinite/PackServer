@@ -204,7 +204,7 @@ export const PORT_SPECS: { [K in Exclude<keyof SinglePorts, "durableObjects">]: 
       send: { effect: "external_side_effect", args: [{ to: "personal", subject: content, text: content, html: content }], result: { id: op } },
     },
   },
-  dns: { kind: "http", target: "dns-over-https", methods: { resolveTxt: { effect: "read", args: [op], result: { "*": op } } } },
+  dns: { kind: "http", target: "dns-over-https", methods: { resolveTxt: { effect: "read", args: [op], result: { "*": op } }, resolves: { effect: "read", args: [op], result: op } } },
   wellKnown: {
     kind: "http",
     target: "well-known",

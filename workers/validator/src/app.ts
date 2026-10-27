@@ -2,6 +2,7 @@ import { createShell, selfTestAccess, type WorkerShellOptions } from "@packserve
 import type { Hono } from "hono";
 import type { ValidatorRuntime } from "./bindings";
 import { selfTestChecks } from "./selftest";
+import { rescanRoute } from "./rescan/route";
 import { startRoute } from "./workflow/start";
 
 export interface AppOptions {
@@ -21,5 +22,6 @@ export function createApp(runtime: ValidatorRuntime, options: AppOptions = {}): 
     selfTest: selfTestAccess(runtime),
   });
   app.post("/internal/runs", startRoute(runtime));
+  app.post("/internal/rescan", rescanRoute(runtime));
   return app;
 }

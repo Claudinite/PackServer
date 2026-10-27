@@ -17,6 +17,7 @@
         "WORKER": "validator",
         "ENVIRONMENT": "test",
         "STEP_RETRY_DELAY": "10 milliseconds",
+        "RESCAN_BATCH": "50",
         "SITE_ORIGINS": "http://web.internal",
         "SIGNING_KEY_ACTIVE": "BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU",
         "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
@@ -64,6 +65,10 @@
           {
             "binding": "NOTIFY_QUEUE",
             "queue": "notify-test"
+          },
+          {
+            "binding": "REINDEX_QUEUE",
+            "queue": "reindex-test"
           }
         ],
         "consumers": [
@@ -171,13 +176,15 @@
       "triggers": {
         "crons": [
           "0 4 * * *",
-          "0 5 * * 1"
+          "0 5 * * 1",
+          "*/15 * * * *"
         ]
       },
       "vars": {
         "WORKER": "validator",
         "ENVIRONMENT": "staging",
         "STEP_RETRY_DELAY": "30 seconds",
+        "RESCAN_BATCH": "50",
         "SITE_ORIGINS": "https://registry-staging.claudinite.com",
         "MAIL_FROM": "noreply@claudinite.com"
       },
@@ -222,6 +229,10 @@
           {
             "binding": "NOTIFY_QUEUE",
             "queue": "notify-staging"
+          },
+          {
+            "binding": "REINDEX_QUEUE",
+            "queue": "reindex-staging"
           }
         ],
         "consumers": [
@@ -371,13 +382,15 @@
       "triggers": {
         "crons": [
           "0 4 * * *",
-          "0 5 * * 1"
+          "0 5 * * 1",
+          "*/15 * * * *"
         ]
       },
       "vars": {
         "WORKER": "validator",
         "ENVIRONMENT": "production",
         "STEP_RETRY_DELAY": "30 seconds",
+        "RESCAN_BATCH": "50",
         "SITE_ORIGINS": "https://registry.claudinite.com",
         "MAIL_FROM": "noreply@claudinite.com"
       },
@@ -422,6 +435,10 @@
           {
             "binding": "NOTIFY_QUEUE",
             "queue": "notify"
+          },
+          {
+            "binding": "REINDEX_QUEUE",
+            "queue": "reindex"
           }
         ],
         "consumers": [

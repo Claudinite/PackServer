@@ -31,6 +31,8 @@ const row = (version: string, state = "active", over: Partial<VersionRow> = {}):
   requires: [],
   source_commit: null,
   score: null,
+  score_rules_version: null,
+  score_breakdown: null,
   report_key: null,
   ...over,
 });
@@ -122,7 +124,15 @@ describe("listing and lookup", () => {
 describe("row parsing", () => {
   it("reads D1's integers as booleans and the requirement list from JSON", () => {
     const parsed = parseVersionRow({ version: "1.0.0", state: "active", sha256: "a", size_bytes: 3, verified: 1, source_verified: 0, requires: '["x"]', score: 0 });
-    expect(parsed).toMatchObject({ verified: true, source_verified: false, requires: ["x"], score: 0, upload_sha256: null });
+    expect(parsed).toMatchObject({ verified: true, source_verified: false, requires: ["x"], score: 0, upload_sha256: null, score_rules_version: null, score_breakdown: null });
+  });
+
+  it("reads a rescore's breakdown and ignores one it cannot parse", () => {
+    const base = { version: "1.0.0", state: "active", sha256: "a", size_bytes: 3, verified: 0, source_verified: 0 };
+    const breakdown = { parts: [{ part: "checks", weight: 20, points: 4, rules: [] }], cap: null };
+    expect(parseVersionRow({ ...base, score_rules_version: "2026.10.2", score_breakdown: JSON.stringify(breakdown) })).toMatchObject({ score_rules_version: "2026.10.2", score_breakdown: breakdown });
+    expect(parseVersionRow({ ...base, score_breakdown: "{not json" }).score_breakdown).toBeNull();
+    expect(parseVersionRow({ ...base, score_breakdown: JSON.stringify({ parts: "x" }) }).score_breakdown).toBeNull();
   });
 });
 

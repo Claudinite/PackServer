@@ -276,6 +276,7 @@ export function TrustDrawer(props: { data: PackData; version: VersionView | null
       <ul>
         <li>Validated {dayOf(version.validated_at)}, rules {version.rules_version}</li>
         <li>{warningLine(data)}</li>
+        {data.changedDomains.map((domain) => <li>A linked domain now resolves differently: {domain}</li>)}
         {data.report.kind === "found" && data.report.runId !== null ? <li><a href={`/validation/${data.report.runId}`}>Full report</a></li> : null}
       </ul>
       <h3>What adopting adds</h3>
