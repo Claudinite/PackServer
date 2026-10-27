@@ -49,7 +49,8 @@ packserver/
 ├── workers/
 │   ├── web/  ├── mcp/  ├── publish/  ├── github/  ├── validator/  ├── admin/  ├── judge/  └── prober/
 │   │   each: wrangler.jsonc (envs: staging, production), src/index.ts, src/routes/*, src/selftest.ts,
-│   │         src/bindings.ts (the one seam), test/ (unit, fakes only)
+│   │         src/bindings.ts (the one seam), test/ (unit, fakes only); prober also probe-repo/probe-dry-run.yml,
+│   │         the template for the packserver-probe repository (this repository permits no cron of its own)
 ├── sandbox/
 │   ├── image-a/                   # Dockerfile: bounded extractor, inspectors, canonical re-packer; no runtime
 │   ├── image-b/                   # Dockerfile: Go, Node 22; the load-and-run runner (cn releases arrive as input)
@@ -62,5 +63,5 @@ packserver/
 │                                  #   D1/KV/Queue/Vectorize creation, Secrets Store budget
 ├── tools/                         # check-scenarios, check-signals, check-migrations, build-n-minus-1, seed-staging
 └── .github/workflows/             # ci.yml, deploy.yml (pre-launch mode), release.yml + rollout.yml +
-                                   #   rollback.yml (launch mode), sandbox-images.yml, probe-dry-run.yml
+                                   #   rollback.yml (launch mode), sandbox-images.yml
 ```

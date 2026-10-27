@@ -18,7 +18,13 @@
         "ENVIRONMENT": "test",
         "SELFTEST_HMAC_KEY": "test-selftest-hmac-key",
         "IP_HASH_MASTER_KEY": "test-ip-hash-master-key",
-        "PRINCIPAL_HASH_KEY": "test-principal-hash-key"
+        "PRINCIPAL_HASH_KEY": "test-principal-hash-key",
+        "PROBE_ACCESS_CLIENT_ID": "test-probe-access-client-id",
+        "PROBE_ACCESS_CLIENT_SECRET": "test-probe-access-client-secret",
+        "REGISTRY_ORIGIN": "https://registry.test",
+        "PACKS_ORIGIN": "https://packs.test",
+        "GATED_ORIGIN": "https://registry-canary.test",
+        "CANARY_PACK_SHA256": "8da571757c969fede8f6d967c7c95f5226968f723aa04af5d5d0f6c146aa7247"
       },
       "kv_namespaces": [
         {
@@ -56,12 +62,16 @@
       ],
       "triggers": {
         "crons": [
-          "*/5 * * * *"
+          "* * * * *"
         ]
       },
       "vars": {
         "WORKER": "prober",
-        "ENVIRONMENT": "staging"
+        "ENVIRONMENT": "staging",
+        "REGISTRY_ORIGIN": "https://registry-staging.claudinite.com",
+        "PACKS_ORIGIN": "https://packs-staging.claudinite.com",
+        "GATED_ORIGIN": "https://registry-staging.claudinite.com",
+        "CANARY_PACK_SHA256": "8da571757c969fede8f6d967c7c95f5226968f723aa04af5d5d0f6c146aa7247"
       },
       "kv_namespaces": [
         {
@@ -98,6 +108,16 @@
           "binding": "PRINCIPAL_HASH_KEY",
           "store_id": "00000000000000000000190000000004",
           "secret_name": "principal-hash-key-staging"
+        },
+        {
+          "binding": "PROBE_ACCESS_CLIENT_ID",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "probe-access-client-id-staging"
+        },
+        {
+          "binding": "PROBE_ACCESS_CLIENT_SECRET",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "probe-access-client-secret-staging"
         }
       ],
       "version_metadata": {
@@ -116,12 +136,16 @@
       ],
       "triggers": {
         "crons": [
-          "*/5 * * * *"
+          "* * * * *"
         ]
       },
       "vars": {
         "WORKER": "prober",
-        "ENVIRONMENT": "production"
+        "ENVIRONMENT": "production",
+        "REGISTRY_ORIGIN": "https://registry.claudinite.com",
+        "PACKS_ORIGIN": "https://packs.claudinite.com",
+        "GATED_ORIGIN": "https://registry-canary.claudinite.com",
+        "CANARY_PACK_SHA256": "8da571757c969fede8f6d967c7c95f5226968f723aa04af5d5d0f6c146aa7247"
       },
       "kv_namespaces": [
         {
@@ -158,6 +182,16 @@
           "binding": "PRINCIPAL_HASH_KEY",
           "store_id": "00000000000000000000290000000004",
           "secret_name": "principal-hash-key"
+        },
+        {
+          "binding": "PROBE_ACCESS_CLIENT_ID",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "probe-access-client-id"
+        },
+        {
+          "binding": "PROBE_ACCESS_CLIENT_SECRET",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "probe-access-client-secret"
         }
       ],
       "version_metadata": {

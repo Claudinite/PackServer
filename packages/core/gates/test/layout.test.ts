@@ -28,8 +28,10 @@ describe("signal attribute readers", () => {
     expect(parseSelftestAttrs('{"ok":true}')).toEqual({ ok: true });
     expect(parseSelftestAttrs('{"ok":"yes"}')).toBeNull();
     expect(parseSelftestAttrs("nope")).toBeNull();
-    expect(parseProbeAttrs('{"target":"v","run":"r","scenario":"s","ok":false,"stale_s":12}')).toEqual({ target: "v", run: "r", scenario: "s", ok: false, staleS: 12 });
+    expect(parseProbeAttrs('{"target":"v","run":"r","scenario":"s","ok":false,"stale_s":12}')).toEqual({ target: "v", run: "r", scenario: "s", ok: false, indexOk: null, staleS: 12 });
     expect(parseProbeAttrs('{"target":"v","run":"r","scenario":"s","ok":false,"stale_s":-1}')?.staleS).toBeNull();
+    expect(parseProbeAttrs('{"target":"v","run":"r","scenario":"summary","ok":false,"index_ok":true,"failed":"selftest"}')).toMatchObject({ ok: false, indexOk: true });
+    expect(parseProbeAttrs('{"target":"v","run":"r","scenario":"summary","ok":true,"index_ok":"yes"}')?.indexOk).toBeNull();
     expect(parseProbeAttrs('{"target":"v","ok":true}')).toBeNull();
     expect(parseQueueAttrs('{"queue":"audit"}')).toBe("audit");
     expect(parseQueueAttrs("[]")).toBeNull();
