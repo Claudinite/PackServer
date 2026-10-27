@@ -24,13 +24,14 @@ export const ENVIRONMENTS = [
   { name: "nightly" },
 ];
 
+// packserver-witness is not managed here: it is public and created from the upptime/upptime
+// template, and Upptime commits straight to its default branch, so main-protection must not apply.
 // Each repository starts with no required checks; the task that gives it CI adds them, because
 // a required check that never runs makes the PR that would add that CI unmergeable.
 export const EXTRA_REPOS = [
   { name: "publish-pack", private: false, requiredChecks: [] },
   { name: "packserver-ops", private: true, requiredChecks: [] },
   { name: "packserver-probe", private: true, requiredChecks: [] },
-  { name: "packserver-witness", private: true, requiredChecks: [] },
 ];
 
 const USAGE = `Usage: node infra/github-org.mjs [--dry-run]

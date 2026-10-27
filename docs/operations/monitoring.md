@@ -164,8 +164,9 @@ Fixtures live under `@packserver-canary`, published by the owner. `@probe` is ki
 The **witness** is Upptime on GitHub Actions: every 5 minutes it probes `registry.claudinite.com/`,
 `packs.claudinite.com/index/v1/root.json` (keyword match) and the OAuth protected-resource metadata,
 publishes the status page, and alerts through the router or directly to Pushover. It is the only
-check outside Cloudflare's failure domain and the dead man's switch on the judge's heartbeat (from a
-separate private repository so no monitoring hostname or secret is public). With the zone on the
+check outside Cloudflare's failure domain and the dead man's switch on the judge's heartbeat. It runs
+from its own public repository, created from the Upptime template: the repository holds no secret
+(they are Actions secrets) and the hostnames it probes are public anyway. With the zone on the
 Free plan there are no Cloudflare Health Checks; the witness and the prober are the external probes,
 and a Health Check row is added if the zone moves to Pro ([cost.md](cost.md)).
 
