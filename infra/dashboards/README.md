@@ -31,7 +31,8 @@ reads exactly one dataset and bounds its time range.
 ## Writing a panel
 
 Tokens in `sql`: `{{ds:dataset}}` (adds `_staging` outside production), `{{col:dataset.field}}`,
-`{{num:signal.field}}` (a signal's fixed double, from `SIGNAL_NUMBERS`), `{{stat:signal.field}}` (a field of a validator statistic, which has its own layout), `{{bucket:seconds}}`
+`{{num:signal.field}}` (a signal's fixed double, from `SIGNAL_NUMBERS`),
+`{{stat:signal.field}}` (a field of a validator statistic, which has its own layout), `{{bucket:seconds}}`
 (time bucket for a series), `{{since}}` (the panel's `range`). Domain-style datasets store the
 Worker, release and version in blobs 1 to 3 and the signal's attributes as JSON in blob 4;
 attributes are matched with `LIKE '%"key":value%'` because the SQL dialect documents no JSON

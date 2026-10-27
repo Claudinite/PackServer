@@ -1,4 +1,5 @@
 import { sha256Hex } from "@packserver/core/index";
+import { UNKNOWN_DOUBLE } from "@packserver/core/telemetry";
 import { checkIntegrity } from "@packserver/core/publishing";
 import { scorePack, treeOfScoreInputs } from "@packserver/core/score";
 import {
@@ -65,6 +66,19 @@ export function stat(rt: ValidatorRuntime, name: SignalName, blobs: string[], do
   rt.ports.stats.write({ name, blobs, doubles });
 }
 
+type StatLayout = typeof VALIDATION_STAT_LAYOUT;
+
+/** Writes a statistic in `VALIDATION_STAT_LAYOUT`'s order; a double left out is recorded as unknown. */
+export function layoutStat<N extends keyof StatLayout>(
+  rt: ValidatorRuntime,
+  name: N,
+  fields: { [K in StatLayout[N]["blobs"][number]]: string } & { [K in StatLayout[N]["doubles"][number]]?: number },
+): void {
+  const { blobs, doubles } = VALIDATION_STAT_LAYOUT[name];
+  const values = fields as Record<string, string | number | undefined>;
+  stat(rt, name, blobs.map((b) => values[b] as string), doubles.map((d) => (values[d] as number | undefined) ?? UNKNOWN_DOUBLE));
+}
+
 const worst = (findings: readonly Finding[]): string | null => {
   const f = findings.find((x) => x.class === "fail") ?? findings.find((x) => x.class === "hold") ?? findings[0];
   return f?.rule ?? null;
@@ -76,7 +90,7 @@ async function conclude(ctx: Context, step: StepName, findings: Finding[], start
   await putFindings(reports(rt), runId, step, findings);
   const failed = extra.failed ?? findings.some((f) => f.class === "fail");
   await milestone(rt.ports.d1, runId, step, failed ? "fail" : "ok", extra.detail ?? worst(findings), await nowIso(rt));
-  stat(rt, "validation.step", [step, failed ? "fail" : "ok"], [Date.now() - started]);
+  layoutStat(rt, "validation.step", { step, outcome: failed ? "fail" : "ok", duration_ms: Date.now() - started });
 }
 
 async function skipped(ctx: Context, step: StepName, detail: string): Promise<void> {
@@ -159,7 +173,7 @@ export async function extraction(ctx: Context): Promise<Outcome & { archiveReaso
   if (report.outcome === "refused" && report.refusal) {
     const findings = report.findings.length > 0 ? report.findings : [make(report.refusal.reason, { hint: `The archive was refused (${report.refusal.code}).` })];
     await conclude(ctx, "extraction", findings, started, { detail: report.refusal.reason });
-    stat(rt, "validation.step", ["extraction", report.refusal.reason]);
+    layoutStat(rt, "validation.step", { step: "extraction", outcome: report.refusal.reason });
     return { stop: true, archiveReason: report.refusal.reason };
   }
   if (report.outcome === "timeout") {
@@ -387,7 +401,7 @@ export async function proseScreen(ctx: Context, blocked: boolean): Promise<Outco
   await putFindings(reports(rt), runId, "prose-screen", result.findings);
   await putJson(reports(rt), `runs/${runId}/prose-screen.json`, result);
   await milestone(rt.ports.d1, runId, "prose-screen", "ok", result.implementation, await nowIso(rt));
-  stat(rt, "validation.prose_screen", [result.implementation], [Date.now() - started]);
+  layoutStat(rt, "validation.prose_screen", { implementation: result.implementation, duration_ms: Date.now() - started });
   return {
     stop: false,
     record: { implementation: result.implementation, question_set_version: result.question_set_version, model_version: result.model_version, cost_usd: result.cost_usd },
@@ -410,7 +424,7 @@ export async function thresholds(ctx: Context): Promise<Outcome> {
   await putFindings(reports(rt), runId, "thresholds", applied.findings);
   await putJson(reports(rt), `runs/${runId}/admin.thresholds.json`, { tripped: applied.tripped });
   await milestone(rt.ports.d1, runId, "thresholds", "ok", worst(applied.findings), await nowIso(rt));
-  stat(rt, "validation.step", ["thresholds", "ok"], [Date.now() - started]);
+  layoutStat(rt, "validation.step", { step: "thresholds", outcome: "ok", duration_ms: Date.now() - started });
   return { stop: false };
 }
 

@@ -8,7 +8,6 @@ import { datasetFor, SIGNAL_NAMES } from "../../packages/core/telemetry/signals"
 import { REQUEST_BLOBS, REQUEST_DOUBLES } from "../../packages/core/telemetry/event";
 import { DOWNLOAD_BLOBS, DOWNLOAD_DOUBLES, SIGNAL_NUMBERS } from "../../packages/core/telemetry/recorder";
 import { VALIDATION_STAT_LAYOUT } from "../../workers/validator/src/workflow/steps";
-import { readFileSync as readSource } from "node:fs";
 import { GATE_RESULT_BLOBS, GATE_RESULT_DOUBLES } from "../../packages/core/gates/layout";
 
 const layout = readLayout();
@@ -31,7 +30,7 @@ describe("the telemetry layout read from source", () => {
   });
 
   it("reads the same bad outcomes as the gate judge", () => {
-    const judge = /const BAD_OUTCOMES = "([^"]+)"/.exec(readSource(join(import.meta.dirname, "../../workers/judge/src/stats/sql.ts"), "utf8"))?.[1];
+    const judge = /const BAD_OUTCOMES = "([^"]+)"/.exec(readFileSync(join(import.meta.dirname, "../../workers/judge/src/stats/sql.ts"), "utf8"))?.[1];
     const lists = spec.dashboards.flatMap((d) => d.panels).flatMap((p) => [...p.sql.matchAll(/outcome\}\} IN \(('server_error'[^)]*)\)/g)].map((m) => m[1]));
     expect(lists.length).toBeGreaterThan(0);
     for (const list of lists) expect(list).toBe(judge);
