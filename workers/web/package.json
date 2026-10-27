@@ -11,6 +11,7 @@
     "@packserver/core": "workspace:*",
     "@packserver/http": "workspace:*",
     "@packserver/ports": "workspace:*",
+    "@packserver/publish-action": "workspace:*",
     "@packserver/rules": "workspace:*",
     "@packserver/schema": "workspace:*",
     "@packserver/ui": "workspace:*",

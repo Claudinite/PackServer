@@ -1,3 +1,1 @@
-import { Hono } from "hono";
-
-export const routes = new Hono();
+export { routes } from "./routes";

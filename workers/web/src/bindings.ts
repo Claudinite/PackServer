@@ -43,6 +43,10 @@ export interface Env {
   /** Read only under `env.test`, where the issuer is the test world's. */
   OIDC_ISSUER?: string;
   OIDC_JWKS_URL?: string;
+  /** What the workflow template the GitHub page hands out pins: the publish-pack release (full commit SHA) and the cn release (version and SHA-256). All three or none. */
+  PUBLISH_PACK_SHA?: string;
+  CN_VERSION?: string;
+  CN_SHA256?: string;
   /** The fake clock Worker, bound only under `env.test`. */
   CLOCK?: Fetcher;
 }
@@ -63,6 +67,8 @@ export interface WebConfig {
   turnstileSiteKey?: string;
   /** Whose Actions tokens private reads accept. */
   oidc: OidcConfig;
+  /** The pins in the copied workflow; absent where the environment names none, and the page then offers no YAML. */
+  workflowPins?: { actionSha: string; cnVersion: string; cnSha256: string };
   fetch: typeof fetch;
 }
 export type WebRuntime = WorkerRuntime<WebPorts, WebServices> & { config: WebConfig };
@@ -109,7 +115,12 @@ export function createRuntime(env: Env): WebRuntime {
     },
     { mcp: env.MCP, publish: env.PUBLISH },
   );
-  return { ...base, config: { cdnOrigin: env.CDN_ORIGIN, siteOrigins: siteOriginsOf(env.SITE_ORIGINS), ...(env.TURNSTILE_SITEKEY ? { turnstileSiteKey: env.TURNSTILE_SITEKEY } : {}), oidc: oidcConfig(env), fetch: (input, init) => fetch(input, init) } };
+  return { ...base, config: { cdnOrigin: env.CDN_ORIGIN, siteOrigins: siteOriginsOf(env.SITE_ORIGINS), ...(env.TURNSTILE_SITEKEY ? { turnstileSiteKey: env.TURNSTILE_SITEKEY } : {}), oidc: oidcConfig(env), ...pinsOf(env), fetch: (input, init) => fetch(input, init) } };
+}
+
+function pinsOf(env: Env): Pick<WebConfig, "workflowPins"> {
+  const { PUBLISH_PACK_SHA: actionSha, CN_VERSION: cnVersion, CN_SHA256: cnSha256 } = env;
+  return actionSha && cnVersion && cnSha256 ? { workflowPins: { actionSha, cnVersion, cnSha256 } } : {};
 }
 
 /** The credentials come from the Secrets Store, so they are read on first use rather than when the Worker starts. */
