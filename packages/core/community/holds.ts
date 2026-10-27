@@ -1,6 +1,7 @@
 import type { D1 } from "@packserver/ports";
-import { BURST, DAY_MS, MIN_ACCOUNT_AGE_MS } from "./constants.ts";
+import { BURST, DAY_MS } from "./constants.ts";
 import { isoOf, nowMs, type CommunityPorts } from "./ports.ts";
+import { COUNTED_AT, COUNTED_FROM, COUNTED_WHERE, countedCutoff } from "./tallies.ts";
 
 export interface StarHold {
   id: string;
@@ -31,15 +32,22 @@ export async function activeHold(d1: D1, packId: string, now: number): Promise<S
   return rows[0] ? toHold(rows[0]) : null;
 }
 
-/** Counted stars (as `starTallies` counts them, without any hold's exclusion) placed in `[from, to)`. */
+/** Stars that became counted in `[from, to)`, whether or not a hold keeps them from the rank. */
 async function countedBetween(d1: D1, packId: string, from: number, to: number, now: number): Promise<number> {
   const { rows } = await d1.query(
-    `select count(*) as n from stars s join users u on u.id = s.user_id join packs p on p.id = s.pack_id
-      where s.pack_id = ? and s.created_at >= ? and s.created_at < ? and u.created_at <= ?
-        and not exists (select 1 from scope_members m where m.scope_id = p.scope_id and m.user_id = s.user_id)`,
-    [packId, isoOf(from), isoOf(to), isoOf(now - MIN_ACCOUNT_AGE_MS)],
+    `select count(*) as n ${COUNTED_FROM} where s.pack_id = ? and ${COUNTED_AT} >= ? and ${COUNTED_AT} < ? and ${COUNTED_WHERE}`,
+    [packId, isoOf(from), isoOf(to), countedCutoff(now)],
   );
   return Number(rows[0]?.n ?? 0);
+}
+
+/** Packs that gained counted stars in the last 24 hours, for the hourly pass to check; a star placed by hand is checked at once. */
+export async function packsWithFreshStars(d1: D1, now: number): Promise<string[]> {
+  const { rows } = await d1.query(
+    `select distinct s.pack_id as pack_id ${COUNTED_FROM} where ${COUNTED_AT} > ? and ${COUNTED_WHERE}`,
+    [isoOf(now - BURST.windowMs), countedCutoff(now)],
+  );
+  return rows.map((r) => String(r.pack_id));
 }
 
 /**

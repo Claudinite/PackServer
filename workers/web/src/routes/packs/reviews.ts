@@ -38,11 +38,13 @@ routes.get("/packs/:scope/:name/reviews", async (c) => {
   const ports = communityPorts(c);
   const { rows } = await ports.d1.query("select count(*) as n from pack_versions where pack_id = ? and state in ('active', 'deprecated')", [pack.id]);
   const viewer = c.get("session")?.record.user_id;
+  const limit = Number(c.req.query("limit"));
+  const page = await listReviews(ports, pack, viewer, { cursor: c.req.query("cursor"), ...(Number.isInteger(limit) && limit > 0 ? { limit } : {}) });
   return c.json(
     {
       ...(await aggregateOf(c, pack.id)),
       available: Number(rows[0]?.n) > 0,
-      reviews: await listReviews(ports, pack, viewer),
+      ...page,
       ...(viewer === undefined ? {} : { mine: await reviewOf(ports, pack, viewer) }),
     },
     200,

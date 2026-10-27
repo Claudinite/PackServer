@@ -52,11 +52,43 @@ function toView(row: Record<string, unknown>, withFlag: boolean): ReviewView {
   };
 }
 
-/** The pack's reviews, newest first. Hidden ones are left out; reviews of a yanked or removed pack stay (REQ-COMM-013). */
-export async function listReviews(ports: CommunityPorts, pack: PackRef, viewerId: string | undefined): Promise<ReviewView[]> {
-  const { rows } = await ports.d1.query(`select ${COLUMNS} ${FROM} where r.pack_id = ? and r.hidden_at is null order by r.updated_at desc, r.id`, [pack.id]);
+export const REVIEWS_PAGE = 20;
+export const MAX_REVIEWS_PAGE = 50;
+
+export interface ReviewPage {
+  reviews: ReviewView[];
+  /** Pass back as `cursor` for the next page; null on the last. */
+  next_cursor: string | null;
+}
+
+const encodeCursor = (updatedAt: string, id: string): string => btoa(JSON.stringify([updatedAt, id])).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+function decodeCursor(cursor: string): [string, string] | null {
+  try {
+    const parsed: unknown = JSON.parse(atob(cursor.replaceAll("-", "+").replaceAll("_", "/")));
+    return Array.isArray(parsed) && typeof parsed[0] === "string" && typeof parsed[1] === "string" ? [parsed[0], parsed[1]] : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The pack's reviews, newest edit first, one page at a time. Hidden ones are left out; reviews of a yanked or removed
+ * pack stay (REQ-COMM-013). A cursor that cannot be read starts from the top.
+ */
+export async function listReviews(
+  ports: CommunityPorts, pack: PackRef, viewerId: string | undefined, page: { cursor?: string | undefined; limit?: number | undefined } = {},
+): Promise<ReviewPage> {
+  const limit = Math.min(MAX_REVIEWS_PAGE, Math.max(1, page.limit ?? REVIEWS_PAGE));
+  const after = page.cursor === undefined ? null : decodeCursor(page.cursor);
+  const { rows } = await ports.d1.query(
+    `select ${COLUMNS} ${FROM} where r.pack_id = ? and r.hidden_at is null${after ? " and (r.updated_at < ? or (r.updated_at = ? and r.id > ?))" : ""}
+      order by r.updated_at desc, r.id limit ?`,
+    [pack.id, ...(after ? [after[0], after[0], after[1]] : []), limit + 1],
+  );
   const withFlag = viewerId !== undefined && (await isScopeOwner(ports.d1, pack, viewerId));
-  return rows.map((r) => toView(r, withFlag));
+  const shown = rows.slice(0, limit);
+  const last = rows.length > limit ? rows[limit - 1] : undefined;
+  return { reviews: shown.map((r) => toView(r, withFlag)), next_cursor: last ? encodeCursor(String(last.updated_at), String(last.id)) : null };
 }
 
 export async function reviewOf(ports: CommunityPorts, pack: PackRef, userId: string): Promise<ReviewView | null> {

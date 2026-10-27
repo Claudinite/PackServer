@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "8494a80c-d0d0-4bce-8f85-cea49d27eca5",
+  "id": "d15c882e-a162-4e40-ba1f-f00108d2e5dc",
   "prevId": "0a4985f4-5e37-4d8b-bd9d-2c9ae1de2aea",
   "tables": {
     "credentials": {
@@ -3258,15 +3258,23 @@
           "notNull": true,
           "autoincrement": false
         },
-        "first_at": {
-          "name": "first_at",
+        "last_at": {
+          "name": "last_at",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "authenticated_downloads_last_idx": {
+          "name": "authenticated_downloads_last_idx",
+          "columns": [
+            "last_at"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {
         "authenticated_downloads_pack_id_packs_id_fk": {
           "name": "authenticated_downloads_pack_id_packs_id_fk",

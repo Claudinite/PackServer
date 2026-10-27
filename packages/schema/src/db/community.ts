@@ -110,9 +110,10 @@ export const authenticated_downloads = sqliteTable(
     user_id: text("user_id")
       .notNull()
       .references(() => users.id),
-    first_at: text("first_at").notNull(),
+    /** The latest such call; rows older than the retention bound are deleted. */
+    last_at: text("last_at").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.pack_id, t.user_id] })],
+  (t) => [primaryKey({ columns: [t.pack_id, t.user_id] }), index("authenticated_downloads_last_idx").on(t.last_at)],
 );
 
 /** The rating aggregate of each pack, written by the hourly recompute and on every review change. `pack_stats.rating` carries `shown`. */

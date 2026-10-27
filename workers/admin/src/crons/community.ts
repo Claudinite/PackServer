@@ -1,8 +1,17 @@
-import { recomputeCommunity } from "@packserver/core/community";
+import { drainCommunityNotices, pruneAuthenticatedDownloads, recomputeCommunity } from "@packserver/core/community";
 import type { CronJob } from "./index";
 
-/** Rewrites each pack's rating and star figures on the new catalogue mean, and lets an anomaly hold's 7 days run out. */
-export const community: CronJob = async ({ ports }) => {
-  const summary = await recomputeCommunity({ clock: ports.clock, rng: ports.rng, d1: ports.d1 });
-  console.log(JSON.stringify({ at: "cron.community", ...summary }));
+/**
+ * Checks fresh stars for a burst, rewrites the star and rating figures of the packs that moved on the new catalogue mean,
+ * sends what moderators queued for authors, and forgets old signed-in downloads.
+ */
+export const community: CronJob = async (runtime) => {
+  const { clock, rng, d1, mail } = runtime.ports;
+  const siteOrigin = runtime.config?.siteOrigin;
+  if (!siteOrigin) throw new Error("the site origin is not configured");
+  const ports = { clock, rng, d1 };
+  const summary = await recomputeCommunity(ports);
+  const notices = await drainCommunityNotices(ports, { mail, siteOrigin });
+  await pruneAuthenticatedDownloads(d1, clock.now());
+  console.log(JSON.stringify({ at: "cron.community", ...summary, notices }));
 };

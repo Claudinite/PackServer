@@ -1,12 +1,13 @@
 CREATE TABLE `authenticated_downloads` (
 	`pack_id` text NOT NULL,
 	`user_id` text NOT NULL,
-	`first_at` text NOT NULL,
+	`last_at` text NOT NULL,
 	PRIMARY KEY(`pack_id`, `user_id`),
 	FOREIGN KEY (`pack_id`) REFERENCES `packs`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
+CREATE INDEX `authenticated_downloads_last_idx` ON `authenticated_downloads` (`last_at`);--> statement-breakpoint
 CREATE TABLE `community_notices` (
 	`id` text PRIMARY KEY NOT NULL,
 	`kind` text NOT NULL,

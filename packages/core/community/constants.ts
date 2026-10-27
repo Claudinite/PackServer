@@ -22,3 +22,9 @@ export const CATALOGUE_MEAN_KEY = "catalogue_mean_rating";
 
 /** D1 binds at most 100 parameters per statement. */
 export const ROWS_PER_INSERT = 12;
+/** Ids bound to one statement, and statements sent in one D1 batch, so a pass over many packs stays inside D1's limits. */
+export const IDS_PER_STATEMENT = 90;
+export const STATEMENTS_PER_BATCH = 25;
+
+/** Signed-in downloads are remembered this long; the mark a review already earned is kept regardless. */
+export const DOWNLOAD_RETENTION_MS = 90 * DAY_MS;

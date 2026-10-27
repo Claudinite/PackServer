@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { migratedD1 } from "../../identity/testing.ts";
 import {
-  checkBurst, drainCommunityNotices, hideReview, openStarHolds, recomputeCommunity, recordAuthenticatedDownload, refreshPack, star, starState, submitReview, unstar, withPrior,
+  checkBurst, drainCommunityNotices, hideReview, listReviews, openStarHolds, pruneAuthenticatedDownloads, recomputeCommunity, recordAuthenticatedDownload, refreshPack, star, starState, submitReview, unstar, withPrior,
   type CommunityPorts, type PackRef,
 } from "../index.ts";
 import { FakeMail } from "@packserver/ports/fakes";
@@ -107,10 +107,79 @@ describe("anomaly hold", () => {
     await refreshPack(f.ports, f.pack.id);
     const read = async () => (await f.d1.query("select stars, stars_7d from pack_stats where pack_id = 'pack-gcp'")).rows[0];
     expect(await read()).toMatchObject({ stars: 28, stars_7d: 28 });
-    expect((await starState(f.ports, f.pack, undefined)).count).toBe(78);
+    expect((await starState(f.ports, f.pack, undefined)).count).toBe(28);
     f.advance(7 * DAY + HOUR);
     await recomputeCommunity(f.ports);
     expect(await read()).toMatchObject({ stars: 78 });
+    expect((await starState(f.ports, f.pack, undefined)).count).toBe(78);
+  });
+});
+
+describe("fresh accounts", () => {
+  it("are seen as a burst on the day they start to count, by the hourly pass", async () => {
+    const f = await fixture();
+    // 200 accounts made and used at once: none counts yet, so no click can see the burst.
+    const statements = [];
+    for (let i = 0; i < 200; i++) {
+      statements.push({ sql: "insert into users (id, created_at) values (?, ?)", params: [`new-${i}`, iso(START)] });
+      statements.push({ sql: "insert into stars (pack_id, user_id, created_at) values ('pack-gcp', ?, ?)", params: [`new-${i}`, iso(START)] });
+    }
+    await f.d1.batch(statements);
+    expect((await starState(f.ports, f.pack, undefined)).count).toBe(0);
+    f.advance(25 * HOUR);
+    expect(await recomputeCommunity(f.ports)).toMatchObject({ holds: 1 });
+    expect(await openStarHolds(f.d1)).toMatchObject([{ burst_stars: 200 }]);
+    expect((await starState(f.ports, f.pack, undefined)).count).toBe(0);
+    f.advance(7 * DAY);
+    expect((await starState(f.ports, f.pack, undefined)).count).toBe(200);
+  });
+});
+
+describe("verified adoption", () => {
+  it("is not given to a review written after the scan stopped finding the declaration", async () => {
+    const f = await fixture();
+    const a = await f.user("a");
+    await f.d1.batch([
+      { sql: "insert into identities (id, user_id, provider, provider_user_id, login, created_at) values ('i', ?, 'github', '1', 'Ann', ?)", params: [a, iso(START)] },
+      { sql: "insert into adoption_scans (id, started_at, updated_at, completed_at) values ('s1', ?, ?, ?)", params: [iso(START), iso(START), iso(START)] },
+      { sql: "insert into pack_declarations (scan_id, pack, repository, owner, settings_path) values ('s1', '@acme/gcp', 'ann/app', 'ann', 'x')", params: [] },
+    ]);
+    const first = await submitReview(f.ports, f.pack, a, { rating: 5, body: "", version: "1.0.0" });
+    f.advance(7 * DAY);
+    await f.d1.batch([
+      { sql: "insert into adoption_scans (id, started_at, updated_at, completed_at) values ('s2', ?, ?, ?)", params: [iso(START + 7 * DAY), iso(START + 7 * DAY), iso(START + 7 * DAY)] },
+    ]);
+    await f.d1.query("insert into packs (id, scope_id, name, visibility, created_at) values ('pack-b', 'scope-acme', 'b', 'public', ?)", [iso(START)]);
+    await f.d1.query("insert into pack_versions (id, pack_id, version, state, sha256, size_bytes, verified, source_verified) values ('vb', 'pack-b', '1.0.0', 'active', 'sha2', 10, 0, 0)");
+    const edited = await submitReview(f.ports, f.pack, a, { rating: 4, body: "", version: "1.0.0" });
+    const other = await submitReview(f.ports, { id: "pack-b", scope_id: "scope-acme", name: "@acme/b" }, a, { rating: 4, body: "", version: "1.0.0" });
+    expect(first).toMatchObject({ review: { verified_adoption: true } });
+    expect(edited).toMatchObject({ review: { verified_adoption: true } });
+    expect(other).toMatchObject({ review: { verified_adoption: false } });
+  });
+
+  it("forgets signed-in downloads past the retention bound", async () => {
+    const f = await fixture();
+    const a = await f.user("a");
+    await recordAuthenticatedDownload(f.d1, { packId: f.pack.id, userId: a, at: iso(START) });
+    f.advance(91 * DAY);
+    await pruneAuthenticatedDownloads(f.d1, START + 91 * DAY);
+    expect((await f.d1.query("select 1 from authenticated_downloads")).rows).toEqual([]);
+  });
+});
+
+describe("review pages", () => {
+  it("walk the list with a cursor, newest edit first", async () => {
+    const f = await fixture();
+    for (let i = 0; i < 5; i++) {
+      await submitReview(f.ports, f.pack, await f.user(`u${i}`), { rating: 3, body: `r${i}`, version: "1.0.0" });
+      f.advance(1000);
+    }
+    const one = await listReviews(f.ports, f.pack, undefined, { limit: 2 });
+    const two = await listReviews(f.ports, f.pack, undefined, { limit: 2, cursor: one.next_cursor! });
+    const three = await listReviews(f.ports, f.pack, undefined, { limit: 2, cursor: two.next_cursor! });
+    expect([...one.reviews, ...two.reviews, ...three.reviews].map((r) => r.body)).toEqual(["r4", "r3", "r2", "r1", "r0"]);
+    expect(three.next_cursor).toBeNull();
   });
 });
 

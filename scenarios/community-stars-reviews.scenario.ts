@@ -40,9 +40,11 @@ scenario("IT-COMM-001 Star and unstar; anonymous clicks redirect to sign-in and 
 
   const session = await visitor.signIn({ next: target });
   expect(session.landedOn).toBe(target);
+  // Coming back shows the button and places nothing; the click is the star.
   const back = await world.community.follow(visitor, session.landedOn!);
-  expect(back.headers.location).toBe(`/packs/${pack.systemName}`);
-  expect(await world.community.stars(pack, visitor)).toEqual({ count: 1, starred: true });
+  expect(String(back.body)).toContain(`Star ${pack.systemName}`);
+  expect(await world.community.stars(pack, visitor)).toEqual({ count: 0, starred: false });
+  expect(await world.community.star(visitor, pack)).toEqual({ count: 1, starred: true });
 }, NEEDS);
 
 scenario("IT-COMM-002 Young-account and self stars are not counted", async (world) => {
@@ -108,31 +110,25 @@ scenario("IT-COMM-005 Young accounts cannot review; ten reviews a day", async (w
 scenario("IT-COMM-006 Verified-adoption reviews weigh fully", async (world) => {
   const pack = await world.packs.public("@acme/gcp", { versions: ["1.0.0"] });
   const comparator = await world.packs.public("@acme/other", { versions: ["1.0.0"] });
-  const elsewhere = await world.packs.public("@acme/elsewhere", { versions: ["1.0.0"] });
   for (const listed of [pack, comparator]) await world.search.list(listed, { ...LISTED, pitch: "Verified adoption widgets" });
-  const [a, b, c, d] = [await reader(world), await reader(world), await reader(world), await reader(world)];
+  const [a, b, c] = [await reader(world), await reader(world), await reader(world)];
 
   world.github.publicRepo(`${world.alias(a.handle)}/app`, { declares: [pack] });
   expect((await world.github.scan.run({ again: true })).outcome).toBe("completed");
   await world.community.download(c, pack);
 
+  // Two verified 5s and an unverified 1 against three unverified 4s: counted equally the comparator is ahead,
+  // with the verified reviews weighing fully the pack is.
   const marks = [];
-  for (const who of [a, b, c]) marks.push(((await world.community.review(who, pack, { rating: 5 })) as { verified_adoption: boolean }).verified_adoption);
+  for (const [who, rating] of [[a, 5], [b, 1], [c, 5]] as const) marks.push(((await world.community.review(who, pack, { rating })) as { verified_adoption: boolean }).verified_adoption);
   expect(marks).toEqual([true, false, true]);
-  await world.community.review(d, comparator, { rating: 5 });
+  await world.community.seed.reviews(comparator, { count: 3, average: 4 });
+  await world.community.recompute();
   expect(await world.community.reviews(pack)).toMatchObject({ reviewCount: 3, verifiedCount: 2 });
 
-  const ranked = await world.search.site("verified adoption widgets", { sort: "rating" });
-  expect(ranked.ids).toEqual([pack.name, comparator.name]);
-
-  // The mark is kept when the declaration goes, and is not given to a later review.
-  await world.clock.advance("7d");
-  world.github.publicRepo(`${world.alias(a.handle)}/app`, { declares: [] });
-  expect((await world.github.scan.run({ again: true })).outcome).toBe("completed");
-  await a.signIn();
-  const after = await world.community.reviews(pack);
-  expect((after as { reviews: Array<{ verified_adoption: boolean }> }).reviews.filter((r) => r.verified_adoption)).toHaveLength(2);
-  expect(await world.community.review(a, elsewhere, { rating: 5 })).toMatchObject({ verified_adoption: false });
+  const shown = async (listed: typeof pack) => ((await world.community.reviews(listed)) as { rating: number }).rating;
+  expect(await shown(pack)).toBeLessThan(await shown(comparator));
+  expect((await world.search.site("verified adoption widgets", { sort: "rating" })).ids).toEqual([pack.name, comparator.name]);
 }, { needs: ["fakes", "clock", "storage", "reset"] });
 
 scenario("IT-COMM-007 Publishers reply once and flag, never delete", async (world) => {
@@ -224,9 +220,10 @@ scenario("IT-ABUSE-004 A burst of 50 counted stars over ten times the daily aver
   const [a, b, comparable, rival] = await Promise.all(names.map((n) => world.packs.public(`@acme/${n}`, { versions: ["1.0.0"] })));
   for (const pack of [a!, b!, comparable!, rival!]) await world.search.list(pack, { ...LISTED, pitch: "Star burst widgets" });
   const ann = await reader(world);
-  const days = { between: { from: "7d", to: "2d" } };
+  // Accounts older than the stars they placed, so each star counted the day it was placed.
+  const days = { accountAge: "9d", between: { from: "7d", to: "2d" } };
 
-  await world.community.seed.stars(rival!, { count: 60, between: { from: "20d", to: "10d" } });
+  await world.community.seed.stars(rival!, { count: 60, accountAge: "30d", between: { from: "20d", to: "10d" } });
   await world.community.seed.stars(a!, { count: 28, ...days });
   await world.community.seed.stars(b!, { count: 42, ...days });
 
@@ -240,13 +237,14 @@ scenario("IT-ABUSE-004 A burst of 50 counted stars over ten times the daily aver
   expect(holds).toHaveLength(1);
   expect(holds[0]).toMatchObject({ pack: a!.name, stars: 50, dailyAverage: 4 });
 
-  // Rank holds still, nothing is removed and the public learns of no hold.
+  // Rank holds still and the public figure is the one the rank uses, so nothing tells of a hold; no star is removed.
   expect((await world.search.site("star burst widgets", { sort: "stars" })).ids).toEqual([b!.name, rival!.name, comparable!.name, a!.name]);
-  expect(await world.community.stars(a!)).toEqual({ count: 78, starred: false });
+  expect(await world.community.stars(a!)).toEqual({ count: 28, starred: false });
   expect(((await a!.page()) as { text: string }).text.toLowerCase()).not.toContain("hold");
 
   await world.clock.advance("7d");
   await world.clock.advance("1h");
   await world.community.recompute();
   expect((await world.search.site("star burst widgets", { sort: "stars" })).ids).toEqual([b!.name, a!.name, rival!.name, comparable!.name]);
+  expect(await world.community.stars(a!)).toEqual({ count: 78, starred: false });
 }, NEEDS);

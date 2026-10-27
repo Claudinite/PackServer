@@ -12,7 +12,7 @@ export interface StarState {
 }
 
 export async function starState(ports: CommunityPorts, pack: Pick<PackRef, "id">, viewerId: string | undefined): Promise<StarState> {
-  const tallies = await starTallies(ports.d1, nowMs(ports), { packId: pack.id, ranking: false });
+  const tallies = await starTallies(ports.d1, nowMs(ports), { packId: pack.id });
   const mine =
     viewerId === undefined ? { rows: [] } : await ports.d1.query("select 1 from stars where pack_id = ? and user_id = ?", [pack.id, viewerId]);
   return { count: tallies.get(pack.id)?.total ?? 0, starred: mine.rows.length > 0 };

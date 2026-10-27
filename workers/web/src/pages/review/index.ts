@@ -1,24 +1,24 @@
-import { findPublicPack, listReviews, reviewOf } from "@packserver/core/community";
+import { findPublicPack, listReviews, reviewOf, starState } from "@packserver/core/community";
 import { Hono } from "hono";
 import type { WebEnv } from "../../context";
 import { runtimeOf } from "../../context";
-import { communityPorts, placeStar } from "../../routes/packs/stars";
-import { renderReviewsPage } from "./form";
+import { communityPorts } from "../../routes/packs/stars";
+import { renderReviewsPage, renderStarPage } from "./form";
 
 const page = new Hono<WebEnv>();
 
 /**
- * The target of the pack page's star button. An anonymous visitor is sent to sign in and comes back here, which places
- * the star and returns to the pack; a request another site started does nothing but return to the pack.
+ * The target of the pack page's star button. It changes nothing: an anonymous visitor is sent to sign in and comes back
+ * here, and a signed-in person gets a button that places (or takes back) the star with a POST.
  */
 page.get("/packs/:scope/:name/star", async (c) => {
   const pack = await findPublicPack(runtimeOf(c).ports.d1, c.req.param("scope"), c.req.param("name"));
   if (!pack) return c.notFound();
   const session = c.get("session");
   if (!session) return c.redirect(`/signin?next=${encodeURIComponent(new URL(c.req.url).pathname)}`, 303);
-  if (c.req.header("sec-fetch-site") !== "cross-site") await placeStar(c, pack, session.record.user_id);
-  c.header("cache-control", "no-store");
-  return c.redirect(`/packs/${pack.name}`, 303);
+  const state = await starState(communityPorts(c), pack, session.record.user_id);
+  c.header("cache-control", "private, no-store");
+  return renderStarPage(c, { pack: pack.name, starred: state.starred });
 });
 
 /** Pack › Reviews: what people said, and the form to say it (flow 3). */
@@ -27,8 +27,8 @@ page.get("/packs/:scope/:name/reviews", async (c) => {
   if (!pack) return c.notFound();
   const ports = communityPorts(c);
   const viewer = c.get("session")?.record.user_id;
-  const [reviews, mine, aggregate] = await Promise.all([
-    listReviews(ports, pack, viewer),
+  const [page, mine, aggregate] = await Promise.all([
+    listReviews(ports, pack, viewer, { cursor: c.req.query("cursor") }),
     viewer === undefined ? Promise.resolve(null) : reviewOf(ports, pack, viewer),
     ports.d1.query("select review_count, shown from pack_ratings where pack_id = ?", [pack.id]),
   ]);
@@ -37,7 +37,8 @@ page.get("/packs/:scope/:name/reviews", async (c) => {
   return renderReviewsPage(c, {
     pack: pack.name,
     signedIn: viewer !== undefined,
-    reviews,
+    reviews: page.reviews,
+    nextCursor: page.next_cursor,
     mine,
     rating: row ? { shown: Number(row.shown), count: Number(row.review_count) } : null,
   });
