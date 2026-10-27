@@ -307,6 +307,7 @@ WHERE ${VISIBLE} AND ps.demotion IS NULL AND st.fetches_7d >= ? AND st.stars_7d 
   if (growth.size === 0) return [];
   const candidates = await hydrate(d1, {}, [...growth.keys()]);
   return candidates
+    .filter((c) => !c.demoted)
     .sort((a, b) => (growth.get(b.packId) as number) - (growth.get(a.packId) as number) || (a.name < b.name ? -1 : 1))
     .slice(0, limit)
     .map((c) => cardOf({ candidate: c, relevance: 1, composite: 1 }));

@@ -99,6 +99,15 @@ function setup() {
   return { db, clock, embedder, vectors, ports, pack, stats, ids };
 }
 
+/** A published advisory naming `versions`; the report behind it is out of scope here. */
+function advise(t: ReturnType<typeof setup>, packId: string, versions: string[]) {
+  t.db.db.exec("pragma foreign_keys = off");
+  const id = `a-${packId}-${versions.join("-")}`;
+  t.db.db.exec(`insert into advisories (id, pack_id, report_id, summary, severity, published_at) values ('${id}', '${packId}', 'r-${id}', 's', 'high', 'x')`);
+  for (const v of versions) t.db.db.exec(`insert into advisory_versions (advisory_id, pack_id, version) values ('${id}', '${packId}', '${v}')`);
+  t.db.db.exec("pragma foreign_keys = on");
+}
+
 describe("lexical search", () => {
   it("weights a name above a pitch above a skill description", async () => {
     const t = setup();
@@ -253,6 +262,21 @@ describe("ranking", () => {
     expect(await t.ids({ query: "same", engine_version: "1.5.0" })).toEqual(["@a/old-engine", "@a/new-engine"]);
   });
 
+  it("demotes a pack only while a published advisory names its newest eligible version", async () => {
+    const t = setup();
+    const top = await t.pack("@a/top", { pitch: "x", score: 95, states: ["active", "active"] });
+    await t.pack("@a/mid", { pitch: "x", score: 60 });
+    advise(t, top.packId, ["1.0.0"]);
+    expect(await t.ids({ query: "x" })).toEqual(["@a/top", "@a/mid"]);
+    advise(t, top.packId, ["1.1.0"]);
+    expect(await t.ids({ query: "x" })).toEqual(["@a/mid", "@a/top"]);
+    await t.db.query(
+      "INSERT INTO pack_versions (id, pack_id, version, state, sha256, size_bytes, published_at, verified, source_verified, score) VALUES ('v-fix', ?, '1.2.0', 'active', 'h', 1, ?, 0, 0, 95)",
+      [top.packId, new Date(t.clock.now()).toISOString()],
+    );
+    expect(await t.ids({ query: "x" })).toEqual(["@a/top", "@a/mid"]);
+  });
+
   it("puts demoted packs below every other and restores them when cleared", async () => {
     const t = setup();
     const top = await t.pack("@a/top", { pitch: "x", score: 95 });
@@ -402,5 +426,15 @@ describe("trending", () => {
     await t.stats(f.packId, { fetches_7d: 50, stars_7d: 20 });
     await t.stats(tt.packId, { fetches_7d: 100, stars_7d: 5 });
     expect((await trending(t.db)).map((c) => c.id).sort()).toEqual(["@a/f", "@a/g", "@a/s", "@a/t"]);
+  });
+
+  it("leaves out a pack a published advisory demotes", async () => {
+    const t = setup();
+    const g = await t.pack("@a/g");
+    const s = await t.pack("@a/s");
+    await t.stats(g.packId, { fetches_7d: 100, fetches_prev_28d: 10, stars_7d: 6, stars_prev_28d: 1 });
+    await t.stats(s.packId, { fetches_7d: 1010, fetches_prev_28d: 1000, stars_7d: 51, stars_prev_28d: 50 });
+    advise(t, g.packId, ["1.0.0"]);
+    expect((await trending(t.db)).map((c) => c.id)).toEqual(["@a/s"]);
   });
 });
