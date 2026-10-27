@@ -194,8 +194,29 @@
     {
       "idx": 27,
       "version": "6",
-      "when": 1793062341785,
-      "tag": "20261027005221_community_comments",
+      "when": 1793062122750,
+      "tag": "20261027004842_admin_ops_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1793062124243,
+      "tag": "20261027004844_foundation_feature_flags_mac",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1793062126279,
+      "tag": "20261027004846_scopes_dispute_resolution",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1793062889148,
+      "tag": "20261027010129_community_comments",
       "breakpoints": true
     }
   ]
