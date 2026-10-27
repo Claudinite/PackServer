@@ -341,7 +341,23 @@ function parse(file) {
 }
 
 /** A read-only bucket is read-only because `bindings.ts` hands it to `r2ReadPort` and to nothing else; the platform has no such binding. */
+function checkReadOnlyNamespaces(t, sourceFile, rel) {
+  const readOnly = Object.keys(t.kv_access ?? {}).filter((b) => t.kv_access[b] === "read");
+  const reads = bindingReads(sourceFile, new Set(readOnly));
+  for (const binding of readOnly) {
+    const mine = reads.filter((r) => r.name === binding);
+    const guarded = (r) => {
+      let child = r.node;
+      while (ts.isParenthesizedExpression(child.parent) || ts.isAsExpression(child.parent) || ts.isNonNullExpression(child.parent)) child = child.parent;
+      const call = child.parent;
+      return ts.isCallExpression(call) && call.arguments[0] === child && ts.isIdentifier(call.expression) && call.expression.text === "kvReadPort";
+    };
+    if (mine.length === 0 || !mine.every(guarded)) problem(rel, `read-only namespace ${binding} must reach the code only as kvReadPort(env.${binding})`);
+  }
+}
+
 function checkReadOnlyBuckets(worker, t, sourceFile, rel) {
+  checkReadOnlyNamespaces(t, sourceFile, rel);
   const readOnly = Object.entries(t.r2).filter(([, v]) => v.access === "read").map(([b]) => b);
   const reads = bindingReads(sourceFile, new Set(readOnly));
   for (const bucket of readOnly) {

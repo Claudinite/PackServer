@@ -70,8 +70,17 @@ export function assertConfig(config: SearchConfig, embedder: Pick<Embedder, "mod
 
 const ELIGIBLE = ELIGIBLE_STATES.map((s) => `'${s}'`).join(", ");
 
+/**
+ * Who may be found: every public pack and, for a caller whose credential can read them, those private packs.
+ * The ids are bound as one JSON array parameter placed first among the visibility clause's own.
+ */
+function visibleTo(withPrivate: boolean): string {
+  return withPrivate ? "(p.visibility = 'public' OR p.id IN (SELECT value FROM json_each(?)))" : "p.visibility = 'public'";
+}
+
 /** Public, not synthetic, and holding a version a reader may be sent to. */
-const VISIBLE = `p.visibility = 'public' AND s.kind <> 'synthetic' AND EXISTS (SELECT 1 FROM pack_versions v WHERE v.pack_id = p.id AND v.state IN (${ELIGIBLE}) AND v.published_at IS NOT NULL)`;
+const eligibleClause = (withPrivate: boolean) => `${visibleTo(withPrivate)} AND s.kind <> 'synthetic' AND EXISTS (SELECT 1 FROM pack_versions v WHERE v.pack_id = p.id AND v.state IN (${ELIGIBLE}) AND v.published_at IS NOT NULL)`;
+const VISIBLE = eligibleClause(false);
 const BASE = "FROM pack_search ps JOIN packs p ON p.id = ps.pack_id JOIN scopes s ON s.id = p.scope_id";
 
 interface Where {
@@ -104,15 +113,22 @@ function validate(request: SearchRequestBody): void {
   }
 }
 
-async function lexicalHits(d1: D1, request: SearchRequestBody, match: string): Promise<Map<string, number>> {
+/** Private packs the caller's credential may read, found beside the public ones. */
+export interface SearchAccess {
+  privatePackIds: readonly string[];
+}
+
+const privateParams = (access: SearchAccess | undefined): unknown[] => (access === undefined ? [] : [JSON.stringify(access.privatePackIds)]);
+
+async function lexicalHits(d1: D1, request: SearchRequestBody, match: string, access?: SearchAccess): Promise<Map<string, number>> {
   const w = packFilters(request);
   const w2 = Object.values(BM25_WEIGHTS).map((n) => n.toFixed(1)).join(", ");
   const result = await d1.query(
     `SELECT ps.pack_id AS pack_id, bm25(packs_fts, ${w2}) AS rank
 FROM packs_fts JOIN pack_search ps ON ps.seq = packs_fts.rowid JOIN packs p ON p.id = ps.pack_id JOIN scopes s ON s.id = p.scope_id
-WHERE packs_fts MATCH ? AND ${VISIBLE}${w.sql}
+WHERE packs_fts MATCH ? AND ${eligibleClause(access !== undefined)}${w.sql}
 ORDER BY rank LIMIT ${LEXICAL_LIMIT}`,
-    [match, ...w.params],
+    [match, ...privateParams(access), ...w.params],
   );
   // bm25() is lower for a better match and negative; the strength is its magnitude.
   return new Map(result.rows.map((r) => [String(r.pack_id), Math.max(0, -Number(r.rank))]));
@@ -122,7 +138,7 @@ const asNumber = (v: unknown): number | null => (v === null || v === undefined ?
 const asText = (v: unknown): string | null => (typeof v === "string" ? v : null);
 
 /** The newest eligible version of each pack, with the pack's search row and stats. */
-async function hydrate(d1: D1, request: SearchRequestBody, ids: string[] | undefined): Promise<Candidate[]> {
+async function hydrate(d1: D1, request: SearchRequestBody, ids: string[] | undefined, access?: SearchAccess): Promise<Candidate[]> {
   const w = packFilters(request);
   const restrict = ids === undefined ? "" : " AND ps.pack_id IN (SELECT value FROM json_each(?))";
   const result = await d1.query(
@@ -132,10 +148,10 @@ async function hydrate(d1: D1, request: SearchRequestBody, ids: string[] | undef
 ${BASE}
 JOIN pack_versions pv ON pv.pack_id = p.id AND pv.state IN (${ELIGIBLE}) AND pv.published_at IS NOT NULL
 LEFT JOIN pack_stats st ON st.pack_id = p.id LEFT JOIN pack_ratings pr ON pr.pack_id = p.id LEFT JOIN recent r ON r.pack_id = p.id
-WHERE p.visibility = 'public' AND s.kind <> 'synthetic'${w.sql}${restrict}
+WHERE ${visibleTo(access !== undefined)} AND s.kind <> 'synthetic'${w.sql}${restrict}
 ORDER BY ps.seq, pv.id
 LIMIT ${ROW_CAP}`,
-    [...w.params, ...(ids === undefined ? [] : [JSON.stringify(ids)])],
+    [...privateParams(access), ...w.params, ...(ids === undefined ? [] : [JSON.stringify(ids)])],
   );
   if (result.rows.length >= ROW_CAP) console.warn(`search: more than ${ROW_CAP} version rows matched; the rest are left out`);
   const newest = new Map<string, Record<string, unknown>>();
@@ -220,7 +236,7 @@ async function semanticHits(ports: SearchPorts, config: SearchConfig, query: str
 const clampLimit = (n: number | undefined): number => n ?? DEFAULT_LIMIT;
 
 /** Search and browse: the one implementation both the site and MCP answer from. */
-export async function search(ports: SearchPorts, config: SearchConfig, request: SearchRequestBody): Promise<SearchResponseBody> {
+export async function search(ports: SearchPorts, config: SearchConfig, request: SearchRequestBody, access?: SearchAccess): Promise<SearchResponseBody> {
   assertConfig(config, ports.embedder);
   validate(request);
   const query = request.query?.trim();
@@ -233,12 +249,12 @@ export async function search(ports: SearchPorts, config: SearchConfig, request: 
   let degraded: boolean;
   try {
     const match = browse ? null : ftsMatch(query);
-    const lexical = match === null ? new Map<string, number>() : await lexicalHits(ports.d1, request, match);
+    const lexical = match === null ? new Map<string, number>() : await lexicalHits(ports.d1, request, match, access);
     const semantic = await semanticPromise;
     degraded = semantic === null;
     const meaning = new Map((semantic ?? []).map((m) => [m.id, m.score]));
     const ids = browse ? undefined : [...new Set([...lexical.keys(), ...meaning.keys()])];
-    candidates = ids !== undefined && ids.length === 0 ? [] : await hydrate(ports.d1, request, ids);
+    candidates = ids !== undefined && ids.length === 0 ? [] : await hydrate(ports.d1, request, ids, access);
     for (const c of candidates) {
       const strength = lexical.get(c.packId);
       const similarity = meaning.get(c.packId);
