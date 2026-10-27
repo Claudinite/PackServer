@@ -28,7 +28,6 @@
         "AUDIT_HEAD_SIGNING_KEY": "test-audit-head-signing-key",
         "ANALYTICS_READ_TOKEN": "test-analytics-read-token",
         "FLAG_HMAC_KEY": "test-flag-hmac-key",
-        "ROLLBACK_DISPATCH_TOKEN": "test-rollback-dispatch-token",
         "ROLLBACK_REPO": "claudinite/packserver"
       },
       "d1_databases": [
@@ -251,11 +250,6 @@
           "binding": "FLAG_HMAC_KEY",
           "store_id": "00000000000000000000190000000004",
           "secret_name": "flag-hmac-key-staging"
-        },
-        {
-          "binding": "ROLLBACK_DISPATCH_TOKEN",
-          "store_id": "00000000000000000000190000000004",
-          "secret_name": "rollback-dispatch-token-staging"
         }
       ],
       "version_metadata": {
@@ -405,11 +399,6 @@
           "binding": "FLAG_HMAC_KEY",
           "store_id": "00000000000000000000290000000004",
           "secret_name": "flag-hmac-key"
-        },
-        {
-          "binding": "ROLLBACK_DISPATCH_TOKEN",
-          "store_id": "00000000000000000000290000000004",
-          "secret_name": "rollback-dispatch-token"
         }
       ],
       "version_metadata": {

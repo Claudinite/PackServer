@@ -14,21 +14,17 @@ export interface OpsPorts {
   flags: FlagCache;
   /** The admin-only key security flags are written and read under; null where it is not configured. */
   flagKey: () => Promise<string | null>;
-  rollback: RollbackDispatch | null;
-}
-
-/** Starts the `rollback` workflow, which rolls the live release back to its incumbent. */
-export interface RollbackDispatch {
-  dispatch(reason: string): Promise<{ ok: true } | { ok: false; status: number }>;
+  /** The page that starts the `rollback` workflow; null where the environment has no release of its own to roll back. */
+  rollbackUrl: string | null;
 }
 
 export function opsPorts(runtime: AdminRuntime): OpsPorts {
-  const { clock, rng, d1, queues, kv, rollback } = runtime.ports;
+  const { clock, rng, d1, queues, kv, rollbackUrl } = runtime.ports;
   const audit = queues["AUDIT_QUEUE"];
   const reindex = queues["REINDEX_QUEUE"];
   const telemetry = kv["TELEMETRY_KV"];
   if (!audit || !reindex || !telemetry) throw new Error("the admin Worker is missing a queue or the telemetry store");
-  return { d1, clock, kv: telemetry, reindex, audit: createAudit({ clock, rng, queue: audit, d1 }, { ipKey: "" }), flags: runtime.ports.flagCache ?? createFlagCache(), flagKey: runtime.ports.flagKey ?? (async () => null), rollback: rollback ?? null };
+  return { d1, clock, kv: telemetry, reindex, audit: createAudit({ clock, rng, queue: audit, d1 }, { ipKey: "" }), flags: runtime.ports.flagCache ?? createFlagCache(), flagKey: runtime.ports.flagKey ?? (async () => null), rollbackUrl: rollbackUrl ?? null };
 }
 
 export type AuditTrail = Audit;

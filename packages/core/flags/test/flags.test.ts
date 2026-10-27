@@ -123,6 +123,15 @@ describe("security flags", () => {
     expect((await read(KEY)).get(NEW_PACK_KILL_SWITCH)).toBe(false);
   });
 
+  it("are not hidden from a keyed reader by an earlier read without the key", async () => {
+    const { ports } = fixture();
+    await writeFlag(ports, NEW_PACK_KILL_SWITCH, true, KEY);
+    const cache = createFlagCache();
+    expect((await cache.read(ports)).source(NEW_PACK_KILL_SWITCH)).toBe("unverified");
+    expect((await cache.read(ports, KEY)).get(NEW_PACK_KILL_SWITCH)).toBe(true);
+    expect((await cache.read(ports)).source(NEW_PACK_KILL_SWITCH)).toBe("unverified");
+  });
+
   it("do not move to another key or time with their MAC", async () => {
     const mac = await flagMac(KEY, NEW_PACK_KILL_SWITCH, "true", "2026-10-26T12:00:00.000Z");
     const row = { key: NEW_PACK_KILL_SWITCH, value: "true", updated_at: "2026-10-26T12:00:00.000Z", mac };

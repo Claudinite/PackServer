@@ -41,11 +41,22 @@ async function publishedScopes(ops: OpsPorts): Promise<string[]> {
 /** The flags with a method of their own; turning them on or off through `turn_flag_*` would be a second path to the same switch. */
 const DEDICATED = new Set([NEW_PACK_KILL_SWITCH, INDEX_REGENERATION_FROZEN]);
 
+/** A call that did not do what it asked is an audit row too, so a refused lift or a probing caller leaves a trace. */
+export async function auditRefusal(ops: OpsPorts, call: AdminCall, method: string, reason: string): Promise<void> {
+  await ops.audit(call.actor, "admin.action", `method:${method.slice(0, 64)}`, { detail: { verb: method.slice(0, 64), reason: reason.slice(0, MAX_REASON), outcome: "refused" } });
+}
+
 /**
  * One admin internal method, after its caller was authorised. The ops page and the service-binding API both end here,
  * so a tap and a call are the same action with the same audit row (REQ-ADMIN-010).
  */
 export async function performAdminMethod(ops: OpsPorts, call: AdminCall, request: AdminRequest): Promise<AdminResponse> {
+  const answer = await run(ops, call, request);
+  if (!answer.ok) await auditRefusal(ops, call, request.method, answer.refusal.message ?? answer.refusal.reason);
+  return answer;
+}
+
+async function run(ops: OpsPorts, call: AdminCall, request: AdminRequest): Promise<AdminResponse> {
   switch (request.method) {
     case "quarantine_version":
     case "unquarantine_version":
@@ -98,10 +109,11 @@ export async function performAdminMethod(ops: OpsPorts, call: AdminCall, request
       if (!result.ok) return refuse(`${def.key} cannot be set.`);
       return audited(ops, call, on ? "flag.on" : "flag.off", `flag:${def.key}`);
     }
-    case "roll_back": {
-      if (!ops.rollback) return refuse("Roll back is not available in this environment.");
-      const sent = await ops.rollback.dispatch(request.reason);
-      return sent.ok ? audited(ops, call, "ops.rollback", "release:live", request.reason) : refuse(`The rollback workflow was not started (GitHub answered ${sent.status}).`);
-    }
+    case "roll_back":
+      return refuse(
+        ops.rollbackUrl
+          ? `The registry starts no workflow. Run the rollback workflow yourself: ${ops.rollbackUrl}`
+          : "Roll back is not available in this environment.",
+      );
   }
 }

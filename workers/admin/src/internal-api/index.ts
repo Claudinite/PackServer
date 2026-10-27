@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import { ACCESS_HEADER } from "../access";
 import type { AdminRuntime } from "../bindings";
 import { opsPorts } from "../ops/context";
-import { performAdminMethod, type AdminCall } from "../ops/methods";
+import { auditRefusal, performAdminMethod, type AdminCall } from "../ops/methods";
 
 /** The name a service-binding caller addresses; the Access-protected hostnames are different, so a request that came in through the public route is answered as no path. */
 export const INTERNAL_HOST = "admin.internal";
@@ -52,6 +52,7 @@ export function internalRoutes(runtime: AdminRuntime): Hono {
     const allowed = authoriseAdminCall(caller as AdminCaller, method, admin !== null);
     if (!allowed.allowed) {
       console.log(JSON.stringify({ event: "admin.internal_refused", caller, method, reason: allowed.reason }));
+      await auditRefusal(opsPorts(runtime), admin ? { actor: actorOf(admin), label: admin.email } : { actor: { kind: "system", id: caller }, label: caller }, method, allowed.reason);
       return c.json(refusal("forbidden", allowed.reason), 403, NO_STORE);
     }
     const parsed = AdminRequest.safeParse(raw);

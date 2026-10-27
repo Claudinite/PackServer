@@ -85,7 +85,7 @@ export interface OpsView {
   killSwitch: boolean;
   indexFrozen: boolean;
   telemetryMode: string;
-  rollbackAvailable: boolean;
+  rollbackUrl: string | null;
   flags: Array<{ key: string; value: unknown; source: string; security: boolean }>;
   blockedSources: Array<{ source: string; reason: string }>;
   acknowledged: string[];
@@ -179,8 +179,6 @@ export interface AdminModule {
     holdHandle(scope: { name: string }): Promise<void>;
     /** Calls the admin internal API as a service binding does: the judge or the admin app, with or without the admin's Access assertion. */
     internal(caller: InternalCaller, request: Record<string, unknown>, o?: { assertion?: AssertionKind }): Promise<InternalAnswer>;
-    /** The roll-back workflow dispatches GitHub received. */
-    rollbackDispatches(): Array<{ workflow: string; ref: string; reason: string | null; authorised: boolean }>;
     /** What the `flags/launch` key of the telemetry store holds, or null. */
     launchMirror(): Promise<string | null>;
   };
@@ -414,7 +412,7 @@ export function createAdmin(driver: Driver, onDispose: (undo: () => Promise<void
     ops: {
       async state() {
         const o = await json<{
-          kill_switch: boolean; index_frozen: boolean; telemetry_mode: string; rollback_available: boolean;
+          kill_switch: boolean; index_frozen: boolean; telemetry_mode: string; rollback_url: string | null;
           flags: OpsView["flags"]; blocked_sources: Array<{ source: string; reason: string }>;
           acknowledged: Array<{ page: string }>; recent_actions: Array<{ actor: string; verb: string; target: string | null }>;
         }>("ops.state", "GET", "/admin/ops/state");
@@ -422,7 +420,7 @@ export function createAdmin(driver: Driver, onDispose: (undo: () => Promise<void
           killSwitch: o.kill_switch,
           indexFrozen: o.index_frozen,
           telemetryMode: o.telemetry_mode,
-          rollbackAvailable: o.rollback_available,
+          rollbackUrl: o.rollback_url,
           flags: o.flags,
           blockedSources: o.blocked_sources,
           acknowledged: o.acknowledged.map((a) => a.page),
@@ -521,10 +519,6 @@ export function createAdmin(driver: Driver, onDispose: (undo: () => Promise<void
       async internal(caller, request, o = {}) {
         const res = await call("POST", "/internal/call", { body: request, as: o.assertion ?? "missing", headers: { "x-packserver-caller": caller } });
         return answerOf(res);
-      },
-      rollbackDispatches() {
-        const f = fakes();
-        return f.workflowDispatch.dispatches.map((d) => ({ workflow: d.workflow, ref: d.ref, reason: d.inputs.reason ?? null, authorised: d.authorised }));
       },
       async launchMirror() {
         return await stores(driver).telemetry.get("flags/launch");

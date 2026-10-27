@@ -4,8 +4,8 @@ import type { OpsPorts } from "./context";
 
 export interface OpsState {
   release: string;
-  /** Whether the roll-back tap can start the workflow here. */
-  rollback_available: boolean;
+  /** Where a person starts the rollback workflow, or null where there is no release to roll back. */
+  rollback_url: string | null;
   kill_switch: boolean;
   index_frozen: boolean;
   telemetry_mode: TelemetryMode;
@@ -25,7 +25,7 @@ export async function opsState(ops: OpsPorts, release: string): Promise<OpsState
   ]);
   return {
     release,
-    rollback_available: ops.rollback !== null,
+    rollback_url: ops.rollbackUrl,
     kill_switch: flags.get(NEW_PACK_KILL_SWITCH) === true,
     index_frozen: flags.get(INDEX_REGENERATION_FROZEN) === true,
     telemetry_mode: parseTelemetryMode(await ops.kv.get(TELEMETRY_MODE_KEY)),

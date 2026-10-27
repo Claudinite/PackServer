@@ -51,7 +51,7 @@ export const DETAIL_FIELDS: Record<AuditAction, readonly string[]> = {
   "publish.approved": ["version"],
   "visibility.changed": ["from", "to"],
   "version.yanked": ["version", "reason"],
-  "admin.action": ["verb", "reason"],
+  "admin.action": ["verb", "reason", "outcome"],
   "signin.refused": ["reason"],
   "assertion.refused": ["reason"],
   "token.refused": ["reason"],

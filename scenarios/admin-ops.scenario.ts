@@ -58,18 +58,19 @@ scenario("IT-ADMIN-010 Each internal caller of the admin API is limited to a nam
   expect(await version.status()).toBe("active");
   expect((await admin.ops.state()).killSwitch).toBe(false);
 
-  // Freezing and unfreezing index regeneration, a flag off, and the roll-back tap.
+  // Freezing and unfreezing index regeneration, a flag off, and the roll-back method.
   expect(await world.admins.internal("admin_app", { method: "freeze_index_regeneration", reason: "audit" }, { assertion: "valid" })).toMatchObject({ ok: true });
   expect((await admin.ops.state()).indexFrozen).toBe(true);
   expect(await world.admins.internal("admin_app", { method: "unfreeze_index_regeneration", reason: "audit over" }, { assertion: "valid" })).toMatchObject({ ok: true });
   expect((await admin.ops.state()).indexFrozen).toBe(false);
   expect(await world.admins.internal("admin_app", { method: "turn_flag_off", flag: "launch.flag" }, { assertion: "valid" })).toMatchObject({ ok: true });
-  expect(await world.admins.internal("admin_app", { method: "roll_back", reason: "bad release" }, { assertion: "valid" })).toMatchObject({ ok: true });
-  expect(world.admins.rollbackDispatches()).toEqual([{ workflow: "rollback.yml", ref: "main", reason: "bad release", authorised: true }]);
+  // The registry starts no workflow: the roll-back method points a person at the one on GitHub.
+  expect(await world.admins.internal("admin_app", { method: "roll_back", reason: "bad release" }, { assertion: "valid" })).toMatchObject({ ok: false, reason: expect.stringContaining("/actions/workflows/rollback.yml") });
+  expect((await admin.ops.state()).rollbackUrl).toContain("/actions/workflows/rollback.yml");
 
-  // Each successful call is an `admin.action` row with its actor: the judge under its own name, the admin under theirs.
+  // Each successful call by the admin is an `admin.action` row under their address; the judge's rows are under its own name.
   const audit = await admin.audit();
-  expect(audit.map((a) => a.verb)).toEqual(expect.arrayContaining(["version.unquarantine", "ops.kill_switch.off", "ops.index_freeze.off", "flag.off", "ops.rollback"]));
+  expect(audit.map((a) => a.verb)).toEqual(expect.arrayContaining(["version.unquarantine", "ops.kill_switch.off", "ops.index_freeze.off", "flag.off", "roll_back"]));
   expect(audit.every((a) => a.actor === admin.email)).toBe(true);
 
   const page = await admin.ops.page();

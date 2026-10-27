@@ -25,12 +25,15 @@ export interface FlagCache {
 /**
  * One of these lives at module scope in each Worker, so the table is read once per isolate per
  * 60 s. A security flag counts only when its MAC verifies under the key the reader holds; a reader
- * without the key sees the compiled default. A failed read keeps what was last read.
+ * without the key sees the compiled default. A snapshot is reused only by a reader that holds the key
+ * exactly when the one that built it did, so a keyless read cannot leave defaults for a keyed one.
+ * A failed read keeps what was last read.
  */
 export function createFlagCache(ttlMs = FLAG_TTL_MS): FlagCache {
   let snapshot: FlagSnapshot | undefined;
   let fetchedAt = -Infinity;
-  let inflight: Promise<void> | undefined;
+  let keyed = false;
+  let inflight: { keyed: boolean; done: Promise<void> } | undefined;
 
   const build = async (d1: D1, macSecret: string | null, at: number): Promise<FlagSnapshot> => {
     const values = new Map<string, { value: FlagValue; source: FlagSource }>();
@@ -67,19 +70,24 @@ export function createFlagCache(ttlMs = FLAG_TTL_MS): FlagCache {
     },
     async read(ports, macSecret = null) {
       const now = ports.clock.now();
-      if (snapshot && now - fetchedAt < ttlMs) return snapshot;
-      inflight ??= build(ports.d1, macSecret, now)
-        .then((built) => {
-          snapshot = built;
-          fetchedAt = now;
-        })
-        .catch((error: unknown) => {
-          console.log(JSON.stringify({ event: "flags.read_failed", reason: String(error) }));
-        })
-        .finally(() => {
-          inflight = undefined;
-        });
-      await inflight;
+      const wantKeyed = Boolean(macSecret);
+      if (snapshot && keyed === wantKeyed && now - fetchedAt < ttlMs) return snapshot;
+      if (inflight?.keyed !== wantKeyed) {
+        const done = build(ports.d1, macSecret, now)
+          .then((built) => {
+            snapshot = built;
+            keyed = wantKeyed;
+            fetchedAt = now;
+          })
+          .catch((error: unknown) => {
+            console.log(JSON.stringify({ event: "flags.read_failed", reason: String(error) }));
+          })
+          .finally(() => {
+            if (inflight?.done === done) inflight = undefined;
+          });
+        inflight = { keyed: wantKeyed, done };
+      }
+      await inflight!.done;
       return snapshot ?? fallback;
     },
   };

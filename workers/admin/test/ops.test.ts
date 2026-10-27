@@ -10,7 +10,6 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import type { AdminRuntime } from "../src/bindings";
 import { flagMirror } from "../src/flags/mirror";
-import { githubRollback } from "../src/ops/rollback";
 
 const AUDIENCE = "aud-1";
 const PROTECTED = "admin.example.test";
@@ -19,7 +18,7 @@ const ADMIN = "boss@example.test";
 const AT = "2026-10-26T12:00:00.000Z";
 const FLAG_KEY = "flag-key";
 
-function fixture(o: { rollback?: AdminRuntime["ports"]["rollback"] } = {}) {
+function fixture(o: { rollbackUrl?: string } = {}) {
   const fakes = createFakePorts({ worker: "admin" });
   const { d1, db } = migratedD1();
   const runtime: AdminRuntime = {
@@ -34,7 +33,7 @@ function fixture(o: { rollback?: AdminRuntime["ports"]["rollback"] } = {}) {
       auditBucket: new MemoryAuditBucket(),
       r2: { PACKS_STAGING: fakes.r2["PACKS_STAGING"]!, VALIDATION_REPORTS: fakes.r2["VALIDATION_REPORTS"]!, OPS_BUCKET: fakes.r2["OPS_BUCKET"]! },
       flagKey: async () => FLAG_KEY,
-      ...(o.rollback ? { rollback: o.rollback } : {}),
+      ...(o.rollbackUrl ? { rollbackUrl: o.rollbackUrl } : {}),
     },
     services: {},
     config: { siteOrigin: "https://registry.test.invalid", access: { audience: AUDIENCE, identities: [ADMIN], hosts: [PROTECTED] } },
@@ -97,7 +96,9 @@ describe("internal API method sets (REQ-ADMIN-010)", () => {
       }
     }
     expect(f.stateOf("1.0.0").state).toBe("quarantined");
-    expect(f.audits()).toHaveLength(1);
+    const rows = f.audits().map((a) => JSON.parse(a.detail));
+    expect(rows.filter((r) => r.outcome === undefined)).toHaveLength(1);
+    expect(rows.filter((r) => r.outcome === "refused").length).toBe(rows.length - 1);
   });
 
   it("lets a lifting method through only from the admin app with the Access assertion", async () => {
@@ -139,14 +140,14 @@ describe("internal API method sets (REQ-ADMIN-010)", () => {
     expect(await f.call("web", quarantine)).toMatchObject({ status: 403, body: { ok: false } });
     expect(await f.call("judge", { method: "nope" })).toMatchObject({ status: 403, body: { refusal: { message: "unknown_method" } } });
     expect(await f.call("judge", { method: "quarantine_version", pack: "@acme/gcp" })).toMatchObject({ status: 400, body: { ok: false } });
-    expect(f.audits()).toEqual([]);
+    expect(f.audits().every((a) => JSON.parse(a.detail).outcome === "refused")).toBe(true);
   });
 
-  it("refuses a target that does not exist and writes no audit row", async () => {
+  it("refuses a target that does not exist and audits the refusal, changing nothing else", async () => {
     const f = fixture();
     expect(await f.call("judge", { ...quarantine, version: "9.9.9" })).toMatchObject({ body: { ok: false, refusal: { message: expect.stringContaining("is not a version") } } });
     expect(await f.call("admin_app", { method: "unblock_source", source: "ip:none", reason: "x" }, { assertion: true })).toMatchObject({ body: { ok: false } });
-    expect(f.audits()).toEqual([]);
+    expect(f.audits().map((a) => JSON.parse(a.detail).outcome)).toEqual(["refused", "refused"]);
   });
 });
 
@@ -233,33 +234,25 @@ describe("ops actions", () => {
   });
 });
 
-describe("the roll-back tap", () => {
-  it("dispatches the rollback workflow on the protected branch and audits the tap", async () => {
-    const sent: Array<{ url: string; init: RequestInit }> = [];
-    const rollback = githubRollback({ repo: "acme/registry", token: async () => "tok", fetch: (async (url: string, init: RequestInit) => (sent.push({ url, init }), new Response(null, { status: 204 }))) as never });
-    const f = fixture({ rollback });
+describe("the roll-back method", () => {
+  const URL = "https://github.com/acme/registry/actions/workflows/rollback.yml";
+
+  it("starts nothing, refuses with the link to the workflow, and sends no request to GitHub", async () => {
+    const f = fixture({ rollbackUrl: URL });
     const answer = await f.call("admin_app", { method: "roll_back", reason: "bad release" }, { assertion: true });
-    expect(answer.body).toMatchObject({ ok: true });
-    expect(sent).toHaveLength(1);
-    expect(sent[0]!.url).toBe("https://api.github.com/repos/acme/registry/actions/workflows/rollback.yml/dispatches");
-    expect(JSON.parse(String(sent[0]!.init.body))).toEqual({ ref: "main", inputs: { reason: "bad release" } });
-    expect((sent[0]!.init.headers as Record<string, string>)["authorization"]).toBe("Bearer tok");
-    expect(JSON.parse(f.audits()[0]!.detail)).toEqual({ verb: "ops.rollback", reason: "bad release" });
+    expect(answer.body).toMatchObject({ ok: false, refusal: { message: expect.stringContaining(URL) } });
+    expect(f.audits().map((a) => JSON.parse(a.detail))).toEqual([{ verb: "roll_back", reason: expect.stringContaining(URL), outcome: "refused" }]);
   });
 
-  it("is refused, and not audited, when GitHub does not start the workflow or none is configured", async () => {
-    const failing = githubRollback({ repo: "acme/registry", token: async () => "tok", fetch: (async () => new Response("no", { status: 403 })) as never });
-    const f = fixture({ rollback: failing });
-    expect(await f.call("admin_app", { method: "roll_back", reason: "x" }, { assertion: true })).toMatchObject({ body: { ok: false, refusal: { message: expect.stringContaining("403") } } });
+  it("says it is not available where the environment has no release of its own", async () => {
     const none = fixture();
     expect(await none.call("admin_app", { method: "roll_back", reason: "x" }, { assertion: true })).toMatchObject({ body: { ok: false, refusal: { message: expect.stringContaining("not available") } } });
-    expect(f.audits().concat(none.audits())).toEqual([]);
   });
 });
 
 describe("the ops page", () => {
   it("shows the state and a tap for each action, with a script that runs only under the response's nonce", async () => {
-    const f = fixture({ rollback: githubRollback({ repo: "a/b", token: async () => "t", fetch: (async () => new Response(null, { status: 204 })) as never }) });
+    const f = fixture({ rollbackUrl: "https://github.com/a/b/actions/workflows/rollback.yml" });
     await f.call("judge", { method: "enable_new_pack_kill_switch", reason: "flood" });
     await f.call("admin_app", { method: "block_source", source: "ip:<script>", reason: "stuffing" }, { assertion: true });
     const res = await f.admin("GET", "/admin/ops");
@@ -267,7 +260,8 @@ describe("the ops page", () => {
     const html = await res.text();
     const nonce = /<script nonce="([0-9a-f]+)"/.exec(html)?.[1];
     expect(res.headers.get("content-security-policy")).toContain(`script-src 'nonce-${nonce}'`);
-    for (const method of ["roll_back", "disable_new_pack_kill_switch", "freeze_index_regeneration", "set_telemetry_mode", "quarantine_version", "block_source", "acknowledge_page", "unblock_source"]) {
+    expect(html).toContain('href="https://github.com/a/b/actions/workflows/rollback.yml"');
+    for (const method of ["disable_new_pack_kill_switch", "freeze_index_regeneration", "set_telemetry_mode", "quarantine_version", "block_source", "acknowledge_page", "unblock_source"]) {
       expect(html, method).toContain(method);
     }
     expect(html).toContain("paused");
