@@ -44,7 +44,7 @@ export interface Env {
   OIDC_ISSUER?: string;
   OIDC_JWKS_URL?: string;
   /** What the workflow template the GitHub page hands out pins: the publish-pack release (full commit SHA) and the cn release (version and SHA-256). All three or none. */
-  PUBLISH_ACTION_SHA?: string;
+  PUBLISH_PACK_SHA?: string;
   CN_VERSION?: string;
   CN_SHA256?: string;
   /** The fake clock Worker, bound only under `env.test`. */
@@ -119,7 +119,7 @@ export function createRuntime(env: Env): WebRuntime {
 }
 
 function pinsOf(env: Env): Pick<WebConfig, "workflowPins"> {
-  const { PUBLISH_ACTION_SHA: actionSha, CN_VERSION: cnVersion, CN_SHA256: cnSha256 } = env;
+  const { PUBLISH_PACK_SHA: actionSha, CN_VERSION: cnVersion, CN_SHA256: cnSha256 } = env;
   return actionSha && cnVersion && cnSha256 ? { workflowPins: { actionSha, cnVersion, cnSha256 } } : {};
 }
 

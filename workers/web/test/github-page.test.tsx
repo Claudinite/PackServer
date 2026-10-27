@@ -135,6 +135,31 @@ describe("GitHub page (REQ-PUB-001)", () => {
     expect(html).not.toMatch(/data-do="trusted-only/);
   });
 
+  it("tells an editor that blank refs keep the current ones", async () => {
+    const h = setup({ workflowPins: PINS });
+    const { owner } = await seed(h);
+    const html = await (await owner.get("/dashboard/github")).text();
+    expect(html).toContain("blank keeps the current ones");
+  });
+
+  it("keeps each pack's own five newest runs and offers no workflow a registration cannot use", async () => {
+    const h = setup({ workflowPins: PINS });
+    const { owner, scope } = await seed(h);
+    for (let i = 0; i < 6; i++) await run(h, scope.id, { id: `g${i}`, version: `1.0.${i}`, created_at: `2026-10-0${i + 1}T10:00:00.000Z` });
+    await h.d1.query("insert into packs (id, scope_id, name, visibility, created_at) values ('p2', ?, 'aws', 'public', '2026-10-01T00:00:00.000Z')", [scope.id]);
+    await run(h, scope.id, { id: "a1", pack: "aws", version: "2.0.0", created_at: "2026-09-01T10:00:00.000Z" });
+    const words = wordsOf(await (await owner.get("/dashboard/github")).text());
+    expect(words).toContain("Recent runs · 5");
+    expect(words).not.toContain("1.0.0 2026-10-01");
+    expect(words).toContain("2.0.0 2026-09-01");
+
+    const ports = h.ports;
+    const narrow = await registerPublisher(ports, { scope, packName: "aws", userId: owner.userId, input: { ...REPO, path: "packs/aws", events: ["workflow_dispatch"], refs: ["refs/heads/main"] } });
+    if (!narrow.ok) throw new Error(narrow.message);
+    const page = wordsOf(await (await owner.get("/dashboard/github")).text());
+    expect(page).toContain("does not allow the push event");
+  });
+
   it("neither shows nor reaches for another organisation's packs", async () => {
     const h = setup({ workflowPins: PINS });
     await seed(h);

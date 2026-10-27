@@ -27,8 +27,7 @@ function Verification(props: { org: OrgSettings }) {
   const { org } = props;
   const owner = org.role === "owner";
   const { domain, github, application } = org;
-  const proofHeld = org.scope.verified_domain !== null || org.scope.verified_github_org !== null;
-  const missing = [...(proofHeld ? [] : ["prove a domain or a GitHub organisation"]), ...(org.mfa === "none" ? ["require MFA or passkeys only for everyone acting for the organisation"] : [])];
+  const missing = org.missing.map((m) => (m === "proof" ? "prove a domain or a GitHub organisation" : "require MFA or passkeys only for everyone acting for the organisation"));
   const renewable = application.renewable_at === null || Date.parse(application.renewable_at) <= org.now;
   return (
     <section id="verification">
@@ -197,7 +196,7 @@ function Danger(props: { org: OrgSettings }) {
             <span>Pack</span>
             <select name="pack">{org.packs.map((p) => <option value={p}>{p}</option>)}</select>
           </label>
-          <label><span>Offer it to the scope</span><input type="text" name="to" required placeholder="@other" pattern="@?[a-z0-9-]+" autocomplete="off" spellcheck={false} /></label>
+          <label><span>Offer it to the scope</span><input type="text" name="to" required placeholder="@other" pattern="@?[a-z0-9\-]+" autocomplete="off" spellcheck={false} /></label>
           <p class="hint small muted">Nothing moves until an owner of that scope accepts.</p>
           <div><button class="btn" type="submit">Offer the pack</button></div>
         </form>

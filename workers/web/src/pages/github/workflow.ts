@@ -6,6 +6,8 @@ export type Yaml = { kind: "yaml"; text: string } | { kind: "unavailable"; why: 
 
 /** The workflow a registration expects, with the environment's pins; the template refuses values it cannot quote safely. */
 export function workflowFor(scope: string, pack: string, r: Registration, pins: WebConfig["workflowPins"]): Yaml {
+  if (!r.events.includes("push")) return { kind: "unavailable", why: "The workflow publishes on a pushed tag, and this registration does not allow the push event." };
+  if (!r.refs.includes(`refs/tags/${pack}/*`)) return { kind: "unavailable", why: `The workflow publishes on tags ${pack}/*, and this registration does not allow refs/tags/${pack}/*.` };
   if (!pins) return { kind: "unavailable", why: "This environment has no published Action release to pin yet." };
   try {
     const text = publishWorkflowTemplate({

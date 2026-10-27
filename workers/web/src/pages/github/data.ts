@@ -41,7 +41,6 @@ export interface ScopeBlock {
 }
 
 const RUNS_PER_PACK = 5;
-const RUN_WINDOW = 400;
 
 const mine = "(select scope_id from scope_members where user_id = ?)";
 
@@ -63,8 +62,10 @@ export async function loadGithub(c: Context<WebEnv>, userId: string): Promise<Sc
       params: [userId, now],
     },
     {
-      sql: `select id, scope_id, pack_name, version, kind, status, verdict, created_at from validation_runs
-             where source = 'oidc' and synthetic = 0 and scope_id in ${mine} order by created_at desc, id desc limit ${RUN_WINDOW}`,
+      sql: `select id, scope_id, pack_name, version, kind, status, verdict, created_at from (
+              select *, row_number() over (partition by scope_id, pack_name order by created_at desc, id desc) as n
+                from validation_runs where source = 'oidc' and synthetic = 0 and scope_id in ${mine}
+            ) where n <= ${RUNS_PER_PACK} order by created_at desc, id desc`,
       params: [userId],
     },
   ]);

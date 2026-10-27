@@ -1,5 +1,5 @@
 import {
-  applicationOf, authorize, domainProofsOf, githubProofOf, listPeople, ownedPacks,
+  applicationOf, authorize, missingConditions, domainProofsOf, githubProofOf, listPeople, ownedPacks,
   type ApplicationView, type DomainProofView, type GithubProofView, type Invitation, type Person, type ScopeRole, type ScopeRow,
 } from "@packserver/core/scopes";
 import { scopeMfaPolicy, type MfaPolicy } from "@packserver/core/identity";
@@ -15,6 +15,8 @@ export interface OrgSettings {
   github: GithubProofView | null;
   application: ApplicationView;
   mfa: MfaPolicy;
+  /** What a Verified Publisher application still lacks. */
+  missing: Array<"proof" | "mfa">;
   packs: string[];
   now: number;
 }
@@ -29,17 +31,21 @@ export async function loadOrgSettings(c: Context<WebEnv>, name: string, userId: 
   const runtime = c.get("runtime");
   const { d1, clock } = runtime.ports;
   const decision = await authorize(d1, { scope: name, userId, need: "maintainer", resource: "private" });
-  if (decision.kind === "mfa_required") return { kind: "mfa_required", scope: decision.scope };
-  if (decision.kind !== "allow" || decision.scope.kind !== "org") return { kind: "not_found" };
-  const { scope, role } = decision;
+  // Every answer reads the same things, so a stranger, a personal scope and an unknown name cost the same.
+  const allowed = decision.kind === "allow" ? decision : undefined;
+  const scope: ScopeRow = allowed?.scope ?? { id: "", name, kind: "org", state: "active", verified_domain: null, verified_github_org: null };
   const proofPorts = { d1 };
-  const [people, domain, github, application, mfa, packs] = await Promise.all([
+  const [people, domain, github, application, mfa, packs, missing] = await Promise.all([
     listPeople(d1, scope.id),
     domainProofsOf(proofPorts, scope.id),
     githubProofOf(proofPorts, scope.id),
     applicationOf(d1, scope.id),
     scopeMfaPolicy(d1, scope.id),
     ownedPacks(d1, scope),
+    missingConditions(d1, scope.id, scope),
   ]);
-  return { kind: "found", org: { scope, role, ...people, domain, github, application, mfa, packs, now: clock.now() } };
+  if (decision.kind === "mfa_required") return { kind: "mfa_required", scope: decision.scope };
+  if (!allowed || scope.kind !== "org") return { kind: "not_found" };
+  const role = allowed.role;
+  return { kind: "found", org: { scope, role, ...people, domain, github, application, mfa, missing, packs, now: clock.now() } };
 }

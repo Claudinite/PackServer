@@ -37,8 +37,8 @@ interface FormDefaults {
   events?: readonly string[];
 }
 
-/** The seven fields of a registration. A blank ref list takes the registry's default: the pack's tags and the default branch. */
-function Fields(props: { values: FormDefaults }) {
+/** The fields of a registration. */
+function Fields(props: { values: FormDefaults; editing?: boolean }) {
   const v = props.values;
   const events = v.events ?? DEFAULT_EVENTS;
   return (
@@ -50,7 +50,7 @@ function Fields(props: { values: FormDefaults }) {
       <label><span>Workflow file</span><input type="text" name="workflow" required placeholder=".github/workflows/publish.yml" value={v.workflow ?? ""} autocomplete="off" spellcheck={false} /></label>
       <label><span>Path to the pack in the repository</span><input type="text" name="path" required placeholder="packs/gcp" value={v.path ?? ""} autocomplete="off" spellcheck={false} /></label>
       <label><span>Environment (optional)</span><input type="text" name="environment" value={v.environment ?? ""} autocomplete="off" spellcheck={false} /></label>
-      <label><span>Ref patterns, one per line (blank for the default)</span><textarea name="refs" rows={2} spellcheck={false}>{(v.refs ?? []).join("\n")}</textarea></label>
+      <label><span>{props.editing ? "Ref patterns, one per line (blank keeps the current ones)" : "Ref patterns, one per line (blank for the default)"}</span><textarea name="refs" rows={2} spellcheck={false}>{(v.refs ?? []).join("\n")}</textarea></label>
       <fieldset class="events">
         <legend>Events</legend>
         {DEFAULT_EVENTS.map((e) => <label class="row"><input type="checkbox" name="events" value={e} checked={events.includes(e)} /> <span>{e}</span></label>)}
@@ -92,7 +92,7 @@ function Registered(props: { scope: ScopeBlock; pack: PackRow; r: Registration; 
           <details class="fold">
             <summary>Edit</summary>
             <form class="form reg" data-scope={scope.name} data-pack={pack.name} data-id={r.id}>
-              <Fields values={{ ...r, environment: r.environment ?? "" }} />
+              <Fields editing values={{ ...r, environment: r.environment ?? "" }} />
               <div><button class="btn" type="submit">Save changes</button></div>
             </form>
           </details>

@@ -23,7 +23,7 @@ export const GITHUB_CLIENT = String.raw`
     var refs = lines(f.elements.refs.value);
     if (refs.length) body.refs = refs;
     var events = Array.prototype.filter.call(f.querySelectorAll('input[name="events"]'), function (box) { return box.checked; }).map(function (box) { return box.value; });
-    if (events.length) body.events = events;
+    body.events = events;
     return body;
   }
 
