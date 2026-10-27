@@ -15,13 +15,13 @@ export interface PackRef {
  * exist yet: unknown is not zero, and an unwired source must not read as "no advisories".
  */
 export interface PackExtras {
-  advisories(pack: PackRef): Promise<Advisory[] | null>;
+  advisories(pack: PackRef, version: string): Promise<Advisory[] | null>;
   reportedUnderReview(pack: PackRef): Promise<boolean | null>;
   verifiedAdoptions(pack: PackRef): Promise<number | null>;
   declaringRepositories(pack: PackRef): Promise<number | null>;
 }
 
-/** Advisories and reports arrive with T-092 (Claudinite/PackServer#168), adoption counts with T-090 and the weekly scan. */
+/** The review label arrives with moderation, adoption counts with T-090 and the weekly scan; advisories are wired by the server. */
 export const unwiredExtras: PackExtras = {
   advisories: async () => null,
   reportedUnderReview: async () => null,

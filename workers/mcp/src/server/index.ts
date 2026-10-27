@@ -8,6 +8,7 @@ import { admit, insufficientScope, unauthorised, type Caller } from "../limits";
 import type { OAuthApi } from "../oauth";
 import { PRIVILEGED_TOOLS, isPrivilegedTool, mayCall, registerPrivilegedTools, type PrivilegedTool } from "../privileged";
 import { registerPublicTools, unwiredExtras, type PackExtras } from "../tools";
+import { publishedAdvisories } from "../tools/advisories";
 
 export interface McpOptions {
   extras?: PackExtras;
@@ -17,7 +18,7 @@ export interface McpOptions {
 export const SERVER_INFO = { name: "packserver", version: "0.0.1" } as const;
 
 /** One stateless server per request, so the tools close over this request's runtime and this request's caller. */
-export function createServer(runtime: McpRuntime, caller: Caller = { kind: "anonymous" }, extras: PackExtras = unwiredExtras): McpServer {
+export function createServer(runtime: McpRuntime, caller: Caller = { kind: "anonymous" }, extras: PackExtras = { ...unwiredExtras, advisories: (pack, version) => publishedAdvisories(runtime, pack, version) }): McpServer {
   const server = new McpServer(SERVER_INFO);
   registerPublicTools(server, runtime, extras, caller);
   registerPrivilegedTools(server, runtime, caller);
