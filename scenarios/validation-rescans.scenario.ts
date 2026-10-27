@@ -6,7 +6,30 @@ const NEEDS: ScenarioOpts = { needs: ["fakes", "storage", "clock", "reset"] };
 const linkTo = (world: { link(path: string): string }, host: string, path: string): string => world.link(path).replace("example.org", host);
 
 scenario(
-  "IT-VAL-018 Live versions are rescanned and a finding quarantines; only a human revokes",
+  "IT-SCORE-003 Rules are versioned and a change rescores every newest eligible version",
+  async (world) => {
+    await world.publishers.create({ handle: "sc" });
+    const archive = async (n: string) => (await world.validation.offlineCanonical(world.archive("gcp", { files: { "README.md": `# ${n}\n` } }))).bytes;
+    const packs: Awaited<ReturnType<typeof world.packs.public>>[] = [];
+    for (const n of ["one", "two", "three"]) packs.push(await world.packs.public(`@sc/${n}`, { canonicalArchive: await archive(n) }));
+    for (const pack of packs) await world.search.list(pack, { pitch: "A pack so a page is on show" });
+    const rulesShown = async (pack: (typeof packs)[number]) => ((await pack.page()) as PackPageView).trust.split("rules ")[1]?.split(" ")[0];
+    const before = await Promise.all(packs.map(rulesShown));
+    expect(before.every(Boolean)).toBe(true);
+    expect(new Set(before).size).toBe(1);
+
+    await world.cron.run("rescan");
+
+    const after = await Promise.all(packs.map(rulesShown));
+    expect(new Set(after).size).toBe(1);
+    expect(after.every(Boolean)).toBe(true);
+    expect(after[0]).not.toBe(before[0]);
+  },
+  NEEDS,
+);
+
+scenario(
+  "JT-005 (rescan leg) Live versions are rescanned on a rules change, weekly for domains and weekly through the full pipeline; a finding quarantines and only a human revokes",
   async (world) => {
     const owner = await world.publishers.create({ handle: "own" });
     await owner.orgs.create("acme");
@@ -35,7 +58,6 @@ scenario(
     world.dns.unresolveHost("docs.example.net");
     await world.clock.advance("8d");
     await world.cron.run("domain-drift");
-    await world.cron.run("top-pack-rescan");
 
     await expect(installing.version("1.0.0").status()).resolves.toBe("quarantined");
     await expect(linking.version("1.0.0").status()).resolves.toBe("active");
@@ -51,44 +73,15 @@ scenario(
     await installing.version("1.0.0").seed({ status: "active" });
     await expect(installing.version("1.0.0").status()).resolves.toBe("active");
 
-    await revoked.version("1.0.0").seed({ status: "revoked", reason: "malware", security: "malware" });
+    const admin = await world.admins.create();
+    await admin.revoke(revoked.version("1.0.0"), { reason: "malicious install step", security: "Exfiltrates credentials." });
     await expect(revoked.version("1.0.0").status()).resolves.toBe("revoked");
     for (const pack of [installing, linking, plain]) await expect(pack.version("1.0.0").status()).resolves.not.toBe("revoked");
-  },
-  NEEDS,
-);
 
-scenario(
-  "IT-SCORE-003 Rules are versioned and a change rescores every newest eligible version",
-  async (world) => {
-    await world.publishers.create({ handle: "sc" });
-    const archive = async (n: string) => (await world.validation.offlineCanonical(world.archive("gcp", { files: { "README.md": `# ${n}\n` } }))).bytes;
-    const packs: Awaited<ReturnType<typeof world.packs.public>>[] = [];
-    for (const n of ["one", "two", "three"]) packs.push(await world.packs.public(`@sc/${n}`, { canonicalArchive: await archive(n) }));
-    for (const pack of packs) await world.search.list(pack, { pitch: "A pack so a page is on show" });
-    const rulesShown = async (pack: (typeof packs)[number]) => ((await pack.page()) as PackPageView).trust.split("rules ")[1]?.split(" ")[0];
-    const before = await Promise.all(packs.map(rulesShown));
-    expect(before.every(Boolean)).toBe(true);
-    expect(new Set(before).size).toBe(1);
-
-    await world.cron.run("rescan");
-
-    const after = await Promise.all(packs.map(rulesShown));
-    expect(new Set(after).size).toBe(1);
-    expect(after.every(Boolean)).toBe(true);
-    expect(after[0]).not.toBe(before[0]);
-  },
-  NEEDS,
-);
-
-scenario(
-  "JT-005 (rescan leg) The weekly pipeline pass quarantines a declared pack that no longer passes and spares the clean ones",
-  async (world) => {
-    await world.publishers.create({ handle: "pip" });
-    const canonical = async (fixture: Parameters<typeof world.archive>[0]) => (await world.validation.offlineCanonical(world.archive(fixture))).bytes;
-    const clean = await world.packs.public("@pip/clean", { canonicalArchive: await canonical("gcp") });
-    const leaking = await world.packs.public("@pip/leaking", { canonicalArchive: await canonical("with-secret") });
-    const undeclared = await world.packs.public("@pip/undeclared", { canonicalArchive: await canonical("with-secret") });
+    const canonicalOf = async (fixture: Parameters<typeof world.archive>[0]) => (await world.validation.offlineCanonical(world.archive(fixture))).bytes;
+    const clean = await world.packs.public("@acme/clean", { canonicalArchive: await canonicalOf("gcp") });
+    const leaking = await world.packs.public("@acme/leaking", { canonicalArchive: await canonicalOf("with-secret") });
+    const undeclared = await world.packs.public("@acme/undeclared", { canonicalArchive: await canonicalOf("with-secret") });
     world.github.publicRepo("org/app", { declares: [clean, leaking] });
     expect((await world.github.scan.run()).outcome).toBe("completed");
 
