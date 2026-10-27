@@ -52,7 +52,7 @@ export function createWorld(driver: Driver, title: string) {
     ...validation.module,
     ...publishFlow,
     ...createProbe(driver, ci, (name) => aliases.alias(name), publishFlow.publishFromCi),
-    ...createAccess(driver),
+    ...createAccess(driver, aliases),
     ...createCommunity(),
     ...createModeration(),
     ...createReportsModule(driver, aliases),
