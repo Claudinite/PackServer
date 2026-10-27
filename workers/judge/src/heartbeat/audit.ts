@@ -47,6 +47,17 @@ export interface AuditPoll {
   pageworthy: number;
   /** Page-list events left for the next invocation by the point budget or the page limit. */
   deferred: boolean;
+  /** The events no release accounts for; `signingKey` marks one that binds a signing secret to a Worker other than the validator. */
+  events: Array<{ id: string; signingKey: boolean }>;
+}
+
+const scriptOf = (uri: string): string | null => /\/workers\/scripts\/([^/?]+)/.exec(uri)?.[1] ?? null;
+
+/** A binding of a signing secret to a Worker that is not the validator, which alone may hold one. */
+export function bindsSigningKey(event: AuditEvent): boolean {
+  if (!/signing[_-]?key/i.test(`${event.uri} ${event.resource.id ?? ""} ${event.resource.type}`)) return false;
+  const script = scriptOf(event.uri) ?? event.resource.id ?? "";
+  return !/^validator(-staging)?$/.test(script);
 }
 
 /** Emits `cloudflare.audit_event` for each new event on the page list, with whether the release in flight accounts for it. */
@@ -64,7 +75,7 @@ export async function pollAccountAudit(options: {
   const state: State = raw ? (JSON.parse(raw) as State) : { since: new Date(now - FIRST_LOOKBACK_MS).toISOString(), seen: [] };
   const handled = new Set(state.seen);
   const before = new Date(now).toISOString();
-  const poll: AuditPoll = { read: 0, signalled: 0, pageworthy: 0, deferred: false };
+  const poll: AuditPoll = { read: 0, signalled: 0, pageworthy: 0, deferred: false, events: [] };
   let since = state.since;
   let seen = state.seen;
 
@@ -94,7 +105,10 @@ export async function pollAccountAudit(options: {
           resource: `${event.resource.product}/${event.resource.type}/${event.resource.id ?? ""}`.slice(0, 200),
         });
         poll.signalled++;
-        if (judgement.pageworthy) poll.pageworthy++;
+        if (judgement.pageworthy) {
+          poll.pageworthy++;
+          poll.events.push({ id: event.id, signingKey: bindsSigningKey(event) });
+        }
       }
       seen = event.at === since ? [...seen, event.id] : [event.id];
       since = event.at;

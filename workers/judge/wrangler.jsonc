@@ -22,9 +22,23 @@
         "ANALYTICS_READ_TOKEN": "test-analytics-read-token",
         "CF_AUDIT_READ_TOKEN": "test-cf-audit-read-token",
         "CF_ACCOUNT_ID": "test-account-id",
+        "PUSHOVER_APP_TOKEN": "test-pushover-app-token",
+        "PUSHOVER_USER_KEY": "test-pushover-user-ariel",
+        "HOOK_SECRET_MONITORS": "test-hook-secret-monitors",
+        "HOOK_SECRET_ISSUES": "test-hook-secret-issues",
+        "HOOK_SECRET_WITNESS": "test-hook-secret-witness",
+        "MUTE_HMAC_KEY": "test-mute-hmac-key",
+        "CF_PLATFORM_READ_TOKEN": "test-cf-platform-read-token",
         "DATASET_SUFFIX": "_test",
         "DAILY_LOG_ALLOWANCE": "200000",
-        "CI_TOKEN_IDS": ""
+        "CI_TOKEN_IDS": "",
+        "MAIL_FROM": "noreply@claudinite.com",
+        "OPS_EMAIL": "ops@claudinite.com",
+        "OPS_PAGE_URL": "https://admin-test.claudinite.com/ops",
+        "PUBLIC_ORIGIN": "https://registry-test.claudinite.com",
+        "SUPPORT_HOURS_UTC": "7-19",
+        "CF_ZONE_ID": "test-zone",
+        "QUEUE_IDS": "audit:test-queue-audit,validation:test-queue-validation"
       },
       "kv_namespaces": [
         {
@@ -86,6 +100,10 @@
           "zone_name": "claudinite.com"
         },
         {
+          "pattern": "registry-staging.claudinite.com/hooks/mute",
+          "zone_name": "claudinite.com"
+        },
+        {
           "pattern": "registry-staging.claudinite.com/gates/*",
           "zone_name": "claudinite.com"
         },
@@ -108,7 +126,14 @@
         "ENVIRONMENT": "staging",
         "DATASET_SUFFIX": "_staging",
         "DAILY_LOG_ALLOWANCE": "200000",
-        "CI_TOKEN_IDS": ""
+        "CI_TOKEN_IDS": "",
+        "MAIL_FROM": "noreply@claudinite.com",
+        "OPS_EMAIL": "ops@claudinite.com",
+        "OPS_PAGE_URL": "https://admin-staging.claudinite.com/ops",
+        "PUBLIC_ORIGIN": "https://registry-staging.claudinite.com",
+        "SUPPORT_HOURS_UTC": "7-19",
+        "CF_ZONE_ID": "00000000000000000000120000000099",
+        "QUEUE_IDS": ""
       },
       "kv_namespaces": [
         {
@@ -174,6 +199,46 @@
           "binding": "CF_ACCOUNT_ID",
           "store_id": "00000000000000000000190000000004",
           "secret_name": "cf-account-id-staging"
+        },
+        {
+          "binding": "PUSHOVER_APP_TOKEN",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "pushover-app-token-staging"
+        },
+        {
+          "binding": "PUSHOVER_USER_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "pushover-user-key-staging"
+        },
+        {
+          "binding": "HOOK_SECRET_MONITORS",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "hook-secret-monitors-staging"
+        },
+        {
+          "binding": "HOOK_SECRET_ISSUES",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "hook-secret-issues-staging"
+        },
+        {
+          "binding": "HOOK_SECRET_WITNESS",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "hook-secret-witness-staging"
+        },
+        {
+          "binding": "MUTE_HMAC_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "mute-hmac-key-staging"
+        },
+        {
+          "binding": "CF_PLATFORM_READ_TOKEN",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "cf-platform-read-token-staging"
+        }
+      ],
+      "send_email": [
+        {
+          "name": "EMAIL"
         }
       ],
       "version_metadata": {
@@ -195,6 +260,10 @@
         },
         {
           "pattern": "registry.claudinite.com/hooks/witness",
+          "zone_name": "claudinite.com"
+        },
+        {
+          "pattern": "registry.claudinite.com/hooks/mute",
           "zone_name": "claudinite.com"
         },
         {
@@ -220,7 +289,14 @@
         "ENVIRONMENT": "production",
         "DATASET_SUFFIX": "",
         "DAILY_LOG_ALLOWANCE": "200000",
-        "CI_TOKEN_IDS": ""
+        "CI_TOKEN_IDS": "",
+        "MAIL_FROM": "noreply@claudinite.com",
+        "OPS_EMAIL": "ops@claudinite.com",
+        "OPS_PAGE_URL": "https://admin.claudinite.com/ops",
+        "PUBLIC_ORIGIN": "https://registry.claudinite.com",
+        "SUPPORT_HOURS_UTC": "7-19",
+        "CF_ZONE_ID": "00000000000000000000220000000099",
+        "QUEUE_IDS": ""
       },
       "kv_namespaces": [
         {
@@ -286,6 +362,46 @@
           "binding": "CF_ACCOUNT_ID",
           "store_id": "00000000000000000000290000000004",
           "secret_name": "cf-account-id"
+        },
+        {
+          "binding": "PUSHOVER_APP_TOKEN",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "pushover-app-token"
+        },
+        {
+          "binding": "PUSHOVER_USER_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "pushover-user-key"
+        },
+        {
+          "binding": "HOOK_SECRET_MONITORS",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "hook-secret-monitors"
+        },
+        {
+          "binding": "HOOK_SECRET_ISSUES",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "hook-secret-issues"
+        },
+        {
+          "binding": "HOOK_SECRET_WITNESS",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "hook-secret-witness"
+        },
+        {
+          "binding": "MUTE_HMAC_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "mute-hmac-key"
+        },
+        {
+          "binding": "CF_PLATFORM_READ_TOKEN",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "cf-platform-read-token"
+        }
+      ],
+      "send_email": [
+        {
+          "name": "EMAIL"
         }
       ],
       "version_metadata": {

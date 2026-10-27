@@ -8,6 +8,7 @@ import { FakeGitHubLogin } from "./github-login";
 import { FakeGithubApp } from "./github-app";
 import { mailHandler } from "./mail";
 import { Net } from "./net";
+import { FakePushover } from "./pushover";
 import { publishTestConfig } from "./publish-config";
 import { FakeStagingS3, type StagingBucket } from "./staging-s3";
 import { turnstileHandler } from "./turnstile";
@@ -58,6 +59,7 @@ const WORKER_FOR: Record<keyof FakeWorkers, string> = {
 export class WorldFakes {
   readonly net = new Net();
   readonly githubApp = new FakeGithubApp();
+  readonly pushover = new FakePushover();
   readonly domains = new FakeDomains();
   ports: FakePorts = createFakePorts();
   readonly githubLogin = new FakeGitHubLogin();
@@ -75,6 +77,7 @@ export class WorldFakes {
     }
     this.net.use((request) => turnstileHandler(this.ports.turnstile)(request));
     this.net.use((request) => mailHandler(this.ports.mail)(request));
+    this.net.use((request) => this.pushover.handler()(request));
     const publish = publishTestConfig();
     if (publish) {
       const now = () => (this.workers.clock ? this.workers.clock.call<number>("now") : Promise.resolve(Date.now()));
@@ -114,6 +117,7 @@ export class WorldFakes {
     this.stagingS3?.reset();
     await this.oidc?.reset();
     this.githubApp.reset();
+    this.pushover.reset();
     this.domains.reset();
     this.ports = createFakePorts();
     this.githubLogin.reset();

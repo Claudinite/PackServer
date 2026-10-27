@@ -196,7 +196,7 @@ Pages (Pushover, to Ariel only):
 | `page.takedown_overdue` (support hours) | a prioritised security report not decided by a human within 1 h | the judge held the version (`anomaly_hold`, REQ-MOD-009) |
 | `page.monitoring_dead` (support hours) | no heartbeat for 15 min | rollouts halt by themselves |
 
-Tickets (GitHub issues in the private ops repository plus email): `webhooks_failing` (page after 12
+Tickets (an email to ops carrying a link that opens a pre-filled new issue in the private ops repository, which a person files; the registry never writes to GitHub; closing that issue acknowledges its page): `webhooks_failing` (page after 12
 h), `oidc_blocked`, `email_failed` (the provider switch is a manual config change, D15 superseded),
 `abuse_flood` (kill switch already on), `daily_caps_pressure`, `audit_backlog`, `canary_rolled_back`,
 `d1_size` at 8 GB, `model_budget`, `sandbox_budget`, `synthetic_failing`, `component`, `registry`,

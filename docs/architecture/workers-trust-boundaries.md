@@ -40,7 +40,7 @@ Monitoring adds two Workers outside the application: the **gate judge** (cron; e
 alerts, routes `/hooks/monitors`, `/hooks/issues`, `/hooks/witness` with a per-source signature
 check, serves `GET /gates/<version_id>` behind Access and `/judge/__selftest`, so it holds the self-test HMAC
 key (`SELFTEST_HMAC_KEY`) like every other Worker that serves one; its only binding into the
-application is the admin internal API, limited to the methods REQ-ADMIN-010 names; it reads the datasets it does not bind, and the account audit log, over the Cloudflare API with two read-only tokens and the account id, all in Secrets Store) and the **synthetic prober** (cron;
+application is the admin internal API, limited to the methods REQ-ADMIN-010 names; it reads the datasets it does not bind, and the account audit log, over the Cloudflare API with three read-only tokens (analytics, account audit log, and queue metrics with Logpush jobs) and the account id; to raise alerts it also holds the Pushover application token and Ariel's user key, one secret per inbound hook source, the mute-link key, and the `EMAIL` send binding, all in Secrets Store; it holds no GitHub credential) and the **synthetic prober** (cron;
 runs the probe-safe set as `@probe` and holds the probe Access service token, `PROBE_ACCESS_CLIENT_ID` and `PROBE_ACCESS_CLIENT_SECRET`, in Secrets Store beside its self-test key). Analytics Engine datasets are bound along these boundaries:
 `request_outcomes` and `domain_events` everywhere; `synthetic_probes` only to the prober;
 `gate_results` and `budget` only to the judge; `validation_events` only to the validator. A
