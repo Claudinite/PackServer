@@ -110,10 +110,21 @@ describe("dashboard (REQ-TELEM-005)", () => {
 
     const html = await (await owner.get("/dashboard")).text();
     const words = wordsOf(html);
-    expect([...html.matchAll(/data-need="(\w+)"/g)].map((m) => m[1])).toEqual(["rejected"]);
-    expect(words).toContain("1 thing needs you.");
+    expect([...html.matchAll(/data-need="(\w+)"/g)].map((m) => m[1])).toEqual(["rejected", "rejected"]);
+    expect(words).toContain("2 things need you.");
+    expect(words).toContain("@acme/quar 1.1.0 was quarantined after review. Appeal");
     expect(words).toContain("@acme/rej 1.1.0 was rejected after review. Appeal");
-    for (const name of ["held", "appealed", "quar"]) expect(words).toContain(`@acme/${name} 1.0.0 · 1.1.0 under review 0 stars · 0 fetches · 0 open issues Working`);
+    for (const name of ["held", "appealed"]) expect(words).toContain(`@acme/${name} 1.0.0 · 1.1.0 under review 0 stars · 0 fetches · 0 open issues Working`);
+  });
+
+  it("labels a denied appeal of a rejection Resubmit", async () => {
+    const h = setup();
+    const { owner, scope } = await seed(h);
+    await pack(h, scope.id, "rej");
+    await run(h, scope.id, "r1", { pack: "rej", verdict: "hold", version: "1.1.0" });
+    await h.d1.query("insert into review_decisions (run_id, decision, reason, decided_by, decided_at) values ('r1', 'reject', 'no', 'a@x', ?)", [NOW]);
+    await h.d1.query("insert into review_appeals (run_id, note, submitted_by, submitted_at, state) values ('r1', 'n', ?, ?, 'denied')", [owner.userId, NOW]);
+    expect(wordsOf(await (await owner.get("/dashboard")).text())).toContain("the appeal was denied. Resubmit");
   });
 
   it("moves an approval whose upload expired from Needs you to drafts as Upload expired", async () => {
@@ -257,12 +268,14 @@ describe("validation page (REQ-VAL-016, REQ-VAL-040, REQ-VAL-001)", () => {
     expect(wordsOf(html)).toContain("New in this version task nightly");
   });
 
-  it("does not offer an appeal for a quarantined run", async () => {
+  it("offers the appeal for a quarantined run but no Resubmit", async () => {
     const h = setup();
     const { owner, scope } = await seed(h);
     await run(h, scope.id, "r1", { verdict: "hold" });
     await h.d1.query("insert into review_decisions (run_id, decision, decided_by, decided_at) values ('r1', 'quarantine_publisher', 'a@x', ?)", [NOW]);
-    expect(await (await owner.get("/validation/r1")).text()).not.toContain('id="appeal"');
+    const html = await (await owner.get("/validation/r1")).text();
+    expect(html).toContain('id="appeal"');
+    expect(wordsOf(html)).not.toMatch(/Resubmit|Re-run/);
   });
 
   it("downloads the log as a plain text attachment", async () => {

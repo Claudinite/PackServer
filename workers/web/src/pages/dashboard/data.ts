@@ -195,12 +195,14 @@ export async function loadDashboard(c: Context<WebEnv>, userId: string): Promise
     const pack = full(r.scope, r.pack_name);
     const version = String(r.version);
     const page = `/validation/${String(r.id)}`;
-    if (r.decision === "reject" && r.appeal === null) {
-      reasons.set(pack, `${version} was rejected`);
-      needs.push({ kind: "rejected", text: `${pack} ${version} was rejected after review.`, action: "Appeal", href: page });
-    } else if (r.decision === "reject" && r.appeal === "denied") {
-      reasons.set(pack, `${version} was rejected`);
-      needs.push({ kind: "rejected", text: `${pack} ${version} was rejected and the appeal was denied.`, action: "See the report", href: page });
+    const appealable = r.decision === "reject" || r.decision === "quarantine_publisher";
+    const what = r.decision === "reject" ? "was rejected" : "was quarantined";
+    if (appealable && r.appeal === null) {
+      reasons.set(pack, `${version} ${what}`);
+      needs.push({ kind: "rejected", text: `${pack} ${version} ${what} after review.`, action: "Appeal", href: page });
+    } else if (appealable && r.appeal === "denied") {
+      reasons.set(pack, `${version} ${what}`);
+      needs.push({ kind: "rejected", text: `${pack} ${version} ${what} and the appeal was denied.`, action: r.decision === "reject" ? "Resubmit" : "See the report", href: page });
     } else if (r.decision !== null || r.verdict === "hold") {
       review.set(pack, `${version} under review`);
     } else {

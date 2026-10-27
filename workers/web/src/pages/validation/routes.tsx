@@ -67,7 +67,7 @@ routes.get("/validation/:id", async (c) => {
   const nonce = c.get("cspNonce");
   const live = c.get("session");
   const csrf = live ? await csrfTokenFor(live) : "";
-  const canAppeal = run.role !== null && run.decision?.kind === "reject" && run.appeal === null;
+  const canAppeal = run.role !== null && (run.decision?.kind === "reject" || run.decision?.kind === "quarantine_publisher") && run.appeal === null;
   const pack = `@${run.scope}/${run.pack}`;
   return renderPage(c, {
     title: `${pack} ${run.version} · Claudinite Packs`,
