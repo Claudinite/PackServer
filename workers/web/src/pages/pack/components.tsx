@@ -45,7 +45,7 @@ export function leadOf(data: PackData): Lead | null {
   }
   if (newest && data.listing.latest_eligible === null) {
     const reasons = [...new Set(data.listing.versions.flatMap((v) => (v.status !== "removed" && v.reason !== undefined ? [v.reason] : [])))];
-    return { tone: "warn", text: reasons.length > 0 ? `No available versions: ${reasons.join("; ")}` : "No available versions" };
+    return { tone: "warn", text: reasons.length > 0 ? `Unavailable. No available versions: ${reasons.join("; ")}` : "Unavailable. No available versions" };
   }
   if (data.reported === true) return { tone: "warn", text: "Reported, under review" };
   return null;

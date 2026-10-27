@@ -260,6 +260,7 @@ scenario("IT-VAL-002 Hash mismatch, oversize or non-zstd fail before any sandbox
 });
 
 scenario("IT-PUB-023 Deprecate a version with a public reason", async (world) => {
+  await world.access.seedRegistryKeys();
   const pack = await world.packs.public("@acme/gcp", { versions: ["1.0.0"] });
   const { owner } = await world.lifecycle.staff(pack);
   const before = await world.registry.serial(pack);
@@ -278,6 +279,7 @@ scenario("IT-PUB-023 Deprecate a version with a public reason", async (world) =>
 }, { needs: ["fakes", "clock", "storage"] });
 
 scenario("IT-PUB-024 Hard delete only within 72 h and with zero fetches; the number stays listed as removed", async (world) => {
+  await world.access.seedRegistryKeys();
   const ann = await world.publishers.create({ handle: "ann" });
   await ann.orgs.create("acme");
   const old = await world.packs.public("@acme/old", { versions: ["1.0.0"] });
@@ -343,6 +345,7 @@ scenario("IT-PUB-025 Private packs delete any time with a 7-day soft window", as
 }, { needs: ["fakes", "clock", "storage"] });
 
 scenario("IT-MOD-011 Yank moves latest and leaves search; un-yank is logged", async (world) => {
+  await world.access.seedRegistryKeys();
   const pack = await world.packs.public("@acme/gcp", { versions: ["1.0.0", "1.1.0", "1.2.0"] });
   const { owner, maintainer } = await world.lifecycle.staff(pack);
   const before = await world.registry.serial(pack);
@@ -367,6 +370,7 @@ scenario("IT-MOD-011 Yank moves latest and leaves search; un-yank is logged", as
 }, { needs: ["fakes", "clock", "storage"] });
 
 scenario("IT-MOD-012 Yanking the only version leaves the pack listed as unavailable", async (world) => {
+  await world.access.seedRegistryKeys();
   const pack = await world.packs.public("@acme/gcp", { versions: ["1.0.0"] });
   const { owner } = await world.lifecycle.staff(pack);
   await world.search.list(pack, { pitch: "Cloud tools" });
