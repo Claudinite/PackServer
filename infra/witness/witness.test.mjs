@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { verifyHook } from "../../packages/core/alerts/hook-signature.ts";
-import { HEARTBEAT_SIGNAL, HOOK_URL, PUSHOVER_URL, heartbeatSql, heartbeatState, run, signReport, siteFailures } from "./scripts/witness-report.mjs";
+import { BOT_LOGIN, HEARTBEAT_SIGNAL, HOOK_URL, PUSHOVER_URL, heartbeatSql, heartbeatState, run, signReport, siteFailures } from "./scripts/witness-report.mjs";
 
 const NOW = Date.parse("2026-11-01T10:30:00Z");
 const MIN = 60_000;
@@ -10,15 +10,19 @@ const env = { GITHUB_REPOSITORY: "Claudinite/packserver-witness", GITHUB_TOKEN: 
 const downIssue = (slug, ageMs) => ({ title: "\u{1F6D1} Registry is down", labels: [{ name: "status" }, { name: slug }], created_at: new Date(NOW - ageMs).toISOString() });
 
 /** A fake network: the GitHub issue list, the Analytics Engine answer and the router's status; records every call. */
-function network({ issues = [], heartbeat = { fresh: 3 }, heartbeatData, router = 202, heartbeatStatus = 200, pushover = 200, records = [] }) {
+function network({ issues = [], heartbeat = { fresh: 3 }, heartbeatData, router = 202, heartbeatStatus = 200, pushover = 200, records = [], comments = [], labelStatus = 201 }) {
   const calls = [];
   const fetchImpl = async (url, init = {}) => {
     calls.push({ url: String(url), init });
     const respond = (status, body) => new Response(JSON.stringify(body), { status });
     const u = String(url);
     if (u.includes("/issues?") && u.includes("labels=witness-push")) return respond(200, records);
+    if (u.includes("/comments?")) return respond(200, comments);
+    if (u.endsWith("/labels")) return respond(labelStatus, {});
+    if (u.endsWith("/lock")) return new Response(null, { status: 204 });
+    if (init.method === "POST" && u.endsWith("/issues")) return respond(201, { number: 9 });
     if (u.includes("/issues?")) return respond(200, issues);
-    if (u.includes("/comments") || u.endsWith("/issues")) return respond(201, {});
+    if (u.includes("/comments")) return respond(201, {});
     if (u.includes("analytics_engine/sql")) return respond(heartbeatStatus, { data: heartbeatData ?? [heartbeat] });
     if (url === HOOK_URL) return respond(router, {});
     if (url === PUSHOVER_URL) return respond(pushover, {});
@@ -26,7 +30,8 @@ function network({ issues = [], heartbeat = { fresh: 3 }, heartbeatData, router 
   };
   return { calls, fetchImpl };
 }
-const record = (kind, ageMs) => ({ number: 7, title: kind, updated_at: new Date(NOW - ageMs).toISOString() });
+const record = (kind, createdAgoMs = 24 * 60 * MIN, user = BOT_LOGIN) => ({ number: 7, title: kind, created_at: new Date(NOW - createdAgoMs).toISOString(), user: { login: user } });
+const comment = (ageMs, user = BOT_LOGIN) => ({ user: { login: user }, created_at: new Date(NOW - ageMs).toISOString() });
 const go = async (net, at = NOW) => {
   const log = [];
   const failures = await run({ env, fetchImpl: net.fetchImpl, nowMs: at, log: (l) => log.push(l) });
@@ -104,12 +109,27 @@ describe("a report run", () => {
     expect(JSON.parse(created.init.body)).toMatchObject({ title: "judge_heartbeat", labels: ["witness-push"] });
   });
 
-  it("holds the next push back until an hour after the recorded one, however many runs were skipped", async () => {
-    const recent = await go(network({ heartbeat: { fresh: 0 }, router: 503, records: [record("judge_heartbeat", 59 * MIN)] }));
+  it("holds the next push back until an hour after the bot's last comment, however many runs were skipped", async () => {
+    const recent = await go(network({ heartbeat: { fresh: 0 }, router: 503, records: [record("judge_heartbeat")], comments: [comment(59 * MIN)] }));
     expect(recent.pushes).toHaveLength(0);
-    const due = network({ heartbeat: { fresh: 0 }, router: 503, records: [record("judge_heartbeat", 61 * MIN)] });
+    const due = network({ heartbeat: { fresh: 0 }, router: 503, records: [record("judge_heartbeat")], comments: [comment(61 * MIN)] });
     expect((await go(due)).pushes).toHaveLength(1);
-    expect(due.calls.some((c) => c.url.endsWith("/issues/7/comments"))).toBe(true);
+    expect(due.calls.some((c) => c.url.endsWith("/issues/7/comments") && c.init.method === "POST")).toBe(true);
+  });
+
+  it("is not moved by a comment from anyone else, nor by a record someone else opened", async () => {
+    const stranger = await go(network({ heartbeat: { fresh: 0 }, router: 503, records: [record("judge_heartbeat")], comments: [comment(61 * MIN), comment(MIN, "stranger")] }));
+    expect(stranger.pushes).toHaveLength(1);
+    const forged = network({ heartbeat: { fresh: 0 }, router: 503, records: [record("judge_heartbeat", MIN, "stranger")] });
+    expect((await go(forged)).pushes).toHaveLength(1);
+    expect(forged.calls.some((c) => c.url.endsWith("/issues/7/comments") && c.init.method === "POST")).toBe(false);
+  });
+
+  it("creates its label when missing and locks the record it opens", async () => {
+    const net = network({ heartbeat: { fresh: 0 }, router: 503, labelStatus: 422 });
+    await go(net);
+    expect(net.calls.some((c) => c.url.endsWith("/labels"))).toBe(true);
+    expect(net.calls.some((c) => c.url.endsWith("/issues/9/lock") && c.init.method === "PUT")).toBe(true);
   });
 
   it("does not push directly when the router took the report", async () => {
@@ -126,10 +146,11 @@ describe("a report run", () => {
     expect(router).toHaveLength(0);
     expect(pushes).toHaveLength(1);
     expect(new URLSearchParams(pushes[0].init.body.toString()).get("title")).toBe("Witness cannot check the judge");
+    expect(new URLSearchParams(pushes[0].init.body.toString()).get("priority")).toBe("0");
   });
 
   it("throttles the cannot-check push like any other", async () => {
-    const { pushes } = await go(network({ heartbeatStatus: 403, records: [record("judge_unchecked", 10 * MIN)] }));
+    const { pushes } = await go(network({ heartbeatStatus: 403, records: [record("judge_unchecked")], comments: [comment(10 * MIN)] }));
     expect(pushes).toHaveLength(0);
   });
 

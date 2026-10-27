@@ -41,7 +41,7 @@ export function siteFailures(issues, nowMs) {
 
 export function heartbeatSql(nowMs) {
   const at = (ms) => Math.floor((nowMs - ms) / 1000);
-  return `SELECT sumIf(_sample_interval, timestamp >= toDateTime(${at(HEARTBEAT_MAX_AGE_MS)})) AS fresh FROM domain_events WHERE index1 = '${HEARTBEAT_SIGNAL}' AND timestamp >= toDateTime(${at(HEARTBEAT_MAX_AGE_MS)}) FORMAT JSON`;
+  return `SELECT sumIf(_sample_interval, timestamp >= toDateTime(${at(HEARTBEAT_MAX_AGE_MS)})) AS fresh FROM domain_events WHERE index1 = '${HEARTBEAT_SIGNAL}' AND timestamp >= toDateTime(${at(4 * HEARTBEAT_MAX_AGE_MS)}) FORMAT JSON`;
 }
 
 /** A thrown answer means the heartbeat could not be checked; only a real zero count is a dead judge. */
@@ -54,6 +54,8 @@ export function heartbeatState(response) {
 
 const STATE_LABEL = "witness-push";
 const PUSH_REPEAT_MS = 60 * 60_000;
+/** The author of everything the workflow's own token writes; a comment from anyone else never counts as a push. */
+export const BOT_LOGIN = "github-actions[bot]";
 
 async function ok(response, what) {
   if (!response.ok) throw new Error(`${what} answered ${response.status}`);
@@ -62,6 +64,7 @@ async function ok(response, what) {
 
 const githubHeaders = (env) => ({ authorization: `Bearer ${env.GITHUB_TOKEN}`, accept: "application/vnd.github+json", "user-agent": "packserver-witness" });
 const repoApi = (env) => `${env.GITHUB_API_URL ?? "https://api.github.com"}/repos/${env.GITHUB_REPOSITORY}`;
+const githubJson = (env) => ({ ...githubHeaders(env), "content-type": "application/json" });
 
 export async function listOpenStatusIssues({ env, fetchImpl }) {
   const response = await ok(await fetchImpl(`${repoApi(env)}/issues?state=open&labels=status&per_page=100`, { headers: githubHeaders(env) }), "GitHub issues");
@@ -69,22 +72,37 @@ export async function listOpenStatusIssues({ env, fetchImpl }) {
 }
 
 /**
- * Direct pushes are throttled on a record kept in the repository itself: one issue per push kind,
- * commented on at each push, so its last update is the last push whatever happened to the runs between.
+ * Direct pushes are throttled on a record kept in the repository: one issue per push kind, created
+ * by this workflow and commented on at each push. The repository is public, so only what the
+ * workflow's own account wrote counts, never a comment from anyone else.
  */
-async function pushState(kind, { env, fetchImpl }) {
+async function pushState(kind, { env, fetchImpl, nowMs }) {
   const response = await ok(await fetchImpl(`${repoApi(env)}/issues?state=open&labels=${STATE_LABEL}&per_page=100`, { headers: githubHeaders(env) }), "GitHub push records");
-  const issue = (await response.json()).find((i) => !i.pull_request && i.title === kind);
-  return issue ? { number: issue.number, lastPushMs: Date.parse(issue.updated_at) } : null;
+  const issue = (await response.json()).find((i) => !i.pull_request && i.title === kind && i.user?.login === BOT_LOGIN);
+  if (!issue) return null;
+  const since = new Date(nowMs - 2 * PUSH_REPEAT_MS).toISOString();
+  const comments = await ok(await fetchImpl(`${repoApi(env)}/issues/${issue.number}/comments?since=${since}&per_page=100`, { headers: githubHeaders(env) }), "GitHub push comments");
+  const times = (await comments.json()).filter((c) => c.user?.login === BOT_LOGIN).map((c) => Date.parse(c.created_at));
+  return { number: issue.number, lastPushMs: Math.max(Date.parse(issue.created_at), ...times) };
 }
 
-async function recordPush(kind, state, nowMs, { env, fetchImpl }) {
-  const headers = { ...githubHeaders(env), "content-type": "application/json" };
+async function ensureLabel({ env, fetchImpl }) {
+  const response = await fetchImpl(`${repoApi(env)}/labels`, { method: "POST", headers: githubJson(env), body: JSON.stringify({ name: STATE_LABEL, color: "ededed" }) });
+  if (!response.ok && response.status !== 422) throw new Error(`GitHub label answered ${response.status}`);
+}
+
+async function recordPush(kind, state, nowMs, ctx) {
+  const { env, fetchImpl } = ctx;
   const at = new Date(nowMs).toISOString();
-  const [url, body] = state
-    ? [`${repoApi(env)}/issues/${state.number}/comments`, { body: `Pushed ${at}` }]
-    : [`${repoApi(env)}/issues`, { title: kind, body: `Direct Pushover pushes of this kind are recorded here to throttle them. First: ${at}`, labels: [STATE_LABEL] }];
-  await ok(await fetchImpl(url, { method: "POST", headers, body: JSON.stringify(body) }), "GitHub push record");
+  if (state) {
+    await ok(await fetchImpl(`${repoApi(env)}/issues/${state.number}/comments`, { method: "POST", headers: githubJson(env), body: JSON.stringify({ body: `Pushed ${at}` }) }), "GitHub push record");
+    return;
+  }
+  await ensureLabel(ctx);
+  const body = { title: kind, body: `Direct Pushover pushes of this kind are recorded here to throttle them. First: ${at}`, labels: [STATE_LABEL] };
+  const created = await ok(await fetchImpl(`${repoApi(env)}/issues`, { method: "POST", headers: githubJson(env), body: JSON.stringify(body) }), "GitHub push record");
+  const { number } = await created.json();
+  await ok(await fetchImpl(`${repoApi(env)}/issues/${number}/lock`, { method: "PUT", headers: githubJson(env), body: "{}" }), "GitHub lock");
 }
 
 export async function readHeartbeat({ env, fetchImpl, nowMs }) {
@@ -99,12 +117,16 @@ export async function postToRouter(report, { env, fetchImpl, nowMs }) {
   return response.ok;
 }
 
-async function pushover({ title, message }, { env, fetchImpl }) {
-  const body = new URLSearchParams({ token: env.PUSHOVER_APP_TOKEN, user: env.PUSHOVER_USER_KEY, title, message, priority: "1", url: OPS_PAGE_URL, url_title: "Ops page" });
+async function pushover({ title, message, priority }, { env, fetchImpl }) {
+  const body = new URLSearchParams({ token: env.PUSHOVER_APP_TOKEN, user: env.PUSHOVER_USER_KEY, title, message, priority: String(priority), url: OPS_PAGE_URL, url_title: "Ops page" });
   await ok(await fetchImpl(PUSHOVER_URL, { method: "POST", body }), "Pushover");
 }
 
-/** Pushes at most once an hour per kind, counted from the last recorded push. */
+/**
+ * Pushes at most once an hour per kind, counted from the last recorded push. This path ignores the
+ * router's support-hours rule on purpose: it runs only when the router refused the report, which
+ * usually means the judge is unreachable, and holding the push would hide exactly that.
+ */
 export async function pushDirect(kind, text, ctx, log) {
   const state = await pushState(kind, ctx);
   if (state && ctx.nowMs - state.lastPushMs < PUSH_REPEAT_MS) {
@@ -136,7 +158,7 @@ export async function run({ env, fetchImpl = fetch, nowMs = Date.now(), log = co
     const { down, consecutive } = siteFailures(await listOpenStatusIssues(ctx), nowMs);
     log(`sites down: ${down.length === 0 ? "none" : down.join(", ")}`);
     if (down.length > 0) {
-      await deliver({ check: "site", status: "down", consecutive_failures: consecutive }, { title: "Witness: registry unreachable", message: `${down.join(", ")} failed ${consecutive} probe(s) in a row.` }, ctx, log, consecutive >= 2);
+      await deliver({ check: "site", status: "down", consecutive_failures: consecutive }, { title: "Witness: registry unreachable", message: `${down.join(", ")} failed ${consecutive} probe(s) in a row.`, priority: 1 }, ctx, log, consecutive >= 2);
     }
   } catch (error) {
     failures.push(`site check: ${error.message}`);
@@ -146,12 +168,12 @@ export async function run({ env, fetchImpl = fetch, nowMs = Date.now(), log = co
     const { alive } = await readHeartbeat(ctx);
     log(`judge heartbeat: ${alive ? "alive" : "missing"}`);
     if (!alive) {
-      await deliver({ check: "judge_heartbeat", status: "down" }, { title: "Witness: judge heartbeat missing", message: "No judge heartbeat for 15 minutes." }, ctx, log);
+      await deliver({ check: "judge_heartbeat", status: "down" }, { title: "Witness: judge heartbeat missing", message: "No judge heartbeat was seen in the last 15 minutes.", priority: 1 }, ctx, log);
     }
   } catch (error) {
     failures.push(`heartbeat check: ${error.message}`);
     try {
-      await pushDirect("judge_unchecked", { title: "Witness cannot check the judge", message: "The witness could not read the judge heartbeat (token, query or account problem). This is not a report that the judge is down." }, ctx, log);
+      await pushDirect("judge_unchecked", { title: "Witness cannot check the judge", message: "The witness could not read the judge heartbeat (token, query or account problem). This is not a report that the judge is down.", priority: 0 }, ctx, log);
     } catch (pushError) {
       failures.push(`unchecked notice: ${pushError.message}`);
     }

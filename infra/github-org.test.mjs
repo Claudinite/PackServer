@@ -107,7 +107,6 @@ describe("intended state", () => {
       { name: "publish-pack", private: false, requiredChecks: [] },
       { name: "packserver-ops", private: true, requiredChecks: [] },
       { name: "packserver-probe", private: true, requiredChecks: [] },
-      { name: "packserver-witness", private: true, requiredChecks: [] },
     ]);
     expect(ORG).toBe("Claudinite");
   });
@@ -134,9 +133,9 @@ describe("github-org.mjs", () => {
     const r = await run([], ENV, { fetch: gh.fetch });
     expect(r.err).toBe("");
     expect(r.code).toBe(0);
-    expect([...gh.state.repos.keys()].sort()).toEqual(["PackServer", "packserver-ops", "packserver-probe", "packserver-witness", "publish-pack"]);
+    expect([...gh.state.repos.keys()].sort()).toEqual(["PackServer", "packserver-ops", "packserver-probe", "publish-pack"]);
     expect(gh.state.repos.get("publish-pack").private).toBe(false);
-    expect(gh.state.rulesets.size).toBe(5);
+    expect(gh.state.rulesets.size).toBe(4);
     expect(gh.state.policies.get("production-irreversible")).toEqual([{ name: "main" }]);
     expect(gh.state.policies.has("staging")).toBe(false);
     expect(r.out).toContain("environment production-irreversible: wait timer 30 min, deploys from main");
@@ -170,7 +169,7 @@ describe("github-org.mjs", () => {
     const r = await run([], ENV, { fetch: gh.fetch });
     expect(r.code).toBe(0);
     expect(gh.state.writes.filter((w) => w.startsWith("POST"))).toEqual([]);
-    expect(gh.state.rulesets.size).toBe(5);
+    expect(gh.state.rulesets.size).toBe(4);
     expect(gh.state.policies.get("production")).toHaveLength(1);
   });
 
