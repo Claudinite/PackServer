@@ -38,10 +38,10 @@ export interface Env {
   CF_VERSION_METADATA: WorkerVersionMetadata;
 }
 
-/** Both buckets are read-only here: the type has no write method. */
+/** Both buckets and the sessions namespace are read-only here: their types have no write method. */
 export type McpPorts = Pick<Ports, "clock" | "rng" | "d1" | "stats" | "queues" | "rateLimits" | "vectors" | "embedder" | "telemetry"> & {
   r2: Readonly<Record<string, R2Read>>;
-  /** The sessions namespace is the web Worker's to write, so here it has no write method. */
+  /** The sessions namespace is the web Worker's to write. */
   kv: Readonly<Record<string, KVRead>> & { OAUTH_KV?: KV; TELEMETRY_KV?: KV };
 };
 export type McpRuntime = WorkerRuntime<McpPorts> & {

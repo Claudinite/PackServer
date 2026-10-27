@@ -89,3 +89,16 @@ describe("opening an access token", () => {
     expect(await openAccessToken(api(null), clock(1_000), "https://r/mcp", "t")).toBeNull();
   });
 });
+
+describe("the token endpoint gate", () => {
+  it("answers 413 to a body over the cap before reading it as a form", async () => {
+    vi.resetModules();
+    vi.doMock("@cloudflare/workers-oauth-provider", () => ({ OAuthProvider: class { fetch = async () => new Response("provider", { status: 200 }); }, getOAuthApi: () => ({}) }));
+    const { oauthWorker } = await import("../src/oauth/worker");
+    const runtime = { ports: { kv: { OAUTH_KV: { get: async () => null, put: async () => {} } }, rateLimits: {} }, config: { resource: "https://r/mcp" }, version: { releaseId: "r" }, tokenClock: { now: () => 0 } };
+    const worker = oauthWorker<object>({ fetch: async () => new Response("app") }, () => runtime as never);
+    const post = (body: string) => worker.fetch!(new Request("https://r/oauth/token", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body }) as never, {}, {} as never);
+    expect((await post(`grant_type=refresh_token&refresh_token=${"x".repeat(70 * 1024)}`)).status).toBe(413);
+    expect((await post("grant_type=authorization_code&code=c")).status).toBe(200);
+  });
+});

@@ -19,12 +19,12 @@ function page(html: string, status = 200, extra: Headers | Record<string, string
 
 const isAuthorizationError = (error: unknown): boolean => error instanceof Error && error.name === "AuthorizationError";
 
-/** The OAuth error redirect for a declined request, built from the request the provider validated. */
 /** The provider's codes read `userId:grantId:secret`. */
 function grantIdOfCode(redirectTo: string): string {
   return new URL(redirectTo, "http://redirect.invalid").searchParams.get("code")?.split(":")[1] ?? "unknown";
 }
 
+/** The OAuth error redirect for a declined request, built from the request the provider validated. */
 function deniedRedirect(request: { redirectUri: string; state: string; issuer?: string | undefined }, consumed: Headers): Response {
   const target = new URL(request.redirectUri);
   target.searchParams.set("error", "access_denied");

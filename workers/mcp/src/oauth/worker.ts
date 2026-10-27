@@ -88,7 +88,13 @@ export function oauthWorker<E>(app: ExportedHandler<E>, runtimeOf: (env: E) => M
       gate.post("/oauth/token", async (c, next) => {
         const kv = runtime.ports.kv.OAUTH_KV;
         if (!kv) throw new Error("the OAUTH_KV binding is missing");
-        const form = await c.req.raw.clone().formData().catch(() => null);
+        let form: FormData | null = null;
+        try {
+          const bytes = await readBoundedBody(c);
+          form = await new Request(c.req.url, { method: "POST", headers: { "content-type": c.req.header("content-type") ?? "" }, body: bytes }).formData();
+        } catch (error) {
+          if (error instanceof BodyTooLarge) return c.json({ error: "invalid_request", error_description: "The request is too large." }, 413);
+        }
         const presented = form?.get("grant_type") === "refresh_token" ? form.get("refresh_token") : null;
         if (typeof presented !== "string") return next();
         const key = `refresh-used:${await sha256Hex(presented)}`;
