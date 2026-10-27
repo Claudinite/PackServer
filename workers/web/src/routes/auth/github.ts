@@ -79,7 +79,8 @@ routes.get("/auth/github/callback", async (c) => {
   } catch (error) {
     if (!(error instanceof GitHubLoginError)) throw error;
     console.log(JSON.stringify({ event: "auth.github_failed", reason: error.message }));
-    return refusal("forbidden", { status: 502, message: "GitHub sign-in did not complete. Start again." });
+    // The code is GitHub's and not sensitive; the prober tells a refused code from broken client credentials by it.
+    return refusal("forbidden", { status: 502, message: `GitHub sign-in did not complete${error.githubError ? ` (${error.githubError})` : ""}. Start again.` });
   }
   if (!(await consume(limiter, `auth-account:github:${profile.id}`, AUTH_COST))) return rateLimited();
 

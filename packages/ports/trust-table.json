@@ -168,7 +168,7 @@
         "SYNTHETIC_PROBES": "synthetic_probes"
       },
       "ratelimits": [],
-      "secrets": ["SELFTEST_HMAC_KEY", "IP_HASH_MASTER_KEY", "PRINCIPAL_HASH_KEY"]
+      "secrets": ["SELFTEST_HMAC_KEY", "IP_HASH_MASTER_KEY", "PRINCIPAL_HASH_KEY", "PROBE_ACCESS_CLIENT_ID", "PROBE_ACCESS_CLIENT_SECRET"]
     }
   }
 }

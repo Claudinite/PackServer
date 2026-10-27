@@ -1,38 +1,15 @@
 import type { WorkerName } from "@packserver/ports";
 import type { WorldFakes } from "../fakes/compose";
 import type { InvocationFilter, InvocationView } from "../world/recorder";
+import type { ApiRequest, ApiResponse, McpCredentials } from "./http/runtime-neutral";
 import type { McpClient } from "./mcp";
+
+export type { ApiRequest, ApiResponse, McpCredentials };
 
 export type DriverKind = "inprocess" | "http" | "browser" | "mcp";
 
 /** What a driver can offer; a scenario that needs more is skipped with the reason, never passed. */
 export type Capability = "fakes" | "clock" | "reset" | "recorder" | "mcp" | "ui" | "telemetry" | "storage" | "selftest";
-
-export interface ApiRequest {
-  /** Which Worker answers in-process; ignored by a driver that reaches the system through one public host. */
-  surface: WorkerName;
-  method: string;
-  path: string;
-  headers?: Record<string, string>;
-  body?: unknown;
-  /** The hostname the request is addressed to, for a Worker that answers by host; in-process only, where it defaults to the Worker's own test host. */
-  host?: string;
-  /** Sent as an outsider would send it: a driver that signs its requests leaves this one unsigned. */
-  unsigned?: boolean;
-  /** The key id a signing driver signs this request as, so the call spends that principal's self-test budget. */
-  signAs?: string;
-}
-
-export interface ApiResponse {
-  status: number;
-  headers: Headers;
-  text: string;
-  json(): unknown;
-}
-
-export interface McpCredentials {
-  bearer?: string;
-}
 
 export interface UiActions {
   /** Opens a page in the driver's browser; the browser driver is the only code that knows selectors. */

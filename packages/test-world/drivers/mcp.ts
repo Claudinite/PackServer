@@ -1,4 +1,4 @@
-import type { ApiRequest, ApiResponse, McpCredentials } from "./driver";
+import type { ApiRequest, ApiResponse, McpCredentials } from "./http/runtime-neutral";
 import { InfrastructureError } from "../world/errors";
 
 export interface McpTool {

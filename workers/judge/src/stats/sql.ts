@@ -1,6 +1,6 @@
 import { DOWNLOAD_JOURNEY, LATENCY_BOUNDS_MS } from "@packserver/core/gates";
 import { REQUEST_BLOBS, REQUEST_DOUBLES } from "@packserver/core/telemetry";
-import { isSafeVersionId, type DomainRow, type GateDataSource, type ProbeRow, type ReadWindow, type RequestData, type TopClient } from "./source";
+import { isSafeVersionId, RECENT_MS as RECENT_MS_SPAN, type DomainRow, type GateDataSource, type ProbeRow, type ReadWindow, type RequestData, type TopClient } from "./source";
 
 export interface AnalyticsSqlConfig {
   accountId: () => Promise<string>;
@@ -89,9 +89,13 @@ FROM ${dataset} WHERE timestamp >= toDateTime(${seconds(w.starts[0] as number)})
 GROUP BY signal, version_id, attrs LIMIT ${ROW_LIMIT} FORMAT JSON`;
 }
 
-export function syntheticProbesSql(dataset: string, w: ReadWindow): string {
+/** A probe run is a row of its own, so the read goes by time slice: each slice stays well under the row limit however long a rollout lasts. */
+export const PROBE_SLICE_MS = 4 * 3_600_000;
+
+export function syntheticProbesSql(dataset: string, w: ReadWindow, fromMs: number = w.starts[0] as number, toMs?: number): string {
+  const upper = toMs === undefined ? "" : ` AND timestamp < toDateTime(${seconds(toMs)})`;
   return `SELECT blob4 AS attrs, sum(_sample_interval) AS n, toUnixTimestamp(max(timestamp)) AS ts
-FROM ${dataset} WHERE timestamp >= toDateTime(${seconds(w.starts[0] as number)}) AND index1 = 'synthetic.probe'
+FROM ${dataset} WHERE timestamp >= toDateTime(${seconds(fromMs)})${upper} AND index1 = 'synthetic.probe'
 GROUP BY attrs LIMIT ${ROW_LIMIT} FORMAT JSON`;
 }
 
@@ -160,7 +164,10 @@ export function analyticsGateData(config: AnalyticsSqlConfig, fetchImpl: typeof 
       return rows.map((r) => ({ signal: text(r.signal), version_id: text(r.version_id), attrs: text(r.attrs), n: num(r.n), recent: num(r.recent), windows: w.starts.map((_, i) => num(r[`n${i}`])), ts: num(r.ts) * 1000, d1: num(r.d1), d2: num(r.d2) }));
     },
     async syntheticProbes(w): Promise<ProbeRow[]> {
-      const rows = await run("synthetic_probes", syntheticProbesSql(dataset("synthetic_probes"), w));
+      const end = w.recentMs + RECENT_MS_SPAN;
+      const slices: Array<[number, number | undefined]> = [];
+      for (let from = w.starts[0] as number; from < end; from += PROBE_SLICE_MS) slices.push([from, from + PROBE_SLICE_MS < end ? from + PROBE_SLICE_MS : undefined]);
+      const rows = (await Promise.all(slices.map(([from, to]) => run("synthetic_probes", syntheticProbesSql(dataset("synthetic_probes"), w, from, to))))).flat();
       return rows.map((r) => ({ attrs: text(r.attrs), n: num(r.n), ts: num(r.ts) * 1000 }));
     },
   };
