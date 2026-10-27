@@ -110,6 +110,7 @@ scenario("IT-COMM-005 Young accounts cannot review; ten reviews a day", async (w
 scenario("IT-COMM-006 Verified-adoption reviews weigh fully", async (world) => {
   const pack = await world.packs.public("@acme/gcp", { versions: ["1.0.0"] });
   const comparator = await world.packs.public("@acme/other", { versions: ["1.0.0"] });
+  const elsewhere = await world.packs.public("@acme/elsewhere", { versions: ["1.0.0"] });
   for (const listed of [pack, comparator]) await world.search.list(listed, { ...LISTED, pitch: "Verified adoption widgets" });
   const [a, b, c] = [await reader(world), await reader(world), await reader(world)];
 
@@ -129,6 +130,12 @@ scenario("IT-COMM-006 Verified-adoption reviews weigh fully", async (world) => {
   const shown = async (listed: typeof pack) => ((await world.community.reviews(listed)) as { rating: number }).rating;
   expect(await shown(pack)).toBeLessThan(await shown(comparator));
   expect((await world.search.site("verified adoption widgets", { sort: "rating" })).ids).toEqual([pack.name, comparator.name]);
+
+  // The next scan no longer finds A's declaration: A's mark stays, and a later review by A carries none.
+  await world.community.seed.laterScanFindsNone();
+  expect(await world.github.scan.verifiedAdopter(world.alias(a.handle), pack)).toBe(false);
+  expect(await world.community.reviews(pack)).toMatchObject({ verifiedCount: 2 });
+  expect(await world.community.review(a, elsewhere, { rating: 5 })).toMatchObject({ verified_adoption: false });
 }, { needs: ["fakes", "clock", "storage", "reset"] });
 
 scenario("IT-COMM-007 Publishers reply once and flag, never delete", async (world) => {

@@ -114,6 +114,8 @@ export interface CommunityModule {
       stars(pack: Pack, o: SeedStars): Promise<void>;
       /** Made-up accounts that reviewed the pack. */
       reviews(pack: Pack, o: SeedReviews): Promise<void>;
+      /** A later weekly scan completed and found no declaration at all, as when every repository dropped it. */
+      laterScanFindsNone(): Promise<void>;
       /** The person stops being an owner or maintainer of the pack's scope, as an org removes a member. */
       leaveScope(pack: Pack, user: User): Promise<void>;
     };
@@ -301,6 +303,10 @@ export function createCommunity(driver: Driver, aliases: Aliases): CommunityModu
         },
       },
       seed: {
+        async laterScanFindsNone() {
+          const at = iso((await now()) + 1000);
+          await run([{ sql: "insert into adoption_scans (id, started_at, updated_at, completed_at) values (?, ?, ?, ?)", params: [crypto.randomUUID(), at, at, at] }]);
+        },
         async leaveScope(pack, user) {
           const [scope] = pack.systemName.slice(1).split("/");
           await run([{ sql: "delete from scope_members where scope_id = (select id from scopes where name = ?) and user_id = ?", params: [scope, await userId(user)] }]);

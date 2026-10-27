@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { migratedD1 } from "../../identity/testing.ts";
 import {
-  checkBurst, drainCommunityNotices, hideReview, listReviews, openStarHolds, pruneAuthenticatedDownloads, recomputeCommunity, recordAuthenticatedDownload, refreshPack, star, starState, submitReview, unstar, withPrior,
+  checkBurst, drainCommunityNotices, packsWithFreshStars, hideReview, listReviews, openStarHolds, pruneAuthenticatedDownloads, recomputeCommunity, recordAuthenticatedDownload, refreshPack, star, starState, submitReview, unstar, withPrior,
   type CommunityPorts, type PackRef,
 } from "../index.ts";
 import { FakeMail } from "@packserver/ports/fakes";
@@ -132,6 +132,27 @@ describe("fresh accounts", () => {
     expect((await starState(f.ports, f.pack, undefined)).count).toBe(0);
     f.advance(7 * DAY);
     expect((await starState(f.ports, f.pack, undefined)).count).toBe(200);
+  });
+});
+
+describe("hourly burst candidates", () => {
+  it("are only packs with enough fresh counted stars to be a burst", async () => {
+    const f = await fixture();
+    const at = iso(START - 5 * DAY);
+    const statements = [];
+    for (let i = 0; i < 60; i++) {
+      statements.push({ sql: "insert into packs (id, scope_id, name, visibility, created_at) values (?, 'scope-acme', ?, 'public', ?)", params: [`p${i}`, `p${i}`, at] });
+      statements.push({ sql: "insert into users (id, created_at) values (?, ?)", params: [`solo-${i}`, at] });
+      statements.push({ sql: "insert into stars (pack_id, user_id, created_at) values (?, ?, ?)", params: [`p${i}`, `solo-${i}`, iso(START - HOUR)] });
+    }
+    await f.d1.batch(statements);
+    await f.stars(50, 2 * HOUR, "crowd");
+    expect(await packsWithFreshStars(f.d1, START)).toEqual(["pack-gcp"]);
+    const queries: string[] = [];
+    const counting = { ...f.ports, d1: { ...f.d1, query: (sql: string, params?: unknown[]) => (queries.push(sql), f.d1.query(sql, params)) } };
+    await recomputeCommunity(counting);
+    // One candidate pack, so one lookup for an active hold; the 60 single-star packs cost none.
+    expect(queries.filter((q) => q.startsWith("select * from star_holds where pack_id"))).toHaveLength(1);
   });
 });
 
