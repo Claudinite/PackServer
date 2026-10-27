@@ -4,6 +4,7 @@ import type { SandboxARequest } from "@packserver/core/validation";
 import { Meta } from "@packserver/schema";
 import type { D1, R2Read } from "@packserver/ports";
 import { packId, type RunInput } from "./run";
+import { RESCAN_PRINCIPAL } from "./upload";
 
 const POPULAR_LIMIT = 1_000;
 
@@ -39,7 +40,7 @@ export async function lookupsFor(d1: D1, run: RunInput): Promise<SandboxARequest
   };
 }
 
-/** The newest version the pack already has published, whichever status it has since taken. */
+/** The newest version the pack already has published, whichever status it has since taken; for a rescan, the newest before the version it re-validates. */
 export async function newestPublished(d1: D1, run: RunInput): Promise<string | null> {
   const rows = (
     await d1.query(
@@ -47,7 +48,10 @@ export async function newestPublished(d1: D1, run: RunInput): Promise<string | n
       [run.scope_id, run.pack_name],
     )
   ).rows;
-  const versions = rows.map((r) => String(r.version)).sort(compareVersions);
+  const versions = rows
+    .map((r) => String(r.version))
+    .filter((v) => run.principal !== RESCAN_PRINCIPAL || compareVersions(v, run.version) < 0)
+    .sort(compareVersions);
   return versions.at(-1) ?? null;
 }
 

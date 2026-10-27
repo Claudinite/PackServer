@@ -89,6 +89,10 @@ export interface DnsModule {
   oversizeFile(host: string, bytes: number): void;
   /** `host` does not answer at all. */
   hostDown(host: string): void;
+  /** `domain` has an address, as a site linked from a pack's prose does while its domain is registered. Not aliased: the archive's text is not. */
+  resolveHost(domain: string): void;
+  /** `domain` has no address any more. */
+  unresolveHost(domain: string): void;
   /** Every resolver query is answered with a failure until `false`. */
   failResolver(down: boolean): void;
   /** Requests that reached a host other than the resolver since the scenario began, and whether each asked for the proof file. */
@@ -110,6 +114,8 @@ export function createDns(driver: Driver, aliases: Aliases): DnsModule {
     redirectFile: (host) => domains().serve(sys(host), { kind: "redirect" }),
     oversizeFile: (host, bytes) => domains().serve(sys(host), { kind: "oversize", bytes }),
     hostDown: (host) => domains().serve(sys(host), { kind: "down" }),
+    resolveHost: (domain) => domains().resolveHost(domain.toLowerCase()),
+    unresolveHost: (domain) => domains().unresolveHost(domain.toLowerCase()),
     failResolver: (down) => domains().failResolver(down),
     hostRequests: () =>
       domains()
@@ -124,11 +130,43 @@ export function createDns(driver: Driver, aliases: Aliases): DnsModule {
   };
 }
 
+const RESCAN_RUNS_SETTLE_MS = 25_000;
+
+const RESCAN_PAGES_MAX = 400;
+
+/** The validator's rescan work, one page per request as a scheduled fire does it, until the pass has completed. */
+async function rescanOf(driver: Driver, job: "rules" | "domains" | "pipeline" | "collect"): Promise<void> {
+  for (let page = 0; page < RESCAN_PAGES_MAX; page++) {
+    const res = await driver.http.request({ surface: "validator", method: "POST", path: "/internal/rescan", body: { job } });
+    if (res.status !== 200) throw new InfrastructureError(`the ${job} rescan answered ${res.status}: ${res.text}`);
+    if ((JSON.parse(res.text) as { completed: boolean }).completed) return;
+  }
+  throw new InfrastructureError(`the ${job} rescan did not complete in ${RESCAN_PAGES_MAX} pages`);
+}
+
+/** Waits for the full-pipeline runs a rescan started to finish, so their verdicts can be applied. */
+async function pipelineRunsFinished(driver: Driver): Promise<void> {
+  if (!driver.publishStorage) throw new InfrastructureError(`the ${driver.kind} driver has no storage access`);
+  const deadline = Date.now() + RESCAN_RUNS_SETTLE_MS;
+  for (;;) {
+    const open = await driver.publishStorage.sql("select count(*) as n from validation_runs where principal = 'system:rescan' and status != 'finished'");
+    if (Number(open[0]?.n) === 0) return;
+    if (Date.now() > deadline) throw new InfrastructureError("the rescan's pipeline runs did not finish");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
 /** The jobs the registry's own schedule runs, started on demand by running the shipped function over the fakes. */
 export function createCron(driver: Driver): { run(job: CronJob): Promise<void> } {
   return {
     async run(job) {
-      if (job === "domain-rechecks") await recheckDomains(await proofPortsOf(driver));
+      if (job === "rescan") await rescanOf(driver, "rules");
+      else if (job === "domain-drift") await rescanOf(driver, "domains");
+      else if (job === "top-pack-rescan") {
+        await rescanOf(driver, "pipeline");
+        await pipelineRunsFinished(driver);
+        await rescanOf(driver, "collect");
+      } else if (job === "domain-rechecks") await recheckDomains(await proofPortsOf(driver));
       else if (job === "github-proof-lapse") await sweepGithubProofs(await proofPortsOf(driver));
       else if (job === "synthetic-expiry") await expireSyntheticVersions(await registryD1(driver), await driver.fakes!.clock.call<number>("now"));
       else throw new NotImplemented(`cron.run(${job})`);
@@ -137,5 +175,5 @@ export function createCron(driver: Driver): { run(job: CronJob): Promise<void> }
 }
 
 export type CronJob =
-  | "domain-rechecks" | "github-proof-lapse" | "synthetic-expiry" | "stats-rollup" | "staging-expiry" | "rescan" | "domain-drift"
+  | "domain-rechecks" | "github-proof-lapse" | "synthetic-expiry" | "stats-rollup" | "staging-expiry" | "rescan" | "domain-drift" | "top-pack-rescan"
   | "adoption-scan" | "audit-head" | "audit-verify" | "activity-prune";

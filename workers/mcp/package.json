@@ -13,6 +13,7 @@
     "@packserver/http": "workspace:*",
     "@packserver/ports": "workspace:*",
     "@packserver/schema": "workspace:*",
+    "@cloudflare/workers-oauth-provider": "catalog:",
     "agents": "catalog:",
     "hono": "catalog:",
     "zod": "catalog:"

@@ -1,0 +1,330 @@
+{
+  "version": "2026.10.2",
+  "security_categories": [
+    "credentials",
+    "network",
+    "process-execution",
+    "archive-safety",
+    "reviewer-addressed"
+  ],
+  "rules": [
+    {
+      "id": "archive.bomb",
+      "class": "fail",
+      "category": "archive-safety",
+      "description": "Archive exceeds an extraction limit (size, entries, depth or ratio)."
+    },
+    {
+      "id": "archive.unsafe",
+      "class": "fail",
+      "category": "archive-safety",
+      "description": "Archive holds an unsafe path, link, special file or disallowed file type."
+    },
+    {
+      "id": "manifest.missing",
+      "class": "fail",
+      "category": "manifest",
+      "description": "pack.json is missing."
+    },
+    {
+      "id": "manifest.malformed",
+      "class": "fail",
+      "category": "manifest",
+      "description": "pack.json does not match the manifest schema."
+    },
+    {
+      "id": "manifest.version-not-semver",
+      "class": "fail",
+      "category": "manifest",
+      "description": "The version is not semver x.y.z."
+    },
+    {
+      "id": "manifest.version-not-greater",
+      "class": "fail",
+      "category": "manifest",
+      "description": "The version is not greater than the pack's newest version."
+    },
+    {
+      "id": "manifest.min-engine-invalid",
+      "class": "fail",
+      "category": "manifest",
+      "description": "minEngineVersion is not a three-part engine version."
+    },
+    {
+      "id": "manifest.requires-unresolved",
+      "class": "fail",
+      "category": "manifest",
+      "description": "A requires entry names a pack the publisher cannot read."
+    },
+    {
+      "id": "manifest.declared-part-missing",
+      "class": "fail",
+      "category": "manifest",
+      "description": "A part declared in pack.json is absent from the archive."
+    },
+    {
+      "id": "manifest.undeclared-part",
+      "class": "warn",
+      "category": "manifest",
+      "description": "The archive holds a part that pack.json does not declare; it is shown as extracted."
+    },
+    {
+      "id": "identity.name-not-ascii",
+      "class": "fail",
+      "category": "identity",
+      "description": "A scope or pack name is not ASCII."
+    },
+    {
+      "id": "identity.reserved-word",
+      "class": "fail",
+      "category": "identity",
+      "description": "The name is a reserved word."
+    },
+    {
+      "id": "identity.verified-domain-collision",
+      "class": "fail",
+      "category": "identity",
+      "description": "The name collides with a verified domain label."
+    },
+    {
+      "id": "identity.near-popular-pack",
+      "class": "fail",
+      "category": "identity",
+      "description": "The name is within edit distance 2 of, or confusable with, a popular pack."
+    },
+    {
+      "id": "identity.near-verified-scope",
+      "class": "hold",
+      "category": "identity",
+      "description": "The name is a near miss on a verified scope."
+    },
+    {
+      "id": "identity.confusable-verified-scope",
+      "class": "fail",
+      "category": "identity",
+      "description": "The name is visually confusable with a verified scope."
+    },
+    {
+      "id": "identity.same-name-near-scope",
+      "class": "hold",
+      "category": "identity",
+      "description": "The name is a popular pack's name published under a scope close to that pack's scope."
+    },
+    {
+      "id": "text.secret",
+      "class": "fail",
+      "category": "credentials",
+      "description": "A secret was detected; the value is never shown."
+    },
+    {
+      "id": "text.credential-sink-in-prose",
+      "class": "fail",
+      "category": "credentials",
+      "description": "Prose names a credential or secret as something to read or send."
+    },
+    {
+      "id": "text.credential-upload",
+      "class": "fail",
+      "category": "credentials",
+      "description": "A command uploads a credential file or the whole environment to a network destination."
+    },
+    {
+      "id": "text.network-sink-in-prose",
+      "class": "fail",
+      "category": "network",
+      "description": "Prose directs the agent to send data to a network destination."
+    },
+    {
+      "id": "text.url-executable",
+      "class": "fail",
+      "category": "network",
+      "description": "Code or prose fetches an executable from a URL."
+    },
+    {
+      "id": "text.url-install",
+      "class": "hold",
+      "category": "network",
+      "description": "Prose instructs the agent to install something from a URL."
+    },
+    {
+      "id": "text.pipe-to-shell",
+      "class": "fail",
+      "category": "process-execution",
+      "description": "A pipe-to-shell pattern appears in code or in prose telling the agent to run it."
+    },
+    {
+      "id": "text.floating-version",
+      "class": "fail",
+      "category": "process-execution",
+      "description": "A floating dependency version: latest, a range or an unpinned git ref."
+    },
+    {
+      "id": "text.hidden-unicode",
+      "class": "fail",
+      "category": "text",
+      "description": "A bidirectional control, zero-width or tag code point appears in text."
+    },
+    {
+      "id": "text.invalid-encoding",
+      "class": "fail",
+      "category": "text",
+      "description": "A text file is not valid UTF-8, so a scanner and an agent may read it differently."
+    },
+    {
+      "id": "text.injection",
+      "class": "hold",
+      "category": "reviewer-addressed",
+      "description": "A prompt-injection or tool-poisoning heuristic matched publisher-written text."
+    },
+    {
+      "id": "text.injection-pitch-tag",
+      "class": "fail",
+      "category": "reviewer-addressed",
+      "description": "A prompt-injection heuristic matched the pitch or a tag."
+    },
+    {
+      "id": "text.reviewer-addressed",
+      "class": "hold",
+      "category": "reviewer-addressed",
+      "description": "Text is addressed to a reviewer, validator or AI evaluator."
+    },
+    {
+      "id": "text.mixed-script",
+      "class": "warn",
+      "category": "text",
+      "description": "An identifier mixes scripts."
+    },
+    {
+      "id": "code.binary-file",
+      "class": "fail",
+      "category": "archive-safety",
+      "description": "A binary, or a file with NUL bytes at a path that is not a text path."
+    },
+    {
+      "id": "code.foreign-import",
+      "class": "fail",
+      "category": "process-execution",
+      "description": "A coded check imports beyond the check SDK and the Go standard library, or a worker imports beyond @claudinite/sdk."
+    },
+    {
+      "id": "code.undeclared-action",
+      "class": "fail",
+      "category": "process-execution",
+      "description": "The pack uses a GitHub action that pack.json does not declare."
+    },
+    {
+      "id": "code.network",
+      "class": "fail",
+      "category": "network",
+      "description": "Executable content holds a static pattern that opens a network connection."
+    },
+    {
+      "id": "code.eval",
+      "class": "fail",
+      "category": "process-execution",
+      "description": "Executable content builds or loads code at run time."
+    },
+    {
+      "id": "code.base64",
+      "class": "hold",
+      "category": "process-execution",
+      "description": "Executable content decodes base64 or holds a long encoded string."
+    },
+    {
+      "id": "code.time-conditional",
+      "class": "hold",
+      "category": "process-execution",
+      "description": "Executable content branches on the current date or time."
+    },
+    {
+      "id": "code.dynamic-access",
+      "class": "hold",
+      "category": "process-execution",
+      "description": "Executable content reaches the global object, or names a command, in a way that cannot be read in advance."
+    },
+    {
+      "id": "license.missing",
+      "class": "warn",
+      "category": "license",
+      "description": "The pack declares no license."
+    },
+    {
+      "id": "docs.readme-missing",
+      "class": "warn",
+      "category": "docs",
+      "description": "The pack has no README."
+    },
+    {
+      "id": "fixtures.missing",
+      "class": "warn",
+      "category": "docs",
+      "description": "A prose-only pack has no fixtures."
+    },
+    {
+      "id": "style.markdown",
+      "class": "warn",
+      "category": "style",
+      "description": "A style issue in a Markdown file."
+    },
+    {
+      "id": "sandbox.timeout",
+      "class": "fail",
+      "category": "sandbox",
+      "description": "A sandbox run, or one check, guard or worker run in it, overran its time limit."
+    },
+    {
+      "id": "sandbox.egress",
+      "class": "fail",
+      "category": "network",
+      "description": "Executable content tried to reach the network when it was run once offline."
+    },
+    {
+      "id": "load.failed",
+      "class": "fail",
+      "category": "load",
+      "description": "The pinned cn engine could not load the pack."
+    },
+    {
+      "id": "load.compile-failed",
+      "class": "fail",
+      "category": "load",
+      "description": "A coded check does not compile."
+    },
+    {
+      "id": "load.declared-check-unparseable",
+      "class": "fail",
+      "category": "load",
+      "description": "A declared check does not parse."
+    },
+    {
+      "id": "load.run-nonzero",
+      "class": "warn",
+      "category": "load",
+      "description": "A worker or env setup, run once offline, exited with a non-zero status."
+    },
+    {
+      "id": "engine.unsupported_min_version",
+      "class": "fail",
+      "category": "engine",
+      "description": "The pack's minEngineVersion is older than the oldest engine release the registry supports."
+    },
+    {
+      "id": "provenance.tree_mismatch",
+      "class": "fail",
+      "category": "provenance",
+      "description": "The validated tree differs from the repository tree at the commit the publisher claimed."
+    },
+    {
+      "id": "provenance.source-unverified",
+      "class": "warn",
+      "category": "provenance",
+      "description": "The claimed repository tree could not be fetched, so the source is not verified."
+    },
+    {
+      "id": "prose-screen.flagged",
+      "class": "hold",
+      "category": "prose-screen",
+      "description": "The prose screen flagged a passage; an admin decides."
+    }
+  ]
+}

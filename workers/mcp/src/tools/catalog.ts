@@ -9,6 +9,7 @@ import {
   type StatusNote,
   type VersionRow,
 } from "@packserver/core/catalog";
+import { mayRead, type Caller as AccessCaller } from "@packserver/core/access";
 import { z } from "zod";
 import type { McpRuntime } from "../bindings";
 import type { PackRef } from "./extras";
@@ -17,6 +18,11 @@ export interface PublicPack extends PackRef {
   rows: VersionRow[];
   notes: Map<string, StatusNote>;
   listing: PackListing;
+}
+
+export interface PrivatePack extends PublicPack {
+  /** The first segment of `name`, without the `@`. */
+  scope: string;
 }
 
 export type PackLookup = { kind: "found"; pack: PublicPack } | { kind: "missing" } | { kind: "unavailable" };
@@ -31,22 +37,31 @@ export async function readJson(runtime: McpRuntime, key: string): Promise<unknow
   }
 }
 
-/** The one answer for a name that is not a pack, a pack that does not exist and one the caller may not know exists. */
-export async function findPublicPack(runtime: McpRuntime, name: string): Promise<PackLookup> {
-  if (!PackName.safeParse(name).success) return { kind: "missing" };
+export async function versionRows(runtime: McpRuntime, packId: unknown): Promise<VersionRow[]> {
+  const result = await runtime.ports.d1.query(
+    "SELECT version, state, sha256, upload_sha256, size_bytes, published_at, verified, verified_domain, verified_github_org, source_verified, min_engine_version, requires, source_commit, score, score_rules_version, score_breakdown, report_key FROM pack_versions WHERE pack_id = ?",
+    [packId],
+  );
+  return result.rows.map(parseVersionRow).filter((r) => isPublishedState(r.state));
+}
+
+async function packRow(runtime: McpRuntime, name: string) {
+  if (!PackName.safeParse(name).success) return undefined;
   const [scope, packName] = name.slice(1).split("/") as [string, string];
   const found = await runtime.ports.d1.query(
     "SELECT p.id AS id, p.visibility AS visibility FROM packs p JOIN scopes s ON s.id = p.scope_id WHERE s.name = ? AND p.name = ? AND s.kind <> 'synthetic'",
     [scope, packName],
   );
   const row = found.rows[0];
+  return row ? { id: String(row.id), visibility: row.visibility, scope } : undefined;
+}
+
+/** The one answer for a name that is not a pack, a pack that does not exist and one the caller may not know exists. */
+export async function findPublicPack(runtime: McpRuntime, name: string): Promise<PackLookup> {
+  const row = await packRow(runtime, name);
   if (!row || row.visibility !== "public") return { kind: "missing" };
 
-  const result = await runtime.ports.d1.query(
-    "SELECT version, state, sha256, upload_sha256, size_bytes, published_at, verified, verified_domain, verified_github_org, source_verified, min_engine_version, requires, source_commit, score, report_key FROM pack_versions WHERE pack_id = ?",
-    [row.id],
-  );
-  const rows = result.rows.map(parseVersionRow).filter((r) => isPublishedState(r.state));
+  const rows = await versionRows(runtime, row.id);
   if (rows.length === 0) return { kind: "missing" };
 
   const notes = new Map<string, StatusNote>();
@@ -55,7 +70,29 @@ export async function findPublicPack(runtime: McpRuntime, name: string): Promise
     if (!parsed.success) return { kind: "unavailable" };
     for (const v of parsed.data.versions) notes.set(v.version, { reason: v.reason, security: v.security });
   }
-  return { kind: "found", pack: { id: String(row.id), name, rows, notes, listing: buildListing(name, rows, notes) } };
+  return { kind: "found", pack: { id: row.id, name, rows, notes, listing: buildListing(name, rows, notes) } };
+}
+
+/**
+ * A private pack the caller's credential may read. A name that is not a pack, a public pack and a private pack
+ * the caller may not read are the same answer. The signed history of a private pack is not public, so its
+ * status notes are not read here.
+ */
+export async function findReadablePrivatePack(runtime: McpRuntime, name: string, caller: AccessCaller): Promise<{ kind: "found"; pack: PrivatePack } | { kind: "missing" }> {
+  const row = await packRow(runtime, name);
+  if (!row || row.visibility !== "private" || !(await mayRead(runtime.ports.d1, caller, row.id))) return { kind: "missing" };
+  const rows = await versionRows(runtime, row.id);
+  if (rows.length === 0) return { kind: "missing" };
+  const notes = new Map<string, StatusNote>();
+  return { kind: "found", pack: { id: row.id, name, scope: row.scope, rows, notes, listing: buildListing(name, rows, notes) } };
+}
+
+export function versionsOf(pack: PublicPack) {
+  return pack.listing.versions.map((v) => {
+    const { reason, security, ...rest } = v;
+    const text = { ...(reason !== undefined ? { reason } : {}), ...(security !== undefined ? { security } : {}) };
+    return { ...rest, ...(Object.keys(text).length > 0 ? { publisher_text: text } : {}) };
+  });
 }
 
 export async function readMeta(runtime: McpRuntime, name: string, version: string): Promise<Meta | undefined> {
