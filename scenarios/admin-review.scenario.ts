@@ -164,7 +164,20 @@ scenario("IT-ADMIN-009 Admin reads of private content are audited", async (world
   expect(await admin.audit()).toHaveLength(4);
 }, NEEDS);
 
-scenario("IT-ADMIN-002 Review-queue actions are audited with the actor (queue half)", async (world) => {
+/** A listed pack with a readable RULES.md; returns the anchor of its Secrets section. */
+async function commentable(world: World, name: string) {
+  const pack = await world.packs.public(name, { versions: ["1.0.0"] });
+  await world.search.list(pack, { pitch: "Cloud rules", category: "cloud", parts: ["rules"] });
+  await pack.seedContents("1.0.0", { readme: "# gcp\n", files: [{ path: "RULES.md", text: "# Rules\nBe careful.\n## Secrets\nNever print them.\n" }] });
+  const view = await pack.page("contents");
+  if (!("anchors" in view)) throw new Error("the Contents tab is missing");
+  const section = view.anchors.find((a) => a.includes("RULES.md") && a.endsWith("~secrets"));
+  if (!section) throw new Error("RULES.md has no secrets section");
+  return { pack, section };
+}
+
+scenario("IT-ADMIN-002 Review-queue actions are audited with the actor", async (world) => {
+  await world.access.seedRegistryKeys();
   const admin = await world.admins.create();
   const publisher = await world.publishers.create({ handle: "q" });
   const owner = await world.publishers.create({ handle: "own", mfa: "passkey" });
@@ -177,10 +190,29 @@ scenario("IT-ADMIN-002 Review-queue actions are audited with the actor (queue ha
   const reporter = await world.users.create();
   await reporter.signIn();
   const filed = await world.reports.file(reporter, pack, { kind: "security", version: "1.0.0", severity: "high", title: "Token leaks to logs" });
+  const [hidden, rival, pinned, miner] = [
+    await world.packs.public("@gcp/hidden", { versions: ["1.0.0"] }),
+    await world.packs.public("@gcp/rival", { versions: ["1.0.0"] }),
+    await world.packs.public("@gcp/pinned", { versions: ["1.0.0"] }),
+    await world.packs.public("@gcp/miner", { versions: ["1.0.0", "1.1.0"] }),
+  ] as const;
+  for (const listing of [hidden, rival, pinned, miner]) await world.search.list(listing, { pitch: "Format markdown tables", category: "backend" });
+  const author = await world.users.create();
+  await author.signIn();
+  await world.community.setAge(author, "3d");
+  const review = (await world.community.review(author, rival, { rating: 1, body: "Unfair." })) as { id: string };
+  const noise = (await world.reportAbuse(reporter, hidden, { category: "other", details: "Not what it says." })) as { id: string };
+  const malware = (await world.reportAbuse(reporter, miner, { category: "malware", details: "Runs a miner.", version: "1.1.0" })) as { id: string };
+  const token = `${"ghp"}_${"aB3dE5gH7jK9mN1pQ3sT5vX7zC9eF1hJ3kL5"}`;
+  const { pack: talked, section } = await commentable(world, "@gcp/talked");
+  const kept = (await world.community.comment(author, talked, { section, body: `Use ${token} here` })) as { id: string };
+  const gone = (await world.community.comment(author, talked, { section, body: `Or ${token} there` })) as { id: string };
 
   const listed = await admin.queue.list();
-  expect(listed.map((e) => e.kind)).toEqual(["report", "held-version", "application"]);
-  expect(listed[0]).toMatchObject({ id: filed.id, priority: true });
+  expect(listed.map((e) => e.kind)).toEqual(["abuse-report", "report", "held-version", "application", "abuse-report"]);
+  expect(listed[0]).toMatchObject({ id: malware.id, priority: true });
+  expect(listed[1]).toMatchObject({ id: filed.id, priority: true });
+  expect((await admin.moderation.comments.held()).map((c) => c.id).sort()).toEqual([kept.id, gone.id].sort());
 
   await admin.queue.dismissReport(filed);
   expect((await world.reports.read(reporter, filed)) as { status: string }).toMatchObject({ status: "wont_fix" });
@@ -194,10 +226,32 @@ scenario("IT-ADMIN-002 Review-queue actions are audited with the actor (queue ha
   await expect(world.profiles.profile(org)).resolves.toMatchObject({ verifiedPublisher: true });
   await admin.applications.revoke(org, "Impersonation");
   await expect(world.profiles.profile(org)).resolves.toMatchObject({ verifiedPublisher: false });
+
+  await admin.moderation.dismiss(noise);
+  await admin.moderation.hidePack(hidden);
+  await admin.moderation.hideReview(review, "Not about the pack.");
+  await admin.moderation.act(malware, { action: "yank", reason: "malware" });
+  await admin.moderation.quarantinePack(pinned, "Held for a look");
+  await admin.moderation.suspend(publisher.scope, "Repeated malware");
+  await admin.moderation.comments.release(kept);
+  await admin.moderation.comments.remove(gone, "It carries a credential.");
+
+  expect(await miner.version("1.1.0").status()).toBe("yanked");
+  expect(await pinned.version("1.0.0").status()).toBe("quarantined");
+  await expect(world.community.reviews(rival)).resolves.toMatchObject({ reviewCount: 0 });
+  await expect(admin.holds.list()).resolves.toContain(publisher.scope.name);
+  const ids = (await world.search.site("format markdown tables", {})).ids;
+  for (const other of [miner, rival, pinned]) expect(ids.indexOf(hidden.name)).toBeGreaterThan(ids.indexOf(other.name));
+  const thread = async (who?: typeof author) => ((await world.community.comments(talked, section, who)) as Array<{ id: string }>).map((c) => c.id);
+  expect(await thread()).toEqual([kept.id]);
+  expect(await thread(author)).toEqual([kept.id]);
   expect((await admin.queue.list()).map((e) => e.kind)).toEqual([]);
 
   const entries = await admin.audit();
-  expect(entries.map((e) => e.verb).sort()).toEqual(["report.dismiss", "review.reject", "verified.approve", "verified.deny", "verified.revoke"]);
+  expect(entries.map((e) => e.verb).sort()).toEqual([
+    "abuse.dismiss", "comment.release", "comment.remove", "pack.hide", "pack.quarantine", "publisher.suspend", "report.dismiss",
+    "review.hide", "review.reject", "verified.approve", "verified.deny", "verified.revoke", "version.yank",
+  ]);
   for (const entry of entries) expect(entry).toMatchObject({ action: "admin.action", actor: admin.email });
 }, NEEDS);
 

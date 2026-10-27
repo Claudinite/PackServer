@@ -28,6 +28,8 @@ const SAMPLES: { [K in NoticeKind]: NoticeData<K> } = {
   "scope-name-disputed": { scope: "@acme", domain: "acme.test", held: true, scopeUrl: url },
   "scope-renamed": { was: "@acme", now: "@acme-prior", scopeUrl: url },
   "review-removed": { pack: "@acme/pack", reason: "Spam", packUrl: url },
+  "abuse-report-outcome": { target: "@acme/pack", outcome: "actioned", url },
+  "dmca-counter-notice": { pack: "@acme/pack", version: "1.0.0", notice: "I own this work.", restoreAfterBusinessDays: 14, url },
 };
 
 describe("notices", () => {

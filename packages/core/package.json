@@ -30,6 +30,7 @@
     "./synthetic": "./synthetic/index.ts",
     "./selftest": "./selftest/index.ts",
     "./mail": "./mail/index.ts",
+    "./moderation": "./moderation/index.ts",
     "./publishing": "./publishing/index.ts",
     "./mail/testing": "./mail/testing.ts",
     "./telemetry": "./telemetry/index.ts",

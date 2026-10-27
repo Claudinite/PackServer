@@ -44,6 +44,7 @@ export function createWorld(driver: Driver, title: string) {
   const validation = createValidation(driver);
   const publishFlow = createPublishFlow(driver, aliases, scopes, ci, validation.ensureEngines);
   const undo: Array<() => Promise<void>> = [];
+  const admin = createAdmin(driver, (restore) => void undo.push(restore), aliases);
   return {
     driver,
     ...people,
@@ -54,9 +55,9 @@ export function createWorld(driver: Driver, title: string) {
     ...createProbe(driver, ci, (name) => aliases.alias(name), publishFlow.publishFromCi),
     ...createAccess(driver, aliases),
     ...createCommunity(driver, aliases),
-    ...createModeration(),
+    ...createModeration(driver, aliases, admin.admins),
     ...createReportsModule(driver, aliases),
-    ...createAdmin(driver, (restore) => void undo.push(restore), aliases),
+    ...admin,
     ...createRecoveries(driver),
     ...createMember(driver),
     ...createAgents(driver, aliases),

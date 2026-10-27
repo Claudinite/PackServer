@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
 import { Hono } from "hono";
+import { reportedUnderReview } from "@packserver/core/moderation";
 import { syncClock } from "@packserver/ports";
 import type { McpRuntime } from "../bindings";
 import { admit } from "../limits";
@@ -12,8 +13,11 @@ export interface McpOptions {
 
 export const SERVER_INFO = { name: "packserver", version: "0.0.1" } as const;
 
+/** The sources this Worker can read itself; the rest stay unwired and answer unknown. */
+export const wiredExtras = (runtime: McpRuntime): PackExtras => ({ ...unwiredExtras, reportedUnderReview: (pack) => reportedUnderReview(runtime.ports.d1, pack.id) });
+
 /** One stateless server per request, so the tools close over this request's runtime. */
-export function createServer(runtime: McpRuntime, extras: PackExtras = unwiredExtras): McpServer {
+export function createServer(runtime: McpRuntime, extras: PackExtras = wiredExtras(runtime)): McpServer {
   const server = new McpServer(SERVER_INFO);
   registerPublicTools(server, runtime, extras);
   return server;

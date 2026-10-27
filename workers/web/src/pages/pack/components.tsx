@@ -163,6 +163,7 @@ export function Glance(props: { data: PackData; version: VersionView }) {
       <ShapeGlyph counts={counts} />
       {s.rating === null ? <span class="rating muted">—</span> : <span class="rating" title="Rating"><b>{s.rating.toFixed(1)}</b> <span class="muted">{s.ratingCount === null ? "rating" : `(${s.ratingCount}) rating`}</span></span>}
       <a class="plain" href={`/packs/${data.name}/star`} rel="nofollow">Star</a>
+      <a class="plain" href={`/packs/${data.name}/report-abuse`} rel="nofollow">Report</a>
       {s.fetches30d === null ? null : (
         <HoverCard label={<span class="pulse">{fetchesLine(s.fetches30d)}</span>}>
           <ul>

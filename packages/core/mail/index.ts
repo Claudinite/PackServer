@@ -1,6 +1,8 @@
 import type { Mail } from "@packserver/ports";
 import { render, type Notice } from "./notice";
+import { abuseReportOutcome } from "./templates/abuse-report-outcome";
 import { appealDecided } from "./templates/appeal-decided";
+import { dmcaCounterNotice } from "./templates/dmca-counter-notice";
 import { domainDriftWarning } from "./templates/domain-drift-warning";
 import { domainProofMoved } from "./templates/domain-proof-moved";
 import { domainProofWarning } from "./templates/domain-proof-warning";
@@ -52,6 +54,8 @@ export const NOTICES = {
   "scope-name-disputed": scopeNameDisputed,
   "scope-renamed": scopeRenamed,
   "review-removed": reviewRemoved,
+  "abuse-report-outcome": abuseReportOutcome,
+  "dmca-counter-notice": dmcaCounterNotice,
 } as const;
 
 export type NoticeKind = keyof typeof NOTICES;

@@ -5,7 +5,7 @@ import {
 import type { D1 } from "@packserver/ports";
 import type { ApiResponse, Driver, SeedStorage } from "../../drivers/driver";
 import type { Aliases } from "../alias";
-import { InfrastructureError, stubModule } from "../errors";
+import { InfrastructureError } from "../errors";
 import { NotFound, Refusal, type Observation, type RefusalReason } from "../outcomes";
 import type { Pack, User } from "../types";
 
@@ -143,7 +143,6 @@ export interface CommunityModule {
       leaveScope(pack: Pack, user: User): Promise<void>;
     };
   };
-  reportAbuse(user: User, target: unknown, o: { category: string; details: string }): Promise<unknown>;
 }
 
 const UNIT_MS = { d: 86_400_000, h: 3_600_000, m: 60_000 };
@@ -157,7 +156,7 @@ interface Bound {
   all(): Promise<{ results?: unknown[]; meta?: { changes?: number; last_row_id?: number } }>;
 }
 
-function d1Over(db: SeedStorage["db"]): D1 {
+export function d1Over(db: SeedStorage["db"]): D1 {
   const bind = (sql: string, params: unknown[] = []) => db.prepare(sql).bind(...params) as Bound;
   const shape = (r: Awaited<ReturnType<Bound["all"]>>) => ({
     rows: (r.results ?? []) as Array<Record<string, unknown>>,
@@ -399,6 +398,5 @@ export function createCommunity(driver: Driver, aliases: Aliases): CommunityModu
         },
       },
     },
-    reportAbuse: stubModule<Pick<CommunityModule, "reportAbuse">>("community").reportAbuse,
   };
 }

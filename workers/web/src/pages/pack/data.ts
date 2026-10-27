@@ -1,5 +1,6 @@
 import { adoptionOf } from "@packserver/core/github";
 import { objectKey, type PackListing, type VersionView } from "@packserver/core/catalog";
+import { reportedUnderReview } from "@packserver/core/moderation";
 import { advisoriesFor, type Advisory } from "@packserver/core/reports";
 import { loadProfile, type Profile } from "@packserver/core/scopes";
 import { StoredCard } from "@packserver/core/search";
@@ -41,7 +42,7 @@ export interface PackData {
   signals: Signals;
   profile: Profile;
   advisories: Advisory[];
-  /** Null while no abuse-report source exists: a private security report must change nothing public. */
+  /** Whether a high-severity abuse report is waiting for a person; null for a private pack, which has no such label. */
   reported: boolean | null;
   /** The engine release `cn_min_adopt_version` names; null while the flag is unset. */
   adoptVersion: string | null;
@@ -155,7 +156,7 @@ async function load(c: Context<WebEnv>, name: string, scope: string, packName: s
   const packId = String(pack.id);
   const version = held ? null : view.version;
 
-  const [listed, versions, profile, advisories, adoptVersion, attestation, adoption] = await Promise.all([
+  const [listed, versions, profile, advisories, adoptVersion, attestation, adoption, reported] = await Promise.all([
     d1.query(
       `SELECT ps.pitch AS pitch, ps.category AS category, ps.card AS card, st.stars AS stars, st.rating AS rating, pr.review_count AS rating_count, st.fetches_30d AS fetches_30d,
         st.fetches_7d AS fetches_7d, st.fetches_prev_28d AS fetches_prev_28d
@@ -168,6 +169,7 @@ FROM pack_search ps LEFT JOIN pack_stats st ON st.pack_id = ps.pack_id LEFT JOIN
     adoptFlag(c),
     version ? readPublic(c, objectKey(name, "attestation", version.version)) : Promise.resolve(undefined),
     adoptionOf(d1, name),
+    reportedUnderReview(d1, packId),
   ]);
 
   const row = listed.rows[0];
@@ -203,7 +205,7 @@ FROM pack_search ps LEFT JOIN pack_stats st ON st.pack_id = ps.pack_id LEFT JOIN
       },
       profile,
       advisories,
-      reported: null,
+      reported: pack.visibility === "private" ? null : reported,
       adoptVersion,
       kid: parsedAttestation.success ? parsedAttestation.data.kid : null,
       report: shownReport,

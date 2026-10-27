@@ -7,7 +7,7 @@ import { routes as applications } from "./applications";
 import { routes as disputes } from "./disputes";
 import { flagRoutes } from "./flags";
 import { internalRoutes } from "./internal-api";
-import { routes as moderation } from "./moderation";
+import { moderationRoutes } from "./moderation";
 import { opsRoutes } from "./ops";
 import { routes as queue } from "./queue";
 import { recoveryRoutes } from "./queue/recoveries";
@@ -37,7 +37,7 @@ export function createApp(runtime: AdminRuntime, options: AppOptions = {}): Hono
   app.route("/", queue);
   app.route("/", applications);
   app.route("/", reports);
-  app.route("/", moderation);
+  app.route("/", moderationRoutes(runtime));
   app.route("/", recoveryRoutes(runtime));
   app.route("/", opsRoutes(runtime));
   app.route("/", flagRoutes(runtime));

@@ -1,4 +1,5 @@
 import type { AuditActor } from "@packserver/core/audit";
+import { moveVersion } from "@packserver/core/moderation";
 import {
   blockSource, flagDef, INDEX_REGENERATION_FROZEN, NEW_PACK_KILL_SWITCH, unblockSource,
 } from "@packserver/core/flags";
@@ -6,7 +7,6 @@ import { TELEMETRY_MODE_KEY } from "@packserver/core/telemetry";
 import type { AdminRequest, AdminResponse, RefusalReason } from "@packserver/schema";
 import { setFlag } from "../flags/set";
 import type { OpsPorts } from "./context";
-import { transitionVersion } from "./versions";
 
 /** Who a method runs for; the label is what `blocked_by` and the audit trail name. */
 export interface AdminCall {
@@ -62,7 +62,7 @@ async function run(ops: OpsPorts, call: AdminCall, request: AdminRequest): Promi
     case "unquarantine_version":
     case "yank_version": {
       const transition = request.method === "quarantine_version" ? "quarantine" : request.method === "yank_version" ? "yank" : "unquarantine";
-      const result = await transitionVersion(ops, transition, { pack: request.pack, version: request.version, reason: request.reason });
+      const result = await moveVersion(ops.moderation, call.actor, { pack: request.pack, version: request.version, transition, reason: request.reason });
       return result.ok ? audited(ops, call, `version.${transition}`, `version:${request.pack}@${request.version}`, request.reason) : refuse(result.message);
     }
     case "enable_new_pack_kill_switch":

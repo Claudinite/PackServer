@@ -307,8 +307,8 @@ describe("revocation (REQ-VAL-018)", () => {
       .filter((p) => p.endsWith(".ts") && !/\.test\.ts$|\/test\/|\/test-world\//.test(p))
       .map((path) => ({ path: path.slice(root.length + 1), text: readFileSync(path, "utf8") }));
     const writers = sources.filter((s) => /(update|insert[^;]*into)\s+pack_versions/i.test(s.text)).map((s) => s.path);
-    expect(writers.sort()).toEqual(["packages/core/stats/mismatch.ts", "workers/admin/src/ops/versions.ts", "workers/publish/src/coordinator/rebuild.ts", "workers/publish/src/coordinator/scope-coordinator.ts", "workers/validator/src/promote/promote.ts"]);
-    for (const writer of writers.filter((w) => w !== "workers/admin/src/ops/versions.ts")) expect(sources.find((s) => s.path === writer)!.text, writer).not.toMatch(/state\s*=\s*'revoked'|state:\s*["']revoked/);
+    expect(writers.sort()).toEqual(["packages/core/moderation/transition.ts", "packages/core/stats/mismatch.ts", "workers/publish/src/coordinator/rebuild.ts", "workers/publish/src/coordinator/scope-coordinator.ts", "workers/validator/src/promote/promote.ts"]);
+    for (const writer of writers.filter((w) => w !== "packages/core/moderation/transition.ts")) expect(sources.find((s) => s.path === writer)!.text, writer).not.toMatch(/state\s*=\s*'revoked'|state:\s*["']revoked/);
     const callers = sources.filter((s) => /transitionVersion\([^)]*"revoke"/.test(s.text)).map((s) => s.path);
     expect(callers).toEqual(["workers/admin/src/ops/index.ts"]);
   });
