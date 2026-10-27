@@ -5,7 +5,7 @@ export { attachmentsOf, discardStaleAttachments, loadAttachment, saveAttachment,
 export * from "./constants.ts";
 export { AdvisoryInput, IssueLinkInput, ReportInput, StatusInput } from "./input.ts";
 export { isRepository, parseIssueUrl, prefilledIssueUrl } from "./issue.ts";
-export { drainNotices, noticeStatement, REGISTRY_SECURITY, type NoticeDelivery, type Recipient, type ReportNotice } from "./notices.ts";
+export { drainNotices, MAX_NOTICE_ATTEMPTS, noticeStatement, REGISTRY_SECURITY, type NoticeDelivery, type Recipient, type ReportNotice } from "./notices.ts";
 export { isoNow, type Principal, type ReportPorts } from "./ports.ts";
 export {
   fileReport, linkIssue, listInbox, listIssues, listOwn, readReport, reportPath, reportUrl, setSecurityContact, setStatus, similarIssues,

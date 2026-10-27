@@ -16,11 +16,13 @@ import { trending } from "./trending";
 export type CronJob = (runtime: AdminRuntime) => Promise<void>;
 
 export const CRON_HOURLY = "0 * * * *";
+export const CRON_REPORTS = "30 * * * *";
 export const CRON_DAILY = "0 3 * * *";
 
 /** Each trigger in wrangler.jsonc runs exactly the jobs listed under it. */
 export const CRON_JOBS: Readonly<Record<string, readonly CronJob[]>> = {
-  [CRON_HOURLY]: [rollup, community, lifecycle, tokenLastUsed, githubProofLapse, syntheticExpiry, flagMirror, reportNotices],
+  [CRON_HOURLY]: [rollup, community, lifecycle, tokenLastUsed, githubProofLapse, syntheticExpiry, flagMirror],
+  [CRON_REPORTS]: [reportNotices],
   [CRON_DAILY]: [prune, domainRecheck, auditHead, auditVerify, trending],
 };
 

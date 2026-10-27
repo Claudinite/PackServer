@@ -155,6 +155,8 @@ export const report_notices = sqliteTable(
     data: text("data").notNull(),
     created_at: text("created_at").notNull(),
     sent_at: text("sent_at"),
+    /** Failed sends; a notice stops being tried at the limit. */
+    attempts: integer("attempts").notNull().default(0),
   },
   (t) => [index("report_notices_unsent_idx").on(t.sent_at, t.created_at)],
 );

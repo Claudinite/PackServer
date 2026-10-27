@@ -157,9 +157,9 @@ journey is [JT-004](journeys.md).
 ### IT-MOD-019 The scheduled report job reminds owners at +83 d and tells registry security at +90 d
 - **Covers:** REQ-MOD-002
 - **Runs:** push
-- **Action:** file a security report on a pack whose scope has an owner; advance the clock to +82 d and run the `report-notices` cron; advance to +83 d and run it; advance to +90 d and run it; run it once more.
+- **Action:** file a security report on a pack whose scope has an owner; upload an attachment without filing it; advance the clock to +82 d and run the `report-notices` cron; advance to +83 d and run it; advance to +90 d and run it; run it once more.
 - **Faked:** mail, clock.
-- **Assert:** nothing is mailed at +82 d; at +83 d the owner receives the reminder; at +90 d registry security's address receives the timer-expired notice; the final run mails nothing again.
+- **Assert:** nothing is mailed and the unclaimed upload is gone at +82 d; at +83 d the owner receives the reminder; at +90 d registry security receives the "Security report disclosure timer ended" mail exactly once, and not before +90 d; the final run mails nothing again.
 - **Contrast:** a pending attachment older than its time-to-live is discarded by the same run.
 
 ### IT-MOD-017 Signed-in people see their own reports

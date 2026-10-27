@@ -1,0 +1,1 @@
+ALTER TABLE `report_notices` ADD `attempts` integer DEFAULT 0 NOT NULL;
