@@ -34,6 +34,8 @@ export interface Candidate {
   stars: number;
   fetches30d: number;
   rating: number | null;
+  /** The rating with verified-adoption reviews weighing more; sorting by rating reads this one when a pack has it (REQ-COMM-006). */
+  rankedRating?: number | null;
   promotedAt: string | null;
   /** Best-first positive BM25 strength; absent when the text did not match. */
   lexical?: number;
@@ -83,7 +85,7 @@ function signal(sort: Sort, c: Candidate): number | null {
     case "fetches":
       return c.fetches30d;
     case "rating":
-      return c.rating;
+      return c.rankedRating ?? c.rating;
     case "recent":
       return c.promotedAt === null ? null : Date.parse(c.promotedAt);
     case "score":

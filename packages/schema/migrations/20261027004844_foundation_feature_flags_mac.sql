@@ -1,0 +1,1 @@
+ALTER TABLE `feature_flags` ADD `mac` text;

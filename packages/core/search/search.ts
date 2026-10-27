@@ -128,10 +128,10 @@ async function hydrate(d1: D1, request: SearchRequestBody, ids: string[] | undef
   const result = await d1.query(
     `SELECT ps.pack_id, ps.name, ps.pitch, ps.category, ps.parts, ps.has_repository, ps.card, ps.demotion,
   pv.version, pv.published_at, pv.verified, pv.verified_domain, pv.verified_github_org, pv.score, pv.min_engine_version,
-  COALESCE(st.stars, 0) AS stars, COALESCE(st.fetches_30d, 0) AS fetches_30d, st.rating AS rating, r.promoted_at AS promoted_at
+  COALESCE(st.stars, 0) AS stars, COALESCE(st.fetches_30d, 0) AS fetches_30d, st.rating AS rating, pr.ranked AS ranked_rating, r.promoted_at AS promoted_at
 ${BASE}
 JOIN pack_versions pv ON pv.pack_id = p.id AND pv.state IN (${ELIGIBLE}) AND pv.published_at IS NOT NULL
-LEFT JOIN pack_stats st ON st.pack_id = p.id LEFT JOIN recent r ON r.pack_id = p.id
+LEFT JOIN pack_stats st ON st.pack_id = p.id LEFT JOIN pack_ratings pr ON pr.pack_id = p.id LEFT JOIN recent r ON r.pack_id = p.id
 WHERE p.visibility = 'public' AND s.kind <> 'synthetic'${w.sql}${restrict}
 ORDER BY ps.seq, pv.id
 LIMIT ${ROW_CAP}`,
@@ -172,6 +172,7 @@ LIMIT ${ROW_CAP}`,
       stars: Number(row.stars),
       fetches30d: Number(row.fetches_30d),
       rating: asNumber(row.rating),
+      rankedRating: asNumber(row.ranked_rating),
       promotedAt: asText(row.promoted_at),
     });
   }

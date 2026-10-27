@@ -187,15 +187,43 @@
     {
       "idx": 26,
       "version": "6",
-      "when": 1793061363752,
-      "tag": "20261027003603_foundation_pack_version_score_breakdown",
+      "when": 1793059840470,
+      "tag": "20261027001040_community_stars_reviews",
       "breakpoints": true
     },
     {
       "idx": 27,
       "version": "6",
-      "when": 1793061367494,
-      "tag": "20261027003607_validation_rescans",
+      "when": 1793062122750,
+      "tag": "20261027004842_admin_ops_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1793062124243,
+      "tag": "20261027004844_foundation_feature_flags_mac",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1793062126279,
+      "tag": "20261027004846_scopes_dispute_resolution",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1793063581419,
+      "tag": "20261027011301_foundation_pack_version_score_breakdown",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1793063582498,
+      "tag": "20261027011302_validation_rescans",
       "breakpoints": true
     }
   ]

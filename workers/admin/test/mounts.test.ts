@@ -30,7 +30,7 @@ const runtime = {
 afterEach(() => vi.restoreAllMocks());
 
 describe("admin mounts", () => {
-  it.each(["access", "queue", "applications", "reports", "moderation", "internal"])("%s exports a router", async (m) => {
+  it.each(["access", "queue", "applications", "reports", "moderation", "disputes", "recoveries"])("%s exports a router", async (m) => {
     const mod = (await import(/* @vite-ignore */ `../src/${m}/index.ts`)) as { routes?: unknown };
     expect(mod.routes).toBeInstanceOf(Hono);
   });
@@ -62,7 +62,7 @@ describe("admin crons", () => {
     log.mockImplementationOnce(() => {
       throw new Error("boom");
     });
-    await expect(runCron(CRON_HOURLY, runtime)).rejects.toThrow("1 of 4 jobs");
-    expect(log).toHaveBeenCalledTimes(4);
+    await expect(runCron(CRON_HOURLY, runtime)).rejects.toThrow("1 of 6 jobs");
+    expect(log).toHaveBeenCalledTimes(6);
   });
 });
