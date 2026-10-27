@@ -24,7 +24,7 @@ async function boot(environment: string) {
     missingBindings: [],
     missingSecrets: [],
     ports: { ...ports, clock: { now: () => NOW_S * 1000 } },
-    services: { validator: {} as Fetcher },
+    services: { validator: {} as Fetcher, web: {} as Fetcher },
     config: {
       oidc: oidcConfig({ ENVIRONMENT: environment, OIDC_ISSUER: TEST_ISSUER, OIDC_JWKS_URL: `${TEST_ISSUER}/jwks` }),
       presigner: { presignPut: async () => ({ url: "https://s3.example/x", headers: {} }) },

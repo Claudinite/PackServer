@@ -110,7 +110,7 @@ scenario("IT-PUB-008 Trusted-publishing-only refuses web uploads", async (world)
   expect(world.mail.inbox(p).latest().text).toContain("turned off");
 });
 
-scenario("IT-VAL-038 The next version after a publisher-change event is a first publish", async (world) => {
+scenario("IT-VAL-038 The next version after a publisher-change event is a first publish (emitter half)", async (world) => {
   const { p } = await acmeOrg(world);
   await world.packs.public("@acme/changed");
   await world.packs.public("@acme/quiet");

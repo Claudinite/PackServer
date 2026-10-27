@@ -21,9 +21,11 @@ export function resumeRoute(runtime: ValidatorRuntime) {
 /**
  * `DELETE /internal/runs/:id/instance`: ends a run's workflow instance where it stands, the way a Workflow
  * class migration leaves a decision with no instance waiting. What was decided stays in the registry database.
+ * It exists in the test environment only.
  */
 export function terminateRoute(runtime: ValidatorRuntime) {
   return async (c: Context): Promise<Response> => {
+    if (runtime.environment !== "test") return c.json({ error: "not-found" }, 404);
     const workflow = runtime.ports.workflows.VALIDATE_PACK;
     if (!workflow) throw new Error("the VALIDATE_PACK binding is missing");
     const row = (await runtime.ports.d1.query("select workflow_instance_id from validation_runs where id = ?", [c.req.param("id")])).rows[0];

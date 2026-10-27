@@ -63,8 +63,8 @@ scenario("IT-ADMIN-003 Admins approve or reject held versions with the diff and 
 scenario("IT-VAL-013 Held versions queue by standing and never resolve by timeout (queue half)", async (world) => {
   const admin = await world.admins.create();
   const [fresh, modest, popular, vp] = await Promise.all(["fresh", "modest", "popular", "vp"].map((handle) => world.publishers.create({ handle })));
-  const [oldest, fewRepos, manyRepos] = await Promise.all([
-    held(world, fresh!, "fresh", "1.0.0"),
+  const oldest = await held(world, fresh!, "fresh", "1.0.0");
+  const [fewRepos, manyRepos] = await Promise.all([
     held(world, modest!, "modest", "1.0.0"),
     held(world, popular!, "popular", "1.0.0"),
     held(world, vp!, "vp", "1.0.0"),

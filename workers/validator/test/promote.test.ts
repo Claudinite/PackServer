@@ -299,15 +299,30 @@ describe("the wait for an owner's approval", () => {
     expect(JSON.parse(rows(s)[0]!.reasons)).toEqual(["declared-threshold"]);
   });
 
-  it("follows the threshold an admin sets, and is off when the flag says so", async () => {
+  it("follows the threshold an admin sets", async () => {
     const s = await finishedRun();
     s.db.exec(`insert into adoption_scans (id, started_at, updated_at, completed_at) values ('scan1', 'x', 'x', 'x')`);
     for (let i = 0; i < 6; i++) s.db.prepare(`insert into pack_declarations (scan_id, pack, repository, owner, settings_path) values ('scan1', '@acme/gcp', ?, 'o', 'p')`).run(`r${i}`);
     const flag = (value: string) => s.db.prepare(`insert into feature_flags (key, value, security, updated_at) values ('staged_publishing_declared_threshold', ?, 0, 'x') on conflict (key) do update set value = excluded.value`).run(value);
     flag("5");
     expect(await request(s.rt, "run1")).toEqual({ required: true });
-    s.db.exec("delete from run_approvals");
-    flag('"off"');
-    expect(await request(s.rt, "run1")).toEqual({ required: false });
+  });
+
+  it("uses the default of 100 when the flag is null, malformed or not a number", async () => {
+    const s = await finishedRun();
+    s.db.exec(`insert into adoption_scans (id, started_at, updated_at, completed_at) values ('scan1', 'x', 'x', 'x')`);
+    const declare = (n: number) => {
+      s.db.exec("delete from pack_declarations");
+      for (let i = 0; i < n; i++) s.db.prepare(`insert into pack_declarations (scan_id, pack, repository, owner, settings_path) values ('scan1', '@acme/gcp', ?, 'o', 'p')`).run(`r${i}`);
+    };
+    const flag = (value: string) => s.db.prepare(`insert into feature_flags (key, value, security, updated_at) values ('staged_publishing_declared_threshold', ?, 0, 'x') on conflict (key) do update set value = excluded.value`).run(value);
+    for (const value of ["null", "{not json", '"off"']) {
+      flag(value);
+      s.db.exec("delete from run_approvals");
+      declare(100);
+      expect(await request(s.rt, "run1"), `${value} at 100`).toEqual({ required: false });
+      declare(101);
+      expect(await request(s.rt, "run1"), `${value} at 101`).toEqual({ required: true });
+    }
   });
 });

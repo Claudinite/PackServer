@@ -6,10 +6,7 @@ import { z } from "zod";
 import { recordAudit, runtimeOf, type WebEnv } from "../context";
 import { notFound, ok, sensitive, signedInPost, standing } from "./scopes/guard";
 
-/**
- * `registry.claudinite.com/api/publish/*` belongs to the publish Worker's route in production, and a route pattern cannot
- * carve a path out of it, so the web Worker serves these under `/api/approvals/runs` as well.
- */
+/** The publish Worker owns `/api/publish/*` on real hosts and hands these three verbs to this Worker over its service binding. */
 const verbs = new Hono<WebEnv>();
 export const routes = new Hono();
 
@@ -84,8 +81,9 @@ verbs.post("/:id/approve", sensitive(HELD_ACTION_NAMES.publishApprove, (c) => c.
   const waiting = (await runtimeOf(c).ports.d1.query("select approved_at from run_approvals where run_id = ?", [run.id])).rows[0];
   if (!waiting) return notFound();
   const userId = c.get("session")!.record.user_id;
-  if (!waiting.approved_at) await recordAudit(c, userId, "publish.approved", `version:@${run.scope}/${run.pack}@${run.version}`, { version: run.version }, run.scope_id);
-  return askPublish(c, run, "approve", {});
+  const answer = await askPublish(c, run, "approve", {});
+  if (answer.ok && !waiting.approved_at) await recordAudit(c, userId, "publish.approved", `version:@${run.scope}/${run.pack}@${run.version}`, { version: run.version }, run.scope_id);
+  return answer;
 });
 
 const Appeal = z.object({ note: z.string() });
@@ -103,4 +101,3 @@ verbs.post("/:id/appeal", signedInPost(), async (c) => {
 
 // The app mounts this router with the request context its handlers read.
 routes.route("/publish/runs", verbs as unknown as Hono);
-routes.route("/approvals/runs", verbs as unknown as Hono);

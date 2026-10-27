@@ -115,6 +115,21 @@ describe("the internal approval and appeal of a run", () => {
   });
 });
 
+describe("the owner's verbs on a run", () => {
+  it("are handed to web as they came, on the path the spec names", async () => {
+    const world = createWorld();
+    for (const [method, verb] of [["POST", "approve"], ["GET", "approval"], ["POST", "appeal"]] as const) {
+      const res = await world.app.request(`/api/publish/runs/run-1/${verb}`, { method, headers: { cookie: "session=s", "content-type": "application/json" }, ...(method === "POST" ? { body: "{}" } : {}) });
+      expect(res.status).toBe(202);
+    }
+    expect(world.web.requests.map((r) => [r.method, new URL(r.url).pathname, r.headers.get("cookie")])).toEqual([
+      ["POST", "/api/publish/runs/run-1/approve", "session=s"],
+      ["GET", "/api/publish/runs/run-1/approval", "session=s"],
+      ["POST", "/api/publish/runs/run-1/appeal", "session=s"],
+    ]);
+  });
+});
+
 describe("POST /api/dry-run", () => {
   it("answers an anonymous caller, an unknown credential and the self-test signature as an unknown path", async () => {
     const world = createWorld();

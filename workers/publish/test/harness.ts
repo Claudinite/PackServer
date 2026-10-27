@@ -81,6 +81,13 @@ export function createWorld(options: { limit?: number } = {}) {
       return Response.json({ ok: true, run_id: body.run_id, workflow_instance_id: `wf-${body.run_id}` });
     },
   } as unknown as Fetcher;
+  const web: { requests: Request[] } = { requests: [] };
+  const webFetcher = {
+    fetch: async (request: Request) => {
+      web.requests.push(request);
+      return Response.json({ from: "web" }, { status: 202 });
+    },
+  } as unknown as Fetcher;
   const runtime: PublishRuntime = {
     worker: "publish",
     environment: "test",
@@ -88,7 +95,7 @@ export function createWorld(options: { limit?: number } = {}) {
     missingBindings: [],
     missingSecrets: [],
     ports: { ...fakes, d1, durableObjects, rateLimits: { RATE_LIMIT: new FakeRateLimit(clock, 1000, 60_000) } },
-    services: { validator: validatorFetcher },
+    services: { validator: validatorFetcher, web: webFetcher },
     config: {
       oidc: { issuer: "https://issuer.example", jwksUrl: "https://issuer.example/jwks", audience: "registry.claudinite.com" },
       presigner: { presignPut: async () => ({ url: "https://s3.example/x", headers: {} }) },
@@ -158,7 +165,7 @@ export function createWorld(options: { limit?: number } = {}) {
     return { res, credential };
   }
 
-  return { app, runtime, db, d1, clock, fakes, staging, seed, staged, post, get, publish, validator, doStorage, rootSigns, durableObjects, MAX_UPLOAD_BYTES };
+  return { app, runtime, db, d1, clock, fakes, staging, seed, staged, post, get, publish, validator, web, doStorage, rootSigns, durableObjects, MAX_UPLOAD_BYTES };
 }
 
 export type TestWorld = ReturnType<typeof createWorld>;

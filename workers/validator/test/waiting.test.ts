@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { approvalState } from "../src/approval";
 import { reviewOutcome } from "../src/review";
 import { deliver, resume, waiting } from "../src/resumer";
+import { terminateRoute } from "../src/resumer/routes";
 import type { StepRunner } from "../src/workflow/pipeline";
 import { awaitDecision } from "../src/workflow/wait";
 import { testRuntime } from "./support";
@@ -110,6 +111,27 @@ describe("the resumer applies a decision no instance took", () => {
     expect(await waiting(rt)).toEqual([]);
   });
 
+  it("leaves the row for the next sweep when the new instance could not be started, and records the instance once it is", async () => {
+    const { rt, db, fakes } = await seeded();
+    decide(db, "approve");
+    vi.spyOn(fakes.workflows.VALIDATE_PACK!, "create").mockRejectedValueOnce(new Error("platform unavailable"));
+    expect(await resume(rt)).toEqual([]);
+    expect(await waiting(rt)).toEqual([{ run_id: "run1", source: "review" }]);
+    expect(await resume(rt)).toEqual([{ run_id: "run1", source: "review", delivered: "instance" }]);
+    expect(instances(fakes)).toEqual(["run1-resume-review"]);
+    expect(db.prepare("select workflow_instance_id as id from validation_runs where id = 'run1'").get()).toEqual({ id: "run1-resume-review" });
+    expect(await waiting(rt)).toEqual([]);
+  });
+
+  it("counts a refused create as done when that decision's instance already exists", async () => {
+    const { rt, db, fakes } = await seeded();
+    await fakes.workflows.VALIDATE_PACK!.create({ id: "run1-resume-review", params: {} });
+    decide(db, "approve");
+    vi.spyOn(fakes.workflows.VALIDATE_PACK!, "create").mockRejectedValueOnce(new Error("already exists"));
+    expect(await resume(rt)).toEqual([{ run_id: "run1", source: "review", delivered: "instance" }]);
+    expect(await waiting(rt)).toEqual([]);
+  });
+
   it("does the same when the instance is gone and refuses the event", async () => {
     const { rt, db, fakes } = await seeded();
     await fakes.workflows.VALIDATE_PACK!.create({ id: "run1", params: {} });
@@ -153,5 +175,20 @@ describe("the resumer applies a decision no instance took", () => {
     const { rt, db } = await seeded();
     decide(db, "approve");
     expect(await deliver(rt, { run_id: "run1", source: "review" })).toBe("instance");
+  });
+});
+
+describe("the lever that ends a run's instance", () => {
+  const ask = (rt: Parameters<typeof terminateRoute>[0]) =>
+    terminateRoute(rt)({ req: { param: () => "run1" }, json: (body: unknown, status = 200) => Response.json(body, { status }) } as never);
+
+  it("answers not found outside the test environment, and leaves the instance running", async () => {
+    const { rt, db, fakes } = await seeded();
+    db.exec("update validation_runs set workflow_instance_id = 'run1'");
+    await fakes.workflows.VALIDATE_PACK!.create({ id: "run1", params: {} });
+    expect((await ask({ ...rt, environment: "production" })).status).toBe(404);
+    expect(fakes.workflows.VALIDATE_PACK!.instances.get("run1")?.status).toBe("running");
+    expect((await ask({ ...rt, environment: "test" })).status).toBe(200);
+    expect(fakes.workflows.VALIDATE_PACK!.instances.get("run1")?.status).toBe("terminated");
   });
 });

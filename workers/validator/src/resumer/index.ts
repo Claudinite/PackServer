@@ -64,12 +64,15 @@ export async function deliver(rt: ValidatorRuntime, w: Waiting): Promise<Deliver
       if (!(error instanceof PortError)) throw error;
     }
   }
+  const id = `${w.run_id}-resume-${w.source}`;
   try {
-    await workflow.create({ id: `${w.run_id}-resume-${Math.floor(rt.ports.clock.now() / 1000)}`, params: { run_id: w.run_id, resume: true } });
+    await workflow.create({ id, params: { run_id: w.run_id, resume: true } });
   } catch (error) {
-    // The same second's sweep already started it.
-    console.log(JSON.stringify({ event: "validator.resume_exists", run_id: w.run_id, reason: error instanceof Error ? error.message : String(error) }));
+    // Another sweep may have started this decision's instance; a create that failed for any other reason leaves the row for the next sweep.
+    const exists = await workflow.status(id).then(() => true, () => false);
+    if (!exists) throw error;
   }
+  await rt.ports.d1.query("update validation_runs set workflow_instance_id = ? where id = ?", [id, w.run_id]);
   await settled(rt, w);
   return "instance";
 }
@@ -77,6 +80,12 @@ export async function deliver(rt: ValidatorRuntime, w: Waiting): Promise<Deliver
 /** Applies every decision no instance has taken, or those of one run. */
 export async function resume(rt: ValidatorRuntime, runId?: string): Promise<Array<{ run_id: string; source: Source; delivered: Delivery }>> {
   const done: Array<{ run_id: string; source: Source; delivered: Delivery }> = [];
-  for (const w of await waiting(rt, runId)) done.push({ ...w, delivered: await deliver(rt, w) });
+  for (const w of await waiting(rt, runId)) {
+    try {
+      done.push({ ...w, delivered: await deliver(rt, w) });
+    } catch (error) {
+      console.log(JSON.stringify({ event: "validator.resume_failed", run_id: w.run_id, source: w.source, reason: error instanceof Error ? error.message : String(error) }));
+    }
+  }
   return done;
 }
