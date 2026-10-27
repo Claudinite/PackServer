@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  BURN_WINDOWS_MS, firedTiers, issueUrl, muteQuery, overdueReports, PAGES, PAGE_IDS, renderPage, renderTicket, signGitHub, signWitness, verifyHook, verifyMute,
+  BURN_WINDOWS_MS, firedTiers, holdEligibility, issueUrl, muteQuery, overdueReports, PAGES, PAGE_IDS, renderPage, renderTicket, signGitHub, signWitness, verifyHook, verifyMute,
   type BurnCounts,
 } from "../index";
 
@@ -104,6 +104,18 @@ describe("burn tiers", () => {
   it("tiers 3 and 4 are tickets", () => {
     const c = counts({ [24 * HOUR]: [100_000, 2000], [2 * HOUR]: [10_000, 200], [72 * HOUR]: [300_000, 2000], [6 * HOUR]: [30_000, 300] });
     expect(firedTiers(c, 5).map((t) => [t.tier, t.action])).toEqual([[3, "ticket"], [4, "ticket"]]);
+  });
+});
+
+describe("hold eligibility (REQ-MOD-009)", () => {
+  it("is eligible at 100 declaring repositories and not at 101, and unknown unless a count is given", () => {
+    expect(holdEligibility(0)).toBe("eligible");
+    expect(holdEligibility(100)).toBe("eligible");
+    expect(holdEligibility(101)).toBe("declared_widely");
+    for (const v of [undefined, null, "100", -1, 1.5, Number.NaN]) expect(holdEligibility(v)).toBe("unknown");
+  });
+  it("says why no action was possible, in fixed words", () => {
+    expect(renderPage("page.takedown_overdue", { noAction: "declared_widely" }).message).toContain("No automatic action was possible. The version is declared by more than 100 repositories. Do it by hand");
   });
 });
 

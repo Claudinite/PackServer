@@ -57,9 +57,22 @@ describe("/hooks/monitors", () => {
     expect(h.signals("monitoring.alert_rejected")).toHaveLength(3);
     expect(h.pager.pushes).toHaveLength(1);
   });
-  it("refuses an oversized body before reading it as an alert", async () => {
-    const { post } = setup();
+  it("refuses an oversized body, by its declared length without reading it and by count when it declares none", async () => {
+    const { app, post } = setup();
     expect((await post("/hooks/monitors", "x".repeat(9000), { "cf-webhook-auth": SECRETS.monitors })).status).toBe(413);
+    let pulled = 0;
+    const lying = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled++;
+        controller.enqueue(new Uint8Array(4096));
+        if (pulled > 50) controller.close();
+      },
+    });
+    const res = await app.request("/hooks/monitors", { method: "POST", body: lying, duplex: "half", headers: { "cf-webhook-auth": SECRETS.monitors } } as RequestInit);
+    expect(res.status).toBe(413);
+    expect(pulled).toBeLessThan(10);
+    const declared = await app.request("/hooks/monitors", { method: "POST", body: "{}", headers: { "cf-webhook-auth": SECRETS.monitors, "content-length": "99999" } });
+    expect(declared.status).toBe(413);
   });
 });
 

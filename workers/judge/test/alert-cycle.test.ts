@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { runAlerts } from "../src/alerts/cycle";
-import { alertHarness, row, toHour } from "./alert-support";
+import { PAGES_WITHOUT_INPUT } from "../src/alerts/detect";
+import { alertHarness as plainHarness, row, toHour } from "./alert-support";
+import type { ScriptBinding } from "../src/alerts/platform";
+
+const alertHarness = () => plainHarness({ strictKv: true });
 
 const MIN = 60_000;
 
@@ -8,7 +12,7 @@ describe("the takedown timer (REQ-MOD-009)", () => {
   async function prioritisedAt(minutesAgo: number) {
     const h = alertHarness();
     toHour(h.fakes.clock, 12);
-    h.data.rows = [row("moderation.report_prioritised", { report: "r1", pack: "@acme/lib", version: "1.0.0" }, { ts: h.fakes.clock.now() - minutesAgo * MIN })];
+    h.data.rows = [row("moderation.report_prioritised", { report: "r1", pack: "@acme/lib", version: "1.0.0", declared_by: 3 }, { ts: h.fakes.clock.now() - minutesAgo * MIN })];
     return h;
   }
 
@@ -42,15 +46,40 @@ describe("the takedown timer (REQ-MOD-009)", () => {
     expect(h.admin.calls).toEqual([]);
   });
 
+  it("holds a version declared by 100 repositories and not one declared by 101 (REQ-MOD-009)", async () => {
+    for (const [declared, held] of [[100, true], [101, false]] as const) {
+      const h = alertHarness();
+      toHour(h.fakes.clock, 12);
+      h.data.rows = [row("moderation.report_prioritised", { report: "r9", pack: "@acme/lib", version: "1.0.0", declared_by: declared }, { ts: h.fakes.clock.now() - 61 * MIN })];
+      await runAlerts(h.cycleDeps());
+      expect(h.admin.calls.length, `declared by ${declared}`).toBe(held ? 1 : 0);
+      const [push] = h.pager.pushes;
+      expect(push?.title).toBe("page.takedown_overdue (RB-14)");
+      if (held) expect(push?.message).toContain("Already done");
+      else expect(push?.message).toContain("No automatic action was possible. The version is declared by more than 100 repositories.");
+    }
+  });
+
+  it("takes no action when nothing says how many repositories declare the version", async () => {
+    for (const declared of [undefined, "many", -1, 12.5]) {
+      const h = alertHarness();
+      toHour(h.fakes.clock, 12);
+      h.data.rows = [row("moderation.report_prioritised", { report: "r8", pack: "@acme/lib", version: "1.0.0", ...(declared === undefined ? {} : { declared_by: declared }) }, { ts: h.fakes.clock.now() - 61 * MIN })];
+      await runAlerts(h.cycleDeps());
+      expect(h.admin.calls, String(declared)).toEqual([]);
+      expect(h.pager.pushes[0]?.message).toContain("Nothing says the version may be held automatically");
+    }
+  });
+
   it("is a ticket at night and a page when the support window opens, the hold made at once", async () => {
     const h = alertHarness();
     toHour(h.fakes.clock, 3);
-    h.data.rows = [row("moderation.report_prioritised", { report: "r2", pack: "@acme/lib", version: "2.0.0" }, { ts: h.fakes.clock.now() - 70 * MIN })];
+    h.data.rows = [row("moderation.report_prioritised", { report: "r2", pack: "@acme/lib", version: "2.0.0", declared_by: 3 }, { ts: h.fakes.clock.now() - 70 * MIN })];
     await runAlerts(h.cycleDeps());
     expect(h.admin.calls).toHaveLength(1);
     expect(h.pager.pushes.filter((p) => p.title.startsWith("page.takedown_overdue"))).toEqual([]);
     toHour(h.fakes.clock, 8);
-    h.data.rows = [row("moderation.report_prioritised", { report: "r2", pack: "@acme/lib", version: "2.0.0" }, { ts: h.fakes.clock.now() - 300 * MIN })];
+    h.data.rows = [row("moderation.report_prioritised", { report: "r2", pack: "@acme/lib", version: "2.0.0", declared_by: 3 }, { ts: h.fakes.clock.now() - 300 * MIN })];
     await runAlerts(h.cycleDeps());
     expect(h.pager.pushes.filter((p) => p.title.startsWith("page.takedown_overdue"))).toHaveLength(1);
     expect(h.admin.calls).toHaveLength(1);
@@ -108,11 +137,51 @@ describe("page triggers", () => {
     expect(other.pager.pushes).toEqual([]);
   });
 
-  it("a Cloudflare account event no release accounts for pages, and a signing-key binding is its own page (OPS-013)", async () => {
+  it("a Cloudflare account event no release accounts for pages (OPS-013)", async () => {
     const h = alertHarness();
     toHour(h.fakes.clock, 12);
-    await runAlerts(h.cycleDeps({ facts: { ...h.cycleDeps().facts, audit: [{ id: "e1", signingKey: false }, { id: "e2", signingKey: true }] } }));
-    expect(h.pager.pushes.map((p) => p.title)).toEqual(["page.account_change (RB-10)", "page.signing_key_read (RB-07)"]);
+    await runAlerts(h.cycleDeps({ facts: { ...h.cycleDeps().facts, audit: { pageworthyIds: ["e1"], bindingChecks: [] } } }));
+    expect(h.pager.pushes.map((p) => p.title)).toEqual(["page.account_change (RB-10)"]);
+  });
+
+  describe("the signing key", () => {
+    const bind = (name: string, secretName: string | null = null): ScriptBinding => ({ name, secretName });
+    it("pages when an upload a release accounts for binds it to web, from the script's bindings read back", async () => {
+      const h = alertHarness();
+      toHour(h.fakes.clock, 12);
+      h.platform.scripts.set("web", [bind("SELFTEST_HMAC_KEY"), bind("SIGNING_KEY_ACTIVE", "signing-key")]);
+      await runAlerts(h.cycleDeps({ facts: { ...h.cycleDeps().facts, audit: { pageworthyIds: [], bindingChecks: [{ id: "e2", script: "web" }] } } }));
+      expect(h.pager.pushes.map((p) => p.title)).toEqual(["page.signing_key_read (RB-07)"]);
+    });
+    it("matches the secret a binding points at, and the standby, whatever the binding is called", async () => {
+      const h = alertHarness();
+      toHour(h.fakes.clock, 12);
+      h.platform.scripts.set("mcp", [bind("KEY_B", "signing-key-standby")]);
+      await runAlerts(h.cycleDeps({ facts: { ...h.cycleDeps().facts, audit: { pageworthyIds: [], bindingChecks: [{ id: "e3", script: "mcp" }] } } }));
+      expect(h.pager.pushes.map((p) => p.title)).toEqual(["page.signing_key_read (RB-07)"]);
+    });
+    it("does not page for an upload whose bindings hold none, and never reads the validator's", async () => {
+      const h = alertHarness();
+      toHour(h.fakes.clock, 12);
+      h.platform.scripts.set("web", [bind("SELFTEST_HMAC_KEY")]);
+      h.platform.scripts.set("validator", [bind("SIGNING_KEY_ACTIVE")]);
+      await runAlerts(h.cycleDeps({ facts: { ...h.cycleDeps().facts, audit: { pageworthyIds: [], bindingChecks: [{ id: "e4", script: "web" }, { id: "e5", script: "validator" }] } } }));
+      expect(h.pager.pushes).toEqual([]);
+      expect(h.platform.readScripts).toEqual(["web"]);
+    });
+    it("pages once, as the signing page, for an unaccounted upload that binds it", async () => {
+      const h = alertHarness();
+      toHour(h.fakes.clock, 12);
+      h.platform.scripts.set("web", [bind("SIGNING_KEY_ACTIVE")]);
+      await runAlerts(h.cycleDeps({ facts: { ...h.cycleDeps().facts, audit: { pageworthyIds: ["e6"], bindingChecks: [{ id: "e6", script: "web" }] } } }));
+      expect(h.pager.pushes.map((p) => p.title)).toEqual(["page.signing_key_read (RB-07)"]);
+    });
+    it("is a cycle failure, not a quiet pass, when the bindings cannot be read", async () => {
+      const h = alertHarness();
+      h.platform.scriptBindings = async () => { throw new Error("the Cloudflare API answered 403 for accounts"); };
+      const run = await runAlerts(h.cycleDeps({ facts: { ...h.cycleDeps().facts, audit: { pageworthyIds: [], bindingChecks: [{ id: "e7", script: "web" }] } } }));
+      expect(run.failures).toEqual(["signing key check: the Cloudflare API answered 403 for accounts"]);
+    });
   });
 
   it("an unexpected index key pages and does nothing else", async () => {
@@ -236,6 +305,35 @@ describe("burn rate and release-aware routing", () => {
   });
 });
 
+describe("a cycle with several alerts", () => {
+  it("sends them all and writes each KV key once", async () => {
+    const h = alertHarness();
+    toHour(h.fakes.clock, 12);
+    h.data.rows = [
+      row("download.hash_mismatch", { version_id: "v1", pack: "@a/b", version: "1.0.0" }),
+      row("audit.chain_broken", {}),
+      row("index.key_changed", {}),
+      row("moderation.report_prioritised", { report: "r1", pack: "@a/c", version: "1.0.0", declared_by: 1 }, { ts: h.fakes.clock.now() - 90 * MIN }),
+    ];
+    h.data.rateRows = [{ signal: "publish.received", hour: 500, week: 500 + 167 * 5 }];
+    const run = await runAlerts(h.cycleDeps({ facts: { ...h.cycleDeps().facts, audit: { pageworthyIds: ["e1"], bindingChecks: [] } } }));
+    expect(run.failures).toEqual([]);
+    expect(h.pager.pushes.map((p) => p.title).sort()).toEqual([
+      "page.account_change (RB-10)", "page.audit_pipeline (RB-08)", "page.hash_mismatch (RB-03)", "page.index_key_changed (RB-06)", "page.takedown_overdue (RB-14)",
+    ]);
+    expect(h.admin.calls.map((c) => c.method).sort()).toEqual(["enable_new_pack_kill_switch", "quarantine_version", "quarantine_version"]);
+  });
+
+  it("does not raise page.admin_new_location, which has no input yet", async () => {
+    const h = alertHarness();
+    toHour(h.fakes.clock, 12);
+    h.data.rows = [row("admin.action", { login: false }), row("auth.login", { admin: true, new_location: true })];
+    await runAlerts(h.cycleDeps());
+    expect(h.pager.pushes).toEqual([]);
+    expect(PAGES_WITHOUT_INPUT).toEqual(["page.admin_new_location"]);
+  });
+});
+
 describe("tickets, polling and the daily test", () => {
   it("a publish flood turns the new-pack kill switch on and tickets it", async () => {
     const h = alertHarness();
@@ -286,6 +384,7 @@ describe("tickets, polling and the daily test", () => {
     const h = alertHarness();
     toHour(h.fakes.clock, 12);
     await runAlerts(h.cycleDeps());
+    h.fakes.clock.advance("1m");
     await runAlerts(h.cycleDeps());
     expect(h.pager.quiet.map((p) => p.title)).toEqual(["monitoring.page_test"]);
     expect(h.pager.pushes).toEqual([]);

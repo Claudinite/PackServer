@@ -47,18 +47,13 @@ export interface AuditPoll {
   pageworthy: number;
   /** Page-list events left for the next invocation by the point budget or the page limit. */
   deferred: boolean;
-  /** The events no release accounts for; `signingKey` marks one that binds a signing secret to a Worker other than the validator. */
-  events: Array<{ id: string; signingKey: boolean }>;
+  /** Ids of the page-list events no release accounts for. */
+  pageworthyIds: string[];
+  /** Every upload or secret change on the page list, accounted for or not, whose script's bindings are to be read back. */
+  bindingChecks: Array<{ id: string; script: string | null }>;
 }
 
 const scriptOf = (uri: string): string | null => /\/workers\/scripts\/([^/?]+)/.exec(uri)?.[1] ?? null;
-
-/** A binding of a signing secret to a Worker that is not the validator, which alone may hold one. */
-export function bindsSigningKey(event: AuditEvent): boolean {
-  if (!/signing[_-]?key/i.test(`${event.uri} ${event.resource.id ?? ""} ${event.resource.type}`)) return false;
-  const script = scriptOf(event.uri) ?? event.resource.id ?? "";
-  return !/^validator(-staging)?$/.test(script);
-}
 
 /** Emits `cloudflare.audit_event` for each new event on the page list, with whether the release in flight accounts for it. */
 export async function pollAccountAudit(options: {
@@ -75,7 +70,7 @@ export async function pollAccountAudit(options: {
   const state: State = raw ? (JSON.parse(raw) as State) : { since: new Date(now - FIRST_LOOKBACK_MS).toISOString(), seen: [] };
   const handled = new Set(state.seen);
   const before = new Date(now).toISOString();
-  const poll: AuditPoll = { read: 0, signalled: 0, pageworthy: 0, deferred: false, events: [] };
+  const poll: AuditPoll = { read: 0, signalled: 0, pageworthy: 0, deferred: false, pageworthyIds: [], bindingChecks: [] };
   let since = state.since;
   let seen = state.seen;
 
@@ -107,8 +102,9 @@ export async function pollAccountAudit(options: {
         poll.signalled++;
         if (judgement.pageworthy) {
           poll.pageworthy++;
-          poll.events.push({ id: event.id, signingKey: bindsSigningKey(event) });
+          poll.pageworthyIds.push(event.id);
         }
+        if (judgement.category === "worker_upload" || judgement.category === "secrets") poll.bindingChecks.push({ id: event.id, script: scriptOf(event.uri) ?? event.resource.id });
       }
       seen = event.at === since ? [...seen, event.id] : [event.id];
       since = event.at;

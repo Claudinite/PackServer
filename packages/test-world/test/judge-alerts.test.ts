@@ -18,24 +18,22 @@ beforeAll(async () => {
 afterAll(() => driver.dispose());
 
 describe("the judge's inbound hooks, in the Worker itself", () => {
-  it("page Ariel by Pushover and mail ops once a hook verifies, and a repeat is merged", async () => {
-    const body = JSON.stringify({ name: "page.monitoring_dead" });
-    const ok = await hook("/hooks/monitors", body, { "cf-webhook-auth": MONITORS });
-    expect(ok.status).toBe(202);
-    await hook("/hooks/monitors", body, { "cf-webhook-auth": MONITORS });
-    // monitoring_dead is a support-hours page: at this hour it is a page or a ticket, never lost.
-    const mailed = driver.fakes.ports.mail.inbox("ops@claudinite.com");
-    expect(driver.fakes.pushover.delivered.length + mailed.length).toBeGreaterThan(0);
+  it("merge a repeat of an authenticated alert: one push and one mail for two identical hooks", async () => {
+    const body = JSON.stringify({ name: "page.hash_mismatch" });
+    expect((await hook("/hooks/monitors", body, { "cf-webhook-auth": MONITORS })).status).toBe(202);
+    expect((await hook("/hooks/monitors", body, { "cf-webhook-auth": MONITORS })).status).toBe(202);
+    expect(driver.fakes.pushover.delivered.map((p) => p.title)).toEqual(["page.hash_mismatch (RB-03)"]);
+    expect(driver.fakes.ports.mail.inbox("ops@claudinite.com")).toHaveLength(1);
     expect(driver.fakes.pushover.refused).toEqual([]);
-    for (const push of driver.fakes.pushover.delivered) expect(push.title).toBe("page.monitoring_dead (RB-15)");
   });
 
-  it("page a trust alert at any hour, to Ariel only, with a signed mute link in the mail", async () => {
+  it("page a trust alert at any hour, with the ops page behind the tap, to Ariel only, with a signed mute link in the mail", async () => {
     await driver.reset();
     const ok = await hook("/hooks/monitors", JSON.stringify({ name: "page.hash_mismatch", count: 1 }), { "cf-webhook-auth": MONITORS });
     expect(ok.status).toBe(202);
     expect(driver.fakes.pushover.delivered.map((p) => p.title)).toEqual(["page.hash_mismatch (RB-03)"]);
     expect(driver.fakes.pushover.delivered[0]?.message).not.toMatch(/https?:/);
+    expect(driver.fakes.pushover.delivered[0]?.url).toBe("https://registry-admin-test.claudinite.com/admin/ops");
     const [mail] = driver.fakes.ports.mail.inbox("ops@claudinite.com");
     expect(mail?.text).toMatch(/\/hooks\/mute\?page=page\.hash_mismatch&until=\d+&sig=[0-9a-f]{64}/);
   });

@@ -1,7 +1,7 @@
 import { analyticsStats, createIsolateTelemetry } from "@packserver/http";
 import type { HookSource, SupportWindow } from "@packserver/core/alerts";
 import {
-  accessPort, cryptoRng, kvPort, mailPort, systemClock, workerRuntime, readSecret, type SendEmailBinding, type WorkerRuntime,
+  accessPort, cryptoRng, kvPort, mailPort, systemClock, workerRuntime, readSecret, type MailTelemetry, type SendEmailBinding, type WorkerRuntime,
 } from "@packserver/ports/cloudflare";
 import type { Ports } from "@packserver/ports";
 import { analyticsAlertData } from "./alerts/read";
@@ -71,8 +71,7 @@ export interface JudgeServices {
 export interface AlertsConfig {
   data: AlertDataSource;
   pager: Pager;
-  /** Absent until the zone id and queue ids are set; the polls are then skipped. */
-  platform?: Platform;
+  platform: Platform;
   dispatch: DispatchConfig;
   window: SupportWindow;
   secrets: Record<HookSource, () => Promise<string | undefined>>;
@@ -92,9 +91,9 @@ export interface JudgeConfig {
 export type JudgeRuntime = WorkerRuntime<JudgePorts, JudgeServices> & { config: JudgeConfig };
 
 /** Mail failures are reported by the router's own `monitoring.alert_sent` signal; the port's hook only needs somewhere to log. */
-const logTelemetry = {
-  signal: (name: string, fields: Record<string, string | number>) => console.log(JSON.stringify({ signal: name, ...fields })),
-  ticket: (kind: string, fields: Record<string, string | number>) => console.log(JSON.stringify({ ticket: kind, ...fields })),
+const logTelemetry: MailTelemetry = {
+  signal: (name, fields) => console.log(JSON.stringify({ signal: name, ...fields })),
+  ticket: (kind, fields) => console.log(JSON.stringify({ ticket: kind, ...fields })),
 };
 const MAIL_FAILURE_THRESHOLD = 2;
 
@@ -127,7 +126,7 @@ export function createRuntime(env: Env): JudgeRuntime {
       ),
       kv: { GATES_KV: kvPort(env.GATES_KV), TELEMETRY_KV: telemetryKv },
       access: accessPort(env.ENVIRONMENT, env.ACCESS),
-      mail: mailPort(env.ENVIRONMENT, env.EMAIL, { from: env.MAIL_FROM, telemetry: logTelemetry as never, failureThreshold: MAIL_FAILURE_THRESHOLD }),
+      mail: mailPort(env.ENVIRONMENT, env.EMAIL, { from: env.MAIL_FROM, telemetry: logTelemetry, failureThreshold: MAIL_FAILURE_THRESHOLD }),
     },
     { admin: env.ADMIN },
   );
@@ -146,9 +145,12 @@ export function createRuntime(env: Env): JudgeRuntime {
           : {
               data: analyticsAlertData(analytics),
               pager: pushoverPager({ token: () => readSecret(env.PUSHOVER_APP_TOKEN), user: () => readSecret(env.PUSHOVER_USER_KEY) }),
-              ...(env.CF_ZONE_ID && env.QUEUE_IDS
-                ? { platform: cloudflarePlatform({ accountId: () => readSecret(env.CF_ACCOUNT_ID), zoneId: env.CF_ZONE_ID, token: () => readSecret(env.CF_PLATFORM_READ_TOKEN), queueIds: parseQueueIds(env.QUEUE_IDS) }) }
-                : {}),
+              platform: cloudflarePlatform({
+                accountId: () => readSecret(env.CF_ACCOUNT_ID),
+                zoneId: env.CF_ZONE_ID || undefined,
+                token: () => readSecret(env.CF_PLATFORM_READ_TOKEN),
+                queueIds: parseQueueIds(env.QUEUE_IDS ?? ""),
+              }),
               dispatch: { opsEmail: env.OPS_EMAIL as string, opsPageUrl: env.OPS_PAGE_URL as string, publicOrigin: env.PUBLIC_ORIGIN as string, muteKey: () => readSecret(env.MUTE_HMAC_KEY) },
               window,
               secrets: { monitors: optionalSecret(env.HOOK_SECRET_MONITORS), issues: optionalSecret(env.HOOK_SECRET_ISSUES), witness: optionalSecret(env.HOOK_SECRET_WITNESS) },

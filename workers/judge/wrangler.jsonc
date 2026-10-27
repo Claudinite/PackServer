@@ -34,7 +34,7 @@
         "CI_TOKEN_IDS": "",
         "MAIL_FROM": "noreply@claudinite.com",
         "OPS_EMAIL": "ops@claudinite.com",
-        "OPS_PAGE_URL": "https://admin-test.claudinite.com/ops",
+        "OPS_PAGE_URL": "https://registry-admin-test.claudinite.com/admin/ops",
         "PUBLIC_ORIGIN": "https://registry-test.claudinite.com",
         "SUPPORT_HOURS_UTC": "7-19",
         "CF_ZONE_ID": "test-zone",
@@ -129,10 +129,10 @@
         "CI_TOKEN_IDS": "",
         "MAIL_FROM": "noreply@claudinite.com",
         "OPS_EMAIL": "ops@claudinite.com",
-        "OPS_PAGE_URL": "https://admin-staging.claudinite.com/ops",
+        "OPS_PAGE_URL": "https://registry-admin-staging.claudinite.com/admin/ops",
         "PUBLIC_ORIGIN": "https://registry-staging.claudinite.com",
         "SUPPORT_HOURS_UTC": "7-19",
-        "CF_ZONE_ID": "00000000000000000000120000000099",
+        "CF_ZONE_ID": "",
         "QUEUE_IDS": ""
       },
       "kv_namespaces": [
@@ -238,7 +238,10 @@
       ],
       "send_email": [
         {
-          "name": "EMAIL"
+          "name": "EMAIL",
+          "allowed_destination_addresses": [
+            "ops@claudinite.com"
+          ]
         }
       ],
       "version_metadata": {
@@ -292,10 +295,10 @@
         "CI_TOKEN_IDS": "",
         "MAIL_FROM": "noreply@claudinite.com",
         "OPS_EMAIL": "ops@claudinite.com",
-        "OPS_PAGE_URL": "https://admin.claudinite.com/ops",
+        "OPS_PAGE_URL": "https://registry-admin.claudinite.com/admin/ops",
         "PUBLIC_ORIGIN": "https://registry.claudinite.com",
         "SUPPORT_HOURS_UTC": "7-19",
-        "CF_ZONE_ID": "00000000000000000000220000000099",
+        "CF_ZONE_ID": "",
         "QUEUE_IDS": ""
       },
       "kv_namespaces": [
@@ -401,7 +404,10 @@
       ],
       "send_email": [
         {
-          "name": "EMAIL"
+          "name": "EMAIL",
+          "allowed_destination_addresses": [
+            "ops@claudinite.com"
+          ]
         }
       ],
       "version_metadata": {

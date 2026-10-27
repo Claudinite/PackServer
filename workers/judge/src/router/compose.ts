@@ -23,6 +23,6 @@ export function scheduledAlerts(runtime: JudgeRuntime, emit: Telemetry["emit"]):
   const wiring = composeAlerts(runtime, alerts, emit);
   return {
     alertsMissing: [],
-    alerts: { data: alerts.data, router: wiring.router, dispatcher: wiring.dispatcher, store: wiring.store, pager: alerts.pager, opsPageUrl: alerts.dispatch.opsPageUrl, ...(alerts.platform ? { platform: alerts.platform } : {}) },
+    alerts: { data: alerts.data, router: wiring.router, dispatcher: wiring.dispatcher, store: wiring.store, pager: alerts.pager, opsPageUrl: alerts.dispatch.opsPageUrl, platform: alerts.platform },
   };
 }

@@ -33,6 +33,31 @@ const IssueBody = z.object({
   issue: z.object({ title: z.string().max(300) }),
 });
 
+/** Reads a body up to the limit and stops there, so a body that lies about its length is never held whole. */
+async function readLimited(request: Request, limit: number): Promise<string | null> {
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > limit) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let at = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
 const detection = (page: PageId, key: string, fields: Detection["fields"]): Detection => ({ target: { kind: "page", page, key }, fields, actions: [] });
 
 /** The judge's inbound hooks. Each source is verified with its own scheme and secret before its body is read as anything. */
@@ -43,9 +68,11 @@ export function hookRoutes(deps: HookDeps): Hono {
     return c.json({ error: reason }, status, NO_STORE);
   };
 
-  async function authenticated(source: HookSource, c: { req: { header(n: string): string | undefined; text(): Promise<string> } }): Promise<{ body: string } | { reason: string; status: 401 | 413 }> {
-    const body = await c.req.text();
-    if (new TextEncoder().encode(body).length > MAX_BODY_BYTES) return { reason: "too_large", status: 413 };
+  async function authenticated(source: HookSource, c: { req: { header(n: string): string | undefined; raw: Request } }): Promise<{ body: string } | { reason: string; status: 401 | 413 }> {
+    const declared = Number(c.req.header("content-length"));
+    if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return { reason: "too_large", status: 413 };
+    const body = await readLimited(c.req.raw, MAX_BODY_BYTES);
+    if (body === null) return { reason: "too_large", status: 413 };
     await syncClock(deps.clock);
     const check = await verifyHook(source, { header: (n) => c.req.header(n), body }, await deps.secrets[source](), deps.clock.now());
     return check.ok ? { body } : { reason: check.reason, status: 401 };

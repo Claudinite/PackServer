@@ -5,15 +5,24 @@ export interface QueueBacklog {
   oldestAgeS: number | null;
 }
 
+export interface ScriptBinding {
+  name: string;
+  /** The Secrets Store secret a binding reads, when it is one. */
+  secretName: string | null;
+}
+
 export interface Platform {
+  /** Empty when no queue ids are configured. */
   queueBacklogs(nowMs: number): Promise<QueueBacklog[]>;
-  /** Logpush jobs whose last attempt failed and was not followed by a success. */
-  failingLogpushJobs(): Promise<number>;
+  /** Logpush jobs whose last attempt failed and was not followed by a success; null when no zone is configured. */
+  failingLogpushJobs(): Promise<number | null>;
+  /** The bindings a Worker script carries right now, read back from the account. */
+  scriptBindings(script: string): Promise<ScriptBinding[]>;
 }
 
 export interface PlatformConfig {
   accountId: () => Promise<string>;
-  zoneId: string;
+  zoneId: string | undefined;
   token: () => Promise<string>;
   /** Queue name to id. */
   queueIds: Readonly<Record<string, string>>;
@@ -32,6 +41,13 @@ export function cloudflarePlatform(config: PlatformConfig, fetchImpl: typeof fet
     return body.result;
   }
   return {
+    async scriptBindings(script) {
+      const settings = (await get(`accounts/${await config.accountId()}/workers/scripts/${encodeURIComponent(script)}/settings`)) as { bindings?: unknown } | null;
+      if (!Array.isArray(settings?.bindings)) throw new Error("the script settings carried no bindings list");
+      return settings.bindings.flatMap((b: { name?: unknown; secret_name?: unknown }) =>
+        typeof b?.name === "string" ? [{ name: b.name, secretName: typeof b.secret_name === "string" ? b.secret_name : null }] : [],
+      );
+    },
     async queueBacklogs(now) {
       const account = await config.accountId();
       const out: QueueBacklog[] = [];
@@ -44,9 +60,17 @@ export function cloudflarePlatform(config: PlatformConfig, fetchImpl: typeof fet
       return out;
     },
     async failingLogpushJobs() {
+      if (!config.zoneId) return null;
       const jobs = await get(`zones/${config.zoneId}/logpush/jobs`);
       if (!Array.isArray(jobs)) throw new Error("the Logpush listing was not a list");
       return jobs.filter((j: { last_error?: string | null; last_complete?: string | null }) => typeof j.last_error === "string" && (typeof j.last_complete !== "string" || j.last_error > j.last_complete)).length;
     },
   };
 }
+
+const SIGNING_KEY = /signing[-_]?key/i;
+/** Only the validator may hold a signing secret. */
+export const mayHoldSigningKey = (script: string): boolean => /^validator(-staging)?$/.test(script);
+
+/** Whether any binding reads a signing secret, by the binding's name or the secret it points at. */
+export const bindsSigningKey = (bindings: readonly ScriptBinding[]): boolean => bindings.some((b) => SIGNING_KEY.test(b.name) || SIGNING_KEY.test(b.secretName ?? ""));

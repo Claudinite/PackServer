@@ -64,9 +64,11 @@ describe("delivery", () => {
     const send = h.fakes.mail.send.bind(h.fakes.mail);
     (h.fakes.mail as { send: unknown }).send = async () => { throw new Error("down"); };
     await h.router.raise({ target: { kind: "ticket", ticket: "email_failed", key: "e" }, fields: {}, actions: [] }, "launch");
+    await h.dispatcher.flush();
     expect(await h.store.outbox()).toHaveLength(1);
     (h.fakes.mail as { send: unknown }).send = send;
     expect(await h.dispatcher.retryOutbox()).toBe(1);
+    await h.dispatcher.flush();
     expect(await h.store.outbox()).toEqual([]);
     expect(h.fakes.mail.inbox("ops@example.test")).toHaveLength(1);
   });
@@ -115,7 +117,7 @@ describe("support hours", () => {
     expect(h.pager.pushes).toEqual([]);
     expect(h.fakes.mail.sent.some((m) => m.subject.startsWith("[ticket]"))).toBe(true);
     toHour(h.fakes.clock, 8);
-    expect(await h.router.drain()).toBe(1);
+    expect((await h.router.raiseAll([], "launch", { drain: true })).drained).toBe(1);
     expect(h.pager.pushes.map((p) => p.title)).toEqual(["page.monitoring_dead (RB-15)"]);
   });
 });
@@ -172,5 +174,64 @@ describe("mutes", () => {
     await h.router.mute("page.hash_mismatch", h.fakes.clock.now() + 3_600_000);
     expect((await h.router.raise(page("page.hash_mismatch"), "launch")).dropped).toBe("muted");
     expect((await h.router.raise(page("page.index_key_changed"), "launch")).dropped).toBeNull();
+  });
+});
+
+describe("one cycle's alerts", () => {
+  it("are routed against one state and written once, so KV's one write a second to a key is never broken", async () => {
+    const h = alertHarness({ strictKv: true });
+    toHour(h.fakes.clock, 12);
+    const detections = [
+      page("page.hash_mismatch", "a", { actions: [{ method: "quarantine_version", pack: "@a/b", version: "1.0.0", reason: "r" }], actionKey: "qa" }),
+      page("page.audit_pipeline", "b"),
+      page("page.index_key_changed", "c"),
+      page("page.hash_mismatch", "a"),
+      { target: { kind: "ticket", ticket: "abuse_flood", key: "t" }, fields: {}, actions: [{ method: "enable_new_pack_kill_switch", reason: "r" }], actionKey: "kill" } as Detection,
+    ];
+    const batch = await h.router.raiseAll(detections, "launch", { drain: true });
+    expect(batch.errors).toEqual([]);
+    expect(h.pager.pushes.map((p) => p.title)).toEqual(["page.hash_mismatch (RB-03)", "page.audit_pipeline (RB-08)", "page.index_key_changed (RB-06)"]);
+    expect(batch.raised.map((r) => r.dropped)).toEqual([null, null, null, "deduped", null]);
+    expect(h.admin.calls.map((c) => c.method)).toEqual(["quarantine_version", "enable_new_pack_kill_switch"]);
+    expect(h.fakes.mail.sent.filter((m) => m.subject.startsWith("ticket."))).toHaveLength(1);
+  });
+
+  it("send every page whose action ran even when one delivery throws, and still write the state", async () => {
+    const h = alertHarness({ strictKv: true });
+    toHour(h.fakes.clock, 12);
+    const send = h.pager.send.bind(h.pager);
+    let calls = 0;
+    h.pager.send = async (push) => {
+      if (calls++ === 0) throw new Error("Pushover answered 500");
+      return send(push);
+    };
+    (h.fakes.mail as { send: unknown }).send = async () => { throw new Error("mail down"); };
+    const batch = await h.router.raiseAll([page("page.hash_mismatch", "a"), page("page.audit_pipeline", "b")], "launch");
+    expect(batch.errors).toEqual(["neither channel took page.hash_mismatch"]);
+    expect(h.pager.pushes.map((p) => p.title)).toEqual(["page.audit_pipeline (RB-08)"]);
+    expect((await h.store.state()).sent).toHaveLength(2);
+  });
+});
+
+describe("acknowledgement", () => {
+  it("keeps an ongoing condition quiet once its ticket is closed, and pages a new incident after it has been quiet", async () => {
+    const h = alertHarness();
+    toHour(h.fakes.clock, 12);
+    await h.router.raise(page("page.index_key_changed", "k"), "launch");
+    expect(await h.router.acknowledge("page.index_key_changed")).toBe(true);
+    for (let i = 0; i < 4; i++) {
+      h.fakes.clock.advance("1h");
+      expect((await h.router.raise(page("page.index_key_changed", "k"), "launch")).dropped).toBe("acknowledged");
+    }
+    expect(h.pager.pushes).toHaveLength(1);
+    h.fakes.clock.advance("3h");
+    expect((await h.router.raise(page("page.index_key_changed", "k"), "launch")).delivered).toHaveLength(1);
+  });
+  it("leaves other pages alone", async () => {
+    const h = alertHarness();
+    toHour(h.fakes.clock, 12);
+    await h.router.raise(page("page.index_key_changed", "k"), "launch");
+    await h.router.acknowledge("page.index_key_changed");
+    expect((await h.router.raise(page("page.audit_pipeline", "k"), "launch")).delivered).toHaveLength(1);
   });
 });

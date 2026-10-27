@@ -16,11 +16,16 @@ export interface DispatchConfig {
 
 export interface Dispatcher {
   deliver(delivery: Delivery, fields: AlertFields, now: number): Promise<void>;
+  /** Tries the mails an earlier run could not send; what still fails is held in memory until `flush`. */
   retryOutbox(): Promise<number>;
+  /** Writes the outbox once, with everything held since the last flush. KV takes one write a second to a key. */
+  flush(): Promise<void>;
 }
 
 export function dispatcher(deps: { pager: Pager; mail: Mail; config: DispatchConfig; store: RouterStore; emit: Telemetry["emit"] }): Dispatcher {
   const { pager, mail, config, store, emit } = deps;
+  let carried: OutboxItem[] | null = null;
+  const pending: OutboxItem[] = [];
 
   async function sendMail(item: OutboxItem): Promise<boolean> {
     try {
@@ -34,7 +39,7 @@ export function dispatcher(deps: { pager: Pager; mail: Mail; config: DispatchCon
   /** A mail that could not go is kept and tried again next cycle. */
   async function mailOrQueue(item: OutboxItem): Promise<boolean> {
     const ok = await sendMail(item);
-    if (!ok) await store.putOutbox([...(await store.outbox()), item]);
+    if (!ok) pending.push(item);
     return ok;
   }
 
@@ -70,12 +75,19 @@ export function dispatcher(deps: { pager: Pager; mail: Mail; config: DispatchCon
       return ticket(delivery.source, fields, delivery.reason, now);
     },
     async retryOutbox() {
-      const items = await store.outbox();
+      const items = carried ?? (await store.outbox());
       if (items.length === 0) return 0;
       const remaining: OutboxItem[] = [];
       for (const item of items) if (!(await sendMail(item))) remaining.push(item);
-      await store.putOutbox(remaining);
+      carried = remaining;
       return items.length - remaining.length;
+    },
+    async flush() {
+      if (carried === null && pending.length === 0) return;
+      const held = [...(carried ?? (await store.outbox())), ...pending];
+      carried = null;
+      pending.length = 0;
+      await store.putOutbox(held);
     },
   };
 }

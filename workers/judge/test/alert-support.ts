@@ -2,7 +2,7 @@ import type { SupportWindow } from "@packserver/core/alerts";
 import { CANDIDATE_MIRROR_KEY, type Clock } from "@packserver/ports";
 import type { FakePorts } from "@packserver/ports/fakes";
 import type { AlertCycleDeps } from "../src/alerts/cycle";
-import type { Platform } from "../src/alerts/platform";
+import type { Platform, ScriptBinding } from "../src/alerts/platform";
 import type { AlertDataSource, AlertRow, BurnRow, RateRow } from "../src/alerts/source";
 import { signalEmitter } from "../src/heartbeat/emit";
 import { dispatcher, type DispatchConfig } from "../src/router/dispatch";
@@ -44,9 +44,16 @@ export class FakePager implements Pager {
 
 export class FakePlatform implements Platform {
   queues: Array<{ queue: string; depth: number; oldestAgeS: number | null }> = [];
-  failingJobs = 0;
+  failingJobs: number | null = 0;
+  /** Bindings by script name, as the account would return them. */
+  scripts = new Map<string, ScriptBinding[]>();
+  readScripts: string[] = [];
   async queueBacklogs() { return this.queues; }
   async failingLogpushJobs() { return this.failingJobs; }
+  async scriptBindings(script: string) {
+    this.readScripts.push(script);
+    return this.scripts.get(script) ?? [];
+  }
 }
 
 export const row = (signal: string, attrs: Record<string, unknown>, patch: Partial<AlertRow> = {}): AlertRow => ({
@@ -60,13 +67,25 @@ export const DISPATCH: DispatchConfig = {
   muteKey: async () => "mute-key",
 };
 
-export function alertHarness(patch: { fakes?: FakePorts; admin?: FakeAdmin } = {}) {
+export function alertHarness(patch: { fakes?: FakePorts; admin?: FakeAdmin; strictKv?: boolean } = {}) {
   const fakes = patch.fakes ?? judgeFakes();
   const admin = patch.admin ?? new FakeAdmin();
   const pager = new FakePager();
   const data = new FakeAlertData();
   const platform = new FakePlatform();
   const kv = fakes.kv["GATES_KV"] as NonNullable<(typeof fakes.kv)[string]>;
+  if (patch.strictKv) {
+    // Workers KV answers 429 to a second write to one key within a second.
+    const lastWrite = new Map<string, number>();
+    const put = kv.put.bind(kv);
+    kv.put = async (key, value, options) => {
+      const at = fakes.clock.now();
+      const before = lastWrite.get(key);
+      if (before !== undefined && at - before < 1000) throw new Error(`KV PUT failed: 429 for ${key}`);
+      lastWrite.set(key, at);
+      return put(key, value, options);
+    };
+  }
   const telemetryKv = fakes.kv["TELEMETRY_KV"] as NonNullable<(typeof fakes.kv)[string]>;
   const store = routerStore(kv);
   const emit = signalEmitter({ releaseId: "rel", versionId: "judge-1", clock: fakes.clock as Clock, stats: fakes.stats, telemetry: fakes.telemetry });
@@ -84,7 +103,7 @@ export function alertHarness(patch: { fakes?: FakePorts; admin?: FakeAdmin } = {
     platform,
     release: null,
     mode: "launch",
-    facts: { indexFetches: new Map(), requestsToday: 0, requestsPerSecond: 5, audit: [], allowance: 1000, telemetryMode: "normal" },
+    facts: { indexFetches: new Map(), requestsToday: 0, requestsPerSecond: 5, audit: { pageworthyIds: [], bindingChecks: [] }, allowance: 1000, telemetryMode: "normal" },
     ...patchDeps,
   });
   const signals = (name: string) => fakes.stats.points.filter((p) => p.name === name).map((p) => ({ ...p, attrs: JSON.parse(p.blobs[3] ?? "{}") as Record<string, unknown> }));

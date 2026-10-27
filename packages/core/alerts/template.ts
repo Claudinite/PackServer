@@ -8,8 +8,8 @@ export interface AlertFields {
   at?: string;
   /** The automatic action was tried and did not happen, so the page must not say it is done. */
   actionFailed?: boolean;
-  /** The signal did not carry what the action needs, so none could be tried. */
-  noAction?: boolean;
+  /** No action was tried, and why; the page says so in fixed words. */
+  noAction?: "version_not_named" | "declared_widely" | "eligibility_unknown";
 }
 
 export interface Rendered {
@@ -36,9 +36,15 @@ function details(fields: AlertFields): string[] {
   return parts;
 }
 
+const NO_ACTION: Record<NonNullable<AlertFields["noAction"]>, string> = {
+  version_not_named: "The signal did not name the version",
+  declared_widely: "The version is declared by more than 100 repositories",
+  eligibility_unknown: "Nothing says the version may be held automatically",
+};
+
 export function renderPage(id: PageId, fields: AlertFields = {}): Rendered {
   const def = PAGES[id];
-  const done = fields.actionFailed === true ? "The automatic action FAILED, do it by hand" : fields.noAction === true ? "No automatic action was possible, do it by hand" : `Already done: ${def.done}`;
+  const done = fields.actionFailed === true ? "The automatic action FAILED, do it by hand" : fields.noAction !== undefined ? `No automatic action was possible. ${NO_ACTION[fields.noAction]}. Do it by hand` : `Already done: ${def.done}`;
   return {
     title: escapeText(`${def.id} (${def.runbook})`),
     message: escapeText([`${def.title}.`, `${done}.`, `First tap: ${def.tap} on the ops page.`, ...details(fields)].join(" ")),

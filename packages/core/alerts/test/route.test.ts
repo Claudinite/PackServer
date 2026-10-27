@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { drainDeferred, emptyRouterState, mutePage, route, PAGES_PER_HOUR, type AlertInput, type RouterState, type SupportWindow } from "../index";
+import { acknowledgePage, drainDeferred, emptyRouterState, mutePage, route, PAGES_PER_HOUR, type AlertInput, type RouterState, type SupportWindow } from "../index";
 
 const WINDOW: SupportWindow = { startHour: 7, endHour: 19 };
 const NOON = Date.UTC(2026, 9, 27, 12, 0, 0);
@@ -122,5 +122,20 @@ describe("tickets", () => {
     expect(first.deliveries).toEqual([{ kind: "ticket", source: { ticket: "abuse_flood" }, reason: "ticket" }]);
     expect(route(t, first.state, NOON + 1000, WINDOW).dropped).toBe("deduped");
     expect(route(t, first.state, NOON + 25 * 3_600_000, WINDOW).deliveries).toHaveLength(1);
+  });
+});
+
+describe("acknowledgement", () => {
+  it("silences a page's recurring alerts while they recur and forgets them once quiet", () => {
+    const first = route(page("page.index_key_changed", "k"), emptyRouterState(), NOON, WINDOW);
+    const acked = acknowledgePage(first.state, "page.index_key_changed");
+    const again = route(page("page.index_key_changed", "k"), acked, NOON + 2 * 3_600_000 - 1, WINDOW);
+    expect(again.dropped).toBe("acknowledged");
+    const later = route(page("page.index_key_changed", "k"), again.state, NOON + 2 * 3_600_000 - 1 + 2 * 3_600_000 + 1, WINDOW);
+    expect(later.deliveries).toEqual([{ kind: "page", page: "page.index_key_changed" }]);
+  });
+  it("is per page, though two pages share a key", () => {
+    const a = route(page("page.index_key_changed", "k"), emptyRouterState(), NOON, WINDOW);
+    expect(route(page("page.audit_pipeline", "k"), a.state, NOON, WINDOW).deliveries).toHaveLength(1);
   });
 });

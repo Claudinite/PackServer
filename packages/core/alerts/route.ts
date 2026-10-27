@@ -13,11 +13,23 @@ export interface RouterState {
   /** When each page of the last hour went out; storm pages are not counted. */
   sent: number[];
   stormAt: number | null;
-  seen: Record<string, { at: number; count: number }>;
+  seen: Record<string, SeenAlert>;
   mutes: Record<string, number>;
   /** Support-hours pages raised outside the window, paged when it opens. */
   deferred: PageId[];
 }
+
+export interface SeenAlert {
+  at: number;
+  count: number;
+  /** The page it belongs to; absent on a ticket. */
+  page?: PageId;
+  /** A person acknowledged it: while the condition keeps recurring it stays quiet. */
+  acked?: boolean;
+}
+
+/** An acknowledged alert is forgotten once its condition has been quiet this long, so a new incident pages. */
+export const ACK_QUIET_MS = 2 * HOUR_MS;
 
 export const emptyRouterState = (): RouterState => ({ sent: [], stormAt: null, seen: {}, mutes: {}, deferred: [] });
 
@@ -48,7 +60,7 @@ export type AlertInput =
   | { kind: "page"; page: PageId; key: string; authenticated: boolean; mode: "pre-launch" | "launch"; release?: ReleaseContext }
   | { kind: "ticket"; ticket: TicketKind; key: string; authenticated: boolean };
 
-export type DropReason = "unauthenticated" | "deduped" | "muted" | "controller" | "deploy_gate";
+export type DropReason = "unauthenticated" | "deduped" | "muted" | "acknowledged" | "controller" | "deploy_gate";
 
 export type Delivery =
   | { kind: "page"; page: PageId }
@@ -61,7 +73,7 @@ export interface Routed {
 }
 
 function prune(state: RouterState, now: number): RouterState {
-  const seen = Object.fromEntries(Object.entries(state.seen).filter(([, v]) => now - v.at < TICKET_DEDUPE_MS));
+  const seen = Object.fromEntries(Object.entries(state.seen).filter(([, v]) => now - v.at < (v.acked ? ACK_QUIET_MS : TICKET_DEDUPE_MS)));
   const mutes = Object.fromEntries(Object.entries(state.mutes).filter(([, until]) => until > now));
   return { ...state, sent: state.sent.filter((t) => now - t < HOUR_MS), seen, mutes };
 }
@@ -110,10 +122,11 @@ export function route(input: AlertInput, stateIn: RouterState, now: number, wind
     if (verdict !== "page") return refuse(verdict);
   }
   if ((state.mutes[input.page] ?? 0) > now) return refuse("muted");
-  const key = `page|${input.key}`;
+  const key = `page|${input.page}|${input.key}`;
   const known = state.seen[key];
+  if (known?.acked) return refuse("acknowledged", { ...state, seen: { ...state.seen, [key]: { ...known, at: now, count: known.count + 1 } } });
   if (known && now - known.at < PAGE_DEDUPE_MS) return refuse("deduped", { ...state, seen: { ...state.seen, [key]: { at: known.at, count: known.count + 1 } } });
-  const seen = { ...state.seen, [key]: { at: now, count: 1 } };
+  const seen = { ...state.seen, [key]: { at: now, count: 1, page: input.page } };
 
   const deliveries: Delivery[] = [];
   if (def.supportHours && !inSupportHours(now, window)) {
@@ -134,6 +147,12 @@ export function drainDeferred(stateIn: RouterState, now: number, window: Support
   let next: RouterState = { ...state, deferred: [] };
   for (const page of state.deferred) if ((next.mutes[page] ?? 0) <= now) next = deliverPage(next, page, now, deliveries);
   return { deliveries, dropped: null, state: next };
+}
+
+/** A person acknowledged the page: every alert of it seen so far stays quiet for as long as it keeps recurring. */
+export function acknowledgePage(state: RouterState, page: PageId): RouterState {
+  const seen = Object.fromEntries(Object.entries(state.seen).map(([k, v]) => [k, v.page === page ? { ...v, acked: true } : v]));
+  return { ...state, seen, deferred: state.deferred.filter((p) => p !== page) };
 }
 
 /** Records a mute; later alerts of that page are dropped until it lapses. */

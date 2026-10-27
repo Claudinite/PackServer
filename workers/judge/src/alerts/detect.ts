@@ -1,5 +1,5 @@
 import {
-  firedTiers, overdueReports, sumCounts, type AlertFields, type BurnCounts, type PageId, type PrioritisedReport, type ReleaseContext, type TicketKind,
+  firedTiers, holdEligibility, overdueReports, sumCounts, type AlertFields, type BurnCounts, type PageId, type PrioritisedReport, type ReleaseContext, type TicketKind,
 } from "@packserver/core/alerts";
 import type { IndexFetch, ReleaseRecord } from "@packserver/core/gates";
 import type { AdminRequest } from "@packserver/schema";
@@ -85,7 +85,7 @@ export function detect(ctx: DetectContext): Detection[] {
     const named = pack !== null && version !== null;
     const id = str(r.a.version_id) ?? `${pack}@${version}`;
     // A private pack's name never reaches a log, so its signal carries an opaque id and the admin API cannot be asked.
-    page("page.hash_mismatch", `hash_mismatch|${id}`, { count: r.n30m, ...(named ? {} : { noAction: true }) }, named ? [{ method: "quarantine_version", pack, version, reason: "server-observed hash mismatch" }] : [], { actionKey: `quarantine|${id}` });
+    page("page.hash_mismatch", `hash_mismatch|${id}`, { count: r.n30m, ...(named ? {} : { noAction: "version_not_named" as const }) }, named ? [{ method: "quarantine_version", pack, version, reason: "server-observed hash mismatch" }] : [], { actionKey: `quarantine|${id}` });
   }
   // Two covering principals reporting a private version is quarantined by the serving Worker; the page is the judge's.
   for (const r of by(ctx.rows, "moderation.quarantined")) {
@@ -140,15 +140,25 @@ function publishStalled(ctx: DetectContext, page: PageSink): void {
 
 function takedown(ctx: DetectContext, page: PageSink): void {
   const prioritised: PrioritisedReport[] = [];
+  const declared = new Map<string, unknown>();
   for (const r of by(ctx.rows, "moderation.report_prioritised")) {
     const id = str(r.a.report);
     const pack = str(r.a.pack);
     const version = str(r.a.version);
-    if (id && pack && version) prioritised.push({ id, pack, version, at: r.ts });
+    if (!id || !pack || !version) continue;
+    prioritised.push({ id, pack, version, at: r.ts });
+    declared.set(id, r.a.declared_by);
   }
   const decided = new Set([...by(ctx.rows, "moderation.takedown_completed"), ...by(ctx.rows, "moderation.quarantined")].flatMap((r) => str(r.a.report) ?? []));
   for (const report of overdueReports(prioritised, decided, new Set(), ctx.now)) {
-    page("page.takedown_overdue", `takedown|${report.id}`, {}, [{ method: "quarantine_version", pack: report.pack, version: report.version, reason: "security report undecided for an hour" }], { actionKey: `takedown|${report.id}` });
+    // REQ-MOD-009: only a version the signal says is declared by 100 repositories or fewer is held without a person.
+    const eligibility = holdEligibility(declared.get(report.id));
+    const key = `takedown|${report.id}`;
+    if (eligibility !== "eligible") {
+      page("page.takedown_overdue", key, { noAction: eligibility === "declared_widely" ? "declared_widely" : "eligibility_unknown" });
+      continue;
+    }
+    page("page.takedown_overdue", key, {}, [{ method: "quarantine_version", pack: report.pack, version: report.version, reason: "security report undecided for an hour" }], { actionKey: key });
   }
 }
 
@@ -200,3 +210,6 @@ function tickets(ctx: DetectContext, ticket: TicketSink): void {
   if (backlog.some((r) => !(str(r.a.queue) ?? "").startsWith("audit") && r.d2 >= QUEUE_BACKLOG_S)) ticket("component", "queue_backlog", {});
 }
 
+
+/** Pages in the catalogue that nothing can raise yet, because no signal or audit input for them exists. */
+export const PAGES_WITHOUT_INPUT: readonly PageId[] = ["page.admin_new_location"];

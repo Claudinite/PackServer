@@ -31,7 +31,7 @@ export function createApp(runtime: JudgeRuntime, options: AppOptions = {}): Hono
   const alerts = runtime.config.alerts;
   const telemetryKv = ports.kv["TELEMETRY_KV"];
   if (!alerts || !telemetryKv) {
-    app.all("/hooks/*", (c) => c.json({ error: "alerts_unconfigured", missing: runtime.config.alertsMissing }, 503, { "cache-control": "no-store" }));
+    app.all("/hooks/*", (c) => c.json({ error: "alerts_unconfigured" }, 503, { "cache-control": "no-store" }));
     return app;
   }
   const emit = signalEmitter({ releaseId: runtime.version.releaseId, versionId: runtime.version.versionId, clock: ports.clock, stats: ports.stats, telemetry: ports.telemetry });

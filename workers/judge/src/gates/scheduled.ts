@@ -16,9 +16,9 @@ export interface ScheduledDeps extends GateDeps {
   emit: Telemetry["emit"];
   ciTokenIds: readonly string[];
   dailyLogAllowance: number;
-  /** Absent where alerting is not wired; the cycle then runs gates, mode and audit only. */
   /** Settings alerting needs and does not have; each cycle fails visibly until they are given. */
   alertsMissing?: string[];
+  /** Absent where alerting is not wired; the cycle then runs gates, mode and audit only. */
   alerts?: Omit<AlertCycleDeps, "clock" | "emit" | "release" | "mode" | "facts">;
 }
 
@@ -70,7 +70,7 @@ export async function runScheduled(deps: ScheduledDeps): Promise<ScheduledResult
             indexFetches: cycle?.indexFetches ?? new Map(),
             requestsToday: cycle?.requestsToday ?? 0,
             requestsPerSecond: cycle?.readPathRps ?? 0,
-            audit: audit?.events ?? [],
+            audit: { pageworthyIds: audit?.pageworthyIds ?? [], bindingChecks: audit?.bindingChecks ?? [] },
             allowance: deps.dailyLogAllowance,
             telemetryMode: flip?.mode ?? "unknown",
           },

@@ -67,6 +67,20 @@ describe("Cloudflare polling", () => {
     }) as typeof fetch);
     expect(await platform.failingLogpushJobs()).toBe(2);
   });
+  it("reads a script's bindings back, with the secret each points at", async () => {
+    const platform = cloudflarePlatform({ accountId: async () => "acct", zoneId: undefined, token: async () => "t", queueIds: {} }, (async (url: RequestInfo | URL) => {
+      expect(String(url)).toBe("https://api.cloudflare.com/client/v4/accounts/acct/workers/scripts/web/settings");
+      return json({ bindings: [{ name: "KV", type: "kv_namespace" }, { name: "SIGNING_KEY_ACTIVE", type: "secrets_store_secret", store_id: "s", secret_name: "signing-key" }, { type: "broken" }] });
+    }) as typeof fetch);
+    expect(await platform.scriptBindings("web")).toEqual([{ name: "KV", secretName: null }, { name: "SIGNING_KEY_ACTIVE", secretName: "signing-key" }]);
+    const empty = cloudflarePlatform({ accountId: async () => "a", zoneId: undefined, token: async () => "t", queueIds: {} }, (async () => json({})) as typeof fetch);
+    await expect(empty.scriptBindings("web")).rejects.toThrow("no bindings list");
+  });
+  it("polls nothing, and says nothing, for a queue list or zone that is not configured", async () => {
+    const platform = cloudflarePlatform({ accountId: async () => "a", zoneId: undefined, token: async () => "t", queueIds: {} }, (async () => { throw new Error("no call expected"); }) as typeof fetch);
+    expect(await platform.queueBacklogs(0)).toEqual([]);
+    expect(await platform.failingLogpushJobs()).toBeNull();
+  });
   it("is an error, not a zero, when the API refuses", async () => {
     const platform = cloudflarePlatform({ accountId: async () => "a", zoneId: "z", token: async () => "t", queueIds: { q: "1" } }, (async () => new Response("no", { status: 403 })) as typeof fetch);
     await expect(platform.queueBacklogs(0)).rejects.toThrow("403");
@@ -112,12 +126,13 @@ describe("configuration", () => {
     const built = createRuntime(env as unknown as Env);
     expect(built.config.alertsMissing).toEqual([]);
     expect(built.config.alerts?.window).toEqual({ startHour: 7, endHour: 19 });
-    expect(built.config.alerts?.platform).toBeUndefined();
+    expect(built.config.alerts?.platform).toBeDefined();
   });
   it("answers 503 on the hook paths when alerting is not configured", async () => {
     const app = createApp(runtimeWith(judgeFakes()));
     const res = await app.request("/hooks/monitors", { method: "POST", body: "{}" });
     expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "alerts_unconfigured" });
   });
 });
 
