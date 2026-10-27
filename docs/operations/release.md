@@ -185,7 +185,7 @@ of `pins.now`, `<uuid:n>`, `<sig>`, `<session>`, `<opaque>`, `<rowid>`); rows of
 
 Target: ≤ 5 minutes human, ≤ 2 minutes automatic. The `rollback` workflow (environment
 `production-rollback`, no reviewer, `main` only) runs `wrangler rollback <incumbent>` per Worker in
-reverse order and writes the manifest; the admin app's roll-back tap dispatches it; the Cloudflare
+reverse order and writes the manifest; the admin app's ops page links to it and the registry dispatches nothing; the Cloudflare
 dashboard on a phone is the fallback when GitHub Actions is down. Only the incumbent recorded in the
 manifest is a target; anything older is a `rollback-deep` release under the irreversible rule.
 Rollback does not undo data: D1 gets a forward fix, with Time Travel reserved for unenumerable

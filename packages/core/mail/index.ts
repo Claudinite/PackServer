@@ -14,6 +14,7 @@ import { recoveryStarted } from "./templates/recovery-started";
 import { reportStatusChanged } from "./templates/report-status-changed";
 import { reviewRemoved } from "./templates/review-removed";
 import { scopeNameDisputed } from "./templates/scope-name-disputed";
+import { scopeRenamed } from "./templates/scope-renamed";
 import { securityReportReminder } from "./templates/security-report-reminder";
 import { securityReportUpdate } from "./templates/security-report-update";
 import { stepUpLocked } from "./templates/step-up-locked";
@@ -49,6 +50,7 @@ export const NOTICES = {
   "domain-proof-moved": domainProofMoved,
   "github-org-proof-alert": githubOrgProofAlert,
   "scope-name-disputed": scopeNameDisputed,
+  "scope-renamed": scopeRenamed,
   "review-removed": reviewRemoved,
 } as const;
 

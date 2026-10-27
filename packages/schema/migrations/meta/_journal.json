@@ -190,6 +190,27 @@
       "when": 1793059840470,
       "tag": "20261027001040_community_stars_reviews",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1793062122750,
+      "tag": "20261027004842_admin_ops_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1793062124243,
+      "tag": "20261027004844_foundation_feature_flags_mac",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1793062126279,
+      "tag": "20261027004846_scopes_dispute_resolution",
+      "breakpoints": true
     }
   ]
 }

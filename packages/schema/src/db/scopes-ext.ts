@@ -17,6 +17,7 @@ export const DOMAIN_PROOF_METHODS = ["txt", "well-known"] as const;
 export const GITHUB_PROOF_METHODS = ["app", "admin"] as const;
 export const VP_PROOF_BASES = ["domain", "github"] as const;
 export const SCOPE_DISPUTE_STATES = ["open", "resolved"] as const;
+export const SCOPE_DISPUTE_RESOLUTIONS = ["reassigned", "kept"] as const;
 
 /**
  * A person asked to join an organisation, by an address or by handle; it holds no access until that
@@ -188,6 +189,14 @@ export const scope_disputes = sqliteTable(
     held_scope: integer("held_scope").notNull().default(0),
     created_at: text("created_at").notNull(),
     resolved_at: text("resolved_at"),
+    /** The holder's per-action consent to be renamed; a scope with promoted versions moves only with it. */
+    holder_consented_at: text("holder_consented_at"),
+    holder_consented_by: text("holder_consented_by"),
+    resolution: text("resolution", { enum: SCOPE_DISPUTE_RESOLUTIONS }),
+    resolved_by: text("resolved_by"),
+    /** Set when an admin stated that the notice stands rather than moving the name. */
+    notice_attached_at: text("notice_attached_at"),
+    notice_attached_by: text("notice_attached_by"),
   },
   (t) => [
     uniqueIndex("scope_disputes_pair_unique").on(t.scope_id, t.claimant_scope_id),

@@ -4,10 +4,14 @@ import type { AdminRuntime } from "./bindings";
 import { accessGuard, routes as access } from "./access";
 import type { AdminEnv } from "./access/context";
 import { routes as applications } from "./applications";
-import { routes as internal } from "./internal";
+import { routes as disputes } from "./disputes";
+import { flagRoutes } from "./flags";
+import { internalRoutes } from "./internal-api";
 import { routes as moderation } from "./moderation";
+import { opsRoutes } from "./ops";
 import { routes as queue } from "./queue";
 import { recoveryRoutes } from "./queue/recoveries";
+import { routes as holds } from "./recoveries";
 import { routes as reports } from "./reports";
 import { selfTestChecks } from "./selftest";
 
@@ -35,6 +39,10 @@ export function createApp(runtime: AdminRuntime, options: AppOptions = {}): Hono
   app.route("/", reports);
   app.route("/", moderation);
   app.route("/", recoveryRoutes(runtime));
-  app.route("/internal", internal);
+  app.route("/", opsRoutes(runtime));
+  app.route("/", flagRoutes(runtime));
+  app.route("/", disputes);
+  app.route("/", holds);
+  app.route("/internal", internalRoutes(runtime));
   return app;
 }

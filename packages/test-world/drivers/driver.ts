@@ -38,6 +38,8 @@ export interface StorageAccess {
   };
   /** Puts a message on the registry's reindex queue, as the Worker that noticed a proof change does. */
   reindex: { send(message: unknown): Promise<void> };
+  /** The telemetry store the Workers read modes and the launch mirror from. */
+  telemetry: { get(key: string): Promise<string | null> };
   /** What promotion wrote to the public and private pack buckets. */
   packs: { public: PackBucket; private: PackBucket };
   /** The engine release mirror in R2 `ops`, which a release workflow fills in production. */
