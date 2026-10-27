@@ -42,14 +42,14 @@ async function countedBetween(d1: D1, packId: string, from: number, to: number, 
 }
 
 /**
- * Packs that gained enough counted stars in the last 24 hours to possibly be a burst, for the hourly pass to check; a star
+ * Packs that gained enough counted stars in the last 24 hours to possibly be a burst, for the hourly pass to check, in pack id order; a star
  * placed by hand is checked at once. A star counted in the last 24 h was placed at most 24 h before it began to count,
  * so `created_at` within 48 h loses none and lets the index serve the scan.
  */
 export async function packsWithFreshStars(d1: D1, now: number): Promise<string[]> {
   const { rows } = await d1.query(
     `select s.pack_id as pack_id ${COUNTED_FROM} where s.created_at > ? and ${COUNTED_AT} > ? and ${COUNTED_WHERE}
-      group by s.pack_id having count(*) >= ?`,
+      group by s.pack_id having count(*) >= ? order by s.pack_id`,
     [isoOf(now - 2 * BURST.windowMs), isoOf(now - BURST.windowMs), countedCutoff(now), BURST.minStars],
   );
   return rows.map((r) => String(r.pack_id));
