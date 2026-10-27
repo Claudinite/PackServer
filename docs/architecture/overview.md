@@ -165,6 +165,7 @@ of recurring jobs; other pages link here.
 |---|---|---|---|
 | Hourly | 30-day fetch-count rollup from the Logpush archive and the `downloads` dataset into `pack_stats` | admin | REQ-TELEM-003 |
 | Hourly | Token last-used flush | admin | REQ-AUDIT-006 |
+| Hourly | Security-report timers: owners are reminded 7 days before a disclosure timer ends, registry security is told when it ends, stale pending attachments are dropped, then queued report notices are mailed; a pass acts on at most 100 reports and mails at most 200 notices, the rest waiting for the next hour | admin | REQ-MOD-002 |
 | Daily | Re-sign `root.json` with a fresh `expires` even with no publishes | validator (via `RootCoordinator`) | REQ-DELIV-003 |
 | Daily | Prune `recent_activity` past 90 days, expired `packs-staging` objects (14 days; dry-runs 1 hour), expired invites and challenges, finished Workflow milestones past 30 days | admin | REQ-PUB-020 |
 | Daily | Audit chain head to Sigstore Rekor and `/.well-known/audit-heads`; nightly chain verifier | admin | REQ-AUDIT-005 |

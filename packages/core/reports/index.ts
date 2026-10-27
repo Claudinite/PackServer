@@ -13,5 +13,6 @@ export {
 } from "./reports.ts";
 export { mostSimilar, titleSimilarity } from "./similar.ts";
 export { sweepReports, type SweepResult } from "./sweep.ts";
+export { NOTICES_PER_PASS, REPORTS_PER_PASS, reportPass } from "./pass.ts";
 export { daysLeft, disclosureDeadline, reminderFrom, timerAction } from "./timer.ts";
 export { effectiveStatus, type EffectiveStatus, type ReportView } from "./view.ts";

@@ -22,6 +22,8 @@ export interface Env {
   EMAIL?: SendEmailBinding;
   /** The sender address on notices; unused under `env.test`. */
   MAIL_FROM?: string;
+  /** Where registry security's report notices go. */
+  SECURITY_ADDRESS?: string;
   /** The origins the registry's pages are served from, first the public one; notices link to it. */
   SITE_ORIGINS: string;
   VALIDATE_PACK: Workflow;
@@ -128,7 +130,7 @@ function downloadsReader(env: Env): PrivateDownloads | undefined {
   return analyticsPrivateDownloads({ accountId, dataset: env.DOWNLOADS_DATASET, token: () => readSecret(env.ANALYTICS_READ_TOKEN) });
 }
 
-export type AdminRuntime = WorkerRuntime<AdminPorts> & { config?: { siteOrigin: string; access?: AccessPolicy | null } };
+export type AdminRuntime = WorkerRuntime<AdminPorts> & { config?: { siteOrigin: string; securityAddress?: string; access?: AccessPolicy | null } };
 
 /** Signals leave as log lines, the same channel every Worker's other events take. */
 const logTelemetry = {
@@ -171,7 +173,7 @@ export function createRuntime(env: Env): AdminRuntime {
     flagKey: async () => (env.FLAG_HMAC_KEY ? readSecret(env.FLAG_HMAC_KEY) : null),
     ...optional("rollbackUrl", env.ROLLBACK_REPO ? `https://github.com/${env.ROLLBACK_REPO}/actions/workflows/rollback.yml` : undefined),
   });
-  return { ...base, config: { siteOrigin: siteOriginOf(env.SITE_ORIGINS), access: policyFrom(env) } };
+  return { ...base, config: { siteOrigin: siteOriginOf(env.SITE_ORIGINS), ...(env.SECURITY_ADDRESS ? { securityAddress: env.SECURITY_ADDRESS } : {}), access: policyFrom(env) } };
 }
 
 /** The first origin is the public one. */

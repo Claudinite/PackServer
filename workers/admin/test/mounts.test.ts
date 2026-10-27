@@ -24,7 +24,7 @@ const runtime = {
   missingSecrets: [],
   ports: { ...fakes, d1: new SqliteD1(), auditBucket: new MemoryAuditBucket(), r2: { PACKS_STAGING: fakes.r2["PACKS_STAGING"]!, VALIDATION_REPORTS: fakes.r2["VALIDATION_REPORTS"]!, OPS_BUCKET: fakes.r2["OPS_BUCKET"]! } },
   services: {},
-  config: { siteOrigin: "https://registry.test" },
+  config: { siteOrigin: "https://registry.test", securityAddress: "security@registry.test" },
 } satisfies AdminRuntime;
 
 afterEach(() => vi.restoreAllMocks());
@@ -62,7 +62,7 @@ describe("admin crons", () => {
     log.mockImplementationOnce(() => {
       throw new Error("boom");
     });
-    await expect(runCron(CRON_HOURLY, runtime)).rejects.toThrow("1 of 7 jobs");
-    expect(log).toHaveBeenCalledTimes(7);
+    await expect(runCron(CRON_HOURLY, runtime)).rejects.toThrow("1 of 8 jobs");
+    expect(log).toHaveBeenCalledTimes(8);
   });
 });
