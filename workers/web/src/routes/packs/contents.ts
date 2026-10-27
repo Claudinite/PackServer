@@ -55,7 +55,7 @@ export async function readContents(c: Context<WebEnv>, pack: string, version: st
   }
 }
 
-const READABLE: readonly string[] = ["active", "deprecated", "yanked"];
+export const READABLE: readonly string[] = ["active", "deprecated", "yanked"];
 
 /** The one gate for a version's files and README, on the page and in the API: only the states whose bytes a resolver hands out. */
 export const isReadable = (state: string): boolean => READABLE.includes(state);

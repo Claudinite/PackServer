@@ -11,3 +11,7 @@ export {
 export { belongsToScope, findPublicPack, isEstablished, isScopeOwner, packById, type PackRef } from "./standing.ts";
 export { star, starState, unstar, type StarChange, type StarState } from "./stars.ts";
 export { starTallies, type StarTally } from "./tallies.ts";
+export {
+  CommentInput, commentCounts, listComments, postComment, VoteInput, voteOnComment, type CommentRefusal, type CommentView,
+} from "./comments.ts";
+export { isHeldComment } from "./screen.ts";
