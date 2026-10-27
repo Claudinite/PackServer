@@ -308,7 +308,7 @@ describe("the wait for an owner's approval", () => {
     expect(await request(s.rt, "run1")).toEqual({ required: true });
   });
 
-  it("uses the default of 100 when the flag is null, malformed or not a number", async () => {
+  it("is off when an admin turned the flag off, and uses the flag's default when it is missing, malformed or invalid", async () => {
     const s = await finishedRun();
     s.db.exec(`insert into adoption_scans (id, started_at, updated_at, completed_at) values ('scan1', 'x', 'x', 'x')`);
     const declare = (n: number) => {
@@ -316,7 +316,7 @@ describe("the wait for an owner's approval", () => {
       for (let i = 0; i < n; i++) s.db.prepare(`insert into pack_declarations (scan_id, pack, repository, owner, settings_path) values ('scan1', '@acme/gcp', ?, 'o', 'p')`).run(`r${i}`);
     };
     const flag = (value: string) => s.db.prepare(`insert into feature_flags (key, value, security, updated_at) values ('staged_publishing_declared_threshold', ?, 0, 'x') on conflict (key) do update set value = excluded.value`).run(value);
-    for (const value of ["null", "{not json", '"off"']) {
+    for (const value of ["{not json", '"off"', "-3", "1.5"]) {
       flag(value);
       s.db.exec("delete from run_approvals");
       declare(100);
@@ -324,5 +324,8 @@ describe("the wait for an owner's approval", () => {
       declare(101);
       expect(await request(s.rt, "run1"), `${value} at 101`).toEqual({ required: true });
     }
+    flag("null");
+    s.db.exec("delete from run_approvals");
+    expect(await request(s.rt, "run1")).toEqual({ required: false });
   });
 });

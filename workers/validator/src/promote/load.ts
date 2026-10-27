@@ -1,3 +1,4 @@
+import { flagDef, STAGED_PUBLISHING_THRESHOLD, validFlagValue } from "@packserver/core/flags";
 import { hasPublisherChange } from "@packserver/core/publishing";
 import type { D1 } from "@packserver/ports";
 
@@ -87,27 +88,25 @@ export async function versionRow(d1: D1, run: PromotionRun): Promise<VersionRow 
 /** Days without a publish after which the next version is owed the first-publish review (REQ-VAL-038). */
 export const DORMANT_DAYS = 180;
 
-/** The feature flag holding how many public repositories must declare a pack before its versions are staged (D43); off until a weekly scan has counted. */
-export const DECLARED_THRESHOLD_FLAG = "staged_publishing_declared_threshold";
-/** What the flag says until an admin sets it. */
-export const DEFAULT_DECLARED_THRESHOLD = 100;
-
 export type StagingReason = "widening" | "publisher-change" | "dormant" | "verified-publisher" | "declared-threshold";
 
-/** The flag's number when it holds one; an unset, null, malformed or non-numeric value means the default. */
-function thresholdOf(flag: unknown): number {
-  if (typeof flag !== "string") return DEFAULT_DECLARED_THRESHOLD;
+/** The flag's number, null when an admin turned it off, and the flag's default for a missing, malformed or invalid value. */
+function thresholdOf(flag: unknown): number | null {
+  const def = flagDef(STAGED_PUBLISHING_THRESHOLD);
+  const fallback = typeof def?.default === "number" ? def.default : null;
+  if (typeof flag !== "string" || !def) return fallback;
   try {
     const parsed: unknown = JSON.parse(flag);
-    return typeof parsed === "number" && Number.isFinite(parsed) ? parsed : DEFAULT_DECLARED_THRESHOLD;
+    return validFlagValue(def, parsed) ? (parsed as number | null) : fallback;
   } catch {
-    return DEFAULT_DECLARED_THRESHOLD;
+    return fallback;
   }
 }
 
 async function declaredAboveThreshold(d1: D1, run: PromotionRun): Promise<boolean> {
-  const flag = (await d1.query("select value from feature_flags where key = ?", [DECLARED_THRESHOLD_FLAG])).rows[0]?.value;
+  const flag = (await d1.query("select value from feature_flags where key = ?", [STAGED_PUBLISHING_THRESHOLD])).rows[0]?.value;
   const threshold = thresholdOf(flag);
+  if (threshold === null) return false;
   const scan = (await d1.query("select id from adoption_scans where completed_at is not null order by completed_at desc, id desc limit 1")).rows[0];
   if (!scan) return false;
   const declared = (await d1.query("select count(distinct repository) as n from pack_declarations where scan_id = ? and pack = ?", [scan.id, packOf(run)])).rows[0]?.n;
