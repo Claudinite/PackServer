@@ -193,8 +193,14 @@ export class FakeWorkflow implements Workflow {
     return { status: i.status };
   }
   async sendEvent(id: string, event: { type: string; payload: unknown }) {
-    if (!this.instances.has(id)) throw new PortError("not_found", `no workflow instance ${id}`);
+    const i = this.instances.get(id);
+    if (!i || ["terminated", "complete", "errored"].includes(i.status)) throw new PortError("not_found", `no workflow instance ${id}`);
     this.events.push({ id, ...event });
+  }
+  async terminate(id: string) {
+    const i = this.instances.get(id);
+    if (!i) throw new PortError("not_found", `no workflow instance ${id}`);
+    i.status = "terminated";
   }
 }
 

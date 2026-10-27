@@ -3,7 +3,7 @@ import { refusal, requireSession } from "@packserver/http";
 import { Hono, type Context } from "hono";
 import { runtimeOf, type WebEnv } from "../../context";
 import { sectionsOf } from "../../pages/pack/sections";
-import { isReadable, readContents } from "./contents";
+import { isReadable, READABLE, readContents } from "./contents";
 import { communityPorts, csrfGuard, notFound, once, packOf, userId } from "./stars";
 
 export const routes = new Hono<WebEnv>();
@@ -35,7 +35,7 @@ async function sectionExists(c: Context<WebEnv>, pack: { id: string; name: strin
 async function commentPack(c: Context<WebEnv>) {
   const pack = await packOf(c);
   if (!pack) return null;
-  const { rows } = await runtimeOf(c).ports.d1.query("select 1 from pack_versions where pack_id = ? and state in ('active', 'deprecated', 'yanked') limit 1", [pack.id]);
+  const { rows } = await runtimeOf(c).ports.d1.query(`select 1 from pack_versions where pack_id = ? and state in (${READABLE.map(() => "?").join(", ")}) limit 1`, [pack.id, ...READABLE]);
   return rows.length > 0 ? pack : null;
 }
 

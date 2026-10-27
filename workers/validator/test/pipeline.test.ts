@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import type { ValidatorRuntime } from "../src/bindings";
 import { runPipeline, type StepConfig, type StepRunner } from "../src/workflow/pipeline";
 import * as steps from "../src/workflow/steps";
+import * as approval from "../src/approval";
+import * as promote from "../src/promote/promote";
+import * as review from "../src/review";
 
 vi.mock("../src/workflow/steps", async (original) => {
   const real = await original<typeof import("../src/workflow/steps")>();
@@ -21,6 +24,7 @@ vi.mock("../src/workflow/steps", async (original) => {
     thresholds: vi.fn(async () => ({ stop: false })),
     verdict: vi.fn(async () => ({ verdict: "pass", reportKey: "k", score: 100 })),
     fail: vi.fn(async () => undefined),
+    verdictedRun: vi.fn(async () => null),
   };
 });
 
@@ -31,6 +35,16 @@ vi.mock("../src/promote/promote", () => {
     writeObjects: vi.fn(done), commit: vi.fn(done), reindex: vi.fn(done), search: vi.fn(done), notify: vi.fn(done),
   };
 });
+
+vi.mock("../src/review", () => ({
+  entersReview: vi.fn(async (_d1: unknown, _runId: string, verdict: string) => verdict === "hold"),
+  awaitReview: vi.fn(async () => "released"),
+}));
+
+vi.mock("../src/approval", () => ({
+  request: vi.fn(async () => ({ required: false })),
+  awaitApproval: vi.fn(async () => "approved"),
+}));
 
 const rt = { ports: { clock: { now: () => Date.now(), sync: async () => undefined } } } as unknown as ValidatorRuntime;
 
@@ -47,6 +61,7 @@ function runner(throwing: string[] = []) {
       return fn();
     },
     sleepUntil: async () => undefined,
+    waitForEvent: async () => ({}),
   } as unknown as StepRunner;
   return { step, configs, calls };
 }
@@ -108,5 +123,62 @@ describe("container A", () => {
   it("returns the report of a container that answered, refusals included", async () => {
     const answer = { report: { outcome: "refused" }, canonical: null };
     await expect(steps.inspectArchive(sandbox(async () => answer), request)).resolves.toBe(answer);
+  });
+});
+
+describe("steps 13 to 15", () => {
+  const config = { retryDelay: "10 milliseconds", rearm: "7 days" };
+  const verdict = (v: "pass" | "warn" | "hold" | "fail") => vi.mocked(steps.verdict).mockResolvedValueOnce({ verdict: v, reportKey: "k", score: 100 });
+
+  it("waits for an admin on a hold and promotes only once it is released", async () => {
+    verdict("hold");
+    vi.mocked(promote.prepare).mockClear();
+    const { step, calls } = runner();
+    await runPipeline(rt, step, { run_id: "r" }, config);
+    expect(review.awaitReview).toHaveBeenCalled();
+    expect(promote.prepare).toHaveBeenCalledWith(expect.anything(), { released: true });
+    expect(calls).toContain("promote-prepare");
+  });
+
+  it("ends a hold an admin rejected without asking for an approval or promoting", async () => {
+    verdict("hold");
+    vi.mocked(review.awaitReview).mockResolvedValueOnce("stopped");
+    vi.mocked(approval.request).mockClear();
+    const { step, calls } = runner();
+    await runPipeline(rt, step, { run_id: "r" }, config);
+    expect(approval.request).not.toHaveBeenCalled();
+    expect(calls).not.toContain("promote-prepare");
+  });
+
+  it("waits for an owner when the version is staged and promotes with the approval", async () => {
+    verdict("pass");
+    vi.mocked(approval.request).mockResolvedValueOnce({ required: true });
+    vi.mocked(promote.prepare).mockClear();
+    await runPipeline(rt, runner().step, { run_id: "r" }, config);
+    expect(approval.awaitApproval).toHaveBeenCalled();
+    expect(promote.prepare).toHaveBeenCalledWith(expect.anything(), { approved: true });
+  });
+
+  it("does not wait, or promote, for a failed run", async () => {
+    verdict("fail");
+    vi.mocked(approval.request).mockClear();
+    const { step, calls } = runner();
+    await runPipeline(rt, step, { run_id: "r" }, config);
+    expect(approval.request).not.toHaveBeenCalled();
+    expect(calls).not.toContain("promote-prepare");
+  });
+
+  it("starts after the verdict when it resumes, validating nothing again", async () => {
+    vi.mocked(steps.verdictedRun).mockResolvedValueOnce({ verdict: "pass", reportKey: "k", score: 100 });
+    vi.mocked(steps.integrity).mockClear();
+    const { step, calls } = runner();
+    await runPipeline(rt, step, { run_id: "r", resume: true }, config);
+    expect(steps.integrity).not.toHaveBeenCalled();
+    expect(calls).toEqual(expect.arrayContaining(["resume", "human-review", "staged-approval", "promote-prepare"]));
+  });
+
+  it("refuses to wait on a malformed re-arm interval", async () => {
+    verdict("hold");
+    await expect(runPipeline(rt, runner().step, { run_id: "r" }, { retryDelay: "10 milliseconds", rearm: "forever" })).rejects.toThrow("WAIT_REARM");
   });
 });

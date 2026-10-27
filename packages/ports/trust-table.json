@@ -57,7 +57,7 @@
         "ROOT_COORDINATOR": { "class": "RootCoordinator", "host": "publish" }
       },
       "containers": {},
-      "services": { "VALIDATOR": "validator" },
+      "services": { "VALIDATOR": "validator", "WEB": "web" },
       "vectorize": {},
       "ai": [],
       "analytics": { "REQUEST_OUTCOMES": "request_outcomes", "DOMAIN_EVENTS": "domain_events" },
