@@ -1,0 +1,431 @@
+{
+  "dashboards": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "purpose": "Open on a page: is the read path up, are the probes green, did anything trust-related fire.",
+      "panels": [
+        {
+          "id": "requests",
+          "title": "Requests per 5 minutes by Worker",
+          "kind": "timeseries",
+          "range": {
+            "n": 6,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT {{bucket:300}} AS t, {{col:request_outcomes.worker}} AS worker, sum(_sample_interval) AS requests FROM {{ds:request_outcomes}} WHERE {{since}} AND {{col:request_outcomes.worker}} != '' GROUP BY t, worker ORDER BY t"
+        },
+        {
+          "id": "bad_share",
+          "title": "Bad share by Worker, last hour",
+          "kind": "table",
+          "range": {
+            "n": 1,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT {{col:request_outcomes.worker}} AS worker, sum(_sample_interval) AS requests, sumIf(_sample_interval, {{col:request_outcomes.outcome}} IN ('server_error', 'exception', 'canceled')) AS bad, sumIf(_sample_interval, {{col:request_outcomes.outcome}} IN ('server_error', 'exception', 'canceled')) / sum(_sample_interval) AS bad_share FROM {{ds:request_outcomes}} WHERE {{since}} AND {{col:request_outcomes.worker}} != '' AND {{col:request_outcomes.is_synthetic}} = 0 GROUP BY worker ORDER BY bad_share DESC"
+        },
+        {
+          "id": "latency",
+          "title": "p95 latency by Worker, last hour",
+          "kind": "table",
+          "range": {
+            "n": 1,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT {{col:request_outcomes.worker}} AS worker, quantileExactWeighted(0.95)({{col:request_outcomes.duration_ms}}, _sample_interval) AS p95_ms FROM {{ds:request_outcomes}} WHERE {{since}} AND {{col:request_outcomes.worker}} != '' AND {{col:request_outcomes.duration_ms}} >= 0 AND {{col:request_outcomes.is_synthetic}} = 0 GROUP BY worker ORDER BY p95_ms DESC"
+        },
+        {
+          "id": "probe_runs",
+          "title": "Probe summary passes and fails, last 6 hours",
+          "kind": "table",
+          "range": {
+            "n": 6,
+            "unit": "HOUR"
+          },
+          "note": "Summary rows only; the probed version is in the attributes, so failures by target are in the Release dashboard.",
+          "sql": "SELECT sumIf(_sample_interval, {{col:synthetic_probes.attrs}} LIKE '%\"ok\":true%') AS passed, sumIf(_sample_interval, {{col:synthetic_probes.attrs}} LIKE '%\"ok\":false%') AS failed FROM {{ds:synthetic_probes}} WHERE {{since}} AND index1 = 'synthetic.probe' AND {{col:synthetic_probes.attrs}} LIKE '%\"scenario\":\"summary\"%'"
+        },
+        {
+          "id": "probe_trend",
+          "title": "Probe summary rows per 5 minutes",
+          "kind": "timeseries",
+          "range": {
+            "n": 6,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT {{bucket:300}} AS t, sumIf(_sample_interval, {{col:synthetic_probes.attrs}} LIKE '%\"ok\":true%') AS passed, sumIf(_sample_interval, {{col:synthetic_probes.attrs}} LIKE '%\"ok\":false%') AS failed FROM {{ds:synthetic_probes}} WHERE {{since}} AND index1 = 'synthetic.probe' AND {{col:synthetic_probes.attrs}} LIKE '%\"scenario\":\"summary\"%' GROUP BY t ORDER BY t"
+        },
+        {
+          "id": "pages_24h",
+          "title": "Trust and pipeline signals, last 24 hours",
+          "kind": "table",
+          "range": {
+            "n": 24,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT index1 AS signal, sum(_sample_interval) AS n FROM {{ds:domain_events}} WHERE {{since}} AND index1 IN ('download.hash_mismatch', 'download.hash_mismatch_reported', 'index.verify_failed', 'index.key_changed', 'index.stale', 'audit.chain_broken', 'publish.failed', 'queue.dlq', 'search.degraded') GROUP BY signal ORDER BY n DESC LIMIT 100"
+        },
+        {
+          "id": "heartbeat",
+          "title": "Judge heartbeats per hour",
+          "kind": "timeseries",
+          "range": {
+            "n": 24,
+            "unit": "HOUR"
+          },
+          "note": "A gap is page.monitoring_dead's trigger.",
+          "sql": "SELECT {{bucket:3600}} AS t, sum(_sample_interval) AS heartbeats FROM {{ds:domain_events}} WHERE {{since}} AND index1 = 'monitoring.heartbeat' GROUP BY t ORDER BY t"
+        }
+      ]
+    },
+    {
+      "id": "release",
+      "title": "Release",
+      "purpose": "Two versions side by side, every gate's history, exceptions and self-test results.",
+      "panels": [
+        {
+          "id": "gates_now",
+          "title": "Latest verdict per version and gate, last 6 hours",
+          "kind": "table",
+          "range": {
+            "n": 6,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT index1 AS version_id, {{col:gate_results.gate}} AS gate, argMax({{col:gate_results.status}}, {{col:gate_results.decided_at}}) AS status, argMax({{col:gate_results.samples}}, {{col:gate_results.decided_at}}) AS samples, argMax({{col:gate_results.floor}}, {{col:gate_results.decided_at}}) AS floor, argMax({{col:gate_results.observed}}, {{col:gate_results.decided_at}}) AS observed, argMax({{col:gate_results.threshold}}, {{col:gate_results.decided_at}}) AS threshold FROM {{ds:gate_results}} WHERE {{since}} GROUP BY version_id, gate ORDER BY version_id, gate LIMIT 1000"
+        },
+        {
+          "id": "gate_history",
+          "title": "Gate verdicts per version, per 10 minutes",
+          "kind": "timeseries",
+          "range": {
+            "n": 24,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT {{bucket:600}} AS t, index1 AS version_id, {{col:gate_results.status}} AS status, sum(_sample_interval) AS evaluations FROM {{ds:gate_results}} WHERE {{since}} GROUP BY t, version_id, status ORDER BY t LIMIT 5000"
+        },
+        {
+          "id": "bad_by_version",
+          "title": "Bad share by version, real traffic",
+          "kind": "table",
+          "range": {
+            "n": 6,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT index1 AS version_id, {{col:request_outcomes.worker}} AS worker, sum(_sample_interval) AS requests, sumIf(_sample_interval, {{col:request_outcomes.outcome}} IN ('server_error', 'exception', 'canceled')) AS bad, sumIf(_sample_interval, {{col:request_outcomes.outcome}} IN ('server_error', 'exception', 'canceled')) / sum(_sample_interval) AS bad_share FROM {{ds:request_outcomes}} WHERE {{since}} AND {{col:request_outcomes.worker}} != '' AND {{col:request_outcomes.version_override}} = 0 AND {{col:request_outcomes.is_synthetic}} = 0 GROUP BY version_id, worker ORDER BY worker, requests DESC"
+        },
+        {
+          "id": "latency_by_version",
+          "title": "p95 and p99 latency by version, real traffic",
+          "kind": "table",
+          "range": {
+            "n": 6,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT index1 AS version_id, {{col:request_outcomes.worker}} AS worker, quantileExactWeighted(0.95)({{col:request_outcomes.duration_ms}}, _sample_interval) AS p95_ms, quantileExactWeighted(0.99)({{col:request_outcomes.duration_ms}}, _sample_interval) AS p99_ms FROM {{ds:request_outcomes}} WHERE {{since}} AND {{col:request_outcomes.worker}} != '' AND {{col:request_outcomes.duration_ms}} >= 0 AND {{col:request_outcomes.version_override}} = 0 AND {{col:request_outcomes.is_synthetic}} = 0 GROUP BY version_id, worker ORDER BY worker"
+        },
+        {
+          "id": "exceptions",
+          "title": "Exceptions and cancellations by version",
+          "kind": "table",
+          "range": {
+            "n": 24,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT index1 AS version_id, {{col:request_outcomes.worker}} AS worker, {{col:request_outcomes.outcome}} AS outcome, {{col:request_outcomes.error_code}} AS error_code, sum(_sample_interval) AS n FROM {{ds:request_outcomes}} WHERE {{since}} AND {{col:request_outcomes.outcome}} IN ('exception', 'canceled') GROUP BY version_id, worker, outcome, error_code ORDER BY n DESC LIMIT 200"
+        },
+        {
+          "id": "selftests",
+          "title": "Self-test results by version",
+          "kind": "table",
+          "range": {
+            "n": 24,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT {{col:domain_events.version_id}} AS version_id, {{col:domain_events.worker}} AS worker, sumIf(_sample_interval, {{col:domain_events.attrs}} LIKE '%\"ok\":true%') AS passed, sumIf(_sample_interval, {{col:domain_events.attrs}} LIKE '%\"ok\":false%') AS failed, toUnixTimestamp(max(timestamp)) AS last_at FROM {{ds:domain_events}} WHERE {{since}} AND index1 = 'selftest.result' GROUP BY version_id, worker ORDER BY last_at DESC",
+          "note": "Empty until the validator or judge emits selftest.result."
+        },
+        {
+          "id": "probes_by_target",
+          "title": "Probe summary rows, last 6 hours",
+          "kind": "table",
+          "range": {
+            "n": 6,
+            "unit": "HOUR"
+          },
+          "note": "Failed summary rows with their attributes (target version, failed scenarios, index freshness).",
+          "sql": "SELECT {{col:synthetic_probes.attrs}} AS attrs, sum(_sample_interval) AS n, toUnixTimestamp(max(timestamp)) AS last_at FROM {{ds:synthetic_probes}} WHERE {{since}} AND index1 = 'synthetic.probe' AND {{col:synthetic_probes.attrs}} LIKE '%\"scenario\":\"summary\"%' AND {{col:synthetic_probes.attrs}} LIKE '%\"ok\":false%' GROUP BY attrs ORDER BY last_at DESC LIMIT 100"
+        },
+        {
+          "id": "override_traffic",
+          "title": "Version-override traffic by version",
+          "kind": "table",
+          "range": {
+            "n": 6,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT index1 AS version_id, {{col:request_outcomes.worker}} AS worker, sum(_sample_interval) AS requests FROM {{ds:request_outcomes}} WHERE {{since}} AND {{col:request_outcomes.version_override}} = 1 GROUP BY version_id, worker ORDER BY requests DESC"
+        }
+      ]
+    },
+    {
+      "id": "publish-pipeline",
+      "title": "Publish pipeline",
+      "purpose": "From a publish arriving to a verdict: volumes, failures, validation timing, queues.",
+      "panels": [
+        {
+          "id": "publish_flow",
+          "title": "Publish signals per hour",
+          "kind": "timeseries",
+          "range": {
+            "n": 48,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT {{bucket:3600}} AS t, index1 AS signal, sum(_sample_interval) AS n FROM {{ds:domain_events}} WHERE {{since}} AND index1 IN ('publish.received', 'publish.validated', 'publish.staged_waiting', 'publish.approved', 'publish.promoted', 'publish.failed', 'publish.quota_hit') GROUP BY t, signal ORDER BY t"
+        },
+        {
+          "id": "publish_ids",
+          "title": "Publish identity outcomes",
+          "kind": "table",
+          "range": {
+            "n": 24,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT index1 AS signal, sum(_sample_interval) AS n FROM {{ds:domain_events}} WHERE {{since}} AND index1 IN ('publish.oidc_exchanged', 'publish.oidc_rejected', 'publish.provenance_mismatch', 'publish.source_unverified') GROUP BY signal ORDER BY n DESC"
+        },
+        {
+          "id": "publish_bytes",
+          "title": "Publish size",
+          "kind": "table",
+          "range": {
+            "n": 24,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT sum(_sample_interval) AS publishes, quantileExactWeighted(0.95)({{num:publish.received.bytes}}, _sample_interval) AS p95_bytes, max({{num:publish.received.bytes}}) AS max_bytes FROM {{ds:domain_events}} WHERE {{since}} AND index1 = 'publish.received' AND {{num:publish.received.bytes}} >= 0"
+        },
+        {
+          "id": "validation_steps",
+          "title": "Validation step duration by step",
+          "kind": "table",
+          "range": {
+            "n": 24,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT {{stat:validation.step.step}} AS step, sum(_sample_interval) AS runs, quantileExactWeighted(0.95)({{stat:validation.step.duration_ms}}, _sample_interval) AS p95_ms FROM {{ds:validation_events}} WHERE {{since}} AND index1 = 'validation.step' AND {{stat:validation.step.outcome}} IN ('ok', 'fail') GROUP BY step ORDER BY p95_ms DESC",
+          "note": "Extraction refusals are points with the refusal reason as outcome and no duration, so they are excluded here."
+        },
+        {
+          "id": "validation_events",
+          "title": "Validation signals",
+          "kind": "table",
+          "range": {
+            "n": 24,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT index1 AS signal, sum(_sample_interval) AS n FROM {{ds:validation_events}} WHERE {{since}} AND index1 IN ('validation.step', 'validation.sandbox_timeout', 'validation.tree_hash_mismatch', 'validation.prose_screen', 'validation.verdict_distribution') GROUP BY signal ORDER BY n DESC LIMIT 100"
+        },
+        {
+          "id": "rescans",
+          "title": "Rescans and Workflow instances",
+          "kind": "table",
+          "range": {
+            "n": 24,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT index1 AS signal, sum(_sample_interval) AS n FROM {{ds:domain_events}} WHERE {{since}} AND index1 IN ('rescan.completed', 'workflow.instance_finished', 'workflow.wait_rearmed', 'rollup.completed') GROUP BY signal ORDER BY n DESC LIMIT 100"
+        },
+        {
+          "id": "queue_depth",
+          "title": "Queue depth and oldest message",
+          "kind": "table",
+          "range": {
+            "n": 6,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT max({{num:queue.backlog.depth}}) AS max_depth, max({{num:queue.backlog.oldest_age_s}}) AS max_oldest_age_s, argMax({{num:queue.backlog.depth}}, timestamp) AS latest_depth, argMax({{num:queue.backlog.oldest_age_s}}, timestamp) AS latest_oldest_age_s, argMax({{col:domain_events.attrs}}, timestamp) AS latest_attrs, toUnixTimestamp(max(timestamp)) AS last_at FROM {{ds:domain_events}} WHERE {{since}} AND index1 = 'queue.backlog'",
+          "note": "Empty until the judge emits queue.backlog. All queues are combined: the attributes hold the readings, so grouping by them would give one row per reading; a per-queue split needs the queue name in a blob."
+        },
+        {
+          "id": "queue_dlq",
+          "title": "Dead letters and failed messages",
+          "kind": "table",
+          "range": {
+            "n": 24,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT index1 AS signal, sum(_sample_interval) AS n FROM {{ds:domain_events}} WHERE {{since}} AND index1 IN ('queue.dlq') GROUP BY signal ORDER BY n DESC LIMIT 100"
+        }
+      ]
+    },
+    {
+      "id": "trust-abuse",
+      "title": "Trust and abuse",
+      "purpose": "Integrity failures (expected zero), abuse pressure, moderation and account events.",
+      "panels": [
+        {
+          "id": "integrity",
+          "title": "Download and index integrity, last 7 days",
+          "kind": "table",
+          "range": {
+            "n": 7,
+            "unit": "DAY"
+          },
+          "note": "Every row here other than entry_skipped is expected to be absent.",
+          "sql": "SELECT index1 AS signal, sum(_sample_interval) AS n FROM {{ds:domain_events}} WHERE {{since}} AND index1 IN ('download.hash_mismatch', 'download.hash_mismatch_reported', 'index.verify_failed', 'index.verify_failed_reported', 'index.key_changed', 'index.stale', 'index.stale_reported', 'index.rollback_reported', 'index.entry_skipped') GROUP BY signal ORDER BY n DESC LIMIT 100"
+        },
+        {
+          "id": "audit_chain",
+          "title": "Audit chain",
+          "kind": "table",
+          "range": {
+            "n": 7,
+            "unit": "DAY"
+          },
+          "sql": "SELECT index1 AS signal, sum(_sample_interval) AS n FROM {{ds:domain_events}} WHERE {{since}} AND index1 IN ('audit.chain_broken', 'audit.chain_verified', 'audit.head_rebuilt', 'audit.reconcile_skipped') GROUP BY signal ORDER BY n DESC LIMIT 100"
+        },
+        {
+          "id": "abuse",
+          "title": "Abuse signals",
+          "kind": "table",
+          "range": {
+            "n": 24,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT index1 AS signal, sum(_sample_interval) AS n FROM {{ds:domain_events}} WHERE {{since}} AND index1 IN ('abuse.rate_limited', 'abuse.turnstile_failed', 'abuse.anomaly_hold', 'abuse.daily_cap_hit', 'auth.login_failed_burst', 'token.rejected', 'token.leak_reported') GROUP BY signal ORDER BY n DESC LIMIT 100"
+        },
+        {
+          "id": "abuse_trend",
+          "title": "Rate limiting and failed logins per hour",
+          "kind": "timeseries",
+          "range": {
+            "n": 48,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT {{bucket:3600}} AS t, index1 AS signal, sum(_sample_interval) AS n FROM {{ds:domain_events}} WHERE {{since}} AND index1 IN ('abuse.rate_limited', 'abuse.turnstile_failed', 'auth.login_failed_burst') GROUP BY t, signal ORDER BY t"
+        },
+        {
+          "id": "moderation",
+          "title": "Moderation",
+          "kind": "table",
+          "range": {
+            "n": 7,
+            "unit": "DAY"
+          },
+          "sql": "SELECT index1 AS signal, sum(_sample_interval) AS n FROM {{ds:domain_events}} WHERE {{since}} AND index1 IN ('moderation.report_received', 'moderation.report_prioritised', 'moderation.quarantined', 'moderation.takedown_completed') GROUP BY signal ORDER BY n DESC LIMIT 100"
+        },
+        {
+          "id": "moderation_age",
+          "title": "Oldest moderation queue entry, latest",
+          "kind": "table",
+          "range": {
+            "n": 24,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT argMax({{num:moderation.queue_age.age_s}}, timestamp) AS age_s, toUnixTimestamp(max(timestamp)) AS last_at FROM {{ds:domain_events}} WHERE {{since}} AND index1 = 'moderation.queue_age'"
+        },
+        {
+          "id": "accounts",
+          "title": "Accounts, scopes and admin actions",
+          "kind": "table",
+          "range": {
+            "n": 7,
+            "unit": "DAY"
+          },
+          "sql": "SELECT index1 AS signal, sum(_sample_interval) AS n FROM {{ds:domain_events}} WHERE {{since}} AND index1 IN ('auth.login', 'auth.stepup', 'auth.factor_changed', 'auth.recovery_requested', 'auth.session_revoked', 'token.minted', 'token.revoked', 'scope.created', 'scope.proof_changed', 'scope.application_decided', 'grant.changed', 'admin.action', 'cloudflare.audit_event') GROUP BY signal ORDER BY n DESC LIMIT 100"
+        },
+        {
+          "id": "denied_by_country",
+          "title": "Refused requests by country",
+          "kind": "table",
+          "range": {
+            "n": 24,
+            "unit": "HOUR"
+          },
+          "sql": "SELECT {{col:request_outcomes.country}} AS country, {{col:request_outcomes.outcome}} AS outcome, sum(_sample_interval) AS n FROM {{ds:request_outcomes}} WHERE {{since}} AND {{col:request_outcomes.outcome}} = 'refused' GROUP BY country, outcome ORDER BY n DESC LIMIT 50"
+        }
+      ]
+    },
+    {
+      "id": "platform-cost",
+      "title": "Platform and cost",
+      "purpose": "Where the account's meters stand: traffic, CPU and binding time, third-party limits, spend counters.",
+      "panels": [
+        {
+          "id": "cpu",
+          "title": "CPU and binding time by Worker, p95",
+          "kind": "table",
+          "range": {
+            "n": 24,
+            "unit": "HOUR"
+          },
+          "note": "-1 marks an unknown measurement and is excluded for CPU only; the binding columns use the same -1 for not used, so read them as a floor.",
+          "sql": "SELECT {{col:request_outcomes.worker}} AS worker, quantileExactWeighted(0.95)({{col:request_outcomes.cpu_ms}}, _sample_interval) AS cpu_p95, quantileExactWeighted(0.95)({{col:request_outcomes.d1_ms}}, _sample_interval) AS d1_p95, quantileExactWeighted(0.95)({{col:request_outcomes.r2_ms}}, _sample_interval) AS r2_p95, quantileExactWeighted(0.95)({{col:request_outcomes.kv_ms}}, _sample_interval) AS kv_p95, quantileExactWeighted(0.95)({{col:request_outcomes.vectorize_ms}}, _sample_interval) AS vectorize_p95 FROM {{ds:request_outcomes}} WHERE {{since}} AND {{col:request_outcomes.worker}} != '' AND {{col:request_outcomes.cpu_ms}} >= 0 GROUP BY worker"
+        },
+        {
+          "id": "volume",
+          "title": "Requests per day by Worker",
+          "kind": "timeseries",
+          "range": {
+            "n": 30,
+            "unit": "DAY"
+          },
+          "sql": "SELECT {{bucket:86400}} AS t, {{col:request_outcomes.worker}} AS worker, sum(_sample_interval) AS requests FROM {{ds:request_outcomes}} WHERE {{since}} AND {{col:request_outcomes.worker}} != '' GROUP BY t, worker ORDER BY t"
+        },
+        {
+          "id": "cache",
+          "title": "Cache status share, last day",
+          "kind": "table",
+          "range": {
+            "n": 1,
+            "unit": "DAY"
+          },
+          "sql": "SELECT {{col:request_outcomes.cache_status}} AS cache_status, sum(_sample_interval) AS requests FROM {{ds:request_outcomes}} WHERE {{since}} AND {{col:request_outcomes.cache_status}} != '' GROUP BY cache_status ORDER BY requests DESC"
+        },
+        {
+          "id": "private_downloads",
+          "title": "Private download volume per day",
+          "kind": "timeseries",
+          "range": {
+            "n": 30,
+            "unit": "DAY"
+          },
+          "sql": "SELECT {{bucket:86400}} AS t, sum(_sample_interval) AS downloads, sumIf({{col:downloads.bytes}} * _sample_interval, {{col:downloads.bytes}} >= 0) AS bytes FROM {{ds:downloads}} WHERE {{since}} GROUP BY t ORDER BY t",
+          "note": "bytes counts only downloads whose size is known."
+        },
+        {
+          "id": "budget",
+          "title": "Budget usage, latest per meter",
+          "kind": "table",
+          "range": {
+            "n": 7,
+            "unit": "DAY"
+          },
+          "note": "Nothing writes budget.usage yet; the panel is empty until the judge's budget computation lands.",
+          "sql": "SELECT {{col:budget.attrs}} AS attrs, toUnixTimestamp(max(timestamp)) AS last_at, sum(_sample_interval) AS points FROM {{ds:budget}} WHERE {{since}} AND index1 = 'budget.usage' GROUP BY attrs ORDER BY last_at DESC LIMIT 100"
+        },
+        {
+          "id": "third_party",
+          "title": "GitHub rate limit and email failures",
+          "kind": "table",
+          "range": {
+            "n": 24,
+            "unit": "HOUR"
+          },
+          "note": "min_remaining is meaningful only on the github.rate_limit_remaining row.",
+          "sql": "SELECT index1 AS signal, sum(_sample_interval) AS n, min({{num:github.rate_limit_remaining.remaining}}) AS min_remaining FROM {{ds:domain_events}} WHERE {{since}} AND index1 IN ('github.rate_limit_remaining', 'github.webhook_rejected', 'github.scan_run', 'email.sent', 'email.failed', 'search.vectorize_error', 'search.degraded') GROUP BY signal"
+        },
+        {
+          "id": "model_spend",
+          "title": "Prose screen runs and duration by implementation",
+          "kind": "table",
+          "range": {
+            "n": 7,
+            "unit": "DAY"
+          },
+          "note": "Model spend is not recorded: a prose screen point carries its implementation and duration only, so this shows how often the screen runs, not what it costs.",
+          "sql": "SELECT {{stat:validation.prose_screen.implementation}} AS implementation, sum(_sample_interval) AS runs, quantileExactWeighted(0.95)({{stat:validation.prose_screen.duration_ms}}, _sample_interval) AS p95_ms FROM {{ds:validation_events}} WHERE {{since}} AND index1 = 'validation.prose_screen' GROUP BY implementation ORDER BY runs DESC"
+        }
+      ]
+    }
+  ]
+}
