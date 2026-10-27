@@ -59,7 +59,7 @@ are what the site, MCP and the signed index show.
 Core D1 tables: `users`, `credentials`, `identities`, `session_revocations`, `scopes`,
 `scope_members`, `domain_challenges`, `vp_applications`, `packs`, `pack_versions` (lean: sha256,
 size, state, `published_at`, verification facts, `source_verified`, `min_engine_version`,
-`requires`, `source_commit`, score with its rules version and breakdown), `rescan_passes`, `url_domain_states` and `version_warnings` (the rescans' cursors, resolver baselines and drift warnings), `trusted_publishers`_publishers`, `grants` and `effective_access`,
+`requires`, `source_commit`, score with its rules version and breakdown), `rescan_passes`, `url_domain_states` and `version_warnings` (the rescans' cursors, resolver baselines and drift warnings), `trusted_publishers`, `grants` and `effective_access`,
 `tokens`, `stars`, `reviews`, `comments`, `comment_votes`, `reports`, `pack_stats`,
 `feature_flags`, `recent_activity`, `pack_search` and `recent` (what search matches and when a pack was
 first promoted), and the FTS5 table `packs_fts` over `pack_search`. Sessions live in KV; full
@@ -169,7 +169,7 @@ of recurring jobs; other pages link here.
 | Daily | Prune `recent_activity` past 90 days, expired `packs-staging` objects (14 days; dry-runs 1 hour), expired invites and challenges, finished Workflow milestones past 30 days | admin | REQ-PUB-020 |
 | Daily | Audit chain head to Sigstore Rekor and `/.well-known/audit-heads`; nightly chain verifier | admin | REQ-AUDIT-005 |
 | Weekly | Public adoption scan: the `github` Worker searches public repositories through GitHub code search for Claudinite settings files and reads the packs they declare; the cron fires hourly on Sunday, a run stops after 10 minutes and the next resumes from its saved cursor until the scan completes; it never reads a private repository; the counts are approximate and feed the declaring-repo count, ranking and Trending | github | REQ-TELEM-007 |
-| Every 15 minutes | A page of each open rescan pass: the static rules, rescore and prose screen over every newest eligible version once the rules version changes; the weekly domain re-resolution (DNS-over-HTTPS) of the URLs in live prose; the weekly full-pipeline pass over the thousand most-declared packs (Monday). A finding quarantines through the reindex queue; only a human revokes | validator | REQ-VAL-018, REQ-SCORE-003 |
+| Every 15 minutes | A page of rescan work: finished full-pipeline runs are applied and the rules pass advances on every fire (it also catches versions promoted under older rules after the sweep ended), and the weekly domain re-resolution (DNS-over-HTTPS of the URLs in live prose) and the weekly full-pipeline pass over the thousand most-declared packs take alternate fires. A finding quarantines through the reindex queue; only a human revokes | validator | REQ-VAL-018, REQ-SCORE-003 |
 | Every 30 days per scope | Domain proof re-check | admin | REQ-SCOPE-006 |
 | Every 5 minutes (every minute during a rollout) | The gate judge and the synthetic prober | judge, prober | [../operations/monitoring.md](../operations/monitoring.md) |
 

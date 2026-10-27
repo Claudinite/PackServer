@@ -1,6 +1,5 @@
 import type { ValidatorRuntime } from "../bindings";
 import { stat } from "../workflow/steps";
-import { VersionStatusChanged } from "./message";
 import { REINDEX_SCHEMA } from "../reindex/consume";
 import type { Candidate } from "./store";
 
@@ -18,7 +17,7 @@ export async function quarantine(rt: ValidatorRuntime, candidate: Candidate, rea
   );
   if (moved.meta.changes === 0) return false;
   stat(rt, "moderation.quarantined", [candidate.pack, candidate.version, reason, "rescan"]);
-  const message: VersionStatusChanged = { schema: REINDEX_SCHEMA, type: "version.status_changed", scope: candidate.scope, pack: candidate.pack, version: candidate.version, status: "quarantined", reason };
+  const message = { schema: REINDEX_SCHEMA, type: "scope.proof_changed", scope: candidate.scope, change: "version_status_changed" };
   const queue = rt.ports.queues.REINDEX_QUEUE;
   if (!queue) throw new Error("the REINDEX_QUEUE binding is missing");
   try {

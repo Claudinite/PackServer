@@ -1,4 +1,4 @@
-import { PortError, type AuthFileAnswer, type Dns, type WellKnown } from "../src/ports";
+import { DNS_NAME_UNANSWERED, PortError, type AuthFileAnswer, type Dns, type WellKnown } from "../src/ports";
 
 export const DOH_URL = "https://cloudflare-dns.com/dns-query";
 export const AUTH_FILE_PATH = "/.well-known/packserver-auth";
@@ -35,7 +35,7 @@ export function dohDns(fetcher: typeof fetch = fetch): Dns {
     if (!response.ok) throw new PortError("dns_unavailable", `the resolver answered ${response.status}`);
     const body = (await response.json()) as { Status?: number; Answer?: Array<{ type?: number; data?: string }> };
     // NXDOMAIN (3) and an empty answer both mean no record; any other failure status is a resolver fault.
-    if (body.Status !== undefined && body.Status !== 0 && body.Status !== 3) throw new PortError("dns_unavailable", `the resolver reported status ${body.Status}`);
+    if (body.Status !== undefined && body.Status !== 0 && body.Status !== 3) throw new PortError(DNS_NAME_UNANSWERED, `the resolver reported status ${body.Status} for ${name}`);
     return body.Answer ?? [];
   }
   return {

@@ -13,8 +13,8 @@ export { SandboxA, SandboxB, ValidatePackWorkflow } from "./objects";
 const DAILY_CRON = "0 4 * * *";
 /** Applies the decisions that found no instance waiting. */
 const RESUME_CRON = "*/5 * * * *";
-/** Each fire advances the open rescan passes by a batch; the weekly fire is one more, so a week's passes begin on schedule even if the others were missed. */
-const RESCAN_CRONS: readonly string[] = ["*/15 * * * *", "0 5 * * 1"];
+/** Each fire advances the open rescan passes by a batch. */
+const RESCAN_CRONS: readonly string[] = ["*/15 * * * *"];
 
 /**
  * The Worker's one entrypoint: the (internal) HTTP surface, the cron, the two queue consumers and,

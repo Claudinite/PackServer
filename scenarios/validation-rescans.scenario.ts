@@ -13,17 +13,21 @@ scenario(
     const packs: Awaited<ReturnType<typeof world.packs.public>>[] = [];
     for (const n of ["one", "two", "three"]) packs.push(await world.packs.public(`@sc/${n}`, { canonicalArchive: await archive(n) }));
     for (const pack of packs) await world.search.list(pack, { pitch: "A pack so a page is on show" });
-    const rulesShown = async (pack: (typeof packs)[number]) => ((await pack.page()) as PackPageView).trust.split("rules ")[1]?.split(" ")[0];
-    const before = await Promise.all(packs.map(rulesShown));
-    expect(before.every(Boolean)).toBe(true);
-    expect(new Set(before).size).toBe(1);
+    const shown = async (pack: (typeof packs)[number]) => {
+      const view = (await pack.page()) as PackPageView;
+      return { rules: view.trust.split("rules ")[1]?.split(" ")[0], link: view.links.some((l) => l.href === "/rules" && l.text === view.trust.split("rules ")[1]?.split(" ")[0]), score: (await pack.version("1.0.0").detail()).score.total };
+    };
+    const before = await Promise.all(packs.map(shown));
+    expect(before.every((b) => b.rules && b.link)).toBe(true);
+    expect(new Set(before.map((b) => b.rules)).size).toBe(1);
 
     await world.cron.run("rescan");
 
-    const after = await Promise.all(packs.map(rulesShown));
-    expect(new Set(after).size).toBe(1);
-    expect(after.every(Boolean)).toBe(true);
-    expect(after[0]).not.toBe(before[0]);
+    const after = await Promise.all(packs.map(shown));
+    expect(after.every((a) => a.rules && a.link)).toBe(true);
+    expect(new Set(after.map((a) => a.rules)).size).toBe(1);
+    expect(after[0]?.rules).not.toBe(before[0]?.rules);
+    for (const [n, pack] of packs.entries()) expect(after[n]?.score, pack.name).not.toBe(before[n]?.score);
   },
   NEEDS,
 );
@@ -45,13 +49,19 @@ scenario(
       urls: [{ url: prose, domain: "docs.example.net", classification: "docs", file: "README.md", line: 3 }],
     });
     const plain = await world.packs.public("@acme/plain", { canonicalArchive: await bytes("# plain\n\nNothing to see.\n") });
-    const revoked = await world.packs.public("@acme/revoked", { canonicalArchive: await bytes("# revoked\n\nNothing to see.\n") });
+    const leaky = await world.packs.public("@acme/leaky", { canonicalArchive: (await world.validation.offlineCanonical(world.archive("with-secret"))).bytes });
+    const rulesOf = async (pack: typeof plain) => (await pack.version("1.0.0").detail()).rules_version;
+    const live = [installing, linking, plain];
+    const seeded = await Promise.all(live.map(rulesOf));
 
     world.dns.resolveHost("install.example.net");
     world.dns.resolveHost("docs.example.net");
 
     await world.cron.run("rescan");
     await world.cron.run("domain-drift");
+    const rescanned = await Promise.all(live.map(rulesOf));
+    for (const [n, rules] of rescanned.entries()) expect(rules, live[n]?.name).not.toBe(seeded[n]);
+    await expect(leaky.version("1.0.0").status()).resolves.toBe("quarantined");
     for (const pack of [installing, linking, plain]) await expect(pack.version("1.0.0").status()).resolves.toBe("active");
 
     world.dns.unresolveHost("install.example.net");
@@ -60,6 +70,7 @@ scenario(
     await world.cron.run("domain-drift");
 
     await expect(installing.version("1.0.0").status()).resolves.toBe("quarantined");
+    await expect(installing.read({ version: "1.0.0" })).toBeHeld();
     await expect(linking.version("1.0.0").status()).resolves.toBe("active");
     await expect(plain.version("1.0.0").status()).resolves.toBe("active");
 
@@ -70,26 +81,21 @@ scenario(
     expect(mails).toHaveLength(1);
     expect(mails[0]?.subject).toContain("/linking");
 
-    await installing.version("1.0.0").seed({ status: "active" });
-    await expect(installing.version("1.0.0").status()).resolves.toBe("active");
-
     const admin = await world.admins.create();
-    await admin.revoke(revoked.version("1.0.0"), { reason: "malicious install step", security: "Exfiltrates credentials." });
-    await expect(revoked.version("1.0.0").status()).resolves.toBe("revoked");
-    for (const pack of [installing, linking, plain]) await expect(pack.version("1.0.0").status()).resolves.not.toBe("revoked");
+    expect(await world.admins.internal("admin_app", { method: "unquarantine_version", pack: installing.version("1.0.0").pack.systemName, version: "1.0.0", reason: "cleared" }, { assertion: "valid" })).toMatchObject({ ok: true });
+    await expect(installing.version("1.0.0").status()).resolves.toBe("active");
+    await admin.revoke(plain.version("1.0.0"), { reason: "malicious install step", security: "Exfiltrates credentials." });
+    await expect(plain.version("1.0.0").status()).resolves.toBe("revoked");
+    for (const pack of [installing, linking]) await expect(pack.version("1.0.0").status()).resolves.not.toBe("revoked");
 
     const canonicalOf = async (fixture: Parameters<typeof world.archive>[0]) => (await world.validation.offlineCanonical(world.archive(fixture))).bytes;
-    const clean = await world.packs.public("@acme/clean", { canonicalArchive: await canonicalOf("gcp") });
     const leaking = await world.packs.public("@acme/leaking", { canonicalArchive: await canonicalOf("with-secret") });
-    const undeclared = await world.packs.public("@acme/undeclared", { canonicalArchive: await canonicalOf("with-secret") });
-    world.github.publicRepo("org/app", { declares: [clean, leaking] });
+    world.github.publicRepo("org/app", { declares: [leaking] });
     expect((await world.github.scan.run()).outcome).toBe("completed");
 
     await world.cron.run("top-pack-rescan");
 
-    await expect(clean.version("1.0.0").status()).resolves.toBe("active");
     await expect(leaking.version("1.0.0").status()).resolves.toBe("quarantined");
-    await expect(undeclared.version("1.0.0").status()).resolves.toBe("active");
   },
   NEEDS,
 );

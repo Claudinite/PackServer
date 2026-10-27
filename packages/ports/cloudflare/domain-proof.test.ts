@@ -62,7 +62,7 @@ describe("dohDns", () => {
   it("reads NXDOMAIN and an empty answer as no record, and any other failure as an outage", async () => {
     expect(await dohDns(answering(doh({ Status: 3 }))).resolveTxt("a.example")).toEqual([]);
     expect(await dohDns(answering(doh({ Status: 0 }))).resolveTxt("a.example")).toEqual([]);
-    await expect(dohDns(answering(doh({ Status: 2 }))).resolveTxt("a.example")).rejects.toMatchObject({ code: "dns_unavailable" });
+    await expect(dohDns(answering(doh({ Status: 2 }))).resolveTxt("a.example")).rejects.toMatchObject({ code: "dns_name_unanswered" });
     await expect(dohDns(answering(doh({}, 503))).resolveTxt("a.example")).rejects.toMatchObject({ code: "dns_unavailable" });
   });
 
@@ -77,6 +77,6 @@ describe("dohDns", () => {
 
   it("says a name does not resolve on NXDOMAIN and refuses to answer when the resolver fails", async () => {
     expect(await dohDns(answering(doh({ Status: 3 }), doh({ Status: 3 }))).resolves("gone.example")).toBe(false);
-    await expect(dohDns(answering(doh({ Status: 2 }))).resolves("gone.example")).rejects.toMatchObject({ code: "dns_unavailable" });
+    await expect(dohDns(answering(doh({ Status: 2 }))).resolves("gone.example")).rejects.toMatchObject({ code: "dns_name_unanswered" });
   });
 });

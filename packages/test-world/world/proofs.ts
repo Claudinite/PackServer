@@ -132,10 +132,16 @@ export function createDns(driver: Driver, aliases: Aliases): DnsModule {
 
 const RESCAN_RUNS_SETTLE_MS = 25_000;
 
-/** The validator's rescan work, run to its end by its own internal route. */
+const RESCAN_PAGES_MAX = 400;
+
+/** The validator's rescan work, one page per request as a scheduled fire does it, until the pass has completed. */
 async function rescanOf(driver: Driver, job: "rules" | "domains" | "pipeline" | "collect"): Promise<void> {
-  const res = await driver.http.request({ surface: "validator", method: "POST", path: "/internal/rescan", body: { job } });
-  if (res.status !== 200) throw new InfrastructureError(`the ${job} rescan answered ${res.status}: ${res.text}`);
+  for (let page = 0; page < RESCAN_PAGES_MAX; page++) {
+    const res = await driver.http.request({ surface: "validator", method: "POST", path: "/internal/rescan", body: { job } });
+    if (res.status !== 200) throw new InfrastructureError(`the ${job} rescan answered ${res.status}: ${res.text}`);
+    if ((JSON.parse(res.text) as { completed: boolean }).completed) return;
+  }
+  throw new InfrastructureError(`the ${job} rescan did not complete in ${RESCAN_PAGES_MAX} pages`);
 }
 
 /** Waits for the full-pipeline runs a rescan started to finish, so their verdicts can be applied. */

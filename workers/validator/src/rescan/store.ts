@@ -27,6 +27,7 @@ export interface Pass {
   versions: number;
   findings: number;
   completed: boolean;
+  started_at: string;
 }
 
 const placeholders = (n: number) => Array.from({ length: n }, () => "?").join(", ");
@@ -34,16 +35,21 @@ const placeholders = (n: number) => Array.from({ length: n }, () => "?").join(",
 /** The pass for this trigger, begun if it was not; a trigger that has completed stays completed. */
 export async function openPass(d1: D1, kind: PassKind, trigger: string, at: string): Promise<Pass> {
   await d1.query(`insert or ignore into rescan_passes (kind, trigger, started_at, updated_at) values (?, ?, ?, ?)`, [kind, trigger, at, at]);
-  const row = (await d1.query(`select cursor, versions, findings, completed_at from rescan_passes where kind = ? and trigger = ?`, [kind, trigger])).rows[0]!;
-  return { kind, trigger, cursor: (row.cursor as string | null) ?? null, versions: Number(row.versions), findings: Number(row.findings), completed: row.completed_at !== null };
+  const row = (await d1.query(`select cursor, versions, findings, completed_at, started_at from rescan_passes where kind = ? and trigger = ?`, [kind, trigger])).rows[0]!;
+  return { kind, trigger, cursor: (row.cursor as string | null) ?? null, versions: Number(row.versions), findings: Number(row.findings), completed: row.completed_at !== null, started_at: String(row.started_at) };
 }
 
-/** Records where the pass got to; `done` ends it, and the cursor is dropped with it. */
-export async function advancePass(d1: D1, pass: Pass, step: { cursor: string | null; versions: number; findings: number; done: boolean }, at: string): Promise<void> {
-  await d1.query(
-    `update rescan_passes set cursor = ?, versions = versions + ?, findings = findings + ?, updated_at = ?, completed_at = ? where kind = ? and trigger = ? and completed_at is null`,
-    [step.done ? null : step.cursor, step.versions, step.findings, at, step.done ? at : null, pass.kind, pass.trigger],
+/**
+ * Records where the pass got to, but only if nobody else moved it since `pass` was read: two fires
+ * that overlap both do the page, and the one that loses the compare-and-set on the cursor adds
+ * nothing. Returns whether this call advanced the pass.
+ */
+export async function advancePass(d1: D1, pass: Pass, step: { cursor: string | null; versions: number; findings: number; done: boolean }, at: string): Promise<boolean> {
+  const moved = await d1.query(
+    `update rescan_passes set cursor = ?, versions = versions + ?, findings = findings + ?, updated_at = ?, completed_at = ? where kind = ? and trigger = ? and completed_at is null and cursor is ?`,
+    [step.done ? null : step.cursor, step.versions, step.findings, at, step.done ? at : null, pass.kind, pass.trigger, pass.cursor],
   );
+  return moved.meta.changes > 0;
 }
 
 const WITH_ELIGIBLE = `v.state in ('active', 'deprecated') and v.published_at is not null`;
@@ -122,4 +128,21 @@ export async function candidateOf(d1: D1, versionId: string): Promise<Candidate 
     )
   ).rows[0];
   return row ? toCandidate(row) : null;
+}
+
+/**
+ * Versions that were promoted after the rules pass for `rules` began, under older rules: a run that
+ * started before the bump keeps the rules it began with. Each pack's newest eligible version is
+ * returned when it is behind, oldest promotion first; a stale version that a later promotion of its
+ * pack has already outdated is not asked for again.
+ */
+export async function lateUnderOlderRules(d1: D1, rules: string, since: string, limit: number): Promise<Candidate[]> {
+  const { rows } = await d1.query(
+    `select distinct v.pack_id from pack_versions v join packs p on p.id = v.pack_id join scopes s on s.id = p.scope_id
+      where ${WITH_ELIGIBLE} and ${publicScopeOnly("s")} and (v.score_rules_version is null or v.score_rules_version <> ?) and v.published_at >= ?
+        and not exists (select 1 from pack_versions w where w.pack_id = v.pack_id and w.state in ('active', 'deprecated') and w.score_rules_version = ? and w.published_at >= v.published_at)
+      order by v.pack_id limit ?`,
+    [rules, since, rules, limit],
+  );
+  return newestOf(d1, rows.map((r) => String(r.pack_id)));
 }

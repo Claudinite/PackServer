@@ -1,10 +1,12 @@
+import { weekOf } from "@packserver/core/validation";
 import { canonicalise, extractArchive } from "@packserver/core/canonical";
 import { fixtureArchive, type ArchiveOpts } from "@packserver/core/canonical/fixtures";
 import { objectKey } from "@packserver/core/catalog";
-import { PortError } from "@packserver/ports";
+import { DNS_NAME_UNANSWERED, PortError } from "@packserver/ports";
 import type { Meta } from "@packserver/schema";
 import { describe, expect, it } from "vitest";
 import { rescanRoute } from "../src/rescan/route";
+import { DOMAIN_BUDGET } from "../src/rescan/domains";
 import { collect, domainsPass, pipelinePass, rulesPass, tick } from "../src/rescan/tick";
 import { RESCAN_PRINCIPAL } from "../src/workflow/upload";
 import { seedScope, testRuntime } from "./support";
@@ -95,7 +97,7 @@ describe("the rules pass", () => {
     expect(row.state).toBe("quarantined");
     expect(String(row.status_reason)).toMatch(/^[a-z]+[.-]/);
     expect(row.score_rules_version).toBe("2026.10.2");
-    expect(reindexed(t)).toEqual([{ schema: 1, type: "version.status_changed", scope: "acme", pack: "@acme/leaky", version: "1.0.0", status: "quarantined", reason: row.status_reason }]);
+    expect(reindexed(t)).toEqual([{ schema: 1, type: "scope.proof_changed", scope: "acme", change: "version_status_changed" }]);
     expect(t.fakes.stats.points.find((p) => p.name === "moderation.quarantined")).toBeDefined();
   });
 
@@ -197,7 +199,7 @@ describe("the domain pass", () => {
     expect(state(t, "v-acme-installer-1.0.0").state).toBe("active");
   });
 
-  it("treats a resolver that cannot answer as no answer: nothing is recorded or quarantined, and the pass resumes", async () => {
+  it("stops the fire when the resolver cannot be reached: nothing is recorded or quarantined, and the pass resumes", async () => {
     const { t, installer } = await setup();
     await domainsPass(t.rt);
     t.fakes.clock.advance("7d");
@@ -206,11 +208,76 @@ describe("the domain pass", () => {
     t.fakes.dns.resolves = async () => {
       throw new PortError("dns_unavailable", "down");
     };
-    await expect(domainsPass(t.rt)).rejects.toThrow("down");
+    expect(await domainsPass(t.rt)).toMatchObject({ visited: 0, completed: false });
     expect(state(t, installer.id).state).toBe("active");
     t.fakes.dns.resolves = resolves;
     expect((await domainsPass(t.rt)).findings).toBe(2);
     expect(state(t, installer.id).state).toBe("quarantined");
+  });
+
+  it("records nothing for a name the resolver fails on, keeps going to the packs after it, and asks the name again next time", async () => {
+    const t = await testRuntime();
+    const broken = link("https://broken.example.net/x", "prose");
+    for (const host of ["install.example.com", "docs.example.org", "broken.example.net"]) t.fakes.dns.hosts.add(host);
+    const first = await publish(t, { scope: "acme", pack: "a", archive: GOOD(INSTALL_README), urls: [install], rules: "2026.10.2" });
+    const middle = await publish(t, { scope: "acme", pack: "b", archive: GOOD(PROSE_README), urls: [broken, prose], rules: "2026.10.2" });
+    const last = await publish(t, { scope: "acme", pack: "c", archive: GOOD(INSTALL_README), urls: [install], rules: "2026.10.2" });
+    owner(t, "acme");
+    await domainsPass(t.rt);
+    t.fakes.clock.advance("7d");
+    t.fakes.dns.hosts.clear();
+    const resolves = t.fakes.dns.resolves.bind(t.fakes.dns);
+    t.fakes.dns.resolves = async (name: string) => {
+      if (name === "broken.example.net") throw new PortError(DNS_NAME_UNANSWERED, "the resolver reported status 2");
+      return resolves(name);
+    };
+    const week = await domainsPass(t.rt);
+    expect(week).toMatchObject({ visited: 3, completed: true });
+    expect(state(t, first.id).state).toBe("quarantined");
+    expect(state(t, last.id).state).toBe("quarantined");
+    expect(state(t, middle.id).state).toBe("active");
+    expect(t.db.prepare(`select checked_trigger from url_domain_states where domain = 'broken.example.net'`).get()).not.toEqual({ checked_trigger: weekOf(t.rt.ports.clock.now()) });
+    expect(t.db.prepare(`select count(*) as n from version_warnings where subject = 'broken.example.net'`).get()).toEqual({ n: 0 });
+    expect(t.db.prepare(`select count(*) as n from version_warnings where subject = 'docs.example.org'`).get()).toEqual({ n: 1 });
+  });
+
+  it("reads a worst-case page's domain states in chunks and stays inside its query budget", async () => {
+    const t = await testRuntime();
+    (t.rt.config as { rescanBatch: () => number }).rescanBatch = () => 50;
+    for (let p = 0; p < 50; p++) {
+      const urls = Array.from({ length: 100 }, (_, n) => link(`https://p${p}-d${n}.example.org/x`, "prose"));
+      await publish(t, { scope: "acme", pack: `p${p}`, archive: GOOD(), urls, rules: "2026.10.2" });
+    }
+    const trigger = weekOf(t.rt.ports.clock.now());
+    const insert = t.db.prepare(`insert into url_domain_states (domain, resolves, checked_trigger, changed_trigger, updated_at) values (?, 1, ?, null, 'x')`);
+    for (let p = 0; p < 50; p++) for (let n = 0; n < 100; n++) insert.run(`p${p}-d${n}.example.org`, trigger);
+    let statements = 0;
+    const query = t.rt.ports.d1.query.bind(t.rt.ports.d1);
+    const batch = t.rt.ports.d1.batch.bind(t.rt.ports.d1);
+    t.rt.ports.d1.query = async (...args: Parameters<typeof query>) => (statements++, query(...args));
+    t.rt.ports.d1.batch = async (...args: Parameters<typeof batch>) => (statements++, batch(...args));
+    const progress = await domainsPass(t.rt);
+    expect(progress).toMatchObject({ visited: 50 });
+    expect(statements).toBeLessThan(DOMAIN_BUDGET.queries);
+  });
+
+  it("stops the page cleanly when its query budget is spent and resumes at the next pack", async () => {
+    const t = await testRuntime();
+    for (const pack of ["a", "b", "c"]) await publish(t, { scope: "acme", pack, archive: GOOD(), urls: [link(`https://${pack}.example.org/x`, "prose")], rules: "2026.10.2" });
+    owner(t, "acme");
+    for (const pack of ["a", "b", "c"]) t.fakes.dns.hosts.add(`${pack}.example.org`);
+    const original = DOMAIN_BUDGET.queries;
+    DOMAIN_BUDGET.queries = 14;
+    try {
+      const first = await domainsPass(t.rt);
+      expect(first.completed).toBe(false);
+      expect(first.visited).toBeLessThan(3);
+    } finally {
+      DOMAIN_BUDGET.queries = original;
+    }
+    const rest = await domainsPass(t.rt);
+    expect(rest.completed).toBe(true);
+    expect(t.db.prepare(`select count(*) as n from url_domain_states`).get()).toEqual({ n: 3 });
   });
 
   it("stops at the lookup budget and picks up at the pack it had not reached", async () => {
@@ -319,15 +386,39 @@ describe("the full-pipeline pass", () => {
 });
 
 describe("a scheduled fire and the internal route", () => {
-  it("advances every open pass, and one pass failing does not stop the others", async () => {
+  it("advances the collection, the rules pass and one weekly pass per fire, alternating, and one failing does not stop the others", async () => {
     const t = await testRuntime();
     await publish(t, { scope: "acme", pack: "gcp", archive: GOOD(), urls: [link("https://docs.example.org/guide", "prose")] });
     t.fakes.dns.resolves = async () => {
       throw new PortError("dns_unavailable", "down");
     };
-    const progress = await tick(t.rt);
-    expect(progress.map((p) => p.kind).sort()).toEqual(["collect", "pipeline", "rules"]);
+    const first = await tick(t.rt);
+    t.fakes.clock.advance("15m");
+    const second = await tick(t.rt);
+    expect(first.map((p) => p.kind)).toEqual(["collect", "rules", expect.stringMatching(/^(domains|pipeline)$/)]);
+    expect(new Set([first[2]?.kind, second[2]?.kind])).toEqual(new Set(["domains", "pipeline"]));
     expect(state(t, "v-acme-gcp-1.0.0").score_rules_version).toBe("2026.10.2");
+  });
+
+  it("emits rescan.completed once when two fires overlap on the same pass", async () => {
+    const t = await testRuntime();
+    await publish(t, { scope: "acme", pack: "gcp", archive: GOOD() });
+    await Promise.all([rulesPass(t.rt), rulesPass(t.rt)]);
+    expect(t.fakes.stats.points.filter((p) => p.name === "rescan.completed")).toHaveLength(1);
+  });
+
+  it("rescans a version promoted under older rules after the sweep ended", async () => {
+    const t = await testRuntime();
+    await publish(t, { scope: "acme", pack: "early", archive: GOOD() });
+    await rulesPass(t.rt);
+    t.fakes.clock.advance("1h");
+    const late = await publish(t, { scope: "acme", pack: "late", archive: GOOD() });
+    t.db.prepare(`update pack_versions set published_at = ? where id = ?`).run(new Date(t.rt.ports.clock.now()).toISOString(), late.id);
+    expect(state(t, late.id).score_rules_version).toBe("2026.10.1");
+    expect(await rulesPass(t.rt)).toMatchObject({ visited: 1, completed: true });
+    expect(state(t, late.id).score_rules_version).toBe("2026.10.2");
+    expect(await rulesPass(t.rt)).toMatchObject({ visited: 0 });
+    expect(t.fakes.stats.points.filter((p) => p.name === "rescan.completed")).toHaveLength(1);
   });
 
   it("runs a pass to its end for the operator and refuses what it does not know", async () => {
@@ -340,8 +431,10 @@ describe("a scheduled fire and the internal route", () => {
       app.post("/", rescanRoute(t.rt));
       return app.request("/", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } });
     };
-    const ok = await reply({ job: "rules" });
-    expect(await ok.json()).toMatchObject({ ok: true, job: "rules", pages: 4, visited: 3, completed: true });
+    const pages: Array<{ visited: number; completed: boolean }> = [];
+    for (let i = 0; i < 6 && !pages.at(-1)?.completed; i++) pages.push((await (await reply({ job: "rules" })).json()) as { visited: number; completed: boolean });
+    expect(pages.map((p) => p.visited)).toEqual([1, 1, 1, 0]);
+    expect(pages.at(-1)?.completed).toBe(true);
     expect((await reply({ job: "nothing" })).status).toBe(400);
   });
 });
