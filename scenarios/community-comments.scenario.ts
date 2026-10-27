@@ -92,4 +92,9 @@ scenario("IT-COMM-015 Section comments and votes on pack contents", async (world
   expect((await thread(world, pack, section)).find((c) => c.id === liked.id)).toMatchObject({ hidden: false, up: 1 });
   await world.community.vote(author, pack, liked, -1);
   expect((await thread(world, pack, section)).find((c) => c.id === liked.id)).toMatchObject({ hidden: false, up: 1, down: 1 });
+
+  // A pack that has been removed neither serves nor takes comments.
+  await pack.seedRemoved();
+  expect(await world.community.comments(pack, section)).toBeNotFound();
+  expect(await world.community.comment(a, pack, { section, body: "Too late." })).toBeNotFound();
 }, NEEDS);

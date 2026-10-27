@@ -14,4 +14,4 @@ export { starTallies, type StarTally } from "./tallies.ts";
 export {
   CommentInput, commentCounts, listComments, postComment, VoteInput, voteOnComment, type CommentRefusal, type CommentView,
 } from "./comments.ts";
-export { heldByTextChecks } from "./screen.ts";
+export { isHeldComment } from "./screen.ts";

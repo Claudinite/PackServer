@@ -1,4 +1,4 @@
-import { CommentInput, commentCounts, heldByTextChecks, listComments, postComment, VoteInput, voteOnComment, type CommentRefusal } from "@packserver/core/community";
+import { CommentInput, commentCounts, isHeldComment, listComments, postComment, VoteInput, voteOnComment, type CommentRefusal } from "@packserver/core/community";
 import { refusal, requireSession } from "@packserver/http";
 import { Hono, type Context } from "hono";
 import { runtimeOf, type WebEnv } from "../../context";
@@ -31,9 +31,17 @@ async function sectionExists(c: Context<WebEnv>, pack: { id: string; name: strin
   return read.kind === "found" && read.contents.files.some((f) => sectionsOf(f.path, f.text).some((s) => s.id === section));
 }
 
+/** The pack comments apply to: public, and with a version a resolver still hands out; a revoked or removed pack answers as absent. */
+async function commentPack(c: Context<WebEnv>) {
+  const pack = await packOf(c);
+  if (!pack) return null;
+  const { rows } = await runtimeOf(c).ports.d1.query("select 1 from pack_versions where pack_id = ? and state in ('active', 'deprecated', 'yanked') limit 1", [pack.id]);
+  return rows.length > 0 ? pack : null;
+}
+
 /** Comments on one section (`?section=`), or how many each section has when none is named. */
 routes.get("/packs/:scope/:name/comments", async (c) => {
-  const pack = await packOf(c);
+  const pack = await commentPack(c);
   if (!pack) return notFound();
   const ports = communityPorts(c);
   const section = c.req.query("section");
@@ -42,17 +50,17 @@ routes.get("/packs/:scope/:name/comments", async (c) => {
 });
 
 routes.post("/packs/:scope/:name/comments", requireSession(), csrfGuard, once, async (c) => {
-  const pack = await packOf(c);
+  const pack = await commentPack(c);
   if (!pack) return notFound();
   const parsed = CommentInput.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return invalid(parsed.error.issues[0]?.path.join(".") || "comment");
   if (!(await sectionExists(c, pack, parsed.data.version, parsed.data.section))) return refusal("forbidden", { status: 422, message: "That section does not exist in that version." });
-  const result = await postComment(communityPorts(c), pack, userId(c), parsed.data, heldByTextChecks(parsed.data.body));
+  const result = await postComment(communityPorts(c), pack, userId(c), parsed.data, await isHeldComment(parsed.data.body));
   return result.ok ? c.json({ comment: result.comment }, 201, NO_STORE) : refused(result);
 });
 
 routes.put("/packs/:scope/:name/comments/:id/vote", requireSession(), csrfGuard, once, async (c) => {
-  const pack = await packOf(c);
+  const pack = await commentPack(c);
   if (!pack) return notFound();
   const parsed = VoteInput.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return invalid("value");
@@ -61,7 +69,7 @@ routes.put("/packs/:scope/:name/comments/:id/vote", requireSession(), csrfGuard,
 });
 
 routes.delete("/packs/:scope/:name/comments/:id/vote", requireSession(), csrfGuard, once, async (c) => {
-  const pack = await packOf(c);
+  const pack = await commentPack(c);
   if (!pack) return notFound();
   const result = await voteOnComment(communityPorts(c), pack, userId(c), c.req.param("id"), 0);
   return result.ok ? c.json({ comment: result.comment }, 200, NO_STORE) : refused(result);

@@ -34,3 +34,4 @@ export const MAX_COMMENT_CHARS = 2000;
 /** A comment whose counted votes are net-negative this long after it was posted is hidden behind a disclosure (REQ-COMM-015). */
 export const COMMENT_HIDE_AFTER_MS = 3 * DAY_MS;
 export const MAX_SECTION_COMMENTS = 200;
+export const VOTES_PER_DAY = 200;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { migratedD1 } from "../../identity/testing.ts";
 import {
-  checkBurst, drainCommunityNotices, heldByTextChecks, listComments, postComment, voteOnComment, packsWithFreshStars, hideReview, listReviews, openStarHolds, pruneAuthenticatedDownloads, recomputeCommunity, recordAuthenticatedDownload, refreshPack, star, starState, submitReview, unstar, withPrior,
+  checkBurst, drainCommunityNotices, isHeldComment, listComments, postComment, voteOnComment, packsWithFreshStars, hideReview, listReviews, openStarHolds, pruneAuthenticatedDownloads, recomputeCommunity, recordAuthenticatedDownload, refreshPack, star, starState, submitReview, unstar, withPrior,
   type CommunityPorts, type PackRef,
 } from "../index.ts";
 import { FakeMail } from "@packserver/ports/fakes";
@@ -269,9 +269,25 @@ describe("section comments", () => {
     expect(await voteOnComment(f.ports, f.pack, other, id, 1)).toMatchObject({ ok: false, reason: "own_comment" });
   });
 
-  it("holds text the publisher-prose checks would not let through", () => {
-    expect(heldByTextChecks("Name the secret store here.")).toBe(false);
-    expect(heldByTextChecks("Use ghp_" + "Ab3dE6gH9jK2mN5pQ8sT1vW4yZ7bC0eF3hJ6")).toBe(true);
-    expect(heldByTextChecks("a\u202eb")).toBe(true);
+  it("holds text the publisher-prose checks would not let through", async () => {
+    expect(await isHeldComment("Name the secret store here.")).toBe(false);
+    expect(await isHeldComment("Use ghp_" + "Ab3dE6gH9jK2mN5pQ8sT1vW4yZ7bC0eF3hJ6")).toBe(true);
+    expect(await isHeldComment("a\u202eb")).toBe(true);
+  });
+});
+
+describe("comment limits", () => {
+  it("caps a person's votes at 200 a day", async () => {
+    const f = await fixture();
+    const [author, voter] = [await f.user("author"), await f.user("voter")];
+    const statements = [];
+    for (let i = 0; i < 201; i++) {
+      statements.push({ sql: "insert into comments (id, pack_id, section, version, user_id, body, created_at) values (?, 'pack-gcp', 's', '1.0.0', ?, 'x', ?)", params: [`c${i}`, author, iso(START)] });
+    }
+    for (let i = 0; i < 200; i++) statements.push({ sql: "insert into comment_votes (comment_id, user_id, value, voted_at) values (?, ?, 1, ?)", params: [`c${i}`, voter, iso(START)] });
+    for (let i = 0; i < statements.length; i += 50) await f.d1.batch(statements.slice(i, i + 50));
+    expect(await voteOnComment(f.ports, f.pack, voter, "c200", 1)).toMatchObject({ ok: false, reason: "daily_limit" });
+    f.advance(DAY + 1);
+    expect((await voteOnComment(f.ports, f.pack, voter, "c200", 1)).ok).toBe(true);
   });
 });

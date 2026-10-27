@@ -22,7 +22,7 @@ export const COMMENTS_SCRIPT = `
   }
   function one(box, c, signedIn) {
     var li = el("li", "cm-item");
-    li.appendChild(el("p", "cm-meta", (c.author || "Someone") + " on " + c.version + (c.held ? " (held for review; only you see this)" : "")));
+    li.appendChild(el("p", "cm-meta", (c.author || "Someone") + " on " + c.version + (c.held ? " (only you can see this comment)" : "")));
     li.appendChild(el("p", "cm-body", c.body));
     var bar = el("p", "cm-votes");
     bar.appendChild(el("span", "", "+" + c.up + " / -" + c.down));
@@ -60,11 +60,11 @@ export const COMMENTS_SCRIPT = `
       var form = event.target, status = box.querySelector(".cm-status");
       status.textContent = "Sending...";
       call(box, "POST", "/comments", { section: box.dataset.thread, version: box.dataset.version, body: form.body.value }).then(function (r) {
-        return r.json().then(function (body) {
+        return r.json().catch(function () { return {}; }).then(function (body) {
           if (!r.ok) { status.textContent = body.message || "The comment was refused."; return; }
           form.body.value = ""; load(box);
         });
-      });
+      }).catch(function () { status.textContent = "The comment could not be sent."; });
     });
   });
 })();

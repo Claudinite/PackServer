@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { COMMENT_HIDE_AFTER_MS, COMMENTS_PER_DAY, DAY_MS, MAX_COMMENT_CHARS, MAX_SECTION_COMMENTS } from "./constants.ts";
+import { COMMENT_HIDE_AFTER_MS, COMMENTS_PER_DAY, DAY_MS, MAX_COMMENT_CHARS, MAX_SECTION_COMMENTS, VOTES_PER_DAY } from "./constants.ts";
 import { isoOf, nowMs, type CommunityPorts } from "./ports.ts";
 import { isEstablished, type PackRef } from "./standing.ts";
 import { countedCutoff } from "./tallies.ts";
@@ -27,7 +27,7 @@ export interface CommentView {
   hidden: boolean;
   /** The viewer's own vote, counted or not. */
   mine?: 1 | -1 | null;
-  /** The prose screen held this comment; only its author sees it. */
+  /** The text screen withheld this comment; only its author sees it. */
   held?: true;
 }
 
@@ -61,14 +61,14 @@ function toView(row: Record<string, unknown>, now: number, viewer: string | unde
   };
 }
 
-/** The comments on one section, oldest first. A held comment appears only to its author. */
+/** The newest comments on one section, oldest of those first. A held comment appears only to its author. */
 export async function listComments(ports: CommunityPorts, pack: PackRef, viewerId: string | undefined, section: string): Promise<CommentView[]> {
   const now = nowMs(ports);
   const { rows } = await ports.d1.query(
-    `${SELECT(true)} where c.pack_id = ?4 and c.section = ?5 and (c.held_at is null or c.user_id = ?3) group by c.id order by c.created_at, c.id limit ${MAX_SECTION_COMMENTS}`,
+    `${SELECT(true)} where c.pack_id = ?4 and c.section = ?5 and (c.held_at is null or c.user_id = ?3) group by c.id order by c.created_at desc, c.id desc limit ${MAX_SECTION_COMMENTS}`,
     [countedCutoff(now), pack.scope_id, viewerId ?? "", pack.id, section],
   );
-  return rows.map((r) => toView(r, now, viewerId));
+  return rows.reverse().map((r) => toView(r, now, viewerId));
 }
 
 /** Comments per section for a pack, held ones left out; the Contents tab shows the figure on a collapsed section. */
@@ -87,13 +87,14 @@ export async function postComment(
   const { d1 } = ports;
   const now = nowMs(ports);
   if (!(await isEstablished(d1, userId, now))) return refuse("young_account", "Accounts under 24 hours old cannot comment yet.");
-  const today = await d1.query("select count(*) as n from comments where user_id = ? and created_at > ?", [userId, isoOf(now - DAY_MS)]);
-  if (Number(today.rows[0]?.n) >= COMMENTS_PER_DAY) return refuse("daily_limit", `You can post ${COMMENTS_PER_DAY} comments a day.`);
   const id = ports.rng.uuid();
   const at = isoOf(now);
-  await d1.query("insert into comments (id, pack_id, section, version, user_id, body, created_at, held_at) values (?, ?, ?, ?, ?, ?, ?, ?)", [
-    id, pack.id, input.section, input.version, userId, input.body, at, held ? at : null,
-  ]);
+  const { meta } = await d1.query(
+    `insert into comments (id, pack_id, section, version, user_id, body, created_at, held_at)
+       select ?, ?, ?, ?, ?, ?, ?, ? where (select count(*) from comments where user_id = ? and created_at > ?) < ?`,
+    [id, pack.id, input.section, input.version, userId, input.body, at, held ? at : null, userId, isoOf(now - DAY_MS), COMMENTS_PER_DAY],
+  );
+  if (meta.changes === 0) return refuse("daily_limit", `You can post ${COMMENTS_PER_DAY} comments a day.`);
   const comment = (await listComments(ports, pack, userId, input.section)).find((c) => c.id === id)!;
   return { ok: true, comment };
 }
@@ -109,6 +110,10 @@ export async function voteOnComment(
   const row = rows[0];
   if (!row || (row.held_at && row.user_id !== userId)) return refuse("not_found", "There is no such comment.");
   if (row.user_id === userId) return refuse("own_comment", "You cannot vote on your own comment.");
+  if (value !== 0) {
+    const today = await ports.d1.query("select count(*) as n from comment_votes where user_id = ? and voted_at > ?", [userId, isoOf(nowMs(ports) - DAY_MS)]);
+    if (Number(today.rows[0]?.n) >= VOTES_PER_DAY) return refuse("daily_limit", `You can vote ${VOTES_PER_DAY} times a day.`);
+  }
   if (value === 0) await ports.d1.query("delete from comment_votes where comment_id = ? and user_id = ?", [commentId, userId]);
   else {
     await ports.d1.query(
