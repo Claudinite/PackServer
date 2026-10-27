@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryAuditBucket, SqliteD1 } from "@packserver/core/audit/testing";
 import { createFakePorts } from "@packserver/ports/fakes";
 import { SHELL_RELEASE, SHELL_VERSION } from "@packserver/http/testing";
-import { CRON_DAILY, CRON_HOURLY, CRON_JOBS, CRON_REPORTS, runCron } from "../src/crons";
+import { CRON_DAILY, CRON_HOURLY, CRON_JOBS, CRON_REPORTS, CRON_ROLLUP, runCron } from "../src/crons";
 import { auditHead } from "../src/crons/audit-head";
 import { auditVerify } from "../src/crons/audit-verify";
 import { trending } from "../src/crons/trending";
@@ -42,8 +42,8 @@ describe("admin crons", () => {
   };
 
   it.each(["staging", "production"])("env.%s fires exactly the triggers that have jobs", (env) => {
-    expect(wrangler.env[env]?.triggers?.crons.sort()).toEqual([CRON_HOURLY, CRON_REPORTS, CRON_DAILY].sort());
-    expect(Object.keys(CRON_JOBS).sort()).toEqual([CRON_HOURLY, CRON_REPORTS, CRON_DAILY].sort());
+    expect(wrangler.env[env]?.triggers?.crons.sort()).toEqual([CRON_HOURLY, CRON_ROLLUP, CRON_REPORTS, CRON_DAILY].sort());
+    expect(Object.keys(CRON_JOBS).sort()).toEqual([CRON_HOURLY, CRON_ROLLUP, CRON_REPORTS, CRON_DAILY].sort());
   });
 
   it("runs every stub job of a trigger and says so; the audit jobs have their own test", async () => {
@@ -62,7 +62,7 @@ describe("admin crons", () => {
     log.mockImplementationOnce(() => {
       throw new Error("boom");
     });
-    await expect(runCron(CRON_HOURLY, runtime)).rejects.toThrow("1 of 8 jobs");
-    expect(log).toHaveBeenCalledTimes(8);
+    await expect(runCron(CRON_HOURLY, runtime)).rejects.toThrow("1 of 7 jobs");
+    expect(log).toHaveBeenCalledTimes(7);
   });
 });
