@@ -80,4 +80,6 @@ export const feature_flags = sqliteTable("feature_flags", {
   /** A security flag is honoured only with an HMAC from an admin-only key. */
   security: integer("security", { mode: "boolean" }).notNull().default(false),
   updated_at: text("updated_at").notNull(),
+  /** HMAC over key, value and `updated_at` under the admin-only key; a security flag without a verifying one is ignored. */
+  mac: text("mac"),
 });

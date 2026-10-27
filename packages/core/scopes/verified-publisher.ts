@@ -38,7 +38,7 @@ export async function applicationOf(d1: D1, scopeId: string): Promise<Applicatio
 }
 
 /** What a Verified Publisher still lacks: a live proof, and MFA required scope-wide (REQ-SCOPE-010). */
-async function missingConditions(d1: D1, scopeId: string, proofs: { verified_domain: string | null; verified_github_org: string | null }): Promise<Array<"proof" | "mfa">> {
+export async function missingConditions(d1: D1, scopeId: string, proofs: { verified_domain: string | null; verified_github_org: string | null }): Promise<Array<"proof" | "mfa">> {
   const missing: Array<"proof" | "mfa"> = [];
   if (!proofs.verified_domain && !proofs.verified_github_org) missing.push("proof");
   if ((await scopeMfaPolicy(d1, scopeId)) === "none") missing.push("mfa");

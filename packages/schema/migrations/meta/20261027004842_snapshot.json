@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "5e32deeb-b567-4103-beae-682209da9dc6",
+  "id": "451f474d-5975-468e-9f65-8e6418273b45",
   "prevId": "d15c882e-a162-4e40-ba1f-f00108d2e5dc",
   "tables": {
     "credentials": {
@@ -6988,64 +6988,89 @@
         }
       }
     },
-    "run_approvals": {
-      "name": "run_approvals",
+    "blocked_sources": {
+      "name": "blocked_sources",
       "columns": {
-        "run_id": {
-          "name": "run_id",
+        "source": {
+          "name": "source",
           "type": "text",
           "primaryKey": true,
           "notNull": true,
           "autoincrement": false
         },
-        "reasons": {
-          "name": "reasons",
+        "reason": {
+          "name": "reason",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "sheet": {
-          "name": "sheet",
+        "blocked_by": {
+          "name": "blocked_by",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "requested_at": {
-          "name": "requested_at",
+        "blocked_at": {
+          "name": "blocked_at",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "approved_by": {
-          "name": "approved_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "approved_at": {
-          "name": "approved_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "event_sent_at": {
-          "name": "event_sent_at",
+        "expires_at": {
+          "name": "expires_at",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         }
       },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "page_acknowledgements": {
+      "name": "page_acknowledgements",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "page": {
+          "name": "page",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "acknowledged_by": {
+          "name": "acknowledged_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "acknowledged_at": {
+          "name": "acknowledged_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
       "indexes": {
-        "run_approvals_open_idx": {
-          "name": "run_approvals_open_idx",
+        "page_acknowledgements_page_idx": {
+          "name": "page_acknowledgements_page_idx",
           "columns": [
-            "approved_at"
+            "page",
+            "acknowledged_at"
           ],
           "isUnique": false
         }
@@ -7053,16 +7078,7 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {
-        "run_approvals_approved_check": {
-          "name": "run_approvals_approved_check",
-          "value": "(\"run_approvals\".\"approved_by\" is null) = (\"run_approvals\".\"approved_at\" is null)"
-        },
-        "run_approvals_reasons_check": {
-          "name": "run_approvals_reasons_check",
-          "value": "json_valid(\"run_approvals\".\"reasons\") and json_valid(\"run_approvals\".\"sheet\")"
-        }
-      }
+      "checkConstraints": {}
     }
   },
   "views": {},

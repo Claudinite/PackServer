@@ -447,6 +447,9 @@ importers:
       '@packserver/ports':
         specifier: workspace:*
         version: link:../../packages/ports
+      '@packserver/publish-action':
+        specifier: workspace:*
+        version: link:../../packages/publish-action
       '@packserver/rules':
         specifier: workspace:*
         version: link:../../packages/rules
