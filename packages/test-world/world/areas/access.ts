@@ -69,6 +69,8 @@ export interface AccessVerbs {
   fetches(pack: Pack): Promise<FetchRecordView[]>;
   /** Gives the registry its signing key, so a reindex it is sent can run. */
   seedRegistryKeys(): Promise<void>;
+  /** Gives the pack a version that has been approved but not yet published, as one mid-promotion looks. */
+  seedPendingVersion(pack: Pack): Promise<void>;
   /** The pack's access page and what it changes, as `by` uses them. */
   manage(pack: Pack, by: User): AccessManager;
   /** The writes a signed-in person may try on a pack, each as the registry answers it. */
@@ -166,6 +168,12 @@ export const createAccess = (driver: Driver, aliases: Aliases): AccessModule => 
 
   const access: AccessVerbs = {
     manage,
+    async seedPendingVersion(pack) {
+      const id = await packId(pack);
+      const { db } = await driver.storage!();
+      const statement = db.prepare("insert into pack_versions (id, pack_id, version, state, sha256, size_bytes, published_at, verified, source_verified) values (?, ?, '9.9.9', 'approved', ?, 1, null, 0, 0)");
+      await (statement.bind(crypto.randomUUID(), id, "0".repeat(64)) as { run(): Promise<unknown> }).run();
+    },
     async seedRegistryKeys() {
       const { db } = await driver.storage!();
       const now = driver.fakes ? await driver.fakes.clock.call<number>("now") : Date.now();

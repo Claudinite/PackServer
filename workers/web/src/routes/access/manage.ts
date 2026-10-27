@@ -92,15 +92,15 @@ routes.post(`${SCOPE_PATH}/visibility`, sensitive("pack.visibility", (c) => syst
   const body = await bodyOf(c);
   if (body.visibility !== "public" && body.visibility !== "private") return refusal("forbidden", { status: 422, message: "visibility: public or private." });
   const { d1 } = runtimeOf(c).ports;
-  const published = await d1.query("select 1 from pack_versions where pack_id = ? and published_at is not null limit 1", [pack.id]);
-  if (published.rows.length > 0) {
-    return refusal("exists", { status: 409, message: "A pack with a published version cannot change visibility yet: moving its versions between the public and private stores is not built (issue 229)." });
-  }
   if (body.visibility === pack.visibility) return ok(c, { visibility: pack.visibility, changed: false });
   if (body.visibility === "public" && body.confirm !== true) {
     return refusal("forbidden", { status: 422, message: "confirm: making a pack public is permanent; send confirm: true to go ahead." });
   }
-  await d1.query("update packs set visibility = ? where id = ?", [body.visibility, pack.id]);
+  // One statement, so a version that starts promoting between a check and the flip cannot slip through; any version row counts.
+  const flipped = await d1.query("update packs set visibility = ? where id = ? and not exists (select 1 from pack_versions where pack_id = ?)", [body.visibility, pack.id, pack.id]);
+  if (flipped.meta.changes === 0) {
+    return refusal("exists", { status: 409, message: "A pack with a version cannot change visibility yet: moving its versions between the public and private stores is not built (issue 229)." });
+  }
   await announceProofChange(proofPorts(c), pack.scope, "visibility_changed");
   await recordAudit(c, c.get("session")!.record.user_id, "visibility.changed", auditTarget(pack), { from: pack.visibility, to: body.visibility }, pack.scopeId);
   return ok(c, { visibility: body.visibility, changed: true });

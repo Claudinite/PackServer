@@ -418,21 +418,32 @@ scenario("IT-PRIV-014 Maintainers manage grants; a person with no role in the or
 scenario("IT-PRIV-010 Making a pack public needs an assertion and a confirmation, and is permanent", async (world) => {
   const ann = await world.publishers.create({ handle: "ann" });
   await ann.orgs.create("acme");
+  await ann.orgs.create("vault");
   await world.access.seedRegistryKeys();
   const draft = await world.packs.public("@acme/draft", { visibility: "private", versions: [] });
-  const secret = await world.packs.public("@acme/secret", { visibility: "private", versions: ["1.0.0"] });
+  const pending = await world.packs.public("@acme/pending", { visibility: "private", versions: [] });
+  const secret = await world.packs.public("@vault/secret", { visibility: "private", versions: ["1.0.0"] });
   const stored = await secret.stored("1.0.0");
 
   const bare = world.access.manage(draft, ann);
   await expect(bare.setVisibility("public", { assertion: "none", confirmed: true })).toBeRefused("step-up");
   await expect(bare.setVisibility("public")).toBeRefused("forbidden");
   expect(await bare.view()).toMatchObject({ visibility: "private", published: false });
+  const before = await world.registry.serial(draft);
   await bare.setVisibility("public", { confirmed: true });
+  await world.registry.indexes(draft, { newerThan: before });
   expect(await bare.view()).toMatchObject({ visibility: "public" });
+  const between = await world.registry.serial(draft);
   await bare.setVisibility("private");
+  await world.registry.indexes(draft, { newerThan: between });
   expect(await bare.view()).toMatchObject({ visibility: "private" });
   const trail = (await ann.account.history()).filter((e) => e.action === "visibility.changed");
   expect(trail.map((e) => e.target)).toEqual([draft.systemName, draft.systemName]);
+
+  await world.access.seedPendingVersion(pending);
+  const midway = world.access.manage(pending, ann);
+  await expect(midway.setVisibility("public", { confirmed: true })).toBeRefused("exists");
+  expect(await midway.view()).toMatchObject({ visibility: "private", published: true });
 
   const published = world.access.manage(secret, ann);
   const serial = await world.registry.serial(secret);
@@ -467,6 +478,7 @@ scenario("IT-PUB-022 Only owners change a pack's visibility or offer it to anoth
 scenario("IT-PRIV-011 A pack with published versions keeps them where they are when its visibility is asked to change", async (world) => {
   const ann = await world.publishers.create({ handle: "ann" });
   await ann.orgs.create("acme");
+  await world.access.seedRegistryKeys();
   const open = await world.packs.public("@acme/open", { versions: ["1.0.0"] });
   const manage = world.access.manage(open, ann);
   const before = await open.stored("1.0.0");
