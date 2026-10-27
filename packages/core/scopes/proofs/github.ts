@@ -124,16 +124,16 @@ export interface SweepSummary {
   restored: number;
 }
 
+const SWEEP_CURSOR_KEY = "github_proof_lapse_cursor";
+/** The most queries one proof takes: its installation, the alert's update and owner lookup, and the cursor write that follows. */
+const QUERIES_PER_PROOF = 4;
+
 /**
  * The App-based proofs follow the organisation's installation: the owners are alerted once the App
  * is gone or suspended, the proof is removed 7 days later, and an active installation inside the
  * grace, whatever its id, clears the clock. A run that has spent its share stops between two proofs and keeps where it
  * stopped, so the next run goes on from there and a list longer than one share is still reached whole.
  */
-const SWEEP_CURSOR_KEY = "github_proof_lapse_cursor";
-/** The most queries one proof can take (its installation, the repair or the revoke with its announcement, the alert with its mail) and the cursor write that follows. */
-const QUERIES_PER_PROOF = 6;
-
 export async function sweepGithubProofs(ports: ProofPorts, budget: { hasRoom?: (queries: number) => boolean } = {}): Promise<SweepSummary> {
   const nowMs = ports.clock.now();
   const now = isoOf(nowMs);

@@ -1,5 +1,5 @@
 import type { D1 } from "@packserver/ports";
-import { CATALOGUE_MEAN_KEY, EMPTY_CATALOGUE_MEAN, RECOMPUTE_CURSOR_KEY, IDS_PER_STATEMENT, PRIOR_WEIGHT, ROWS_PER_INSERT, STATEMENTS_PER_BATCH, UNVERIFIED_WEIGHT } from "./constants.ts";
+import { BURST_CURSOR_KEY, CATALOGUE_MEAN_KEY, QUERIES_PER_BURST_CHECK, RECOMPUTE_RESERVE_QUERIES, EMPTY_CATALOGUE_MEAN, RECOMPUTE_CURSOR_KEY, IDS_PER_STATEMENT, PRIOR_WEIGHT, ROWS_PER_INSERT, STATEMENTS_PER_BATCH, UNVERIFIED_WEIGHT } from "./constants.ts";
 import { readCursor, writeCursor } from "./cursor.ts";
 import { checkBurst, packsWithFreshStars } from "./holds.ts";
 import { isoOf, nowMs, type CommunityPorts } from "./ports.ts";
@@ -60,6 +60,28 @@ async function ratingFigures(d1: D1, mean: number, packId?: string): Promise<Map
   );
 }
 
+type HasRoom = (queries: number) => boolean;
+
+/** The queries rewriting `n` packs takes at worst, with every one changed, rated and then unrated, and the cursor write. */
+function windowQueries(n: number): number {
+  const reads = Math.ceil(n / IDS_PER_STATEMENT);
+  const inserts = 2 * Math.ceil(n / ROWS_PER_INSERT);
+  return 1 + reads + Math.ceil((inserts + reads) / STATEMENTS_PER_BATCH) + inserts + reads;
+}
+
+/** The most packs, up to `cap`, whose rewrite fits in what `hasRoom` says is left. */
+function packsThatFit(cap: number, hasRoom: HasRoom | undefined): number {
+  if (!hasRoom) return cap;
+  let low = 0;
+  let high = cap;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (hasRoom(windowQueries(mid))) low = mid;
+    else high = mid - 1;
+  }
+  return low;
+}
+
 interface Written {
   packs: number;
 }
@@ -68,7 +90,7 @@ interface Written {
  * Rewrites the star and rating columns of `pack_stats` and the `pack_ratings` row for the packs asked about, or for
  * every pack the community tables or `pack_stats` mention. Only those columns are written: fetch counts are another job's.
  */
-async function write(ports: CommunityPorts, mean: number, only?: string, share?: number): Promise<Written> {
+async function write(ports: CommunityPorts, mean: number, only?: string, window?: { cap: number; hasRoom?: HasRoom }): Promise<Written> {
   const { d1 } = ports;
   const now = nowMs(ports);
   const at = isoOf(now);
@@ -87,11 +109,14 @@ async function write(ports: CommunityPorts, mean: number, only?: string, share?:
   const sorted = [...ids].sort();
   let list = sorted;
   let reachedEnd = true;
-  if (only === undefined && share !== undefined) {
-    // A pass rewrites one share of the sorted packs after where the last one stopped, and starts over from the top once it has reached the end.
+  let fit = true;
+  if (only === undefined && window !== undefined) {
+    // A pass rewrites as many of the sorted packs after where the last one stopped as the room allows, and starts over from the top once it has reached the end.
     const after = await readCursor(d1, RECOMPUTE_CURSOR_KEY);
     const rest = after === null ? list : list.filter((id) => id > after);
-    list = (rest.length > 0 ? rest : list).slice(0, share);
+    const size = packsThatFit(window.cap, window.hasRoom);
+    fit = size > 0;
+    list = (rest.length > 0 ? rest : list).slice(0, size);
     reachedEnd = list.length === 0 || list[list.length - 1] === sorted[sorted.length - 1];
   }
   // Only packs whose figures moved are written.
@@ -149,7 +174,7 @@ async function write(ports: CommunityPorts, mean: number, only?: string, share?:
     statements.push({ sql: `delete from pack_ratings where pack_id in (${chunk.map(() => "?").join(", ")})`, params: chunk });
   }
   for (let i = 0; i < statements.length; i += STATEMENTS_PER_BATCH) await d1.batch(statements.slice(i, i + STATEMENTS_PER_BATCH));
-  if (only === undefined && share !== undefined) await writeCursor(d1, RECOMPUTE_CURSOR_KEY, reachedEnd ? null : list[list.length - 1]!, at);
+  if (only === undefined && window !== undefined && fit) await writeCursor(d1, RECOMPUTE_CURSOR_KEY, reachedEnd ? null : list[list.length - 1]!, at);
   return { packs: changed.length };
 }
 
@@ -169,13 +194,30 @@ export interface RecomputeSummary {
 /**
  * The hourly pass: the catalogue mean the prior is built on, then every pack's rating and star figures, which also
  * lets an anomaly hold's 7 days run out. With `packsPerRun` the packs are rewritten in shares across runs, in id order,
- * and every pack is reached before any is reached again.
+ * as many as `hasRoom` allows, and every pack is reached before any is reached again. The burst checks, which come first,
+ * stop while the rest of the pass still has its room and carry on from there next run.
  */
-export async function recomputeCommunity(ports: CommunityPorts, opts: { packsPerRun?: number } = {}): Promise<RecomputeSummary> {
+export async function recomputeCommunity(ports: CommunityPorts, opts: { packsPerRun?: number; hasRoom?: HasRoom } = {}): Promise<RecomputeSummary> {
   // Stars from fresh accounts become counted a day after they were placed, with no click to check them.
   let holds = 0;
-  for (const packId of await packsWithFreshStars(ports.d1, nowMs(ports))) if (await checkBurst(ports, packId)) holds += 1;
+  const candidates = await packsWithFreshStars(ports.d1, nowMs(ports));
+  const checked = opts.hasRoom ? await readCursor(ports.d1, BURST_CURSOR_KEY) : null;
+  const rest = checked === null ? candidates : candidates.filter((id) => id > checked);
+  const queue = rest.length > 0 ? rest : candidates;
+  let last: string | null = null;
+  let reachedEnd = true;
+  for (const packId of queue) {
+    if (opts.hasRoom && !opts.hasRoom(RECOMPUTE_RESERVE_QUERIES + QUERIES_PER_BURST_CHECK)) {
+      reachedEnd = false;
+      break;
+    }
+    if (await checkBurst(ports, packId)) holds += 1;
+    last = packId;
+  }
+  if (opts.hasRoom && (checked !== null || !reachedEnd) && (last !== null || reachedEnd)) {
+    await writeCursor(ports.d1, BURST_CURSOR_KEY, reachedEnd ? null : last, isoOf(nowMs(ports)));
+  }
   const mean = await storeCatalogueMean(ports);
-  const { packs } = await write(ports, mean, undefined, opts.packsPerRun);
+  const { packs } = await write(ports, mean, undefined, opts.packsPerRun === undefined ? undefined : { cap: opts.packsPerRun, ...(opts.hasRoom && { hasRoom: opts.hasRoom }) });
   return { mean, packs, holds };
 }

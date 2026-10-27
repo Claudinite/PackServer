@@ -36,6 +36,11 @@ export const COMMENT_HIDE_AFTER_MS = 3 * DAY_MS;
 export const MAX_SECTION_COMMENTS = 200;
 export const VOTES_PER_DAY = 200;
 
-/** The most packs one hourly recompute rewrites; the pass resumes after the last it reached. */
-export const RECOMPUTE_PACKS_PER_RUN = 1000;
+/** The most packs one hourly recompute rewrites however much room the job has; the pass resumes after the last it reached. */
+export const RECOMPUTE_PACKS_PER_RUN = 5000;
 export const RECOMPUTE_CURSOR_KEY = "recompute_cursor";
+export const BURST_CURSOR_KEY = "burst_check_cursor";
+/** What the burst checks leave for the rest of the pass: the mean, the figures reads, both cursors and a window of a few packs. */
+export const RECOMPUTE_RESERVE_QUERIES = 30;
+/** The most queries checking one pack for a burst takes: the hold lookup, two counts and the hold. */
+export const QUERIES_PER_BURST_CHECK = 4;

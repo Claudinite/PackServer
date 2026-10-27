@@ -13,6 +13,6 @@ export const community: CronJob = async (runtime) => {
   // The cheap, bounded work goes first so a recompute that spends the whole share cannot starve it.
   const notices = await drainCommunityNotices(ports, { mail, siteOrigin, ...(runtime.budget && { hasRoom: runtime.budget.hasRoom }) });
   await pruneAuthenticatedDownloads(d1, clock.now());
-  const summary = await recomputeCommunity(ports, { packsPerRun: RECOMPUTE_PACKS_PER_RUN });
+  const summary = await recomputeCommunity(ports, { packsPerRun: RECOMPUTE_PACKS_PER_RUN, ...(runtime.budget && { hasRoom: runtime.budget.hasRoom }) });
   console.log(JSON.stringify({ at: "cron.community", ...summary, notices }));
 };
