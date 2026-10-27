@@ -194,8 +194,12 @@ export class FakeMail implements Mail {
 
 export class FakeDns implements Dns {
   readonly txt = new Map<string, string[]>();
+  readonly hosts = new Set<string>();
   async resolveTxt(name: string) {
     return this.txt.get(name) ?? [];
+  }
+  async resolves(name: string) {
+    return this.hosts.has(name);
   }
 }
 

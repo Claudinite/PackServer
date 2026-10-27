@@ -39,7 +39,7 @@ export async function readJson(runtime: McpRuntime, key: string): Promise<unknow
 
 export async function versionRows(runtime: McpRuntime, packId: unknown): Promise<VersionRow[]> {
   const result = await runtime.ports.d1.query(
-    "SELECT version, state, sha256, upload_sha256, size_bytes, published_at, verified, verified_domain, verified_github_org, source_verified, min_engine_version, requires, source_commit, score, report_key FROM pack_versions WHERE pack_id = ?",
+    "SELECT version, state, sha256, upload_sha256, size_bytes, published_at, verified, verified_domain, verified_github_org, source_verified, min_engine_version, requires, source_commit, score, score_rules_version, score_breakdown, report_key FROM pack_versions WHERE pack_id = ?",
     [packId],
   );
   return result.rows.map(parseVersionRow).filter((r) => isPublishedState(r.state));

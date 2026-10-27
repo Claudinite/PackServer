@@ -92,7 +92,7 @@
         "VALIDATION_REPORTS": { "bucket": "validation-reports", "access": "read-write" },
         "OPS_BUCKET": { "bucket": "ops", "access": "read" }
       },
-      "queues": { "NOTIFY_QUEUE": "notify" },
+      "queues": { "NOTIFY_QUEUE": "notify", "REINDEX_QUEUE": "reindex" },
       "queue_consumers": ["notify", "reindex"],
       "workflows": { "VALIDATE_PACK": "validate-pack" },
       "durable_objects": {
