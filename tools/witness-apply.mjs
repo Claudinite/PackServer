@@ -12,7 +12,7 @@ export const TARGET_REPO = "Claudinite/packserver-witness";
 
 /** Actions secrets the workflows read; each says where the value comes from. */
 export const SECRETS = [
-  ["GH_PAT", "Upptime pushes its history to main: a fine-grained token on this repository, Contents and Issues read/write, Workflows read/write"],
+  ["GH_PAT", "Upptime pushes its history to main: a fine-grained token on this repository, Contents, Issues, Workflows and Actions read/write"],
   ["WITNESS_HOOK_SECRET", "the value of the judge's Secrets Store entry hook-secret-witness (staging: hook-secret-witness-staging); signs every report"],
   ["CF_ACCOUNT_ID", "the Cloudflare account id"],
   ["CF_ANALYTICS_READ_TOKEN", "a new token with only Account | Account Analytics | Read, used to read the judge heartbeat"],
@@ -21,10 +21,11 @@ export const SECRETS = [
 ];
 
 export const HUMAN_STEPS = [
-  `Create ${TARGET_REPO} (private) if infra/github-org.mjs has not; commit the staged files to its main.`,
+  `Create ${TARGET_REPO} as a PUBLIC repository from the upptime/upptime template (Use this template), so Upptime's own workflows come with it. Public repositories get free Actions minutes and a working status page, and this one holds no secrets. infra/github-org.mjs lists it as private: do not let it create or lock the repository.`,
+  "Stage the files below on top of the template and commit them to main.",
   `Set the Actions secrets above on ${TARGET_REPO}.`,
   `Exempt ${TARGET_REPO} from the main-protection ruleset or add the Upptime token's owner as a bypass actor: Upptime commits straight to main.`,
-  "Enable GitHub Pages from the gh-pages branch (Settings, Pages); a private repository needs a plan that supports Pages for private repositories.",
+  "Enable GitHub Pages from the gh-pages branch (Settings, Pages).",
   "Run the Setup CI workflow once, then Uptime CI; confirm the three sites are up and the Witness report run is green.",
   "Fire drill from monitoring.md: point one site at a failing host and confirm a page arrives after the second failed probe.",
 ];
@@ -53,7 +54,7 @@ export function stage(target, source = SOURCE) {
   return files;
 }
 
-/** Files of the directory that differ from the source, or are missing. */
+/** Files of the directory that differ from the source, or are missing; template files it does not own are not looked at. */
 export function drift(target, source = SOURCE) {
   return managedFiles(source).filter((file) => {
     const path = join(target, file);

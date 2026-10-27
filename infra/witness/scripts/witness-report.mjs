@@ -41,33 +41,50 @@ export function siteFailures(issues, nowMs) {
 
 export function heartbeatSql(nowMs) {
   const at = (ms) => Math.floor((nowMs - ms) / 1000);
-  return `SELECT sumIf(_sample_interval, timestamp >= toDateTime(${at(HEARTBEAT_MAX_AGE_MS)})) AS fresh, sumIf(_sample_interval, timestamp >= toDateTime(${at(HEARTBEAT_MAX_AGE_MS + PROBE_INTERVAL_MS)})) AS recent FROM domain_events WHERE index1 = '${HEARTBEAT_SIGNAL}' AND timestamp >= toDateTime(${at(HEARTBEAT_MAX_AGE_MS + PROBE_INTERVAL_MS)}) FORMAT JSON`;
+  return `SELECT sumIf(_sample_interval, timestamp >= toDateTime(${at(HEARTBEAT_MAX_AGE_MS)})) AS fresh FROM domain_events WHERE index1 = '${HEARTBEAT_SIGNAL}' AND timestamp >= toDateTime(${at(HEARTBEAT_MAX_AGE_MS)}) FORMAT JSON`;
 }
 
-/** Reads the answer or throws: a query that could not be asked is not a dead judge. */
+/** A thrown answer means the heartbeat could not be checked; only a real zero count is a dead judge. */
 export function heartbeatState(response) {
   const row = response?.data?.[0];
-  const fresh = Number(row?.fresh);
-  const recent = Number(row?.recent);
-  if (!Number.isFinite(fresh) || !Number.isFinite(recent)) throw new Error("the heartbeat query answered with no usable row");
-  return { alive: fresh > 0, justCrossed: fresh === 0 && recent > 0 };
+  const fresh = row === undefined ? Number.NaN : Number(row.fresh);
+  if (!Number.isFinite(fresh)) throw new Error("the heartbeat query answered with no usable row");
+  return { alive: fresh > 0 };
 }
 
-/** Direct pushes are for when the router is out of reach, so they fire on the first detection and then once an hour, not every cycle. */
-export function directPushDue({ first, nowMs }) {
-  return first || new Date(nowMs).getUTCMinutes() < PROBE_INTERVAL_MS / 60_000;
-}
+const STATE_LABEL = "witness-push";
+const PUSH_REPEAT_MS = 60 * 60_000;
 
 async function ok(response, what) {
   if (!response.ok) throw new Error(`${what} answered ${response.status}`);
   return response;
 }
 
+const githubHeaders = (env) => ({ authorization: `Bearer ${env.GITHUB_TOKEN}`, accept: "application/vnd.github+json", "user-agent": "packserver-witness" });
+const repoApi = (env) => `${env.GITHUB_API_URL ?? "https://api.github.com"}/repos/${env.GITHUB_REPOSITORY}`;
+
 export async function listOpenStatusIssues({ env, fetchImpl }) {
-  const api = env.GITHUB_API_URL ?? "https://api.github.com";
-  const url = `${api}/repos/${env.GITHUB_REPOSITORY}/issues?state=open&labels=status&per_page=100`;
-  const response = await ok(await fetchImpl(url, { headers: { authorization: `Bearer ${env.GITHUB_TOKEN}`, accept: "application/vnd.github+json", "user-agent": "packserver-witness" } }), "GitHub issues");
+  const response = await ok(await fetchImpl(`${repoApi(env)}/issues?state=open&labels=status&per_page=100`, { headers: githubHeaders(env) }), "GitHub issues");
   return (await response.json()).filter((i) => !i.pull_request);
+}
+
+/**
+ * Direct pushes are throttled on a record kept in the repository itself: one issue per push kind,
+ * commented on at each push, so its last update is the last push whatever happened to the runs between.
+ */
+async function pushState(kind, { env, fetchImpl }) {
+  const response = await ok(await fetchImpl(`${repoApi(env)}/issues?state=open&labels=${STATE_LABEL}&per_page=100`, { headers: githubHeaders(env) }), "GitHub push records");
+  const issue = (await response.json()).find((i) => !i.pull_request && i.title === kind);
+  return issue ? { number: issue.number, lastPushMs: Date.parse(issue.updated_at) } : null;
+}
+
+async function recordPush(kind, state, nowMs, { env, fetchImpl }) {
+  const headers = { ...githubHeaders(env), "content-type": "application/json" };
+  const at = new Date(nowMs).toISOString();
+  const [url, body] = state
+    ? [`${repoApi(env)}/issues/${state.number}/comments`, { body: `Pushed ${at}` }]
+    : [`${repoApi(env)}/issues`, { title: kind, body: `Direct Pushover pushes of this kind are recorded here to throttle them. First: ${at}`, labels: [STATE_LABEL] }];
+  await ok(await fetchImpl(url, { method: "POST", headers, body: JSON.stringify(body) }), "GitHub push record");
 }
 
 export async function readHeartbeat({ env, fetchImpl, nowMs }) {
@@ -82,13 +99,25 @@ export async function postToRouter(report, { env, fetchImpl, nowMs }) {
   return response.ok;
 }
 
-export async function pushDirect({ title, message }, { env, fetchImpl }) {
+async function pushover({ title, message }, { env, fetchImpl }) {
   const body = new URLSearchParams({ token: env.PUSHOVER_APP_TOKEN, user: env.PUSHOVER_USER_KEY, title, message, priority: "1", url: OPS_PAGE_URL, url_title: "Ops page" });
   await ok(await fetchImpl(PUSHOVER_URL, { method: "POST", body }), "Pushover");
 }
 
+/** Pushes at most once an hour per kind, counted from the last recorded push. */
+export async function pushDirect(kind, text, ctx, log) {
+  const state = await pushState(kind, ctx);
+  if (state && ctx.nowMs - state.lastPushMs < PUSH_REPEAT_MS) {
+    log(`${kind}: direct push held back, one was sent within the hour`);
+    return;
+  }
+  await pushover(text, ctx);
+  log(`${kind}: pushed to Pushover directly`);
+  await recordPush(kind, state, ctx.nowMs, ctx);
+}
+
 /** Delivers one down report through the router, falling back to Pushover when the router does not accept it. */
-async function deliver(report, text, first, ctx, log) {
+async function deliver(report, text, ctx, log, pushable = true) {
   let accepted = false;
   try {
     accepted = await postToRouter(report, ctx);
@@ -96,9 +125,7 @@ async function deliver(report, text, first, ctx, log) {
     log(`router unreachable: ${error.message}`);
   }
   log(`${report.check} down: router ${accepted ? "accepted" : "did not accept"} the report`);
-  if (accepted || !directPushDue({ first, nowMs: ctx.nowMs })) return;
-  await pushDirect(text, ctx);
-  log(`${report.check} down: pushed to Pushover directly`);
+  if (!accepted && pushable) await pushDirect(report.check, text, ctx, log);
 }
 
 export async function run({ env, fetchImpl = fetch, nowMs = Date.now(), log = console.log }) {
@@ -109,20 +136,25 @@ export async function run({ env, fetchImpl = fetch, nowMs = Date.now(), log = co
     const { down, consecutive } = siteFailures(await listOpenStatusIssues(ctx), nowMs);
     log(`sites down: ${down.length === 0 ? "none" : down.join(", ")}`);
     if (down.length > 0) {
-      await deliver({ check: "site", status: "down", consecutive_failures: consecutive }, { title: "Witness: registry unreachable", message: `${down.join(", ")} failed ${consecutive} probe(s) in a row.` }, consecutive === 2, ctx, log);
+      await deliver({ check: "site", status: "down", consecutive_failures: consecutive }, { title: "Witness: registry unreachable", message: `${down.join(", ")} failed ${consecutive} probe(s) in a row.` }, ctx, log, consecutive >= 2);
     }
   } catch (error) {
     failures.push(`site check: ${error.message}`);
   }
 
   try {
-    const { alive, justCrossed } = await readHeartbeat(ctx);
+    const { alive } = await readHeartbeat(ctx);
     log(`judge heartbeat: ${alive ? "alive" : "missing"}`);
     if (!alive) {
-      await deliver({ check: "judge_heartbeat", status: "down" }, { title: "Witness: judge heartbeat missing", message: "No judge heartbeat for 15 minutes." }, justCrossed, ctx, log);
+      await deliver({ check: "judge_heartbeat", status: "down" }, { title: "Witness: judge heartbeat missing", message: "No judge heartbeat for 15 minutes." }, ctx, log);
     }
   } catch (error) {
     failures.push(`heartbeat check: ${error.message}`);
+    try {
+      await pushDirect("judge_unchecked", { title: "Witness cannot check the judge", message: "The witness could not read the judge heartbeat (token, query or account problem). This is not a report that the judge is down." }, ctx, log);
+    } catch (pushError) {
+      failures.push(`unchecked notice: ${pushError.message}`);
+    }
   }
 
   for (const failure of failures) log(`could not complete: ${failure}`);

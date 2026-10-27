@@ -25,11 +25,19 @@ describe("witness-apply", () => {
     expect(lines(["--check", dir]).code).toBe(1);
   });
 
+  it("ignores template files it does not own", () => {
+    const dir = mkdtempSync(join(tmpdir(), "witness-"));
+    stage(dir);
+    writeFileSync(join(dir, "README.md"), "from the Upptime template");
+    expect(drift(dir)).toEqual([]);
+  });
+
   it("lists the secrets and the human steps without writing anything by default", () => {
     const { code, text } = lines([]);
     expect(code).toBe(0);
     for (const name of ["WITNESS_HOOK_SECRET", "CF_ANALYTICS_READ_TOKEN", "PUSHOVER_USER_KEY"]) expect(text).toContain(name);
     expect(text).toContain("Would stage");
     expect(text).toContain("main-protection");
+    expect(text).toContain("PUBLIC repository from the upptime/upptime template");
   });
 });

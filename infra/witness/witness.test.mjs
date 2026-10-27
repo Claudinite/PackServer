@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { verifyHook } from "../../packages/core/alerts/hook-signature.ts";
-import { HEARTBEAT_SIGNAL, HOOK_URL, PUSHOVER_URL, directPushDue, heartbeatSql, heartbeatState, run, signReport, siteFailures } from "./scripts/witness-report.mjs";
+import { HEARTBEAT_SIGNAL, HOOK_URL, PUSHOVER_URL, heartbeatSql, heartbeatState, run, signReport, siteFailures } from "./scripts/witness-report.mjs";
 
 const NOW = Date.parse("2026-11-01T10:30:00Z");
 const MIN = 60_000;
@@ -10,19 +10,23 @@ const env = { GITHUB_REPOSITORY: "Claudinite/packserver-witness", GITHUB_TOKEN: 
 const downIssue = (slug, ageMs) => ({ title: "\u{1F6D1} Registry is down", labels: [{ name: "status" }, { name: slug }], created_at: new Date(NOW - ageMs).toISOString() });
 
 /** A fake network: the GitHub issue list, the Analytics Engine answer and the router's status; records every call. */
-function network({ issues = [], heartbeat = { fresh: 3, recent: 3 }, router = 202, heartbeatStatus = 200, pushover = 200 }) {
+function network({ issues = [], heartbeat = { fresh: 3 }, heartbeatData, router = 202, heartbeatStatus = 200, pushover = 200, records = [] }) {
   const calls = [];
   const fetchImpl = async (url, init = {}) => {
     calls.push({ url: String(url), init });
     const respond = (status, body) => new Response(JSON.stringify(body), { status });
-    if (String(url).includes("/issues?")) return respond(200, issues);
-    if (String(url).includes("analytics_engine/sql")) return respond(heartbeatStatus, { data: [heartbeat] });
+    const u = String(url);
+    if (u.includes("/issues?") && u.includes("labels=witness-push")) return respond(200, records);
+    if (u.includes("/issues?")) return respond(200, issues);
+    if (u.includes("/comments") || u.endsWith("/issues")) return respond(201, {});
+    if (u.includes("analytics_engine/sql")) return respond(heartbeatStatus, { data: heartbeatData ?? [heartbeat] });
     if (url === HOOK_URL) return respond(router, {});
     if (url === PUSHOVER_URL) return respond(pushover, {});
     throw new Error(`unexpected ${url}`);
   };
   return { calls, fetchImpl };
 }
+const record = (kind, ageMs) => ({ number: 7, title: kind, updated_at: new Date(NOW - ageMs).toISOString() });
 const go = async (net, at = NOW) => {
   const log = [];
   const failures = await run({ env, fetchImpl: net.fetchImpl, nowMs: at, log: (l) => log.push(l) });
@@ -56,10 +60,11 @@ describe("the heartbeat", () => {
     expect(sql).toContain(`index1 = '${HEARTBEAT_SIGNAL}'`);
     expect(sql).toContain(`toDateTime(${(NOW - 15 * MIN) / 1000})`);
   });
-  it("is dead only on a real zero, never on a malformed answer", () => {
-    expect(heartbeatState({ data: [{ fresh: "0", recent: "2" }] })).toEqual({ alive: false, justCrossed: true });
-    expect(heartbeatState({ data: [{ fresh: 4, recent: 4 }] }).alive).toBe(true);
+  it("is dead on a real zero count, and unchecked on anything else", () => {
+    expect(heartbeatState({ data: [{ fresh: "0" }] })).toEqual({ alive: false });
+    expect(heartbeatState({ data: [{ fresh: 4 }] })).toEqual({ alive: true });
     expect(() => heartbeatState({ data: [] })).toThrow();
+    expect(() => heartbeatState({ data: [{ fresh: "x" }] })).toThrow();
   });
 });
 
@@ -78,46 +83,60 @@ describe("a report run", () => {
     expect(pushes).toHaveLength(0);
   });
 
-  it("reports a missing judge heartbeat as the dead man's switch", async () => {
-    const { router } = await go(network({ heartbeat: { fresh: 0, recent: 0 } }));
-    expect(router.map((c) => JSON.parse(c.init.body))).toEqual([{ check: "judge_heartbeat", status: "down" }]);
-  });
-
-  it("falls back to Pushover on the first detection when the router refuses, then stays quiet until the hour", async () => {
-    const first = await go(network({ heartbeat: { fresh: 0, recent: 1 }, router: 503 }));
-    expect(first.pushes).toHaveLength(1);
-    const body = new URLSearchParams(first.pushes[0].init.body.toString());
-    expect([body.get("token"), body.get("user"), body.get("priority")]).toEqual(["app", "user", "1"]);
-
-    const later = await go(network({ heartbeat: { fresh: 0, recent: 0 }, router: 503 }), Date.parse("2026-11-01T10:30:00Z"));
-    expect(later.pushes).toHaveLength(0);
-    const hourly = await go(network({ heartbeat: { fresh: 0, recent: 0 }, router: 503 }), Date.parse("2026-11-01T11:02:00Z"));
-    expect(hourly.pushes).toHaveLength(1);
-  });
-
-  it("does not push directly when the router took the report", async () => {
-    const { pushes } = await go(network({ heartbeat: { fresh: 0, recent: 1 } }));
+  it("does not push directly for a first failed probe, the router's own rule", async () => {
+    const { pushes } = await go(network({ issues: [downIssue("registry", 20_000)], router: 503 }));
     expect(pushes).toHaveLength(0);
   });
 
-  it("fails the run, without a page, when the heartbeat cannot be read", async () => {
-    const { failures, router, pushes } = await go(network({ heartbeatStatus: 403 }));
+  it("reports a missing judge heartbeat as the dead man's switch", async () => {
+    const { router, pushes } = await go(network({ heartbeat: { fresh: 0 } }));
+    expect(router.map((c) => JSON.parse(c.init.body))).toEqual([{ check: "judge_heartbeat", status: "down" }]);
+    expect(pushes).toHaveLength(0);
+  });
+
+  it("falls back to Pushover when the router refuses, and records the push", async () => {
+    const net = network({ heartbeat: { fresh: 0 }, router: 503 });
+    const { pushes } = await go(net);
+    expect(pushes).toHaveLength(1);
+    const body = new URLSearchParams(pushes[0].init.body.toString());
+    expect([body.get("token"), body.get("user"), body.get("priority")]).toEqual(["app", "user", "1"]);
+    const created = net.calls.find((c) => c.url.endsWith("/issues") && c.init.method === "POST");
+    expect(JSON.parse(created.init.body)).toMatchObject({ title: "judge_heartbeat", labels: ["witness-push"] });
+  });
+
+  it("holds the next push back until an hour after the recorded one, however many runs were skipped", async () => {
+    const recent = await go(network({ heartbeat: { fresh: 0 }, router: 503, records: [record("judge_heartbeat", 59 * MIN)] }));
+    expect(recent.pushes).toHaveLength(0);
+    const due = network({ heartbeat: { fresh: 0 }, router: 503, records: [record("judge_heartbeat", 61 * MIN)] });
+    expect((await go(due)).pushes).toHaveLength(1);
+    expect(due.calls.some((c) => c.url.endsWith("/issues/7/comments"))).toBe(true);
+  });
+
+  it("does not push directly when the router took the report", async () => {
+    const { pushes } = await go(network({ heartbeat: { fresh: 0 } }));
+    expect(pushes).toHaveLength(0);
+  });
+
+  it.each([
+    ["a revoked token", { heartbeatStatus: 403 }],
+    ["a query with no row", { heartbeatData: [] }],
+  ])("tells Ariel it cannot check the judge on %s, and never reports the judge down", async (_, options) => {
+    const { failures, router, pushes } = await go(network(options));
     expect(failures).toHaveLength(1);
-    expect([router.length, pushes.length]).toEqual([0, 0]);
+    expect(router).toHaveLength(0);
+    expect(pushes).toHaveLength(1);
+    expect(new URLSearchParams(pushes[0].init.body.toString()).get("title")).toBe("Witness cannot check the judge");
+  });
+
+  it("throttles the cannot-check push like any other", async () => {
+    const { pushes } = await go(network({ heartbeatStatus: 403, records: [record("judge_unchecked", 10 * MIN)] }));
+    expect(pushes).toHaveLength(0);
   });
 
   it("still reports the sites when the heartbeat read fails", async () => {
     const { failures, router } = await go(network({ issues: [downIssue("registry", 6 * MIN)], heartbeatStatus: 500 }));
     expect(failures).toHaveLength(1);
     expect(router).toHaveLength(1);
-  });
-});
-
-describe("direct push throttle", () => {
-  it("fires on first detection and in the first five minutes of an hour only", () => {
-    expect(directPushDue({ first: true, nowMs: NOW })).toBe(true);
-    expect(directPushDue({ first: false, nowMs: NOW })).toBe(false);
-    expect(directPushDue({ first: false, nowMs: Date.parse("2026-11-01T11:04:00Z") })).toBe(true);
   });
 });
 
@@ -134,6 +153,7 @@ describe("the Upptime configuration", () => {
     expect(config).not.toMatch(/^\s*cname:/m);
     expect(config).toMatch(/^secrets: \[\]$/m);
     expect(config).toContain("baseUrl: /packserver-witness");
+    expect(config).not.toContain("publish:");
   });
   it("names every slug the reporter looks for", () => {
     for (const slug of ["registry", "index-root", "oauth-metadata"]) expect(config).toContain(`slug: ${slug}\n`);

@@ -32,10 +32,8 @@ workflowSchedule:
   uptime: "*/5 * * * *"
 
 # No custom domain (D4): the page is served from github.io under the repository path.
-# The repository is private, so Upptime publishes the page only with `publish: true`.
 status-website:
   baseUrl: /packserver-witness
-  publish: true
   name: PackServer status
   introTitle: "**PackServer** status"
   introMessage: Probes run every 5 minutes from GitHub Actions, outside the registry's own infrastructure.
