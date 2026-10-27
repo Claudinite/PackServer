@@ -1,6 +1,7 @@
 import type { AdminRuntime } from "../bindings";
 import { auditHead } from "./audit-head";
 import { auditVerify } from "./audit-verify";
+import { community } from "./community";
 import { domainRecheck } from "./domain-recheck";
 import { githubProofLapse } from "./github-proof-lapse";
 import { prune } from "./prune";
@@ -16,7 +17,7 @@ export const CRON_DAILY = "0 3 * * *";
 
 /** Each trigger in wrangler.jsonc runs exactly the jobs listed under it. */
 export const CRON_JOBS: Readonly<Record<string, readonly CronJob[]>> = {
-  [CRON_HOURLY]: [rollup, tokenLastUsed, githubProofLapse, syntheticExpiry],
+  [CRON_HOURLY]: [rollup, community, tokenLastUsed, githubProofLapse, syntheticExpiry],
   [CRON_DAILY]: [prune, domainRecheck, auditHead, auditVerify, trending],
 };
 
