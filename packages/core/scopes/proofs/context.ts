@@ -29,7 +29,7 @@ export interface ScopeProofChanged {
   schema: 1;
   type: "scope.proof_changed";
   scope: string;
-  change: "domain_verified" | "domain_moved" | "domain_lapsed" | "github_verified" | "github_revoked" | "verified_publisher_changed";
+  change: "domain_verified" | "domain_moved" | "domain_lapsed" | "github_verified" | "github_revoked" | "verified_publisher_changed" | "scope_renamed";
 }
 
 export async function announceProofChange(ports: ProofPorts, scope: string, change: ScopeProofChanged["change"]): Promise<void> {

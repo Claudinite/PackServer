@@ -7,6 +7,9 @@ import {
   type SendEmailBinding, type WorkerRuntime,
 } from "@packserver/ports/cloudflare";
 import type { Ports, R2, R2Read, Transparency } from "@packserver/ports";
+import { createFlagCache, type FlagCache } from "@packserver/core/flags";
+import type { RollbackDispatch } from "./ops/context";
+import { githubRollback } from "./ops/rollback";
 
 export interface Env {
   WORKER: string;
@@ -53,6 +56,12 @@ export interface Env {
   DOWNLOADS_DATASET?: string;
   /** API token with Account Analytics read, for the Analytics Engine SQL API. */
   ANALYTICS_READ_TOKEN: string | SecretsStoreSecret;
+  /** The admin-only key a security flag's row is signed and read under; no other Worker holds it. */
+  FLAG_HMAC_KEY: string | SecretsStoreSecret;
+  /** A token that may dispatch the `rollback` workflow and do nothing else; the roll-back tap is offered only where `ROLLBACK_REPO` is set. */
+  ROLLBACK_DISPATCH_TOKEN: string | SecretsStoreSecret;
+  /** `owner/repo` whose `rollback.yml` the roll-back tap dispatches; unset in staging, which has no release of its own to roll back. */
+  ROLLBACK_REPO?: string;
   /** The transparency log's base URL; the public Sigstore log when absent. */
   REKOR_URL?: string;
   CF_VERSION_METADATA: WorkerVersionMetadata;
@@ -67,6 +76,12 @@ export type AdminPorts = Pick<Ports, "clock" | "rng" | "d1" | "stats" | "queues"
   appendedPoints?: AppendedPoints;
   /** Reads private downloads back for the rollup; unset where the account and dataset are not configured. */
   privateDownloads?: PrivateDownloads;
+  /** The key security flags are written and read under; null when the secret is not bound. */
+  flagKey?: () => Promise<string | null>;
+  /** One per isolate, so the flag table is read once a minute; absent, every request reads it. */
+  flagCache?: FlagCache;
+  /** Starts the rollback workflow; unset where the environment has no release to roll back. */
+  rollback?: RollbackDispatch;
 };
 
 /** Reads the token from Secrets Store on first use, so a missing secret fails the batch rather than the isolate. */
@@ -127,6 +142,7 @@ const logTelemetry = {
 const MAIL_FAILURE_THRESHOLD = 2;
 
 const isolateTelemetry = createIsolateTelemetry();
+const isolateFlags = createFlagCache();
 
 export function createRuntime(env: Env): AdminRuntime {
   const telemetryKv = kvPort(env.TELEMETRY_KV);
@@ -155,6 +171,9 @@ export function createRuntime(env: Env): AdminRuntime {
     transparency: lazyTransparency(env),
     ...optional("appendedPoints", pointsReader(env)),
     ...optional("privateDownloads", downloadsReader(env)),
+    flagCache: isolateFlags,
+    flagKey: async () => (env.FLAG_HMAC_KEY ? readSecret(env.FLAG_HMAC_KEY) : null),
+    ...optional("rollback", env.ROLLBACK_REPO ? githubRollback({ repo: env.ROLLBACK_REPO, token: () => readSecret(env.ROLLBACK_DISPATCH_TOKEN) }) : undefined),
   });
   return { ...base, config: { siteOrigin: siteOriginOf(env.SITE_ORIGINS), access: policyFrom(env) } };
 }

@@ -2,10 +2,10 @@ import { expect, scenario } from "@packserver/test-world";
 import type { ScenarioOpts } from "@packserver/test-world";
 
 // Each scenario starts from an empty world: a verified name makes confusable names unavailable to every later scenario.
-const NEEDS: ScenarioOpts = { needs: ["fakes", "storage", "reset"] };
+const NEEDS: ScenarioOpts = { needs: ["fakes", "clock", "storage", "reset"] };
 
 scenario(
-  "IT-SCOPE-011 First proof holds a colliding name and never reassigns a publishing scope (proof half)",
+  "IT-SCOPE-011 First proof holds a colliding name and never reassigns a publishing scope",
   async (world) => {
     const s = await world.publishers.create({ handle: "s" });
     const t = await world.publishers.create({ handle: "t" });
@@ -33,6 +33,20 @@ scenario(
     const name = await world.profiles.profile(publishing);
     expect(name).toMatchObject({ name: "acmeinc", kind: "org" });
     await expect(publishing.people()).resolves.toMatchObject({ people: [{ handle: "t", role: "owner" }] });
+
+    const admin = await world.admins.create();
+    await admin.disputes.resolve(squatter, { kind: "reassign" });
+    await expect(world.orgs.get("acme", r).profile()).resolves.toMatchObject({ name: "acme", verifiedDomain: "acme.com" });
+    expect(world.mail.inbox(s).all().some((m) => m.subject.includes("is now"))).toBe(true);
+
+    await expect(admin.disputes.resolve(publishing, { kind: "reassign" })).rejects.toThrow();
+    await admin.disputes.resolve(publishing, { kind: "notice" });
+    await expect(world.profiles.profile(publishing)).resolves.toMatchObject({ name: "acmeinc", disputed: { domain: "acmeinc.com" } });
+    await publishing.consentReassign();
+    await admin.disputes.resolve(publishing, { kind: "reassign" });
+    await expect(world.orgs.get("acmeinc", v).profile()).resolves.toMatchObject({ name: "acmeinc" });
+    expect(world.mail.inbox(t).all().some((m) => m.subject.includes("is now"))).toBe(true);
+    expect((await admin.audit()).filter((a) => a.verb?.startsWith("dispute.")).length).toBeGreaterThanOrEqual(3);
   },
   NEEDS,
 );

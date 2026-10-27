@@ -183,6 +183,27 @@
       "when": 1793054029202,
       "tag": "20261026223349_foundation_pack_version_status",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1793059366336,
+      "tag": "20261027000246_admin_ops_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1793059371371,
+      "tag": "20261027000251_foundation_feature_flags_mac",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1793059373503,
+      "tag": "20261027000253_scopes_dispute_resolution",
+      "breakpoints": true
     }
   ]
 }

@@ -72,6 +72,38 @@ export interface AdminAuditEntry {
   actor: string;
 }
 
+export type InternalCaller = "judge" | "admin_app";
+
+export interface InternalAnswer {
+  ok: boolean;
+  /** The refusal's reason, or the method's, when the call did not succeed. */
+  reason: string | null;
+  auditId: string | null;
+}
+
+export interface OpsView {
+  killSwitch: boolean;
+  indexFrozen: boolean;
+  telemetryMode: string;
+  rollbackAvailable: boolean;
+  flags: Array<{ key: string; value: unknown; source: string; security: boolean }>;
+  blockedSources: Array<{ source: string; reason: string }>;
+  acknowledged: string[];
+  recent: Array<{ actor: string; verb: string; target: string | null }>;
+}
+
+export interface DisputeView {
+  id: string;
+  scope: string;
+  claimant: string;
+  domain: string;
+  held: boolean;
+  holderConsented: boolean;
+  noticeAttached: boolean;
+}
+
+export type DisputeDecision = { kind: "reassign"; holderName?: string } | { kind: "keep" } | { kind: "notice" };
+
 /** One signed-in admin of the admin app. */
 export interface AdminSession extends Admin {
   readonly email: string;
@@ -105,6 +137,25 @@ export interface AdminSession extends Admin {
   };
   /** What the audit record holds under this admin, oldest first. */
   audit(): Promise<AdminAuditEntry[]>;
+  ops: {
+    state(): Promise<OpsView>;
+    /** What the page is served as: found, under a nonce-based script policy, and with no inline handler or script URL. */
+    page(): Promise<{ served: boolean; noncePolicy: boolean; inlineHandlers: boolean }>;
+    /** A tap on the ops page: the same request the internal API takes, as the signed-in admin. */
+    tap(request: Record<string, unknown>): Promise<InternalAnswer>;
+  };
+  flags: {
+    set(key: string, value: unknown): Promise<void>;
+  };
+  revoke(version: Version, o: { reason: string; security: string }): Promise<void>;
+  disputes: {
+    list(): Promise<DisputeView[]>;
+    resolve(scope: { name: string }, decision: DisputeDecision): Promise<void>;
+  };
+  holds: {
+    list(): Promise<string[]>;
+    clear(scope: { name: string }): Promise<void>;
+  };
 }
 
 /** The admin host, scheduled jobs and the registry's own state. */
@@ -124,6 +175,14 @@ export interface AdminModule {
     makePrivate(version: Version): Promise<void>;
     /** The publisher's appeal against a rejection, in the way the publish Worker will record it once it lands. */
     appeal(version: Version, note: string): Promise<void>;
+    /** Holds the scope's publishing, in the way a handle near a later-verified scope is held at sign-up. */
+    holdHandle(scope: { name: string }): Promise<void>;
+    /** Calls the admin internal API as a service binding does: the judge or the admin app, with or without the admin's Access assertion. */
+    internal(caller: InternalCaller, request: Record<string, unknown>, o?: { assertion?: AssertionKind }): Promise<InternalAnswer>;
+    /** The roll-back workflow dispatches GitHub received. */
+    rollbackDispatches(): Array<{ workflow: string; ref: string; reason: string | null; authorised: boolean }>;
+    /** What the `flags/launch` key of the telemetry store holds, or null. */
+    launchMirror(): Promise<string | null>;
   };
   cron: { run(job: CronJob): Promise<void> };
   /** Moves the registry's applied migration head to `n` (a migration timestamp) until the scenario ends (REQ-OPS-011). */
@@ -172,14 +231,14 @@ export function createAdmin(driver: Driver, onDispose: (undo: () => Promise<void
     return kind === "forged" ? made.replace(email, "root@example.test") : made;
   }
 
-  async function call(method: string, path: string, o: { body?: unknown; as?: AssertionKind; host?: string } = {}) {
+  async function call(method: string, path: string, o: { body?: unknown; as?: AssertionKind; host?: string; headers?: Record<string, string> } = {}) {
     const token = await assertion(o.as ?? "valid");
     return driver.http.request({
       surface: "admin",
       method,
       path,
       host: o.host ?? SITE,
-      headers: token ? { [ACCESS_HEADER]: token } : {},
+      headers: { ...(token ? { [ACCESS_HEADER]: token } : {}), ...o.headers },
       ...(o.body === undefined ? {} : { body: o.body }),
     });
   }
@@ -244,6 +303,16 @@ export function createAdmin(driver: Driver, onDispose: (undo: () => Promise<void
     const found = listed.find((a) => a.scope === org.name);
     if (!found) throw new InfrastructureError(`${org.name} has no application waiting`);
     return found.id;
+  };
+
+  const answerOf = (res: { status: number; text: string }): InternalAnswer => {
+    let body: { ok?: boolean; audit_id?: string; refusal?: { message?: string }; reason?: string; message?: string } = {};
+    try {
+      body = JSON.parse(res.text);
+    } catch {
+      // A non-JSON answer carries no reason.
+    }
+    return { ok: body.ok === true, reason: body.refusal?.message ?? body.reason ?? body.message ?? null, auditId: body.audit_id ?? null };
   };
 
   const session: AdminSession = {
@@ -342,6 +411,68 @@ export function createAdmin(driver: Driver, onDispose: (undo: () => Promise<void
         actor: String(r.actor_id),
       }));
     },
+    ops: {
+      async state() {
+        const o = await json<{
+          kill_switch: boolean; index_frozen: boolean; telemetry_mode: string; rollback_available: boolean;
+          flags: OpsView["flags"]; blocked_sources: Array<{ source: string; reason: string }>;
+          acknowledged: Array<{ page: string }>; recent_actions: Array<{ actor: string; verb: string; target: string | null }>;
+        }>("ops.state", "GET", "/admin/ops/state");
+        return {
+          killSwitch: o.kill_switch,
+          indexFrozen: o.index_frozen,
+          telemetryMode: o.telemetry_mode,
+          rollbackAvailable: o.rollback_available,
+          flags: o.flags,
+          blockedSources: o.blocked_sources,
+          acknowledged: o.acknowledged.map((a) => a.page),
+          recent: o.recent_actions,
+        };
+      },
+      async page() {
+        const res = await call("GET", "/admin/ops");
+        return {
+          served: res.status === 200,
+          noncePolicy: /script-src[^;]*'nonce-/.test(res.headers.get("content-security-policy") ?? ""),
+          inlineHandlers: /\son[a-z]+=|javascript:/i.test(res.text),
+        };
+      },
+      async tap(request) {
+        return answerOf(await call("POST", "/admin/ops/act", { body: request }));
+      },
+    },
+    flags: {
+      async set(key, value) {
+        await json("flags.set", "POST", `/admin/flags/${key}`, { value });
+      },
+    },
+    async revoke(version, o) {
+      await json("versions.revoke", "POST", "/admin/revocations", { pack: version.pack.systemName, version: version.version, ...o });
+    },
+    disputes: {
+      async list() {
+        const { disputes } = await json<{ disputes: Array<{ id: string; scope: string; claimant: string; domain: string; held: boolean; holder_consented_at?: string | null; notice_attached_at?: string | null }> }>("disputes.list", "GET", "/admin/disputes");
+        return disputes.map((d) => ({ id: d.id, scope: d.scope, claimant: d.claimant, domain: d.domain, held: d.held, holderConsented: !!d.holder_consented_at, noticeAttached: !!d.notice_attached_at }));
+      },
+      async resolve(scope, decision) {
+        const { disputes } = await json<{ disputes: Array<{ id: string; scope: string }> }>("disputes.resolve", "GET", "/admin/disputes");
+        const found = disputes.find((d) => d.scope === scope.name);
+        if (!found) throw new InfrastructureError(`${scope.name} has no open dispute`);
+        await json("disputes.resolve", "POST", `/admin/disputes/${found.id}/decision`, {
+          decision: decision.kind,
+          ...(decision.kind === "reassign" && decision.holderName ? { holder_name: decision.holderName } : {}),
+        });
+      },
+    },
+    holds: {
+      async list() {
+        const { holds } = await json<{ holds: Array<{ scope: string }> }>("holds.list", "GET", "/admin/holds");
+        return holds.map((h) => aliases.unalias(h.scope));
+      },
+      async clear(scope) {
+        await json("holds.clear", "POST", `/admin/scopes/${aliases.alias(scope.name)}/hold/clear`, {});
+      },
+    },
   };
 
   return {
@@ -383,6 +514,20 @@ export function createAdmin(driver: Driver, onDispose: (undo: () => Promise<void
             chunk.flatMap((n) => [pack.systemName, `declarer-${pack.systemName}-${n}`, `owner-${n}`, ".claudinite/settings.yml"]),
           );
         }
+      },
+      async holdHandle(scope) {
+        await sqlOf()("update scopes set state = 'held' where name = ?", [aliases.alias(scope.name)]);
+      },
+      async internal(caller, request, o = {}) {
+        const res = await call("POST", "/internal/call", { body: request, as: o.assertion ?? "missing", headers: { "x-packserver-caller": caller } });
+        return answerOf(res);
+      },
+      rollbackDispatches() {
+        const f = fakes();
+        return f.workflowDispatch.dispatches.map((d) => ({ workflow: d.workflow, ref: d.ref, reason: d.inputs.reason ?? null, authorised: d.authorised }));
+      },
+      async launchMirror() {
+        return await stores(driver).telemetry.get("flags/launch");
       },
       async appeal(version, note) {
         const run = (await sqlOf()("select r.id, m.user_id from validation_runs r join scope_members m on m.scope_id = r.scope_id and m.role = 'owner' where r.id = ?", [runIdOf(version)]))[0];

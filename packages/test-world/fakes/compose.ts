@@ -5,6 +5,7 @@ import type { BScript } from "../fake-workers/sandbox/scripts";
 import { FakeDomains } from "./dns";
 import { FakeGithubOidc } from "./github-oidc";
 import { FakeGitHubLogin } from "./github-login";
+import { FakeWorkflowDispatch } from "./github-actions";
 import { FakeGithubApp } from "./github-app";
 import { mailHandler } from "./mail";
 import { Net } from "./net";
@@ -58,6 +59,7 @@ const WORKER_FOR: Record<keyof FakeWorkers, string> = {
 export class WorldFakes {
   readonly net = new Net();
   readonly githubApp = new FakeGithubApp();
+  readonly workflowDispatch = new FakeWorkflowDispatch();
   readonly domains = new FakeDomains();
   ports: FakePorts = createFakePorts();
   readonly githubLogin = new FakeGitHubLogin();
@@ -88,6 +90,7 @@ export class WorldFakes {
     }
     this.net.use(this.domains.handler);
     this.net.use(this.githubLogin.handler);
+    this.net.use(this.workflowDispatch.handler());
     this.net.use(this.githubApp.handler());
     this.net.freeze();
   }
@@ -114,6 +117,7 @@ export class WorldFakes {
     this.stagingS3?.reset();
     await this.oidc?.reset();
     this.githubApp.reset();
+    this.workflowDispatch.reset();
     this.domains.reset();
     this.ports = createFakePorts();
     this.githubLogin.reset();

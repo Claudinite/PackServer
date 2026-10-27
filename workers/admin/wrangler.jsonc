@@ -26,7 +26,10 @@
         "IP_HASH_MASTER_KEY": "test-ip-hash-master-key",
         "PRINCIPAL_HASH_KEY": "test-principal-hash-key",
         "AUDIT_HEAD_SIGNING_KEY": "test-audit-head-signing-key",
-        "ANALYTICS_READ_TOKEN": "test-analytics-read-token"
+        "ANALYTICS_READ_TOKEN": "test-analytics-read-token",
+        "FLAG_HMAC_KEY": "test-flag-hmac-key",
+        "ROLLBACK_DISPATCH_TOKEN": "test-rollback-dispatch-token",
+        "ROLLBACK_REPO": "claudinite/packserver"
       },
       "d1_databases": [
         {
@@ -243,6 +246,16 @@
           "binding": "ANALYTICS_READ_TOKEN",
           "store_id": "00000000000000000000190000000004",
           "secret_name": "analytics-read-token-staging"
+        },
+        {
+          "binding": "FLAG_HMAC_KEY",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "flag-hmac-key-staging"
+        },
+        {
+          "binding": "ROLLBACK_DISPATCH_TOKEN",
+          "store_id": "00000000000000000000190000000004",
+          "secret_name": "rollback-dispatch-token-staging"
         }
       ],
       "version_metadata": {
@@ -273,6 +286,7 @@
         "ACCESS_AUDIENCE": "ADMIN_ACCESS_AUDIENCE",
         "ADMIN_IDENTITIES": "ADMIN_EMAILS",
         "ADMIN_HOSTS": "registry-admin.claudinite.com",
+        "ROLLBACK_REPO": "Claudinite/PackServer",
         "MAIL_FROM": "noreply@claudinite.com",
         "AUDIT_S3_ENDPOINT": "https://ACCOUNT_ID.r2.cloudflarestorage.com/audit-log",
         "POINTS_DATASET": "domain_events",
@@ -386,6 +400,16 @@
           "binding": "ANALYTICS_READ_TOKEN",
           "store_id": "00000000000000000000290000000004",
           "secret_name": "analytics-read-token"
+        },
+        {
+          "binding": "FLAG_HMAC_KEY",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "flag-hmac-key"
+        },
+        {
+          "binding": "ROLLBACK_DISPATCH_TOKEN",
+          "store_id": "00000000000000000000290000000004",
+          "secret_name": "rollback-dispatch-token"
         }
       ],
       "version_metadata": {

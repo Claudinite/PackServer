@@ -145,6 +145,13 @@ export class InProcessDriver implements Driver {
         await env.REINDEX_QUEUE.send(message);
       },
     },
+    telemetry: {
+      get: async (key) => {
+        if (!this.harness.workers.includes("admin")) throw new InfrastructureError("the admin Worker is not booted, so there is no telemetry store to reach");
+        const env = await this.harness.server.getWorker<{ TELEMETRY_KV: { get(key: string): Promise<string | null> } }>(testWorkerName("admin")).getEnv();
+        return env.TELEMETRY_KV.get(key);
+      },
+    },
     packs: {
       public: this.packBucket("PACKS_PUBLIC"),
       private: this.packBucket("PACKS_PRIVATE"),
