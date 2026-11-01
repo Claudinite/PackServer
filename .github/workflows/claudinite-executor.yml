@@ -29,7 +29,7 @@ jobs:
       github.event_name == 'workflow_dispatch'
       || github.event.label.name == 'task:status:waiting-for-executor'
       || github.event.label.name == 'task:urgent'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.ACTIONS_RUNNER_IMAGE }}
     timeout-minutes: 350
     permissions:
       actions: write
@@ -78,7 +78,7 @@ jobs:
   continue-the-chain:
     needs: execute
     if: failure() || cancelled()
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.ACTIONS_RUNNER_IMAGE }}
     permissions:
       actions: write
       contents: read

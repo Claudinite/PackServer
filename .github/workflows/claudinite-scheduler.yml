@@ -27,7 +27,7 @@ defaults:
 
 jobs:
   scheduler-run:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.ACTIONS_RUNNER_IMAGE }}
     permissions:
       actions: read
       contents: read
@@ -61,7 +61,7 @@ jobs:
   drain:
     needs: scheduler-run
     if: needs.scheduler-run.outputs.pickable == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.ACTIONS_RUNNER_IMAGE }}
     permissions:
       actions: write
       contents: read
@@ -89,7 +89,7 @@ jobs:
     if: >-
       always()
       && (needs.scheduler-run.result == 'failure' || needs.drain.result == 'failure')
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.ACTIONS_RUNNER_IMAGE }}
     permissions:
       contents: read
       issues: write

@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   staging:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.ACTIONS_RUNNER_IMAGE }}
     timeout-minutes: 15
     environment: staging
     permissions:
