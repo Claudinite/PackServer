@@ -30,7 +30,7 @@ concurrency:
 
 jobs:
   image:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.ACTIONS_RUNNER_IMAGE }}
     timeout-minutes: 20
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
@@ -78,7 +78,7 @@ jobs:
   publish:
     needs: image
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.ACTIONS_RUNNER_IMAGE }}
     timeout-minutes: 10
     permissions:
       contents: read

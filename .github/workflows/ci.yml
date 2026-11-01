@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.ACTIONS_RUNNER_IMAGE }}
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft)
     permissions:
       contents: read
@@ -59,7 +59,7 @@ jobs:
 
   # Docs-only changes skip the product jobs; the Claudinite check above still runs.
   changes:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.ACTIONS_RUNNER_IMAGE }}
     timeout-minutes: 2
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft)
     permissions:
@@ -95,7 +95,7 @@ jobs:
   # Requirement and test-register edits never skip; this needs no install.
   coverage:
     needs: changes
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.ACTIONS_RUNNER_IMAGE }}
     timeout-minutes: 2
     permissions:
       contents: read
@@ -117,7 +117,7 @@ jobs:
   checks:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.ACTIONS_RUNNER_IMAGE }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -139,7 +139,7 @@ jobs:
   typecheck:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.ACTIONS_RUNNER_IMAGE }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -177,7 +177,7 @@ jobs:
   unit:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.ACTIONS_RUNNER_IMAGE }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -204,7 +204,7 @@ jobs:
   infra:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.ACTIONS_RUNNER_IMAGE }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -225,7 +225,7 @@ jobs:
   scenarios:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.ACTIONS_RUNNER_IMAGE }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -255,7 +255,7 @@ jobs:
   summary:
     needs: [check, changes, coverage, checks, typecheck, unit, infra, scenarios]
     if: always() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft))
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.ACTIONS_RUNNER_IMAGE }}
     timeout-minutes: 2
     permissions:
       contents: read
